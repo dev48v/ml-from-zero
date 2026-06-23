@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 11 — Random Forest</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 11</div>
+      <h1 class="text-xl font-bold">🌲 Random Forest — Many Weak Trees Beat One Strong Tree</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Add trees and watch the jagged boundary turn smooth</h2>
+      <p class="text-slate-500 text-center mb-6">One deep tree overfits — a blocky boundary chasing every noisy point. Average many trees (each on a random data + feature subset) and their votes smooth into a robust boundary.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 flex justify-center"><canvas id="c" width="480" height="360"></canvas></div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500">Trees in the forest</span><span id="nval" class="font-bold text-sky-600">1</span></div>
+            <input id="n" type="range" min="1" max="40" value="1" class="w-full accent-sky-600" />
+            <div class="flex justify-between"><span class="text-slate-500">Train accuracy</span><span id="acc" class="font-bold text-sky-600">—</span></div>
+          </div>
+          <button id="newdata" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 New data</button>
+          <p class="text-xs text-slate-400">1 tree = jagged + overfit. ~5 trees = noticeably smoother. 30+ = a clean, stable boundary. Each tree is trained on a bootstrap sample, so they disagree — and averaging their disagreement is the magic.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How a random forest works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Take yesterday's decision tree, add two kinds of randomness, average the votes.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Bootstrap: each tree gets a random sample</h3></div><pre>function bootstrap(data) {
+  return data.map(() => data[Math.floor(Math.random() * data.length)]);
+}  // sample WITH replacement → each tree sees a slightly different dataset</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Random feature subset at each split</h3></div><pre>// when choosing a split, consider only a random subset of features
+const candidates = pickRandom(allFeatures, Math.sqrt(allFeatures.length));
+// this DE-CORRELATES the trees so they don't all make the same mistake</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Grow many trees (deep, unpruned)</h3></div><pre>const forest = Array.from({ length: 100 }, () =>
+  buildTree(bootstrap(data)));   // each overfits its own sample — fine!</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Predict by majority vote</h3></div><pre>function predict(x) {
+  const votes = forest.map(tree => tree.predict(x));
+  return mode(votes);   // (or average probabilities for regression)
+}</pre></li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 11 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">The ML foundations arc continues — SVM, PCA, gradient boosting ahead.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== RANDOM FOREST =====
+const c=document.getElementById("c"), ctx=c.getContext("2d"), PAD=24;
+const C0="#38bdf8", C1="#fb7185";
+const px=v=>PAD+v*(c.width-2*PAD), py=v=>(c.height-PAD)-v*(c.height-2*PAD);
+let pts=[], forest=[], nTrees=1;
+function genData(){
+  pts=[];
+  for(let i=0;i<150;i++){ const a=Math.random(),b=Math.random(); let lab=(a+b>1.0)?1:0; if(Math.random()<0.12) lab=1-lab; pts.push({x:[a,b],label:lab}); }
+}
+const gini=ps=>{ if(!ps.length)return 0; const p1=ps.filter(p=>p.label===1).length/ps.length; return 1-(p1*p1+(1-p1)*(1-p1)); };
+const majority=ps=>ps.filter(p=>p.label===1).length*2>=ps.length?1:0;
+function build(ps, depth, maxD, featSub){
+  if(depth>=maxD||gini(ps)===0||ps.length<3) return {leaf:true,label:majority(ps)};
+  let best=null,bi=Infinity;
+  const axes = featSub ? [Math.floor(Math.random()*2)] : [0,1];   // random feature subset
+  for(const axis of axes){
+    const vals=[...new Set(ps.map(p=>p.x[axis]))].sort((a,b)=>a-b);
+    for(let i=0;i<vals.length-1;i++){ const thr=(vals[i]+vals[i+1])/2; const L=ps.filter(p=>p.x[axis]<thr),R=ps.filter(p=>p.x[axis]>=thr); if(!L.length||!R.length)continue; const imp=(L.length*gini(L)+R.length*gini(R))/ps.length; if(imp<bi){bi=imp;best={axis,thr,L,R};} }
+  }
+  if(!best) return {leaf:true,label:majority(ps)};
+  return {leaf:false,axis:best.axis,thr:best.thr,left:build(best.L,depth+1,maxD,featSub),right:build(best.R,depth+1,maxD,featSub)};
+}
+const predTree=(n,x)=>{ while(!n.leaf) n = x[n.axis]<n.thr?n.left:n.right; return n.label; };
+function bootstrap(){ return pts.map(()=>pts[Math.floor(Math.random()*pts.length)]); }
+function grow(){ forest=[]; for(let t=0;t<40;t++) forest.push(build(bootstrap(),0,9,true)); }   // grow max, use first nTrees
+function forestPred(x){ let v1=0; for(let i=0;i<nTrees;i++) v1+=predTree(forest[i],x); return v1*2>=nTrees?1:0; }
+function draw(){
+  ctx.clearRect(0,0,c.width,c.height); ctx.fillStyle="#020617"; ctx.fillRect(0,0,c.width,c.height);
+  const GX=60,GY=45,cw=(c.width-2*PAD)/GX,ch=(c.height-2*PAD)/GY;
+  for(let i=0;i<GX;i++)for(let j=0;j<GY;j++){ const a=(i+0.5)/GX,b=(j+0.5)/GY; const lab=forestPred([a,b]); ctx.fillStyle=lab===1?"rgba(251,113,133,0.22)":"rgba(56,189,248,0.18)"; ctx.fillRect(px(a-0.5/GX),py(b+0.5/GY),cw+1,ch+1); }
+  for(const p of pts){ ctx.fillStyle=p.label===1?C1:C0; ctx.strokeStyle="#020617"; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(px(p.x[0]),py(p.x[1]),4,0,Math.PI*2); ctx.fill(); ctx.stroke(); }
+  const correct=pts.filter(p=>forestPred(p.x)===p.label).length;
+  document.getElementById("acc").textContent=Math.round(100*correct/pts.length)+"%";
+}
+document.getElementById("n").oninput=function(){ nTrees=+this.value; document.getElementById("nval").textContent=nTrees; draw(); };
+document.getElementById("newdata").onclick=()=>{ genData(); grow(); draw(); };
+genData(); grow(); draw();
+
+const STEPS = [
+  { title:"1. One tree is unstable + overfits", why:"A single deep decision tree memorises its training data — its boundary is a jagged staircase that hugs every noisy point (you saw this on Day 5). Worse, change a few training rows and the whole tree can reshuffle. High variance: powerful but fragile.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">1 deep tree → jagged, overfit, unstable</div>`, code:`// a lone tree: low bias, HIGH variance` },
+  { title:"2. The wisdom-of-crowds idea", why:"If you have many models that each make DIFFERENT mistakes, averaging their predictions cancels out the individual errors while keeping the shared signal. It's the wisdom of crowds applied to trees: no single tree is great, but the committee is. The trick is making the trees genuinely different.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">many imperfect, DIFFERING trees → average → robust</div>`, code:`prediction = mode(trees.map(t => t.predict(x)));` },
+  { title:"3. Bagging: random data per tree", why:"Bootstrap AGGregating: each tree trains on a random sample of the data drawn WITH replacement (some rows repeated, some missing). So every tree sees a slightly different world and grows a different shape. This is the first source of the diversity that makes averaging work.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">tree 1 ← sample A · tree 2 ← sample B · …(with replacement)</div>`, code:`const sample = data.map(() => randomChoice(data));` },
+  { title:"4. Random features: de-correlate the trees", why:"At each split, a tree may only consider a RANDOM SUBSET of features (typically √(features)). This stops every tree from leaning on the same one dominant feature, so they don't all make the same mistake. Bagging + feature randomness together = the 'random' in random forest.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">each split → only a random subset of features considered</div>`, code:`const candidates = pickRandom(features, Math.sqrt(features.length));` },
+  { title:"5. Vote → variance melts away", why:"Predict by majority vote across all trees. As you add trees in the demo, the noisy per-tree boundaries average into a smooth, stable one — and crucially, accuracy on unseen data goes UP without you tuning anything. Averaging crushes variance while keeping the trees' low bias.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">1 tree (jagged) → 40 trees (smooth, robust)</div>`, code:`return mode(forest.map(tree => tree.predict(x)));` },
+  { title:"6. Why it's a default workhorse", why:"Random forests need little tuning, handle mixed feature types, don't require scaling, resist overfitting, and give feature-importance for free. They're often the strong baseline you reach for first on tabular data — and the gateway to boosting, which builds trees sequentially to fix each other's errors.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Bag the data, randomize features, average the votes — variance gone.</p></div>`, code:`// strong, low-tuning baseline for tabular data` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

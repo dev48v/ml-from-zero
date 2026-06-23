@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 5 — Decision Tree</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; }
+  .node { font-size:11px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 5</div>
+      <h1 class="text-xl font-bold">🌳 Decision Tree — Learning a Stack of Yes/No Questions</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">It carves the plane into boxes — one cut at a time</h2>
+      <p class="text-slate-500 text-center mb-6">Each split is a single yes/no question (<i>is x &lt; 0.5?</i>) that slices the space with a straight cut. Stack a few and the tree separates the two classes. Raise the depth and watch the boundary get blocky — then over-fit.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 flex justify-center"><canvas id="c" width="480" height="360"></canvas></div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500">Max depth</span><span id="dval" class="font-bold text-sky-600">2</span></div>
+            <input id="depth" type="range" min="1" max="6" value="2" class="w-full accent-sky-600" />
+            <div class="flex justify-between"><span class="text-slate-500">Leaves</span><span id="leaves" class="font-bold">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Train accuracy</span><span id="acc" class="font-bold text-sky-600">—</span></div>
+          </div>
+          <button id="newdata" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 New data</button>
+          <div class="bg-white rounded-2xl border border-slate-200 p-3">
+            <div class="text-xs font-bold uppercase text-slate-500 mb-2">The learned tree</div>
+            <div id="tree" class="node text-slate-700 overflow-auto max-h-64"></div>
+          </div>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 text-center mt-6">↑ Shaded boxes = what the tree predicts there. Dots = the real labels. At low depth the boxes are clean; crank depth to 6 and they fracture to chase every point — that's over-fitting.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How a decision tree learns</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Measure impurity, try every cut, keep the best, recurse. ~40 lines.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Measure how "mixed" a group is (Gini)</h3></div><pre>function gini(pts){
+  const p1 = pts.filter(p =&gt; p.label===1).length / pts.length;
+  return 1 - (p1*p1 + (1-p1)*(1-p1));   // 0 = pure, 0.5 = 50/50
+}</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Try every cut, keep the purest split</h3></div><pre>for (const axis of [0,1])
+  for (const thr of candidateThresholds) {
+    const [L,R] = partition(pts, axis, thr);
+    const impurity = (L.length*gini(L) + R.length*gini(R)) / pts.length;
+    if (impurity &lt; best.impurity) best = { axis, thr };
+  }</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Recurse on each side</h3></div><pre>node.left  = build(L, depth+1);
+node.right = build(R, depth+1);</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Stop → make a leaf that votes</h3></div><pre>if (depth === maxDepth || gini(pts) === 0)
+  return { leaf: true, label: majorityVote(pts) };</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Predict = walk the questions down</h3></div><pre>while (!node.leaf)
+  node = x[node.axis] &lt; node.thr ? node.left : node.right;
+return node.label;</pre></li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 5 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Tomorrow: Naive Bayes.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== DECISION TREE =====
+const c = document.getElementById("c"), ctx = c.getContext("2d");
+const PAD = 24;
+const C0 = "#38bdf8", C1 = "#fb7185";      // class 0 sky, class 1 rose
+const px = v => PAD + v * (c.width - 2*PAD);
+const py = v => (c.height - PAD) - v * (c.height - 2*PAD);
+let pts, maxDepth = 2, tree;
+
+function genData(){
+  pts = [];
+  for (let i=0;i<140;i++){
+    const a = Math.random(), b = Math.random();
+    // diagonal boundary: a tree can't cut diagonally, so it APPROXIMATES it with a
+    // staircase of axis-aligned boxes — more depth = finer staircase = higher accuracy.
+    let label = (a + b > 1.0) ? 1 : 0;
+    if (Math.random() < 0.07) label = 1-label;          // a little label noise
+    pts.push({ x:[a,b], label });
+  }
+}
+const gini = ps => { if(!ps.length) return 0; const p1 = ps.filter(p=>p.label===1).length/ps.length; return 1-(p1*p1+(1-p1)*(1-p1)); };
+const majority = ps => ps.filter(p=>p.label===1).length*2 >= ps.length ? 1 : 0;
+function bestSplit(ps){
+  let best = null, bestImp = Infinity, parent = gini(ps);
+  for (let axis=0; axis<2; axis++){
+    const vals = [...new Set(ps.map(p=>p.x[axis]))].sort((a,b)=>a-b);
+    for (let i=0;i<vals.length-1;i++){
+      const thr = (vals[i]+vals[i+1])/2;
+      const L = ps.filter(p=>p.x[axis]<thr), R = ps.filter(p=>p.x[axis]>=thr);
+      if (!L.length || !R.length) continue;
+      const imp = (L.length*gini(L)+R.length*gini(R))/ps.length;
+      if (imp < bestImp){ bestImp = imp; best = { axis, thr, L, R, gain: parent-imp }; }
+    }
+  }
+  return best;
+}
+function build(ps, depth){
+  if (depth >= maxDepth || gini(ps) === 0 || ps.length < 4)
+    return { leaf:true, label:majority(ps), n:ps.length };
+  const s = bestSplit(ps);
+  if (!s || s.gain <= 1e-9) return { leaf:true, label:majority(ps), n:ps.length };
+  return { leaf:false, axis:s.axis, thr:s.thr, n:ps.length, left:build(s.L,depth+1), right:build(s.R,depth+1) };
+}
+function predict(node, x){ while(!node.leaf) node = x[node.axis] < node.thr ? node.left : node.right; return node.label; }
+function countLeaves(n){ return n.leaf ? 1 : countLeaves(n.left)+countLeaves(n.right); }
+
+function draw(){
+  ctx.clearRect(0,0,c.width,c.height); ctx.fillStyle="#020617"; ctx.fillRect(0,0,c.width,c.height);
+  // decision regions (coarse grid)
+  const GX = 64, GY = 48;
+  for (let i=0;i<GX;i++) for (let j=0;j<GY;j++){
+    const a = (i+0.5)/GX, b = (j+0.5)/GY;
+    const lab = predict(tree, [a,b]);
+    ctx.fillStyle = lab===1 ? "rgba(251,113,133,0.22)" : "rgba(56,189,248,0.18)";
+    const x0=px(a-0.5/GX), y0=py(b+0.5/GY);
+    ctx.fillRect(x0, y0, (c.width-2*PAD)/GX + 1, (c.height-2*PAD)/GY + 1);
+  }
+  // points
+  for (const p of pts){ ctx.fillStyle = p.label===1 ? C1 : C0; ctx.strokeStyle="#020617"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(px(p.x[0]),py(p.x[1]),4,0,Math.PI*2); ctx.fill(); ctx.stroke(); }
+}
+function renderTree(n, depth=0){
+  const pad = depth*14;
+  if (n.leaf){
+    const col = n.label===1 ? "text-rose-600" : "text-sky-600";
+    return `<div style="padding-left:${pad}px" class="${col} font-semibold">▪ predict ${n.label===1?'🔴 1':'🔵 0'} <span class="text-slate-400 font-normal">(${n.n})</span></div>`;
+  }
+  const ax = n.axis===0 ? "x" : "y";
+  return `<div style="padding-left:${pad}px" class="text-slate-700">◆ is ${ax} &lt; ${n.thr.toFixed(2)} ?</div>` +
+    `<div style="padding-left:${pad+10}px" class="text-emerald-600 text-[10px]">yes ↓</div>` + renderTree(n.left, depth+1) +
+    `<div style="padding-left:${pad+10}px" class="text-amber-600 text-[10px]">no ↓</div>` + renderTree(n.right, depth+1);
+}
+function fit(){
+  tree = build(pts, 0);
+  draw();
+  document.getElementById("leaves").textContent = countLeaves(tree);
+  const correct = pts.filter(p => predict(tree, p.x) === p.label).length;
+  document.getElementById("acc").textContent = Math.round(100*correct/pts.length) + "%";
+  document.getElementById("tree").innerHTML = renderTree(tree);
+}
+document.getElementById("depth").oninput = function(){ maxDepth=+this.value; document.getElementById("dval").textContent=maxDepth; fit(); };
+document.getElementById("newdata").onclick = () => { genData(); fit(); };
+genData(); fit();
+
+const STEPS = [
+  { title:"1. A model that's just nested if-statements", why:"A decision tree is the most human ML model: a flowchart of yes/no questions. Each internal node asks one thing (\"is x < 0.5?\"), and you follow yes/no branches down to a leaf that gives the answer. You could read the whole model aloud — which is why trees are loved when you need to EXPLAIN a prediction.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-left">is x &lt; 0.5? → yes → is y &lt; 0.5? → no → 🔴</div>`, code:`if (x < 0.5) { if (y < 0.5) return 0; else return 1; }
+else        { ... }` },
+  { title:"2. Every cut is one axis-aligned line", why:"A node can only ask about ONE feature at a time, so each split is a straight horizontal or vertical line on the plane. That's why the decision regions look like rectangles, never diagonals. Many cuts stacked together approximate any shape — like building a curve out of LEGO bricks.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">x &lt; t → vertical cut · y &lt; t → horizontal cut</div>`, code:`partition: pts.filter(p => p.x[axis] < thr)  // one axis` },
+  { title:"3. 'Best' split = purest children (Gini)", why:"How does it choose where to cut? It measures impurity — how mixed the labels are — with the Gini score (0 = all one class, 0.5 = a coin flip). It tries every possible cut and keeps the one that makes the two resulting groups as PURE as possible. Greedy, but effective.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div>before: 🔵🔵🔴🔴 (gini 0.5)</div><div class="text-sky-700">after best cut: 🔵🔵 | 🔴🔴 (gini 0 + 0)</div></div>`, code:`gini = 1 - (p₀² + p₁²)   // pick the split that minimises it` },
+  { title:"4. Recurse: a tree is splits all the way down", why:"After the first cut, you run the exact same 'find the best split' routine on each side, independently. Then on their sides, and so on. This recursion is what grows a tree from a single rule — each region gets subdivided until it's pure enough or you hit a depth limit.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">split → split left → split right → … → leaves</div>`, code:`node.left  = build(L, depth+1);
+node.right = build(R, depth+1);` },
+  { title:"5. Leaves vote; depth controls everything", why:"Recursion stops when a region is pure or you reach maxDepth — that region becomes a leaf that predicts the majority class. Depth is the dial: too shallow and the tree underfits (boxes too crude), too deep and it carves a box around every noisy point.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">stop → leaf = majority label of the points there</div>`, code:`if (depth === maxDepth || gini(pts) === 0)
+  return { leaf:true, label: majorityVote(pts) };` },
+  { title:"6. Over-fitting you can literally see", why:"Slide the demo's depth to 6: the boundary fractures into tiny boxes that hug individual noisy dots. Train accuracy climbs toward 100%, but the model has memorised noise and will generalise badly. The fix is pruning / depth limits — and the real fix, tomorrow's lesson's cousin, is averaging many trees into a forest.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Greedy purest cuts, recursed — a readable, powerful classifier.</p></div>`, code:`// shallow → underfit · too deep → overfit
+// next: many trees averaged = Random Forest` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

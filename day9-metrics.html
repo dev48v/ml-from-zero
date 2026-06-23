@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 9 — Precision, Recall, F1</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .bar { height:12px; border-radius:6px; transition:width .25s; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 9</div>
+      <h1 class="text-xl font-bold">📏 Precision, Recall, F1 — Why Accuracy Lies</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Slide the threshold — watch precision and recall trade off</h2>
+      <p class="text-slate-500 text-center mb-5">A spam classifier scores each email 0–1. Items left of the line are called "ham", right are "spam". 🔴 = truly spam, ⚪ = truly ham. Move the threshold and watch the four metrics react.</p>
+      <canvas id="c" width="760" height="120" class="w-full"></canvas>
+      <div class="flex items-center gap-3 my-3 text-sm">
+        <span class="text-slate-500">Threshold</span>
+        <input id="thr" type="range" min="2" max="98" value="50" class="flex-1 accent-sky-600" />
+        <span id="thrv" class="font-bold text-sky-600 w-12">0.50</span>
+      </div>
+      <div class="grid md:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <div class="text-xs font-bold uppercase text-slate-500 mb-2">Confusion matrix</div>
+          <div class="grid grid-cols-2 gap-2 text-center text-sm">
+            <div class="bg-emerald-50 rounded-lg p-3"><div class="text-xs text-slate-500">True Positive</div><div id="tp" class="text-2xl font-bold text-emerald-600">0</div></div>
+            <div class="bg-rose-50 rounded-lg p-3"><div class="text-xs text-slate-500">False Positive</div><div id="fp" class="text-2xl font-bold text-rose-600">0</div></div>
+            <div class="bg-amber-50 rounded-lg p-3"><div class="text-xs text-slate-500">False Negative</div><div id="fn" class="text-2xl font-bold text-amber-600">0</div></div>
+            <div class="bg-slate-50 rounded-lg p-3"><div class="text-xs text-slate-500">True Negative</div><div id="tn" class="text-2xl font-bold text-slate-600">0</div></div>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 text-sm">
+          <div class="text-xs font-bold uppercase text-slate-500">Metrics</div>
+          <div><div class="flex justify-between"><span>Precision <span class="text-slate-400">TP/(TP+FP)</span></span><b id="prv" class="text-sky-600">—</b></div><div class="bg-slate-100 rounded-full mt-1"><div id="prb" class="bar bg-sky-500"></div></div></div>
+          <div><div class="flex justify-between"><span>Recall <span class="text-slate-400">TP/(TP+FN)</span></span><b id="rev" class="text-indigo-600">—</b></div><div class="bg-slate-100 rounded-full mt-1"><div id="reb" class="bar bg-indigo-500"></div></div></div>
+          <div><div class="flex justify-between"><span>F1 <span class="text-slate-400">harmonic mean</span></span><b id="f1v" class="text-emerald-600">—</b></div><div class="bg-slate-100 rounded-full mt-1"><div id="f1b" class="bar bg-emerald-500"></div></div></div>
+          <div><div class="flex justify-between"><span>Accuracy <span class="text-slate-400">(can mislead!)</span></span><b id="acv" class="text-slate-500">—</b></div><div class="bg-slate-100 rounded-full mt-1"><div id="acb" class="bar bg-slate-400"></div></div></div>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 text-center mt-4">↑ High threshold → fewer false alarms (precision↑) but you miss real spam (recall↓). F1 balances both. Accuracy looks fine even when the model is useless on rare classes.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How to measure a classifier</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Compute them yourself</h2>
+    <p class="text-slate-500 mb-8">Four counts give you everything. ~12 lines.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Count the four outcomes</h3></div><pre>let TP=0,FP=0,FN=0,TN=0;
+for (const x of data) {
+  const pred = x.score >= threshold;
+  if (pred && x.actual)      TP++;
+  else if (pred && !x.actual) FP++;
+  else if (!pred && x.actual) FN++;
+  else                        TN++;
+}</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Precision: of what I flagged, how much was right?</h3></div><pre>const precision = TP / (TP + FP);   // few false alarms = high</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Recall: of all the real ones, how many did I catch?</h3></div><pre>const recall = TP / (TP + FN);   // few misses = high</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">F1: the harmonic mean (punishes imbalance)</h3></div><pre>const f1 = 2 * precision * recall / (precision + recall);
+// harmonic, not average — so 0.9/0.1 gives ~0.18, not 0.5</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Accuracy — and why it lies</h3></div><pre>const accuracy = (TP + TN) / data.length;
+// 99% of email is ham → a model that says "ham" always = 99% accuracy,
+// but precision/recall on spam = 0. Always report all four.</pre></li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 9 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Tomorrow: Feature scaling — why models need normalized inputs.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== PRECISION / RECALL =====
+const c=document.getElementById("c"), ctx=c.getContext("2d");
+let W=c.width, H=c.height, thr=0.5, data=[];
+function gen(){
+  data=[];
+  for(let i=0;i<26;i++) data.push({ score: Math.min(0.98, Math.max(0.02, 0.68 + (Math.random()-0.5)*0.5)), actual:true });   // spam: skew high
+  for(let i=0;i<24;i++) data.push({ score: Math.min(0.98, Math.max(0.02, 0.32 + (Math.random()-0.5)*0.5)), actual:false });  // ham: skew low
+}
+function draw(){
+  ctx.clearRect(0,0,W,H); ctx.fillStyle="#020617"; ctx.fillRect(0,0,W,H);
+  const x0=20, x1=W-20;
+  for(const d of data){ const x=x0+d.score*(x1-x0), y=H/2+(Math.random()<0.5?-1:1)*0; }
+  // deterministic y by index to avoid jitter
+  data.forEach((d,i)=>{ const x=x0+d.score*(x1-x0); const y=20+((i*37)%(H-40)); ctx.fillStyle=d.actual?"#f43f5e":"#cbd5e1"; ctx.strokeStyle="#0f172a"; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2); ctx.fill(); ctx.stroke(); });
+  const tx=x0+thr*(x1-x0); ctx.strokeStyle="#38bdf8"; ctx.lineWidth=2; ctx.setLineDash([5,4]); ctx.beginPath(); ctx.moveTo(tx,6); ctx.lineTo(tx,H-6); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle="#94a3b8"; ctx.font="11px sans-serif"; ctx.textAlign="left"; ctx.fillText("← called HAM", x0, 14); ctx.textAlign="right"; ctx.fillText("called SPAM →", x1, 14);
+}
+function compute(){
+  let TP=0,FP=0,FN=0,TN=0;
+  for(const d of data){ const pred=d.score>=thr; if(pred&&d.actual)TP++; else if(pred&&!d.actual)FP++; else if(!pred&&d.actual)FN++; else TN++; }
+  const set=(id,v)=>document.getElementById(id).textContent=v;
+  set("tp",TP); set("fp",FP); set("fn",FN); set("tn",TN);
+  const pr=TP/(TP+FP||1), re=TP/(TP+FN||1), f1=(pr+re)?2*pr*re/(pr+re):0, ac=(TP+TN)/data.length;
+  const show=(v,b,val)=>{ document.getElementById(v).textContent=(val*100).toFixed(0)+"%"; document.getElementById(b).style.width=(val*100)+"%"; };
+  show("prv","prb",pr||0); show("rev","reb",re||0); show("f1v","f1b",f1||0); show("acv","acb",ac||0);
+}
+document.getElementById("thr").oninput=function(){ thr=+this.value/100; document.getElementById("thrv").textContent=thr.toFixed(2); draw(); compute(); };
+gen(); draw(); compute();
+
+const STEPS = [
+  { title:"1. Accuracy alone is a trap", why:"If 99% of emails are ham, a lazy model that labels EVERYTHING ham scores 99% accuracy — while catching zero spam. On any imbalanced problem (fraud, disease, spam), accuracy hides total failure on the class you actually care about. You need metrics that look at the rare class specifically.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">"always ham" → 99% accuracy, 0 spam caught</div>`, code:`accuracy = (TP+TN)/total;  // can be high AND useless` },
+  { title:"2. The confusion matrix: 4 outcomes", why:"Every prediction is one of four things: True Positive (flagged spam, was spam), False Positive (flagged spam, was ham — a false alarm), False Negative (missed real spam), True Negative (correctly left ham alone). These four counts are the raw material for every classification metric.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div>TP ✓caught · FP ✗false alarm</div><div>FN ✗missed · TN ✓correctly ignored</div></div>`, code:`if (pred && actual) TP++; else if (pred) FP++; ...` },
+  { title:"3. Precision: trust of your alarms", why:"Precision = TP / (TP + FP) — of everything you flagged as positive, what fraction really was? High precision = few false alarms. It matters when acting on a positive is costly: you don't want to send a real email to spam, or accuse a real transaction of fraud.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">precision = correct flags / all flags (few false alarms)</div>`, code:`precision = TP / (TP + FP);` },
+  { title:"4. Recall: how much you catch", why:"Recall = TP / (TP + FN) — of all the actual positives out there, how many did you catch? High recall = few misses. It matters when MISSING one is costly: a missed tumour, an undetected fraud. Notice precision and recall pull in opposite directions as you move the threshold.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">recall = caught / all real positives (few misses)</div>`, code:`recall = TP / (TP + FN);` },
+  { title:"5. The threshold trades one for the other", why:"Raise the decision threshold and you flag fewer things — those you do flag are surer (precision↑) but you let more real ones slip (recall↓). Lower it and the reverse. There's no free lunch; you tune the threshold to whichever error is costlier for your problem. The slider makes this visceral.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">threshold↑ → precision↑, recall↓ · threshold↓ → reverse</div>`, code:`pred = score >= threshold;  // the dial between precision & recall` },
+  { title:"6. F1 balances both", why:"When you want a single number that respects BOTH, use F1 — the harmonic mean of precision and recall. Harmonic, not arithmetic, so it punishes lopsidedness: 0.9 precision with 0.1 recall gives F1 ≈ 0.18, not 0.5. It only rises when both are good. Report precision, recall, AND F1 — never accuracy alone.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Four counts → precision, recall, F1. The honest scorecard.</p></div>`, code:`f1 = 2*precision*recall / (precision + recall);` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

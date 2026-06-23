@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 2 — Logistic Regression</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 2</div>
+      <h1 class="text-xl font-bold">🔵 Logistic Regression — Lines That Output Probabilities</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Same gradient descent, squashed through a sigmoid</h2>
+      <p class="text-slate-500 text-center mb-6">Linear regression predicts a number. Logistic regression wraps it in a sigmoid to predict a <b>probability</b> (0–1) — a classifier. Hit Train.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 flex justify-center"><canvas id="c" width="480" height="360"></canvas></div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500">Epoch</span><span id="epoch" class="font-bold">0</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Loss (log)</span><span id="loss" class="font-bold text-sky-600">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Accuracy</span><span id="acc" class="font-bold">—</span></div>
+          </div>
+          <div class="flex gap-2">
+            <button id="train" class="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-2.5 rounded-xl">▶ Train</button>
+            <button id="reset" class="px-4 bg-slate-200 hover:bg-slate-300 rounded-xl font-semibold">Reset</button>
+          </div>
+          <button id="newdata" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 New data</button>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 text-center mt-6">↑ Background shade = predicted probability (blue→class 1, red→class 0). The white band is the 50% boundary.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How a classifier learns</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">It's Day 1's linear regression + a sigmoid. ~40 lines.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The sigmoid squashes to 0–1</h3></div><pre>const sigmoid = z =&gt; 1 / (1 + Math.exp(-z));
+const predict = x =&gt; sigmoid(w1*x[0] + w2*x[1] + b);  // probability</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Gradient is identical to linear's</h3></div><pre>const err = predict(x) - y;     // y is 0 or 1
+dw1 += err * x[0]; dw2 += err * x[1]; db += err;   // beautifully, same form</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Step downhill, repeat</h3></div><pre>w1 -= lr*dw1/n; w2 -= lr*dw2/n; b -= lr*db/n;</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Classify at 0.5</h3></div><pre>const label = predict(x) &gt;= 0.5 ? 1 : 0;</pre></li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 2 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Tomorrow: k-Nearest Neighbors.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOGISTIC REGRESSION =====
+const c = document.getElementById("c"), ctx = c.getContext("2d");
+const PAD = 30;
+let data, w1, w2, b, epoch, timer = null;
+const px = v => PAD + v * (c.width - 2*PAD);
+const py = v => (c.height - PAD) - v * (c.height - 2*PAD);
+const sigmoid = z => 1 / (1 + Math.exp(-z));
+const prob = x => sigmoid(w1*x[0] + w2*x[1] + b);
+
+function genData(){
+  const a = Math.random()*1.2 - 0.6, t = 0.3 + Math.random()*0.4;
+  data = [];
+  while (data.length < 60) {
+    const x = [Math.random(), Math.random()];
+    const side = x[1] - (a*x[0] + t);
+    if (Math.abs(side) < 0.05) continue;
+    // 10% label noise so it's not perfectly separable
+    let y = side > 0 ? 1 : 0; if (Math.random() < 0.08) y = 1 - y;
+    data.push([x, y]);
+  }
+}
+function reset(){ w1=Math.random()*2-1; w2=Math.random()*2-1; b=Math.random()*0.4-0.2; epoch=0; if(timer){clearInterval(timer);timer=null;document.getElementById("train").textContent="▶ Train";} draw(); }
+function step(lr){
+  let dw1=0,dw2=0,db=0;
+  for (const [x,y] of data){ const e = prob(x) - y; dw1+=e*x[0]; dw2+=e*x[1]; db+=e; }
+  const n=data.length; w1-=lr*dw1/n; w2-=lr*dw2/n; b-=lr*db/n; epoch++;
+}
+function metrics(){
+  let correct=0, loss=0;
+  for (const [x,y] of data){ const p=Math.min(1-1e-7,Math.max(1e-7,prob(x))); loss += -(y*Math.log(p)+(1-y)*Math.log(1-p)); if ((p>=0.5?1:0)===y) correct++; }
+  return { loss: loss/data.length, acc: correct/data.length };
+}
+function draw(){
+  // probability heat-field (coarse grid for speed)
+  const S = 12;
+  for (let gx=0; gx<c.width; gx+=S) for (let gy=0; gy<c.height; gy+=S){
+    const xv=(gx-PAD)/(c.width-2*PAD), yv=(c.height-PAD-gy)/(c.height-2*PAD);
+    const p = prob([xv,yv]);
+    const r = Math.round(80 + (1-p)*120), bl = Math.round(80 + p*150);
+    ctx.fillStyle = `rgb(${r},90,${bl})`; ctx.fillRect(gx,gy,S,S);
+  }
+  // points
+  for (const [x,y] of data){ ctx.fillStyle = y===1 ? "#38bdf8" : "#fb7185"; ctx.strokeStyle="#020617"; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.arc(px(x[0]),py(x[1]),4.5,0,Math.PI*2); ctx.fill(); ctx.stroke(); }
+  const m = metrics();
+  document.getElementById("epoch").textContent = epoch;
+  document.getElementById("loss").textContent = m.loss.toFixed(3);
+  document.getElementById("acc").textContent = (m.acc*100).toFixed(0)+"%";
+}
+document.getElementById("train").onclick = function(){
+  if (timer){ clearInterval(timer); timer=null; this.textContent="▶ Train"; return; }
+  this.textContent="⏸ Pause";
+  timer = setInterval(()=>{ for(let i=0;i<5;i++) step(0.5); draw(); if(epoch>=1000){clearInterval(timer);timer=null;document.getElementById("train").textContent="▶ Replay";} }, 40);
+};
+document.getElementById("reset").onclick = reset;
+document.getElementById("newdata").onclick = () => { genData(); reset(); };
+genData(); reset();
+
+const STEPS = [
+  { title:"1. Regression vs classification", why:"Day 1's linear regression predicts a continuous NUMBER (a price, a score). But lots of questions are yes/no: spam or not, sick or healthy, will-churn or won't. For those you need a probability between 0 and 1 — that's classification, and logistic regression is the simplest model for it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full space-y-1"><div>linear: output ∈ (−∞, ∞) → a number</div><div class="text-sky-700">logistic: output ∈ (0, 1) → a probability</div></div>`, code:`// linear:   ŷ = w·x + b        (any number)
+// logistic: p = sigmoid(w·x + b) (0..1)` },
+  { title:"2. The sigmoid", why:"Take the same linear score w·x + b and pass it through the sigmoid, 1/(1+e^−z). It squashes any number into (0,1): big positive → ~1, big negative → ~0, zero → 0.5. Now the output reads as 'probability of class 1'.", concept:`<div class="bg-slate-100 p-4 rounded text-xs font-mono w-full space-y-1"><div>z = −5 → 0.007</div><div>z = 0  → 0.5</div><div>z = +5 → 0.993</div></div>`, code:`const sigmoid = z => 1 / (1 + Math.exp(-z));
+const prob = x => sigmoid(w1*x[0] + w2*x[1] + b);` },
+  { title:"3. A loss for probabilities", why:"Squared error is wrong for probabilities. Logistic regression uses log-loss (cross-entropy): it punishes confident wrong answers harshly (predict 0.99 for a true-0 → huge loss). It's the standard loss for classification, all the way up to neural nets.", concept:`<div class="bg-slate-100 p-4 rounded text-xs font-mono w-full">loss = −[ y·log(p) + (1−y)·log(1−p) ]</div>`, code:`const loss = -(y*Math.log(p) + (1-y)*Math.log(1-p));` },
+  { title:"4. The gradient is the SAME shape", why:"Here's the beautiful part: differentiate log-loss through the sigmoid and the gradient simplifies to (prediction − actual) × input — exactly the form from linear regression. So the training loop is identical; only the prediction function changed.", concept:`<div class="bg-slate-100 p-4 rounded text-xs font-mono w-full"><div>∂loss/∂w = (p − y) · x</div><div class="text-sky-700">same as linear regression!</div></div>`, code:`const err = prob(x) - y;   // y ∈ {0,1}
+dw1 += err * x[0];
+dw2 += err * x[1];
+db  += err;` },
+  { title:"5. Decision boundary at 0.5", why:"To turn a probability into a label, threshold at 0.5: p ≥ 0.5 → class 1, else class 0. Where p = 0.5 is exactly where w·x + b = 0 — a straight line (the white band in the demo). Logistic regression draws a linear boundary, but reports calibrated confidence near it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div class="font-mono">p ≥ 0.5 → class 1, else class 0</div><div class="text-sky-700 mt-1">boundary: w·x + b = 0 (a line)</div></div>`, code:`const label = prob(x) >= 0.5 ? 1 : 0;` },
+  { title:"6. Why it's everywhere", why:"Logistic regression is the workhorse classifier: fast, interpretable (each weight = how much a feature pushes the odds), calibrated. It's also literally a single neuron with a sigmoid — the exact unit you'll stack into neural networks in DeepLearningFromZero.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">One sigmoid neuron = logistic regression.</p></div>`, code:`// This IS a 1-neuron neural net with sigmoid.
+// Stack many → a deep network (DLFromZero).` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

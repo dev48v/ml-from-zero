@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 10 — Feature Scaling</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 10</div>
+      <h1 class="text-xl font-bold">⚖️ Feature Scaling — One Big Number Can Drown the Rest</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-3xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Same data, two answers — scaling flips the nearest neighbour</h2>
+      <p class="text-slate-500 text-center mb-4">Find the customer most similar to <b>You</b> by income + age. Income is in the tens-of-thousands; age in tens. Toggle scaling and watch the "nearest" person change.</p>
+      <div class="flex justify-center mb-4">
+        <button id="scale" class="bg-slate-800 text-white font-semibold px-5 py-2 rounded-xl">Scaling: OFF (raw values)</button>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-4">
+        <table class="w-full text-sm">
+          <thead><tr class="text-left text-xs uppercase text-slate-400"><th class="py-1">Person</th><th>Income (₹)</th><th>Age</th><th class="text-right">Distance to You</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+        <div id="verdict" class="mt-3 text-center text-sm font-bold text-sky-600"></div>
+      </div>
+      <p class="text-xs text-slate-400 text-center mt-4">↑ <b>Raw</b>: income (range ~80,000) utterly dominates the distance — age barely matters, so the "nearest" person is just whoever has similar income. <b>Scaled</b>: both features count equally, and the real nearest neighbour changes.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">Why models need scaled inputs</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Scale it yourself</h2>
+    <p class="text-slate-500 mb-8">Two one-liners cover almost every case.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Standardization (z-score): mean 0, std 1</h3></div><pre>const z = (x, mean, std) => (x - mean) / std;
+// each feature becomes "how many std-devs from its mean" — comparable</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Min-max: squash into [0, 1]</h3></div><pre>const minmax = (x, min, max) => (x - min) / (max - min);</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Fit on TRAIN, apply to test (no leakage)</h3></div><pre>const { mean, std } = stats(trainColumn);   // learn from train ONLY
+testScaled = test.map(x => z(x, mean, std)); // reuse the SAME numbers</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Who needs it / who doesn't</h3></div><pre>// NEEDS scaling: k-NN, SVM, k-means, PCA, neural nets, linear/logistic + GD
+// DOESN'T care:  decision trees & random forests (they split per-feature)</pre></li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 10 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Tomorrow: Random Forest — many trees beat one.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== FEATURE SCALING (nearest neighbour) =====
+let scaled=false;
+const you={income:60000, age:30};
+const people=[
+  {name:"Aarav", income:62000, age:55},
+  {name:"Bhavya", income:58000, age:52},
+  {name:"Chen", income:95000, age:31},
+  {name:"Diya", income:33000, age:29},
+  {name:"Esha", income:61000, age:28},
+];
+const incomes=[you.income,...people.map(p=>p.income)], ages=[you.age,...people.map(p=>p.age)];
+const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
+const std=a=>{const m=mean(a);return Math.sqrt(a.reduce((s,x)=>s+(x-m)**2,0)/a.length);};
+const mI=mean(incomes), sI=std(incomes), mA=mean(ages), sA=std(ages);
+function dist(p){
+  if(!scaled) return Math.sqrt((p.income-you.income)**2+(p.age-you.age)**2);
+  const di=((p.income-mI)/sI)-((you.income-mI)/sI), da=((p.age-mA)/sA)-((you.age-mA)/sA);
+  return Math.sqrt(di*di+da*da);
+}
+function render(){
+  const ranked=people.map(p=>({...p,d:dist(p)})).sort((a,b)=>a.d-b.d);
+  const nearest=ranked[0].name;
+  document.getElementById("rows").innerHTML = ranked.map((p,i)=>`<tr class="${p.name===nearest?'bg-sky-50':''}"><td class="py-1.5 font-medium">${p.name}${p.name===nearest?' <span class="text-sky-600 text-xs font-bold">← nearest</span>':''}</td><td>₹${p.income.toLocaleString()}</td><td>${p.age}</td><td class="text-right font-mono ${p.name===nearest?'text-sky-600 font-bold':'text-slate-500'}">${(scaled?p.d.toFixed(3):p.d.toFixed(0))}</td></tr>`).join("");
+  document.getElementById("verdict").textContent = scaled
+    ? `Scaled: nearest = ${nearest} — both income AND age count equally now.`
+    : `Raw: nearest = ${nearest} — income dwarfs age, so this is basically "closest income".`;
+}
+document.getElementById("scale").onclick=function(){ scaled=!scaled; this.textContent="Scaling: "+(scaled?"ON (z-score standardized)":"OFF (raw values)"); this.classList.toggle("bg-sky-600",scaled); this.classList.toggle("bg-slate-800",!scaled); render(); };
+render();
+
+const STEPS = [
+  { title:"1. Many models measure DISTANCE", why:"k-NN, k-means, SVM and PCA all compute distances or dot products between points. Gradient descent walks a loss surface whose shape depends on feature magnitudes. In all of them, a feature's NUMERIC SIZE — not its importance — decides how much it influences the result.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">distance = √(Δincome² + Δage²) ← Δincome is in 1000s</div>`, code:`d = Math.sqrt((a.income-b.income)**2 + (a.age-b.age)**2);` },
+  { title:"2. Big-range features dominate", why:"Income spans ~80,000; age spans ~30. In the raw distance, an income gap of 30,000 swamps any possible age gap of 30 — squared, it's a million-to-one mismatch. So 'nearest neighbour' silently becomes 'nearest income', and age is ignored entirely. The model isn't broken; the SCALES are.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">Δincome 30000² = 9e8  vs  Δage 30² = 900 → income wins, always</div>`, code:`// age contributes ~0.0001% of the distance — effectively muted` },
+  { title:"3. Standardization: z-score", why:"Subtract each feature's mean and divide by its standard deviation. Now every feature is measured in 'std-devs from its own average' — unitless and comparable. Income and age land on the same footing, so distance reflects true similarity across BOTH. It's the most common scaler.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">z = (x − mean) / std → mean 0, std 1, comparable</div>`, code:`z = (x - mean) / std;` },
+  { title:"4. Min-max scaling", why:"The alternative: squash each feature into [0, 1] using its min and max. Handy when you need bounded inputs (e.g. image pixels, some neural nets) or want to preserve zero. Downside: sensitive to outliers (one extreme value stretches the whole range). Pick z-score by default, min-max when you need bounds.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">(x − min) / (max − min) → everything in [0, 1]</div>`, code:`scaled = (x - min) / (max - min);` },
+  { title:"5. Fit on train, apply to test", why:"Critical detail: compute the mean/std (or min/max) from the TRAINING data only, then apply those SAME numbers to the test set. If you scale using the test set's stats, information leaks from test into training and your evaluation is inflated — a subtle but common bug.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">stats from TRAIN → reuse on test (never peek at test)</div>`, code:`const {mean,std} = fit(train); test.map(x => (x-mean)/std);` },
+  { title:"6. Trees don't care — and that's the tell", why:"Decision trees and random forests split one feature at a time by a threshold, so they're immune to scale — '> 50000' works the same whatever the units. If scaling changes your result, you're using a distance/gradient model and MUST scale. Knowing which camp your model is in is the practical takeaway.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Put features on the same scale, or the biggest number quietly wins.</p></div>`, code:`// k-NN/SVM/k-means/NN → scale · trees/forests → don't bother` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

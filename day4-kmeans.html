@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 4 — K-Means</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 4</div>
+      <h1 class="text-xl font-bold">🎯 K-Means — Finding Groups With No Labels</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Two moves, on repeat: assign, then re-center</h2>
+      <p class="text-slate-500 text-center mb-6">No labels — just dots. Pick <b>k</b>, and K-Means colours each dot by its nearest centroid (✕), then slides each ✕ to the middle of its colour. Repeat until nothing moves.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 flex justify-center"><canvas id="c" width="480" height="360"></canvas></div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500">k clusters</span><span id="kval" class="font-bold text-sky-600">3</span></div>
+            <input id="k" type="range" min="2" max="6" value="3" class="w-full accent-sky-600" />
+            <div class="flex justify-between"><span class="text-slate-500">Iteration</span><span id="iter" class="font-bold">0</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Centroids moved</span><span id="moved" class="font-bold">—</span></div>
+          </div>
+          <div class="flex gap-2">
+            <button id="run" class="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-2.5 rounded-xl">▶ Run</button>
+            <button id="step" class="px-4 bg-slate-200 hover:bg-slate-300 rounded-xl font-semibold">Step</button>
+          </div>
+          <button id="newdata" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 New data + restart</button>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 text-center mt-6">↑ Big ✕ = centroid. Dot colour = which centroid it belongs to. Watch the ✕'s drift to the centre of their colour, then stop.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How K-Means clusters</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">It's a two-line loop: assign points to the nearest centroid, then move each centroid to its mean. ~30 lines.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Start with k random centroids</h3></div><pre>let centroids = sample(points, k);   // k random points to begin</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Assign: nearest centroid wins</h3></div><pre>for (const p of points)
+  p.cluster = argmin(centroids, c =&gt; dist(p, c));</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Update: centroid = mean of its points</h3></div><pre>for (let i = 0; i &lt; k; i++)
+  centroids[i] = mean(points.filter(p =&gt; p.cluster === i));</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Repeat until centroids stop moving</h3></div><pre>while (centroidsMoved) { assign(); update(); }   // converged!</pre></li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 4 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Tomorrow: Decision Tree.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== K-MEANS =====
+const c = document.getElementById("c"), ctx = c.getContext("2d");
+const PAD = 26;
+const COLORS = ["#38bdf8","#fb7185","#34d399","#fbbf24","#a78bfa","#f472b6"];
+let pts, centroids, k = 3, iter = 0, timer = null;
+const px = v => PAD + v * (c.width - 2*PAD);
+const py = v => (c.height - PAD) - v * (c.height - 2*PAD);
+const dist = (a, b) => (a[0]-b[0])**2 + (a[1]-b[1])**2;
+
+function genData(){
+  pts = [];
+  const blobs = k; // seed roughly k natural clusters so it looks meaningful
+  for (let b = 0; b < blobs; b++){
+    const cx = 0.15 + Math.random()*0.7, cy = 0.15 + Math.random()*0.7;
+    const n = 18 + Math.floor(Math.random()*12);
+    for (let i = 0; i < n; i++){
+      pts.push({ x:[ Math.min(0.98,Math.max(0.02, cx+(Math.random()-0.5)*0.28)),
+                     Math.min(0.98,Math.max(0.02, cy+(Math.random()-0.5)*0.28)) ], cluster:0 });
+    }
+  }
+}
+function initCentroids(){
+  centroids = [];
+  const idx = [...pts.keys()].sort(()=>Math.random()-0.5).slice(0,k);
+  for (const i of idx) centroids.push([...pts[i].x]);
+  iter = 0;
+}
+function assign(){ for (const p of pts){ let best=0,bd=Infinity; for (let i=0;i<k;i++){ const d=dist(p.x,centroids[i]); if(d<bd){bd=d;best=i;} } p.cluster=best; } }
+function update(){
+  let moved = 0;
+  for (let i=0;i<k;i++){
+    const cl = pts.filter(p=>p.cluster===i);
+    if (!cl.length) continue;
+    const nx = cl.reduce((s,p)=>s+p.x[0],0)/cl.length;
+    const ny = cl.reduce((s,p)=>s+p.x[1],0)/cl.length;
+    moved += Math.hypot(nx-centroids[i][0], ny-centroids[i][1]);
+    centroids[i] = [nx,ny];
+  }
+  return moved;
+}
+function step(){
+  assign(); const moved = update(); iter++;
+  document.getElementById("iter").textContent = iter;
+  document.getElementById("moved").textContent = moved.toFixed(4);
+  draw();
+  if (moved < 0.0008 && timer){ clearInterval(timer); timer=null; document.getElementById("run").textContent="✓ Converged"; }
+}
+function draw(){
+  ctx.clearRect(0,0,c.width,c.height); ctx.fillStyle="#020617"; ctx.fillRect(0,0,c.width,c.height);
+  for (const p of pts){ ctx.fillStyle = COLORS[p.cluster%COLORS.length]; ctx.beginPath(); ctx.arc(px(p.x[0]),py(p.x[1]),4,0,Math.PI*2); ctx.fill(); }
+  for (let i=0;i<k;i++){ ctx.strokeStyle="#fff"; ctx.lineWidth=3; ctx.fillStyle=COLORS[i%COLORS.length];
+    const X=px(centroids[i][0]), Y=py(centroids[i][1]);
+    ctx.beginPath(); ctx.moveTo(X-9,Y-9); ctx.lineTo(X+9,Y+9); ctx.moveTo(X+9,Y-9); ctx.lineTo(X-9,Y+9); ctx.stroke();
+    ctx.beginPath(); ctx.arc(X,Y,11,0,Math.PI*2); ctx.strokeStyle=COLORS[i%COLORS.length]; ctx.lineWidth=2; ctx.stroke();
+  }
+}
+function restart(){ if(timer){clearInterval(timer);timer=null;} document.getElementById("run").textContent="▶ Run"; initCentroids(); assign(); draw(); document.getElementById("iter").textContent=0; document.getElementById("moved").textContent="—"; }
+document.getElementById("run").onclick = function(){
+  if (timer){ clearInterval(timer); timer=null; this.textContent="▶ Run"; return; }
+  this.textContent="⏸ Pause"; timer=setInterval(step, 600);
+};
+document.getElementById("step").onclick = step;
+document.getElementById("k").oninput = function(){ k=+this.value; document.getElementById("kval").textContent=k; genData(); restart(); };
+document.getElementById("newdata").onclick = () => { genData(); restart(); };
+genData(); restart();
+
+const STEPS = [
+  { title:"1. No labels — that's the point", why:"k-NN and logistic regression needed labelled examples to learn from. K-Means is UNSUPERVISED: you hand it raw points with no answers, and it discovers structure on its own. The job: split the data into k groups where points in a group are close together.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full space-y-1"><div>supervised: data + <b>labels</b> → predict labels</div><div class="text-sky-700">unsupervised: data only → discover groups</div></div>`, code:`// no y! just the inputs.
+const points = [[0.2,0.3],[0.8,0.7], ...];` },
+  { title:"2. Start with k random centroids", why:"You tell K-Means how many groups to find — that's k. It begins by dropping k 'centroids' (group centres) at random, often on top of random data points. These are just guesses; they'll move.", concept:`<div class="bg-slate-100 p-4 rounded text-xs font-mono w-full">k = 3 → drop 3 ✕ at random</div>`, code:`let centroids = sample(points, k);` },
+  { title:"3. Assign each point to its nearest centroid", why:"Every point looks at all k centroids and joins the closest one (squared Euclidean distance). That paints the data into k coloured groups. In the demo this is the moment all the dots recolour.", concept:`<div class="bg-slate-100 p-4 rounded text-xs font-mono w-full"><div>point → nearest ✕ → that colour</div></div>`, code:`for (const p of points)
+  p.cluster = argmin(centroids, c => dist(p, c));` },
+  { title:"4. Move each centroid to the mean", why:"Now each centroid slides to the average position of the points that picked it — the true centre of its current group. That's the ✕ drifting in the demo. Better centre → some points are now closer to a different centroid.", concept:`<div class="bg-slate-100 p-4 rounded text-xs font-mono w-full">✕ → average(its points)</div>`, code:`centroids[i] = mean(points.filter(p => p.cluster === i));` },
+  { title:"5. Repeat until nothing moves", why:"Assign, update, assign, update… Each round the centroids settle a little more. When they stop moving (or barely move), the algorithm has CONVERGED — you've found your clusters. Usually just a handful of iterations.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div>assign → update → assign → update</div><div class="text-sky-700">centroids stop moving = done</div></div>`, code:`while (moved > tol) { assign(); moved = update(); }` },
+  { title:"6. The catch: k and the starting guess", why:"You must pick k yourself (the elbow method helps), and a bad random start can land in a poor split — so real implementations run it several times and keep the tightest result (k-means++ picks smart starting centroids). Slide k in the demo and 'New data' a few times to see different outcomes.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Discovering groups, no labels required.</p></div>`, code:`// run N times, keep the lowest total
+// within-cluster distance. (k-means++ for smart init)` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

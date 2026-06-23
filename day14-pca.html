@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 14 — PCA (Principal Component Analysis)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .copy-btn:hover { background:#1e293b; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; cursor:crosshair; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 14</div>
+      <h1 class="text-xl font-bold">📉 PCA — Compress Data, Keep the Signal</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Watch PCA find the directions the data actually spreads</h2>
+      <p class="text-slate-500 text-center mb-6">PCA centres the cloud, measures how the two features vary <b>together</b>, and rotates to a new pair of axes: <b>PC1</b> points along the greatest spread, <b>PC2</b> at right angles to it. Keep PC1, drop PC2, and you've squeezed 2D into 1D — losing the least information possible.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 flex justify-center"><canvas id="c" width="480" height="360"></canvas></div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between pt-1"><span class="text-slate-500">Correlation / spread</span><span id="corrval" class="font-bold text-sky-600">0.80</span></div>
+            <input id="corrslider" type="range" min="-95" max="95" step="1" value="80" class="w-full accent-sky-600" />
+            <p class="text-[11px] text-slate-400 leading-snug">Tilt the cloud. The more the two features move together, the more a single direction explains — and the more PCA can compress.</p>
+            <div class="flex justify-between pt-2"><span class="text-slate-500">PC1 variance explained</span><span id="ve1" class="font-bold text-sky-600">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">PC2 variance explained</span><span id="ve2" class="font-bold text-rose-500">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Total (sanity check)</span><span id="vetot" class="font-bold text-slate-400">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Status</span><span id="status" class="font-bold text-slate-400">2D</span></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="project" class="text-sm font-semibold border-2 border-sky-500 bg-sky-50 text-sky-700 rounded-xl py-2 hover:bg-sky-100">⬇ project to 1D</button>
+            <button id="restore" class="text-sm font-semibold bg-sky-600 text-white rounded-xl py-2 hover:bg-sky-700">↩ back to 2D</button>
+          </div>
+          <button id="newdata" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 new data</button>
+          <p class="text-xs text-slate-400">The sky line is <b>PC1</b>, the rose line is <b>PC2</b>; each is drawn through the centroid and scaled by how much variance it carries. Hit <b>project to 1D</b> and watch every point slide onto PC1 — that collapsed line <i>is</i> the compressed data.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How PCA works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">PCA from scratch: <b>centre</b> the data, build the <b>covariance</b> matrix, take its <b>eigenvectors</b> (the principal directions), <b>sort</b> them by eigenvalue, and <b>project</b> onto the top ones. Five honest steps and you've reduced the dimensions.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The data: rows of features (no labels needed)</h3></div>
+        <div class="relative">
+<pre>// each row is one sample, each column is one feature.
+// PCA is unsupervised — it only looks at how the FEATURES
+// move, never at any target/answer column.
+const X = [
+  [2.5, 2.4], [0.5, 0.7], [2.2, 2.9],
+  [1.9, 2.2], [3.1, 3.0], [2.3, 2.7],
+  // ... n samples × d features
+];</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Centre the data (subtract each feature's mean)</h3></div>
+        <div class="relative">
+<pre>// PCA measures spread AROUND the centre, so shift the cloud
+// so its mean sits at the origin. (Scaling each feature to
+// unit variance first is also standard — do it when units differ.)
+const n = X.length, d = X[0].length;
+const mean = Array(d).fill(0);
+X.forEach(row => row.forEach((v, j) => mean[j] += v / n));
+const Xc = X.map(row => row.map((v, j) => v - mean[j]));</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Build the covariance matrix</h3></div>
+        <div class="relative">
+<pre>// cov[i][j] = how feature i and feature j vary TOGETHER.
+// the diagonal is each feature's own variance; off-diagonals
+// are positive if they rise together, negative if they trade off.
+function covariance(Xc) {
+  const n = Xc.length, d = Xc[0].length;
+  const C = Array.from({length: d}, () => Array(d).fill(0));
+  for (const row of Xc)
+    for (let i = 0; i < d; i++)
+      for (let j = 0; j < d; j++)
+        C[i][j] += row[i] * row[j] / (n - 1);   // n-1 = sample cov
+  return C;
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Eigen-decompose: closed form for a 2×2</h3></div>
+        <div class="relative">
+<pre>// eigenVECTORS = the principal directions; eigenVALUES = the
+// variance along each. for a symmetric 2×2 [[a,b],[b,c]] there's
+// a tidy closed form (real libraries use SVD for any size).
+function eig2x2(a, b, c) {
+  const tr = a + c, det = a * c - b * b;
+  const disc = Math.sqrt(Math.max(0, tr*tr/4 - det));
+  const l1 = tr/2 + disc, l2 = tr/2 - disc;     // l1 ≥ l2
+  // eigenvector for l1 (handle b≈0 → axis-aligned)
+  let v1 = Math.abs(b) > 1e-12 ? [l1 - c, b] : (a >= c ? [1,0] : [0,1]);
+  const m = Math.hypot(v1[0], v1[1]); v1 = [v1[0]/m, v1[1]/m];
+  const v2 = [-v1[1], v1[0]];                   // ⟂ to v1
+  return { values: [l1, l2], vectors: [v1, v2] };
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Sort by eigenvalue + variance explained</h3></div>
+        <div class="relative">
+<pre>// biggest eigenvalue = most informative direction → keep it first.
+const { values, vectors } = eig2x2(C[0][0], C[0][1], C[1][1]);
+const order = [0, 1].sort((i, j) => values[j] - values[i]);
+const total = values[0] + values[1];
+
+// fraction of total variance each PC carries (sums to ~1.0)
+const explained = order.map(i => values[i] / total);
+// keep the top-k whose explained variance covers, say, 95%.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Project onto the top components</h3></div>
+        <div class="relative">
+<pre>// to reduce d→k, dot each centred row with the top-k eigenvectors.
+// the result is the same point expressed in the new PC coordinates.
+const dot = (a, b) => a.reduce((s, v, i) => s + v * b[i], 0);
+const topVecs = order.slice(0, k).map(i => vectors[i]);
+
+const reduced = Xc.map(row => topVecs.map(v => dot(row, v)));
+// reduced[i] is now k numbers instead of d — the compression.
+
+// reconstruct (lossy): rebuild in original space, then un-centre.
+const recon = reduced.map(z =>
+  mean.map((mj, j) => mj + topVecs.reduce((s, v, t) => s + z[t]*v[j], 0)));
+// recon ≈ X. what's missing is the variance of the dropped PCs.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Pick k: the scree / cumulative-variance plot</h3></div>
+        <div class="relative">
+<pre>// how many components to keep? plot the explained variance ratio
+// per PC (the 'scree' plot) and watch the cumulative sum.
+let cum = 0;
+explainedAll.forEach((e, i) => {
+  cum += e;
+  console.log(`PC${i+1}: ${(e*100).toFixed(1)}%  (cumulative ${(cum*100).toFixed(1)}%)`);
+});
+// keep the smallest k whose cumulative variance clears your target,
+// e.g. 0.95 → "retain 95% of the information".</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">In the real world: scikit-learn</h3></div>
+        <div class="relative">
+<pre>from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+
+X = StandardScaler().fit_transform(X)    # SCALE first — units matter!
+
+pca = PCA(n_components=2)                 # or 0.95 to keep 95% variance
+Z = pca.fit_transform(X)                  # the reduced data
+
+pca.components_                # the principal directions (eigenvectors)
+pca.explained_variance_ratio_ # fraction of variance per PC (≈ sums to 1)
+X_back = pca.inverse_transform(Z)         # lossy reconstruction</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 14 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Centre, covariance, eigenvectors, project — squeeze the dimensions and keep the signal. Next up: more dimensionality reduction and visualization.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== PCA — PRINCIPAL COMPONENT ANALYSIS =====
+const c=document.getElementById("c"), ctx=c.getContext("2d"), PAD=30;
+const SKY="#38bdf8", ROSE="#fb7185";
+// data lives in [0,1]²; map to canvas pixels
+const px=v=>PAD+v*(c.width-2*PAD), py=v=>(c.height-PAD)-v*(c.height-2*PAD);
+
+let pts=[], corr=0.80, projT=0, anim=null;   // projT: 0 = full 2D, 1 = collapsed on PC1
+let mean=[0,0], vecs=[[1,0],[0,1]], vals=[1,1];
+
+// ---- generate a correlated 2D cloud around the centre ----
+function genData(){
+  pts=[];
+  const cx=0.5, cy=0.5, n=120;
+  // build a correlated pair from two independent gaussians
+  const r=Math.max(-0.95,Math.min(0.95,corr));
+  const sx=0.20, sy=0.14;
+  for(let i=0;i<n;i++){
+    const z1=gauss(), z2=gauss();
+    // Cholesky-style mix: x from z1, y borrows r·z1 + sqrt(1-r²)·z2
+    const x=cx + sx*z1;
+    const y=cy + sy*(r*z1 + Math.sqrt(1-r*r)*z2);
+    pts.push([x,y]);
+  }
+  computePCA();
+}
+// standard-normal sample (Box–Muller)
+function gauss(){
+  let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random();
+  return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+}
+
+// ---- the actual PCA: centre → covariance → eigen ----
+function computePCA(){
+  const n=pts.length;
+  // 1. mean
+  mean=[0,0];
+  for(const p of pts){ mean[0]+=p[0]/n; mean[1]+=p[1]/n; }
+  // 2. covariance (sample, n-1)
+  let a=0,b=0,cc=0;
+  for(const p of pts){
+    const dx=p[0]-mean[0], dy=p[1]-mean[1];
+    a+=dx*dx; b+=dx*dy; cc+=dy*dy;
+  }
+  const denom=Math.max(1,n-1);
+  a/=denom; b/=denom; cc/=denom;
+  // 3. closed-form eigen of symmetric 2×2 [[a,b],[b,cc]]
+  const tr=a+cc, det=a*cc-b*b;
+  const disc=Math.sqrt(Math.max(0, tr*tr/4 - det));
+  let l1=tr/2+disc, l2=tr/2-disc;            // l1 ≥ l2 ≥ 0
+  l1=Math.max(l1,0); l2=Math.max(l2,0);
+  // eigenvector for the larger eigenvalue
+  let v1;
+  if(Math.abs(b)>1e-12) v1=[l1-cc, b];
+  else v1 = a>=cc ? [1,0] : [0,1];
+  const m=Math.hypot(v1[0],v1[1])||1; v1=[v1[0]/m, v1[1]/m];
+  const v2=[-v1[1], v1[0]];                   // orthogonal
+  vecs=[v1,v2]; vals=[l1,l2];
+}
+
+function explained(){
+  const tot=vals[0]+vals[1];
+  if(tot<=0) return [0,0];
+  return [vals[0]/tot, vals[1]/tot];
+}
+
+// project a centred point onto PC1; interpolate toward the line by projT
+function displayPoint(p){
+  const dx=p[0]-mean[0], dy=p[1]-mean[1];
+  const t=dx*vecs[0][0]+dy*vecs[0][1];        // coordinate along PC1
+  // full position = mean + dx,dy ; collapsed = mean + t·PC1
+  const fx=mean[0]+dx,           fy=mean[1]+dy;
+  const cx=mean[0]+t*vecs[0][0], cy=mean[1]+t*vecs[0][1];
+  return [ fx+(cx-fx)*projT, fy+(cy-fy)*projT ];
+}
+
+function draw(){
+  ctx.clearRect(0,0,c.width,c.height); ctx.fillStyle="#020617"; ctx.fillRect(0,0,c.width,c.height);
+  const ex=explained();
+  // axis lengths scaled by sqrt(eigenvalue) (= std-dev along that PC)
+  const s1=Math.sqrt(vals[0])*2.6, s2=Math.sqrt(vals[1])*2.6;
+
+  // faint residual line from each point to its PC1 projection (when 2D)
+  if(projT<0.999){
+    ctx.lineWidth=1; ctx.strokeStyle=ROSE+"33";
+    for(const p of pts){
+      const dx=p[0]-mean[0], dy=p[1]-mean[1];
+      const t=dx*vecs[0][0]+dy*vecs[0][1];
+      const fx=mean[0]+dx, fy=mean[1]+dy;
+      const cx=mean[0]+t*vecs[0][0], cy=mean[1]+t*vecs[0][1];
+      ctx.beginPath(); ctx.moveTo(px(fx),py(fy)); ctx.lineTo(px(cx),py(cy)); ctx.stroke();
+    }
+  }
+
+  // PC axes through the centroid
+  drawAxis(vecs[0], s1, SKY, "PC1");
+  if(projT<0.5) drawAxis(vecs[1], s2, ROSE, "PC2");
+
+  // the points
+  for(const p of pts){
+    const d=displayPoint(p);
+    ctx.fillStyle=SKY; ctx.strokeStyle="#020617"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(px(d[0]),py(d[1]),3.6,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  }
+  // centroid marker
+  ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(px(mean[0]),py(mean[1]),3,0,Math.PI*2); ctx.fill();
+
+  updateStats(ex);
+}
+
+function drawAxis(v,len,col,label){
+  const x1=mean[0]-v[0]*len, y1=mean[1]-v[1]*len;
+  const x2=mean[0]+v[0]*len, y2=mean[1]+v[1]*len;
+  ctx.strokeStyle=col; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(px(x1),py(y1)); ctx.lineTo(px(x2),py(y2)); ctx.stroke();
+  // arrowhead at the +end
+  const ang=Math.atan2(py(y2)-py(y1), px(x2)-px(x1));
+  ctx.beginPath();
+  ctx.moveTo(px(x2),py(y2));
+  ctx.lineTo(px(x2)-9*Math.cos(ang-0.4), py(y2)-9*Math.sin(ang-0.4));
+  ctx.moveTo(px(x2),py(y2));
+  ctx.lineTo(px(x2)-9*Math.cos(ang+0.4), py(y2)-9*Math.sin(ang+0.4));
+  ctx.stroke();
+  ctx.fillStyle=col; ctx.font="bold 12px sans-serif";
+  ctx.fillText(label, px(x2)+4, py(y2)-4);
+}
+
+function updateStats(ex){
+  document.getElementById("corrval").textContent=corr.toFixed(2);
+  document.getElementById("ve1").textContent=(ex[0]*100).toFixed(1)+"%";
+  document.getElementById("ve2").textContent=(ex[1]*100).toFixed(1)+"%";
+  document.getElementById("vetot").textContent=((ex[0]+ex[1])*100).toFixed(0)+"%";
+  const st=document.getElementById("status");
+  if(projT>0.999){ st.textContent="✓ reduced to 1D"; st.className="font-bold text-sky-600"; }
+  else if(projT>0.001){ st.textContent="projecting…"; st.className="font-bold text-slate-500"; }
+  else { st.textContent="2D"; st.className="font-bold text-slate-400"; }
+}
+
+// ---- animate the dimensionality reduction ----
+function animateTo(target){
+  if(anim){ clearInterval(anim); anim=null; }
+  anim=setInterval(()=>{
+    const step=0.06*(target>projT?1:-1);
+    projT+=step;
+    if((step>0&&projT>=target)||(step<0&&projT<=target)){ projT=target; clearInterval(anim); anim=null; }
+    draw();
+  },24);
+}
+
+// ---- interaction ----
+document.getElementById("project").onclick=()=>animateTo(1);
+document.getElementById("restore").onclick=()=>animateTo(0);
+document.getElementById("newdata").onclick=()=>{ projT=0; genData(); draw(); };
+document.getElementById("corrslider").oninput=function(){
+  corr=+this.value/100; projT=0; genData(); draw();
+};
+// click canvas to add a point (re-runs PCA live)
+c.addEventListener("click",e=>{
+  const r=c.getBoundingClientRect();
+  const a=( (e.clientX-r.left)*(c.width/r.width) -PAD)/(c.width-2*PAD);
+  const bb=( (c.height-PAD) - (e.clientY-r.top)*(c.height/r.height) )/(c.height-2*PAD);
+  if(a<0||a>1||bb<0||bb>1) return;
+  pts.push([a,bb]); computePCA(); draw();
+});
+genData(); draw();
+
+// ===== UNDERSTAND STEP-ENGINE =====
+const STEPS = [
+  { title:"1. The curse of dimensionality", why:"Real datasets often have dozens, hundreds, even thousands of features per sample. As the number of dimensions grows, points spread out until everything looks equally far from everything else, distances stop being meaningful, and models need exponentially more data to learn anything. High dimensions are also impossible to plot and slow to compute on. Dimensionality reduction fights back by squeezing many features down to a handful that still capture what matters.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">100s of features → sparse, slow, unplottable → squeeze down to a few that matter</div>`, code:`// X is n × 784 (e.g. pixels). too many dims to plot or learn from fast.` },
+  { title:"2. What PCA actually does", why:"PCA finds a new set of axes for your data and rotates everything onto them. The first new axis points in the direction where the data spreads out the most; the second points along the most remaining spread while staying at a right angle to the first, and so on. Because the axes are ranked by how much variance they capture, you can keep just the first few and throw the rest away. Same points, smarter coordinate system.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">rotate to new axes ordered by spread → keep the first few, drop the rest</div>`, code:`// new axis #1 = direction of MAX variance, #2 ⟂ to it, etc.` },
+  { title:"3. Centre the data first", why:"PCA is about how data spreads around its own middle, not where that middle happens to sit. So the very first move is to subtract each feature's mean, shifting the whole cloud so its centre lands on the origin. Without this the largest direction would just point back toward wherever the data lives, telling you nothing about its shape. When features use different units you also scale each to unit variance, so no single feature dominates by accident.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">subtract each feature's mean → cloud centred at the origin (then scale if units differ)</div>`, code:`Xc = X - X.mean(axis=0);   // every feature now has mean 0` },
+  { title:"4. The covariance matrix", why:"To find the directions of greatest spread, PCA summarises how the features vary together in one square table called the covariance matrix. Each diagonal entry is one feature's own variance — how much it wobbles on its own. Each off-diagonal entry says whether two features rise and fall together (positive), trade off against each other (negative), or move independently (near zero). This matrix is the complete fingerprint of the cloud's shape.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">cov[i][j] = do features i and j move together? diagonal = each one's own variance</div>`, code:`C = (Xc.T @ Xc) / (n - 1);   // d × d covariance matrix` },
+  { title:"5. Eigenvectors = directions, eigenvalues = variance", why:"PCA hands the covariance matrix to an eigen-decomposition. Out come eigenvectors — the special directions the matrix only stretches without rotating — and a matching eigenvalue for each, measuring how much the data varies along that direction. The eigenvectors are exactly the principal components, the new axes we wanted, and they always come out at right angles to one another. The eigenvalue tells you how important each axis is.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">eigenvectors of C = the principal axes &nbsp;|&nbsp; eigenvalues = variance along each</div>`, code:`values, vectors = eig(C);   // vectors = PC directions, values = their variance` },
+  { title:"6. Sort the components + variance explained", why:"The eigenvectors come out in no particular order, so PCA sorts them by their eigenvalue, biggest first. The largest eigenvalue's vector is PC1, the next is PC2, and so on down to the least important. Dividing each eigenvalue by their total gives the variance explained ratio — the fraction of the data's total spread that component captures. Those fractions always add up to one, so they read straight off as percentages of information kept.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">sort by eigenvalue ↓ → PC1, PC2, … &nbsp;|&nbsp; eigenvalue / total = variance explained (sums to 100%)</div>`, code:`order = argsort(values)[::-1];   # biggest variance first
+ratio = values[order] / values.sum();   # adds to 1.0` },
+  { title:"7. Project onto the top components", why:"To actually reduce the dimensions, PCA takes each centred point and projects it onto the top-k principal axes — that's just a dot product of the point with each kept eigenvector. A 784-feature image projected onto its top 2 components becomes a single (x, y) pair you can plot. You're not deleting features one by one; you're re-expressing every sample in a smaller, smarter set of coordinates built from all of them.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">dot each point with the top-k PCs → d numbers become k numbers</div>`, code:`Z = Xc @ vectors[:, top_k];   // n × k, the compressed data` },
+  { title:"8. Reconstruction + information loss", why:"Because the kept components are directions in the original space, you can run the projection backward to rebuild an approximation of each original point, then add the mean back. The reconstruction is close but not exact — what went missing is precisely the variance of the components you dropped. That's why PCA is called lossy: a 95%-variance reconstruction looks almost perfect, while keeping too few components blurs the data noticeably.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">project back up → X̂ ≈ X &nbsp;|&nbsp; the gap = variance of the dropped components</div>`, code:`X_hat = Z @ vectors[:, top_k].T + mean;   // lossy rebuild` },
+  { title:"9. When to reach for PCA", why:"PCA earns its keep in four classic jobs. Visualization: squash high-dimensional data to 2D or 3D so you can finally see it. Compression: store or transmit fewer numbers per sample. Denoising: drop the tiny-variance components, which are often mostly noise. Speedup: feed a downstream model far fewer features so it trains faster and overfits less. In every case, remember to scale your features first when their units differ — distance-based PCA is easily hijacked by a large-range feature.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">📊 visualize · 🗜 compress · 🧹 denoise · ⚡ speed up models &nbsp;(scale features first!)</div>`, code:`# always: X = StandardScaler().fit_transform(X)  before PCA` },
+  { title:"10. The limits: PCA only sees straight lines", why:"PCA can only build its new axes as straight-line combinations of the originals, so it captures linear structure and nothing else. If your data curls along a spiral, a Swiss roll, or any curved manifold, PCA flattens it badly because no single straight direction follows the curve. It also assumes the high-variance directions are the interesting ones, which isn't always true. For curved structure reach for non-linear tools like t-SNE, UMAP, or kernel PCA instead.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Centre, covariance, eigenvectors, project — linear compression that keeps the signal.</p></div>`, code:`// linear only — for spirals/swiss-rolls use t-SNE / UMAP / kernel PCA` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+function copy(btn) {
+  const pre = btn.parentElement.querySelector("pre");
+  navigator.clipboard.writeText(pre.textContent);
+  const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => btn.textContent = o, 1500);
+}
+</script>
+</body>
+</html>

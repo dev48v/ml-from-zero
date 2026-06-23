@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 6 — Naive Bayes</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .wbar { height:10px; border-radius:5px; transition:width .4s; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 6</div>
+      <h1 class="text-xl font-bold">📨 Naive Bayes — A Spam Filter From Word Probabilities</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-3xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Type a message. It learned spam from word counts.</h2>
+      <p class="text-slate-500 text-center mb-5">Trained on a few labelled SMS, it multiplies each word's spam/ham probability (Bayes) to decide. Try a preset or write your own.</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-3" id="presets"></div>
+      <textarea id="msg" rows="2" class="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm outline-none focus:border-sky-500" placeholder="Type a message…">WINNER!! Claim your FREE prize now, click this link to win cash</textarea>
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 mt-4">
+        <div class="flex items-center justify-between mb-3">
+          <div class="text-sm text-slate-500">Verdict</div>
+          <div id="verdict" class="text-2xl font-bold">—</div>
+        </div>
+        <div class="space-y-2 text-xs">
+          <div class="flex items-center gap-2"><span class="w-12 text-rose-500 font-bold">SPAM</span><div class="flex-1 bg-slate-100 rounded-full"><div id="spamBar" class="wbar bg-rose-500" style="width:0%"></div></div><span id="spamPct" class="w-12 text-right font-bold text-rose-500">0%</span></div>
+          <div class="flex items-center gap-2"><span class="w-12 text-sky-600 font-bold">HAM</span><div class="flex-1 bg-slate-100 rounded-full"><div id="hamBar" class="wbar bg-sky-500" style="width:0%"></div></div><span id="hamPct" class="w-12 text-right font-bold text-sky-600">0%</span></div>
+        </div>
+        <div class="mt-4">
+          <div class="text-xs font-bold uppercase text-slate-500 mb-2">Each word's pull</div>
+          <div id="words" class="flex flex-wrap gap-1.5"></div>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 text-center mt-4">↑ Red words push spam, blue words push ham, grey = neutral/unseen. The verdict is just which side's product of probabilities wins.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Naive Bayes classifies</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Count words per class, apply Bayes, multiply in log-space. ~35 lines.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Count words in each class</h3></div><pre>for (const {text, label} of trainingData)
+  for (const w of tokenize(text))
+    counts[label][w] = (counts[label][w] || 0) + 1;</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">P(word | class), with +1 smoothing</h3></div><pre>function pWordGiven(w, label){
+  return (counts[label][w] || 0 + 1) / (totalWords[label] + vocabSize);
+}   // +1 so an unseen word never zeroes the whole product</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Bayes: multiply the priors × likelihoods</h3></div><pre>// P(spam | words) ∝ P(spam) · Π P(word | spam)
+score[label] = Math.log(prior[label]);
+for (const w of words) score[label] += Math.log(pWordGiven(w, label));</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Why logs? Floats underflow</h3></div><pre>// multiplying 30 probabilities → 1e-40, rounds to 0.
+// add logarithms instead of multiplying — same ranking, no underflow.</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Pick the bigger score</h3></div><pre>return score.spam > score.ham ? "spam" : "ham";
+// softmax the two scores if you want a probability</pre></li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 6 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Tomorrow: Gradient Descent.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== NAIVE BAYES SPAM FILTER =====
+const TRAIN = [
+  ["spam","WINNER you have won a FREE prize claim your cash now"],
+  ["spam","URGENT click this link to win a free gift card today"],
+  ["spam","Congratulations you are selected claim free money click now"],
+  ["spam","Limited offer buy now get free cash prize click link"],
+  ["spam","You won a lottery send your bank details to claim prize"],
+  ["spam","Free entry to win cash click the link now urgent offer"],
+  ["spam","Claim your free reward now limited time click here win"],
+  ["ham","Hey are we still meeting for lunch tomorrow at noon"],
+  ["ham","Can you send me the report before the meeting today"],
+  ["ham","I'll call you after work to plan the weekend trip"],
+  ["ham","Thanks for dinner last night it was really fun"],
+  ["ham","Don't forget to pick up milk on your way home"],
+  ["ham","The project deadline moved to next Friday let's sync"],
+  ["ham","Happy birthday hope you have a wonderful day today"],
+  ["ham","Running ten minutes late see you at the office soon"],
+];
+const tok = s => s.toLowerCase().replace(/[^a-z0-9 ]/g," ").split(/\s+/).filter(Boolean);
+const counts = { spam:{}, ham:{} }, totalWords = { spam:0, ham:0 };
+let nSpam=0, nHam=0; const vocab = new Set();
+for (const [label, text] of TRAIN){
+  if (label==="spam") nSpam++; else nHam++;
+  for (const w of tok(text)){ counts[label][w]=(counts[label][w]||0)+1; totalWords[label]++; vocab.add(w); }
+}
+const V = vocab.size, N = nSpam+nHam;
+const prior = { spam: nSpam/N, ham: nHam/N };
+const pWord = (w,label) => ((counts[label][w]||0)+1) / (totalWords[label]+V);
+
+const verdict=document.getElementById("verdict"), wordsEl=document.getElementById("words"),
+      spamBar=document.getElementById("spamBar"), hamBar=document.getElementById("hamBar"),
+      spamPct=document.getElementById("spamPct"), hamPct=document.getElementById("hamPct"), msg=document.getElementById("msg");
+function classify(){
+  const words = tok(msg.value);
+  let sSpam = Math.log(prior.spam), sHam = Math.log(prior.ham);
+  const chips = [];
+  for (const w of words){
+    const lp = Math.log(pWord(w,"spam")), lh = Math.log(pWord(w,"ham"));
+    sSpam += lp; sHam += lh;
+    const pull = lp - lh;  // >0 spam-leaning, <0 ham-leaning
+    const seen = counts.spam[w] || counts.ham[w];
+    const cls = !seen ? "bg-slate-100 text-slate-400" : pull>0.2 ? "bg-rose-100 text-rose-700" : pull<-0.2 ? "bg-sky-100 text-sky-700" : "bg-slate-100 text-slate-500";
+    chips.push(`<span class="px-2 py-1 rounded text-xs ${cls}">${w}</span>`);
+  }
+  // softmax the two log-scores → probabilities
+  const m = Math.max(sSpam, sHam);
+  const eSpam = Math.exp(sSpam-m), eHam = Math.exp(sHam-m);
+  const pSpam = eSpam/(eSpam+eHam), pHam = 1-pSpam;
+  spamBar.style.width = (pSpam*100)+"%"; hamBar.style.width = (pHam*100)+"%";
+  spamPct.textContent = Math.round(pSpam*100)+"%"; hamPct.textContent = Math.round(pHam*100)+"%";
+  verdict.textContent = pSpam>0.5 ? "🚫 SPAM" : "✅ HAM";
+  verdict.className = "text-2xl font-bold " + (pSpam>0.5 ? "text-rose-500" : "text-sky-600");
+  wordsEl.innerHTML = chips.join("") || `<span class="text-xs text-slate-400">type something…</span>`;
+}
+const PRESETS = ["WINNER!! Claim your FREE prize now, click this link to win cash","Hey, can you send the report before our meeting today?","URGENT: your account won a lottery, send bank details to claim","Running late, see you at the office in ten minutes"];
+const presetsEl = document.getElementById("presets");
+PRESETS.forEach(p=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-1.5 hover:border-sky-400 max-w-xs truncate"; b.textContent=p; b.onclick=()=>{ msg.value=p; classify(); }; presetsEl.appendChild(b); });
+msg.addEventListener("input", classify);
+classify();
+
+const STEPS = [
+  { title:"1. 'Bag of words' — order doesn't matter", why:"Naive Bayes treats a message as just a SET of words, ignoring grammar and order. 'free cash now' and 'now cash free' look identical to it. That throws away information, but for spam/topic detection the words present matter far more than their arrangement — and it makes the math tiny.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">"win free cash" → { win, free, cash }</div>`, code:`const words = tokenize(message);  // a bag, not a sequence` },
+  { title:"2. Learn word probabilities per class", why:"Training is just counting. For every word, how often does it appear in spam vs in ham? 'free' and 'click' are everywhere in spam; 'meeting' and 'tomorrow' live in ham. P(word | spam) = (times it appears in spam) / (all spam words). No iterations, no gradient — one pass over the data.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div>P("free" | spam) = high</div><div>P("free" | ham) = low</div></div>`, code:`P(w | spam) = count(w, spam) / totalSpamWords;` },
+  { title:"3. Bayes' rule flips the question", why:"You want P(spam | words) but you measured P(words | spam). Bayes' theorem flips it: P(spam | words) ∝ P(spam) × P(words | spam). The P(spam) part is the PRIOR — how common spam is overall — and the likelihood multiplies in the evidence from the words.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">P(spam|words) ∝ P(spam) · P(words|spam)</div>`, code:`posterior ∝ prior × likelihood;` },
+  { title:"4. 'Naive' = pretend words are independent", why:"The trick that makes it fast: assume each word is independent given the class, so P(words | spam) = P(w₁|spam) × P(w₂|spam) × … Real words aren't independent ('credit' and 'card' co-occur), so it's a naive lie — but the classification still lands right astonishingly often.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">P(w₁,w₂,…|c) ≈ Π P(wᵢ | c)  (the naive bit)</div>`, code:`score = Π P(word | class);  // just multiply them` },
+  { title:"5. Smoothing + logs keep it stable", why:"Two practical fixes: add 1 to every count (Laplace smoothing) so a word never seen in spam doesn't zero out the whole product; and ADD logarithms instead of multiplying tiny probabilities, which would underflow to 0. Same ranking, no numerical blowup.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div>+1 smoothing → no zero probabilities</div><div class="text-sky-700">log-add → no underflow</div></div>`, code:`score += Math.log((count+1)/(total+V));` },
+  { title:"6. Bigger score wins", why:"Compute the score for spam and for ham, pick the larger — that's your prediction. Softmax the two scores and you get a probability bar like the demo. It's one of the oldest, simplest classifiers, yet it ran real spam filters for years. Counting + Bayes, nothing more.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Count words → Bayes → multiply (in logs) → pick the winner.</p></div>`, code:`return score.spam > score.ham ? "spam" : "ham";` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

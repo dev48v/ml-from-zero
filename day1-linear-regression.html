@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 1 — Linear Regression</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .copy-btn:hover { background:#1e293b; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back to MachineLearningFromZero" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 1</div>
+      <h1 class="text-xl font-bold">📈 Linear Regression — Watch a Line Learn</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<!-- LOOK -->
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Gradient descent, live</h2>
+      <p class="text-slate-500 text-center mb-6">The line starts random. Hit <b>Train</b> and watch it slide into the data as the error (loss) drops. That sliding <em>is</em> machine learning.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 flex justify-center">
+          <canvas id="c" width="480" height="360"></canvas>
+        </div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500">Epoch</span><span id="epoch" class="font-bold">0</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Loss (MSE)</span><span id="loss" class="font-bold text-sky-600">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">slope m</span><span id="m" class="font-mono">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">intercept b</span><span id="b" class="font-mono">—</span></div>
+            <div class="pt-2">
+              <label class="text-xs text-slate-500">learning rate: <span id="lrv">0.10</span></label>
+              <input id="lr" type="range" min="0.01" max="0.5" step="0.01" value="0.1" class="w-full">
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button id="train" class="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-2.5 rounded-xl">▶ Train</button>
+            <button id="reset" class="px-4 bg-slate-200 hover:bg-slate-300 rounded-xl font-semibold">Reset</button>
+          </div>
+          <button id="newdata" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 New data</button>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 text-center mt-6">↑ White dots = data. Sky line = the model. The dashed grey lines = the error each point contributes. Loss = the average of those squared.</p>
+    </div>
+  </div>
+</section>
+
+<!-- UNDERSTAND -->
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How a line learns</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div>
+        <div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step on the left →</div></div>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div>
+        <div id="why" class="text-slate-700">—</div>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div>
+        <pre id="code"></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BUILD -->
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">~40 lines of plain JavaScript. No libraries — you'll see every number.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The model: a line</h3></div>
+<pre>let m = Math.random(), b = Math.random();   // start random
+const predict = x =&gt; m * x + b;             // ŷ = m·x + b</pre>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The loss: mean squared error</h3></div>
+        <div class="relative">
+<pre>const mse = () =&gt;
+  data.reduce((s, [x, y]) =&gt; s + (predict(x) - y) ** 2, 0) / data.length;</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">One gradient-descent step</h3></div>
+        <div class="relative">
+<pre>function step(lr) {
+  let dm = 0, db = 0;
+  for (const [x, y] of data) {
+    const err = predict(x) - y;     // how wrong, and which way
+    dm += 2 * err * x;              // ∂loss/∂m
+    db += 2 * err;                  // ∂loss/∂b
+  }
+  dm /= data.length; db /= data.length;
+  m -= lr * dm;                     // step downhill
+  b -= lr * db;
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Train = repeat the step</h3></div>
+<pre>for (let epoch = 0; epoch &lt; 200; epoch++) step(0.1);
+// m, b now fit the data. predict(newX) makes a prediction.</pre>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center">
+      <h3 class="font-bold text-lg text-sky-900">🎉 Day 1 of MachineLearningFromZero done.</h3>
+      <p class="text-sm text-sky-700 mt-2">You just trained a model. Tomorrow: Logistic Regression (the same idea, for yes/no).</p>
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// =========== LINEAR REGRESSION ===========
+const c = document.getElementById("c"), ctx = c.getContext("2d");
+const PAD = 36;
+let data, m, b, epoch, timer = null;
+
+// data/world coords are 0..1; map to canvas pixels
+const px = x => PAD + x * (c.width - 2 * PAD);
+const py = y => (c.height - PAD) - y * (c.height - 2 * PAD);
+
+function genData() {
+  const tm = 0.3 + Math.random() * 0.5, tb = 0.1 + Math.random() * 0.2;
+  data = Array.from({ length: 30 }, () => {
+    const x = Math.random();
+    const y = Math.min(0.98, Math.max(0.02, tm * x + tb + (Math.random() - 0.5) * 0.18));
+    return [x, y];
+  });
+}
+function reset() {
+  m = Math.random() * 0.4 - 0.2; b = Math.random() * 0.5 + 0.25; epoch = 0;
+  if (timer) { clearInterval(timer); timer = null; document.getElementById("train").textContent = "▶ Train"; }
+  draw();
+}
+const predict = x => m * x + b;
+const mse = () => data.reduce((s, [x, y]) => s + (predict(x) - y) ** 2, 0) / data.length;
+
+function step(lr) {
+  let dm = 0, db = 0;
+  for (const [x, y] of data) { const e = predict(x) - y; dm += 2 * e * x; db += 2 * e; }
+  dm /= data.length; db /= data.length;
+  m -= lr * dm; b -= lr * db; epoch++;
+}
+function draw() {
+  ctx.fillStyle = "#020617"; ctx.fillRect(0, 0, c.width, c.height);
+  // residual lines
+  ctx.strokeStyle = "rgba(148,163,184,0.4)"; ctx.lineWidth = 1;
+  for (const [x, y] of data) { ctx.beginPath(); ctx.moveTo(px(x), py(y)); ctx.lineTo(px(x), py(predict(x))); ctx.stroke(); }
+  // model line
+  ctx.strokeStyle = "#0ea5e9"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(px(0), py(predict(0))); ctx.lineTo(px(1), py(predict(1))); ctx.stroke();
+  // data points
+  ctx.fillStyle = "#f8fafc";
+  for (const [x, y] of data) { ctx.beginPath(); ctx.arc(px(x), py(y), 4, 0, Math.PI * 2); ctx.fill(); }
+  document.getElementById("epoch").textContent = epoch;
+  document.getElementById("loss").textContent = mse().toFixed(4);
+  document.getElementById("m").textContent = m.toFixed(3);
+  document.getElementById("b").textContent = b.toFixed(3);
+}
+document.getElementById("lr").oninput = e => document.getElementById("lrv").textContent = (+e.target.value).toFixed(2);
+document.getElementById("train").onclick = function () {
+  if (timer) { clearInterval(timer); timer = null; this.textContent = "▶ Train"; return; }
+  this.textContent = "⏸ Pause";
+  timer = setInterval(() => {
+    const lr = +document.getElementById("lr").value;
+    for (let i = 0; i < 3; i++) step(lr); // a few steps per frame
+    draw();
+    if (epoch >= 600) { clearInterval(timer); timer = null; document.getElementById("train").textContent = "▶ Replay"; }
+  }, 40);
+};
+document.getElementById("reset").onclick = reset;
+document.getElementById("newdata").onclick = () => { genData(); reset(); };
+genData(); reset();
+
+// UNDERSTAND
+const STEPS = [
+  { title:"1. What linear regression is", why:"You have points (x, y). You believe a straight line roughly explains them. Linear regression finds the BEST line — the one closest to all points at once. 'Best' needs a precise definition (step 2), and a way to search for it (steps 3-4).", concept:`<div class="bg-slate-100 p-4 rounded text-sm w-full font-mono text-xs space-y-1">
+    <div>data: (hours studied, exam score)</div>
+    <div>goal: a line that predicts score from hours</div>
+    <div class="text-sky-700">ŷ = m·x + b</div>
+  </div>`, code:`// the model is just two numbers:
+let m = 0;  // slope
+let b = 0;  // intercept
+const predict = x => m * x + b;` },
+  { title:"2. Loss: how wrong are we?", why:"For each point, the error is (prediction − actual). Square it (so negatives don't cancel and big misses hurt more), average over all points. That's Mean Squared Error. Lower MSE = better line. Training = making this number small.", concept:`<div class="bg-slate-100 p-4 rounded text-xs font-mono space-y-1 w-full">
+    <div>error_i = (m·xᵢ + b) − yᵢ</div>
+    <div>MSE = mean(error_i²)</div>
+    <div class="text-sky-700">the dashed grey lines in the demo = each error</div>
+  </div>`, code:`const mse = () =>
+  data.reduce((s,[x,y]) =>
+    s + (predict(x) - y)**2, 0) / data.length;` },
+  { title:"3. Gradient: which way is downhill?", why:"The gradient is the slope of the loss with respect to each parameter — it points UPHILL (toward more error). We want less error, so we move the OPPOSITE way. Calculus gives clean formulas: the derivative of MSE w.r.t. m and b.", concept:`<div class="bg-slate-100 p-4 rounded text-xs font-mono space-y-1 w-full">
+    <div>∂MSE/∂m = mean( 2·error·x )</div>
+    <div>∂MSE/∂b = mean( 2·error )</div>
+    <div class="text-sky-700">positive gradient → decreasing the param lowers loss</div>
+  </div>`, code:`let dm = 0, db = 0;
+for (const [x, y] of data) {
+  const err = predict(x) - y;
+  dm += 2 * err * x;
+  db += 2 * err;
+}
+dm /= data.length; db /= data.length;` },
+  { title:"4. Gradient descent: take a small step", why:"Subtract a little of the gradient from each parameter. 'A little' = the learning rate. Do it once and the line nudges toward the data. The whole of training is this one move, repeated.", concept:`<div class="bg-slate-100 p-4 rounded text-xs font-mono space-y-1 w-full">
+    <div>m ← m − lr · ∂MSE/∂m</div>
+    <div>b ← b − lr · ∂MSE/∂b</div>
+    <div class="text-sky-700">step downhill on the loss surface</div>
+  </div>`, code:`m -= lr * dm;
+b -= lr * db;
+// the line just moved a little closer to the data` },
+  { title:"5. Learning rate: the step size", why:"Too small and training crawls. Too big and it overshoots the valley and diverges (loss explodes). Drag the slider in the demo to 0.5 and watch it get jumpy. This single knob is the most important hyperparameter in ALL of ML.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full space-y-1">
+    <div class="text-green-700">small lr → slow but stable</div>
+    <div class="text-sky-700">good lr → fast + stable</div>
+    <div class="text-red-600">big lr → overshoots, loss blows up</div>
+  </div>`, code:`for (let epoch = 0; epoch < 200; epoch++)
+  step(0.1);   // 0.1 is a safe starting learning rate` },
+  { title:"6. Convergence", why:"As the line nears the best fit, the gradients shrink toward zero, so the steps shrink too — it naturally settles. Watch the loss number in the demo flatten out. That flat line means 'learned'.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full">
+    <div class="font-mono">loss: 0.21 → 0.08 → 0.03 → 0.012 → 0.011 → 0.011</div>
+    <div class="text-sky-700 mt-1">gradient → 0, so steps → 0. It stops on its own.</div>
+  </div>`, code:`// no explicit "stop" needed — near the minimum
+// dm, db → 0, so m, b barely change.` },
+  { title:"7. Predict", why:"Once m and b are learned, prediction is trivial: plug in a new x. That's the payoff — the model generalises to inputs it never saw, as long as the linear assumption holds.", concept:`<div class="bg-slate-100 p-4 rounded text-xs font-mono w-full space-y-1">
+    <div>studied 4.5 hours → predict(4.5)</div>
+    <div class="text-sky-700">→ m·4.5 + b = predicted score</div>
+  </div>`, code:`const score = predict(4.5);  // m*4.5 + b` },
+  { title:"8. This is the seed of all of ML", why:"Logistic regression, neural networks, even deep learning — all use this exact loop: define a model, define a loss, compute gradients, step downhill. Master it here on a line and every later algorithm is a variation on this theme.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Model → Loss → Gradient → Step. Forever.</p></div>`, code:`// Day 2: logistic regression (same loop, sigmoid output)
+// DeepLearningFromZero: same loop, millions of params.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev");
+const nextB = document.getElementById("next-btn");
+const autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s, i) => {
+  const bn = document.createElement("button");
+  bn.className = "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm";
+  bn.innerHTML = `<div class="font-semibold">${s.title}</div>`;
+  bn.onclick = () => show(i);
+  stepsEl.appendChild(bn);
+});
+function show(i) {
+  cur = i;
+  const s = STEPS[i];
+  document.getElementById("concept").innerHTML = `<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML = `<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent = s.code;
+  stepsEl.querySelectorAll("button").forEach((bn, idx) => {
+    bn.className = idx === i
+      ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold"
+      : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm";
+  });
+}
+prevB.onclick = () => show(Math.max(0, cur - 1));
+nextB.onclick = () => show(Math.min(STEPS.length - 1, cur + 1));
+let stepTimer = null;
+autoB.onclick = () => {
+  if (stepTimer) { clearInterval(stepTimer); stepTimer = null; autoB.textContent = "▶ Auto-play"; return; }
+  autoB.textContent = "⏸ Pause";
+  show(0);
+  stepTimer = setInterval(() => {
+    if (cur >= STEPS.length - 1) { clearInterval(stepTimer); stepTimer = null; autoB.textContent = "▶ Replay"; return; }
+    show(cur + 1);
+  }, 2800);
+};
+show(0);
+function copy(btn) {
+  const pre = btn.parentElement.querySelector("pre");
+  navigator.clipboard.writeText(pre.textContent);
+  const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => btn.textContent = o, 1500);
+}
+</script>
+</body>
+</html>

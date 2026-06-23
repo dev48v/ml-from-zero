@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 7 — Gradient Descent</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 7</div>
+      <h1 class="text-xl font-bold">⛰️ Gradient Descent — the Optimizer Under Everything</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">A blindfolded hiker finding the valley by always stepping downhill</h2>
+      <p class="text-slate-500 text-center mb-6">The ball is your parameter; the curve is the loss. Each step moves opposite the slope (the gradient). Tune the learning rate and watch it converge — or overshoot, or get stuck.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 flex justify-center"><canvas id="c" width="480" height="340"></canvas></div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 text-sm">
+            <button id="surface" class="w-full bg-slate-800 text-white font-semibold py-2 rounded-xl">Surface: convex bowl</button>
+            <div>
+              <div class="flex justify-between mb-0.5"><span class="text-slate-500">Learning rate</span><span id="lrval" class="font-bold text-sky-600">0.10</span></div>
+              <input id="lr" type="range" min="1" max="120" value="10" class="w-full accent-sky-600" />
+            </div>
+            <div class="flex justify-between"><span class="text-slate-500">Step</span><span id="step" class="font-bold">0</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Loss</span><span id="loss" class="font-bold text-sky-600">—</span></div>
+          </div>
+          <div class="flex gap-2">
+            <button id="run" class="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-2.5 rounded-xl">▶ Descend</button>
+            <button id="reset" class="px-4 bg-slate-200 hover:bg-slate-300 rounded-xl font-semibold">🎲 new start</button>
+          </div>
+          <p class="text-xs text-slate-400">Tiny LR → crawls. Good LR → smooth dive. LR ≈ 1.0+ → overshoots &amp; diverges. On the non-convex surface, where you start decides which valley you fall into.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How gradient descent works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">It's a three-line loop. The same loop trains linear regression, neural nets, everything.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">You have a loss as a function of a parameter</h3></div><pre>const loss = (x) => (x - 5) ** 2;   // a bowl with its minimum at x = 5</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The gradient = the slope at your point</h3></div><pre>const grad = (x) => 2 * (x - 5);    // derivative of the loss
+// positive slope → you're on the right wall → move left, and vice-versa</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Step DOWNHILL: subtract lr × gradient</h3></div><pre>x = x - learningRate * grad(x);   // the whole algorithm</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Repeat until the slope is ~0</h3></div><pre>for (let i = 0; i < 1000; i++) {
+  x -= lr * grad(x);
+  if (Math.abs(grad(x)) < 1e-4) break;   // converged at the minimum
+}</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Real models: many parameters at once</h3></div><pre>// for millions of weights, the gradient is a vector (one slope per weight)
+// from backprop. Same step, in every dimension simultaneously:
+weights = weights.map((w, i) => w - lr * grads[i]);</pre></li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 7 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Tomorrow: Train/Test split + overfitting.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== GRADIENT DESCENT =====
+const c=document.getElementById("c"), ctx=c.getContext("2d"), W=c.width, H=c.height, PAD=28;
+const X0=0, X1=10;
+let convex=true, x=2, lr=0.1, step=0, path=[], timer=null;
+const lossC = v => 0.6*(v-5)**2;                                  // convex bowl
+const gradC = v => 1.2*(v-5);
+const lossN = v => 0.25*(v-5)**2 + 6*Math.cos(v*1.3);            // non-convex (local minima)
+const gradN = v => 0.5*(v-5) - 7.8*Math.sin(v*1.3);
+const L = v => convex ? lossC(v) : lossN(v);
+const G = v => convex ? gradC(v) : gradN(v);
+let maxL;
+function recalcMax(){ maxL=0; for(let v=X0;v<=X1;v+=0.05) maxL=Math.max(maxL,L(v)); maxL=Math.max(maxL,1); }
+const px = v => PAD + (v-X0)/(X1-X0)*(W-2*PAD);
+const py = l => (H-PAD) - Math.min(l,maxL)/maxL*(H-2*PAD);
+function draw(){
+  ctx.clearRect(0,0,W,H); ctx.fillStyle="#020617"; ctx.fillRect(0,0,W,H);
+  // curve
+  ctx.strokeStyle="#334155"; ctx.lineWidth=2; ctx.beginPath();
+  for(let v=X0;v<=X1;v+=0.05){ const X=px(v),Y=py(L(v)); v===X0?ctx.moveTo(X,Y):ctx.lineTo(X,Y); } ctx.stroke();
+  // path
+  ctx.fillStyle="rgba(56,189,248,0.35)"; for(const p of path){ ctx.beginPath(); ctx.arc(px(p),py(L(p)),3,0,Math.PI*2); ctx.fill(); }
+  // ball
+  ctx.fillStyle="#38bdf8"; ctx.strokeStyle="#fff"; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.arc(px(x),py(L(x)),8,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.fillStyle="#64748b"; ctx.font="11px sans-serif"; ctx.textAlign="center"; ctx.fillText("parameter →", W/2, H-6);
+}
+function upd(){ document.getElementById("step").textContent=step; document.getElementById("loss").textContent=L(x).toFixed(3); }
+function reset(){ if(timer){clearInterval(timer);timer=null;document.getElementById("run").textContent="▶ Descend";} x=X0+Math.random()*(X1-X0); step=0; path=[x]; recalcMax(); upd(); draw(); }
+function doStep(){
+  x = x - lr*G(x);
+  x = Math.max(X0-2, Math.min(X1+2, x));   // clamp so a diverging ball stays drawable
+  step++; path.push(x); if(path.length>120) path.shift();
+  upd(); draw();
+}
+document.getElementById("run").onclick=function(){ if(timer){clearInterval(timer);timer=null;this.textContent="▶ Descend";return;} this.textContent="⏸ Pause"; timer=setInterval(()=>{ doStep(); if(Math.abs(G(x))<0.002||step>500){clearInterval(timer);timer=null;this.textContent="✓ Settled";} },70); };
+document.getElementById("reset").onclick=reset;
+document.getElementById("lr").oninput=function(){ lr=+this.value/100; document.getElementById("lrval").textContent=lr.toFixed(2); };
+document.getElementById("surface").onclick=function(){ convex=!convex; this.textContent="Surface: "+(convex?"convex bowl":"non-convex (local minima)"); this.classList.toggle("bg-sky-600",!convex); this.classList.toggle("bg-slate-800",convex); reset(); };
+reset();
+
+const STEPS = [
+  { title:"1. Learning = minimizing a loss", why:"Almost all of ML boils down to one job: find the parameter values that make the loss (the 'how wrong' number) as small as possible. The loss as a function of a parameter is a landscape — and you want its lowest valley. Gradient descent is how you get there without seeing the whole map.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">loss(parameter) = a landscape · goal = the lowest point</div>`, code:`const loss = (x) => (x - 5) ** 2;  // minimum at x = 5` },
+  { title:"2. The gradient is the slope", why:"At your current point you can't see the whole curve, but you CAN feel the slope under your feet — that's the gradient (the derivative). Positive slope means the loss rises to your right, so downhill is left; negative slope, downhill is right. The gradient always points UPhill, so you go the opposite way.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">gradient = slope · it points uphill → step the other way</div>`, code:`const grad = (x) => 2 * (x - 5);  // the slope at x` },
+  { title:"3. The step: x -= lr × gradient", why:"That's the entire algorithm. Subtract a small fraction of the gradient from your parameter. The minus sign sends you downhill; the learning rate (lr) sets the step size. Repeat and you walk to the bottom — a blindfolded hiker who only ever steps in the steepest-down direction.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">x ← x − learningRate × slope</div>`, code:`x = x - lr * grad(x);` },
+  { title:"4. Learning rate is everything", why:"Too small and it crawls — thousands of tiny steps. Too big and it leaps past the minimum, bouncing up the far wall, sometimes diverging to infinity. There's a sweet spot. Crank the LR slider past ~1.0 in the demo and watch the ball overshoot and fly off — that's a real failure mode of training.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div>tiny → crawls · good → smooth dive</div><div class="text-sky-700">too big → overshoots → diverges</div></div>`, code:`lr = 0.1   // sweet spot · lr = 1.2 → diverges` },
+  { title:"5. Local minima (non-convex)", why:"A bowl has one bottom, so descent always finds it. Real loss landscapes are bumpy — switch to the non-convex surface and the ball gets trapped in whichever valley is nearest the start, not necessarily the deepest. This is why initialization, momentum, and restarts matter in real training.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">bumpy surface → you fall into the NEAREST valley, not the best</div>`, code:`// where you start decides where you land (non-convex)` },
+  { title:"6. The same loop trains everything", why:"Linear regression, logistic regression, a 100-billion-parameter neural net — all trained by this exact loop. The only difference: instead of one slope, the gradient is a vector with one slope per weight (computed by backprop), and you step in all those directions at once. One idea, scaled to the whole field.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Feel the slope, step downhill, repeat. The engine under all of ML.</p></div>`, code:`weights = weights.map((w,i) => w - lr * grads[i]);  // every weight at once` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

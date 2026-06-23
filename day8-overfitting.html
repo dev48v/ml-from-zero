@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 8 — Train/Test & Overfitting</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 8</div>
+      <h1 class="text-xl font-bold">🎯 Train/Test &amp; Overfitting — When a Model Memorises</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Crank the model's complexity and watch test error U-turn</h2>
+      <p class="text-slate-500 text-center mb-6">Fit a polynomial to the <b class="text-sky-600">blue training</b> points. Raise the degree: train error always drops, but <b class="text-rose-500">test error</b> (hollow points) bottoms out then shoots up — that's overfitting.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 flex justify-center"><canvas id="c" width="480" height="340"></canvas></div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500">Polynomial degree</span><span id="dval" class="font-bold text-sky-600">3</span></div>
+            <input id="deg" type="range" min="1" max="11" value="3" class="w-full accent-sky-600" />
+            <div class="flex justify-between"><span class="text-slate-500">Train error</span><span id="tr" class="font-bold text-sky-600">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Test error</span><span id="te" class="font-bold text-rose-500">—</span></div>
+            <div id="verdict" class="text-center text-sm font-bold pt-1">—</div>
+          </div>
+          <button id="newdata" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 New data</button>
+          <p class="text-xs text-slate-400">Degree 1 = underfit (too simple). Mid = just right. Degree 10+ = the curve wiggles through every training point but fails on unseen test points.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">Train, test & the bias-variance tradeoff</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 The discipline that makes ML real</h2>
+    <p class="text-slate-500 mb-8">It's not an algorithm — it's a habit. Always hold out data the model never sees.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Split BEFORE you train</h3></div><pre>shuffle(data);
+const split = Math.floor(data.length * 0.8);
+const [train, test] = [data.slice(0, split), data.slice(split)];</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Train ONLY on the training set</h3></div><pre>const model = fit(train);   // the test set must stay unseen</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Judge ONLY on the test set</h3></div><pre>const trainErr = error(model, train);   // always low — not the truth
+const testErr  = error(model, test);    // the honest number</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Watch the gap</h3></div><pre>// trainErr low + testErr high  → overfitting (too complex)
+// both high                    → underfitting (too simple)
+// both low + close             → just right ✓</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Fight overfitting</h3></div><pre>// simpler model · more data · regularization (penalize big weights)
+// · early stopping · cross-validation to pick complexity</pre></li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 8 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Tomorrow: Metrics — precision, recall, F1.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== OVERFITTING (polynomial fit via least squares) =====
+const c=document.getElementById("c"), ctx=c.getContext("2d"), W=c.width, H=c.height, PAD=26;
+let train=[], test=[], deg=3;
+const px=v=>PAD+v*(W-2*PAD), py=v=>(H-PAD)-(v+0.2)/1.4*(H-2*PAD);
+function f(x){ return 0.5 + 0.4*Math.sin(x*6.0); }              // hidden truth
+function genData(){
+  const all=[]; for(let i=0;i<22;i++){ const x=Math.random(); all.push({x, y:f(x)+(Math.random()-0.5)*0.28}); }
+  all.sort((a,b)=>a.x-b.x);
+  train=[]; test=[]; all.forEach((p,i)=> (i%3===0?test:train).push(p));
+}
+// solve least squares for polynomial coeffs via normal equations + Gaussian elimination
+function polyfit(pts, d){
+  const n=d+1, X=[]; for(const p of pts){ const row=[]; let xp=1; for(let j=0;j<n;j++){ row.push(xp); xp*=p.x; } X.push(row); }
+  const A=Array.from({length:n},()=>Array(n).fill(0)), b=Array(n).fill(0);
+  for(let i=0;i<n;i++){ for(let j=0;j<n;j++){ let s=0; for(let k=0;k<X.length;k++) s+=X[k][i]*X[k][j]; A[i][j]=s; } let s=0; for(let k=0;k<X.length;k++) s+=X[k][i]*pts[k].y; b[i]=s; }
+  // Gaussian elimination with partial pivot + tiny ridge for stability
+  for(let i=0;i<n;i++) A[i][i]+=1e-7;
+  for(let i=0;i<n;i++){ let mx=i; for(let r=i+1;r<n;r++) if(Math.abs(A[r][i])>Math.abs(A[mx][i])) mx=r; [A[i],A[mx]]=[A[mx],A[i]]; [b[i],b[mx]]=[b[mx],b[i]];
+    for(let r=0;r<n;r++){ if(r===i) continue; const f2=A[r][i]/A[i][i]; for(let cc=i;cc<n;cc++) A[r][cc]-=f2*A[i][cc]; b[r]-=f2*b[i]; } }
+  return b.map((v,i)=>v/A[i][i]);
+}
+const evalPoly=(co,x)=>{ let y=0,xp=1; for(const k of co){ y+=k*xp; xp*=x; } return y; };
+const mse=(co,pts)=> pts.reduce((s,p)=>s+(evalPoly(co,p.x)-p.y)**2,0)/pts.length;
+function fitAndDraw(){
+  const co=polyfit(train, deg);
+  ctx.clearRect(0,0,W,H); ctx.fillStyle="#020617"; ctx.fillRect(0,0,W,H);
+  // curve
+  ctx.strokeStyle="#a78bfa"; ctx.lineWidth=2.5; ctx.beginPath();
+  for(let i=0;i<=120;i++){ const x=i/120, y=Math.max(-0.2,Math.min(1.2,evalPoly(co,x))); const X=px(x),Y=py(y); i===0?ctx.moveTo(X,Y):ctx.lineTo(X,Y); } ctx.stroke();
+  // points
+  for(const p of train){ ctx.fillStyle="#38bdf8"; ctx.beginPath(); ctx.arc(px(p.x),py(p.y),4,0,Math.PI*2); ctx.fill(); }
+  for(const p of test){ ctx.strokeStyle="#fb7185"; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(px(p.x),py(p.y),4,0,Math.PI*2); ctx.stroke(); }
+  const tr=mse(co,train), te=mse(co,test);
+  document.getElementById("tr").textContent=tr.toFixed(4);
+  document.getElementById("te").textContent=te.toFixed(4);
+  const v=document.getElementById("verdict");
+  if (deg<=1){ v.textContent="↓ underfitting (too simple)"; v.className="text-center text-sm font-bold pt-1 text-amber-600"; }
+  else if (te > tr*3 && te>0.03){ v.textContent="⚠ overfitting (memorising)"; v.className="text-center text-sm font-bold pt-1 text-rose-500"; }
+  else { v.textContent="✓ good fit"; v.className="text-center text-sm font-bold pt-1 text-emerald-600"; }
+}
+document.getElementById("deg").oninput=function(){ deg=+this.value; document.getElementById("dval").textContent=deg; fitAndDraw(); };
+document.getElementById("newdata").onclick=()=>{ genData(); fitAndDraw(); };
+genData(); fitAndDraw();
+
+const STEPS = [
+  { title:"1. The real goal: do well on UNSEEN data", why:"A model that aces the data it studied is worthless if it flops on new data — like a student who memorised the answer key. The whole point of ML is generalisation: performing well on examples it has never seen. Everything about train/test exists to measure that honestly.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">success = accuracy on data the model never trained on</div>`, code:`// memorising the training set ≠ learning the pattern` },
+  { title:"2. Split the data: train vs test", why:"Before training, hold out a chunk (say 20%) as a test set and lock it away. The model learns only from the training set; the test set is the stand-in for 'the future'. If the model never sees it, its score there is an honest estimate of real-world performance.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">80% train (learn) · 20% test (locked away, judge)</div>`, code:`const [train, test] = split(shuffle(data), 0.8);` },
+  { title:"3. Train error always drops — it's a liar", why:"As you add complexity (higher polynomial degree, more parameters), training error keeps falling — eventually to zero, when the curve threads through every training point. That's why you can NEVER judge a model by its training score. It only ever gets better; it tells you nothing about generalisation.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">more complexity → train error → 0 (always). meaningless alone.</div>`, code:`trainErr = error(model, train);  // monotonically down, ignore it` },
+  { title:"4. Test error is U-shaped", why:"Test error tells the truth, and it's U-shaped: too simple = high (underfit, can't capture the pattern); just right = lowest; too complex = high again (overfit, chasing noise). Slide the degree in the demo and watch the rose number dive then climb. The bottom of the U is the model you want.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">test error: high → LOW (sweet spot) → high again</div>`, code:`// underfit: both high · sweet spot: both low · overfit: train↓ test↑` },
+  { title:"5. Overfitting = memorising noise", why:"A degree-11 curve wiggles violently to pass through every training point — including the random noise. It has memorised the sample, not learned the trend, so on test points it's wildly off. The telltale sign: a big GAP between low train error and high test error.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">low train + high test = overfit (the gap is the symptom)</div>`, code:`if (trainErr << testErr) // overfitting` },
+  { title:"6. How to fight it (bias-variance)", why:"Underfit = high bias (too rigid); overfit = high variance (too sensitive to the sample). The cures: a simpler model, MORE training data, regularization (penalize large weights), early stopping, and cross-validation to choose complexity. Managing this tradeoff is most of practical ML.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Split the data, trust the test set, sit at the bottom of the U.</p></div>`, code:`// simpler model · more data · regularization · early stopping` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

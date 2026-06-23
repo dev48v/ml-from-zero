@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 13 — K-Means Clustering</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .copy-btn:hover { background:#1e293b; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; cursor:crosshair; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 13</div>
+      <h1 class="text-xl font-bold">🎯 K-Means — Finding Groups With No Labels</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Step the algorithm and watch clusters snap into place</h2>
+      <p class="text-slate-500 text-center mb-6">K-Means alternates two moves: <b>assign</b> every point to its nearest centre, then <b>move</b> each centre to the average of its points. Repeat until nothing changes — unsupervised grouping with <b>no labels</b> at all.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 flex justify-center"><canvas id="c" width="480" height="360"></canvas></div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between pt-1"><span class="text-slate-500">K (number of clusters)</span><span id="kval" class="font-bold text-sky-600">3</span></div>
+            <input id="kslider" type="range" min="2" max="6" step="1" value="3" class="w-full accent-sky-600" />
+            <p class="text-[11px] text-slate-400 leading-snug">Move the slider to re-seed K centres. K is the one thing <i>you</i> choose — the algorithm figures out the rest.</p>
+            <div class="flex justify-between pt-2"><span class="text-slate-500">Iteration</span><span id="iter" class="font-bold text-sky-600">0</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Inertia (within-cluster SSE)</span><span id="inertia" class="font-bold text-sky-600">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Status</span><span id="status" class="font-bold text-slate-400">ready</span></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="step" class="text-sm font-semibold border-2 border-sky-500 bg-sky-50 text-sky-700 rounded-xl py-2 hover:bg-sky-100">▶ step</button>
+            <button id="run" class="text-sm font-semibold bg-sky-600 text-white rounded-xl py-2 hover:bg-sky-700">▶▶ run to convergence</button>
+          </div>
+          <button id="reseed" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">♻ re-seed centres (same data)</button>
+          <button id="newdata" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 new data</button>
+          <p class="text-xs text-slate-400">Each <b>step</b> does one full assign-then-move pass. Watch the inertia (the total squared distance from points to their centre) drop every iteration — it can only ever go down, which is why K-Means always stops.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How K-Means works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">K-Means from scratch: pick K starting centres, then loop <b>assign → update</b> until the centres stop moving. Track the inertia to prove it's working.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The data: just points — no labels</h3></div>
+        <div class="relative">
+<pre>// each point is [x1, x2]. There is NO target column here —
+// clustering is unsupervised, so the model never sees an answer.
+const data = [
+  [0.21, 0.78], [0.18, 0.71], [0.25, 0.83],   // (a natural blob)
+  [0.80, 0.30], [0.84, 0.22], [0.76, 0.35],   // (another blob)
+  // ...
+];</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Pick K starting centres (k-means++)</h3></div>
+        <div class="relative">
+<pre>const K = 3;
+const dist2 = (a, b) => (a[0]-b[0])**2 + (a[1]-b[1])**2;
+
+// k-means++ : 1st centre random, each next centre is chosen far
+// from the ones already picked → much better than pure random.
+function initCentroids() {
+  const centroids = [ data[Math.floor(Math.random()*data.length)] ];
+  while (centroids.length < K) {
+    const d = data.map(p => Math.min(...centroids.map(c => dist2(p, c))));
+    const total = d.reduce((s, v) => s + v, 0);
+    let r = Math.random() * total, i = 0;
+    while ((r -= d[i]) > 0) i++;          // sample ∝ distance²
+    centroids.push(data[i]);
+  }
+  return centroids.map(c => [...c]);
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Assign: each point → its nearest centre</h3></div>
+        <div class="relative">
+<pre>// for every point, find which centroid is closest.
+function assign(centroids) {
+  return data.map(p => {
+    let best = 0, bestD = Infinity;
+    centroids.forEach((c, k) => {
+      const d = dist2(p, c);
+      if (d < bestD) { bestD = d; best = k; }
+    });
+    return best;            // the cluster id this point belongs to
+  });
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Update: move each centre to its mean</h3></div>
+        <div class="relative">
+<pre>// recompute every centroid as the average of its assigned points.
+function update(labels) {
+  const sum = Array.from({length: K}, () => [0, 0, 0]); // x, y, count
+  data.forEach((p, i) => {
+    const k = labels[i];
+    sum[k][0] += p[0]; sum[k][1] += p[1]; sum[k][2]++;
+  });
+  return sum.map(([sx, sy, n]) =>
+    n ? [sx / n, sy / n] : [Math.random(), Math.random()]); // empty → re-seed
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Loop until the centres stop moving</h3></div>
+        <div class="relative">
+<pre>let centroids = initCentroids(), labels, prev;
+for (let it = 0; it < 100; it++) {
+  labels = assign(centroids);            // step 3
+  const next = update(labels);           // step 4
+  // converged when no centroid moved more than a tiny epsilon
+  const moved = next.some((c, k) => dist2(c, centroids[k]) > 1e-9);
+  centroids = next;
+  if (!moved) break;                     // done — it always stops
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Inertia: measure how tight the clusters are</h3></div>
+        <div class="relative">
+<pre>// inertia = total squared distance from each point to its centre.
+// LOWER is tighter. It can only go down each iteration → convergence.
+function inertia(centroids, labels) {
+  return data.reduce((s, p, i) => s + dist2(p, centroids[labels[i]]), 0);
+}
+// run K-Means a few times with different seeds and keep the
+// result with the smallest inertia — that beats one unlucky start.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Choosing K: the elbow method</h3></div>
+        <div class="relative">
+<pre>// inertia always falls as K grows (more centres = tighter fit),
+// so don't just pick the biggest K. Plot inertia vs K and look
+// for the "elbow" — the K where the curve stops dropping sharply.
+for (let k = 1; k <= 8; k++) {
+  const { inertia } = kmeans(data, k);
+  console.log(k, inertia);   // find where the gain flattens out
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">In the real world: scikit-learn</h3></div>
+        <div class="relative">
+<pre>from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+
+X = StandardScaler().fit_transform(X)   # SCALE features first!
+
+km = KMeans(n_clusters=3, init="k-means++", n_init=10)
+km.fit(X)
+km.labels_            # cluster id per point
+km.cluster_centers_   # the K centres
+km.inertia_           # within-cluster sum of squares</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 13 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Assign, move, repeat — unsupervised grouping with no labels. Next up: PCA and dimensionality reduction.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== K-MEANS CLUSTERING =====
+const c=document.getElementById("c"), ctx=c.getContext("2d"), PAD=24;
+// cluster palette (sky-accent family + complements)
+const PAL=["#38bdf8","#fb7185","#a78bfa","#fbbf24","#34d399","#f472b6"];
+const px=v=>PAD+v*(c.width-2*PAD), py=v=>(c.height-PAD)-v*(c.height-2*PAD);
+const dist2=(a,b)=>(a[0]-b[0])**2+(a[1]-b[1])**2;
+
+let pts=[], K=3, centroids=[], labels=[], iter=0, converged=false, anim=null;
+
+// ---- data: a few natural blobs ----
+function genData(){
+  pts=[];
+  const nb=2+Math.floor(Math.random()*3);                 // 2–4 blobs
+  for(let b=0;b<nb;b++){
+    const cx=0.15+Math.random()*0.70, cy=0.15+Math.random()*0.70;
+    const spread=0.05+Math.random()*0.05, n=14+Math.floor(Math.random()*10);
+    for(let i=0;i<n;i++){
+      // gaussian-ish via averaged uniforms
+      const gx=(Math.random()+Math.random()+Math.random())/3-0.5;
+      const gy=(Math.random()+Math.random()+Math.random())/3-0.5;
+      const x=Math.min(0.98,Math.max(0.02,cx+gx*spread*4));
+      const y=Math.min(0.98,Math.max(0.02,cy+gy*spread*4));
+      pts.push([x,y]);
+    }
+  }
+}
+
+// ---- k-means++ initialisation ----
+function initCentroids(){
+  centroids=[ [...pts[Math.floor(Math.random()*pts.length)]] ];
+  while(centroids.length<K){
+    const d=pts.map(p=>Math.min(...centroids.map(cc=>dist2(p,cc))));
+    const total=d.reduce((s,v)=>s+v,0);
+    if(total<=0){ centroids.push([...pts[Math.floor(Math.random()*pts.length)]]); continue; }
+    let r=Math.random()*total, i=0;
+    while(i<d.length-1 && (r-=d[i])>0) i++;
+    centroids.push([...pts[i]]);
+  }
+  labels=new Array(pts.length).fill(-1);
+  iter=0; converged=false;
+}
+
+// ---- assign each point to nearest centroid ----
+function assign(){
+  let changed=false;
+  for(let i=0;i<pts.length;i++){
+    let best=0,bd=Infinity;
+    for(let k=0;k<centroids.length;k++){ const d=dist2(pts[i],centroids[k]); if(d<bd){bd=d;best=k;} }
+    if(labels[i]!==best){ labels[i]=best; changed=true; }
+  }
+  return changed;
+}
+
+// ---- move each centroid to the mean of its points ----
+function update(){
+  let maxMove=0;
+  const sum=Array.from({length:centroids.length},()=>[0,0,0]);
+  for(let i=0;i<pts.length;i++){ const k=labels[i]; sum[k][0]+=pts[i][0]; sum[k][1]+=pts[i][1]; sum[k][2]++; }
+  for(let k=0;k<centroids.length;k++){
+    let nc;
+    if(sum[k][2]>0) nc=[sum[k][0]/sum[k][2], sum[k][1]/sum[k][2]];
+    else nc=[...pts[Math.floor(Math.random()*pts.length)]];     // empty cluster → re-seed
+    maxMove=Math.max(maxMove,dist2(nc,centroids[k]));
+    centroids[k]=nc;
+  }
+  return maxMove;
+}
+
+function inertia(){
+  let s=0;
+  for(let i=0;i<pts.length;i++) if(labels[i]>=0) s+=dist2(pts[i],centroids[labels[i]]);
+  return s;
+}
+
+// one full iteration = assign then move
+function oneStep(){
+  if(converged) return false;
+  assign();
+  const move=update();
+  iter++;
+  if(move < 1e-7){ converged=true; assign(); }   // final clean assign
+  return !converged;
+}
+
+function runToConvergence(){
+  if(anim){ clearInterval(anim); anim=null; document.getElementById("run").textContent="▶▶ run to convergence"; return; }
+  document.getElementById("run").textContent="⏸ pause";
+  anim=setInterval(()=>{
+    const cont=oneStep(); draw();
+    if(!cont){ clearInterval(anim); anim=null; document.getElementById("run").textContent="▶▶ run to convergence"; }
+  },650);
+}
+
+function draw(){
+  ctx.clearRect(0,0,c.width,c.height); ctx.fillStyle="#020617"; ctx.fillRect(0,0,c.width,c.height);
+  // faint connector from each point to its centroid
+  if(iter>0){
+    ctx.lineWidth=1;
+    for(let i=0;i<pts.length;i++){ if(labels[i]<0) continue;
+      const col=PAL[labels[i]%PAL.length];
+      ctx.strokeStyle=col+"33";
+      ctx.beginPath(); ctx.moveTo(px(pts[i][0]),py(pts[i][1])); ctx.lineTo(px(centroids[labels[i]][0]),py(centroids[labels[i]][1])); ctx.stroke();
+    }
+  }
+  // points (coloured by cluster; grey before first assign)
+  for(let i=0;i<pts.length;i++){
+    ctx.fillStyle = labels[i]<0 ? "#64748b" : PAL[labels[i]%PAL.length];
+    ctx.strokeStyle="#020617"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(px(pts[i][0]),py(pts[i][1]),4.5,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  }
+  // centroids (big ringed X marker)
+  for(let k=0;k<centroids.length;k++){
+    const X=px(centroids[k][0]), Y=py(centroids[k][1]), col=PAL[k%PAL.length];
+    ctx.beginPath(); ctx.arc(X,Y,10,0,Math.PI*2); ctx.fillStyle=col; ctx.fill();
+    ctx.strokeStyle="#fff"; ctx.lineWidth=2.5; ctx.stroke();
+    ctx.strokeStyle="#020617"; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.moveTo(X-4,Y-4); ctx.lineTo(X+4,Y+4); ctx.moveTo(X+4,Y-4); ctx.lineTo(X-4,Y+4); ctx.stroke();
+  }
+  updateStats();
+}
+
+function updateStats(){
+  document.getElementById("kval").textContent=K;
+  document.getElementById("iter").textContent=iter;
+  document.getElementById("inertia").textContent = iter>0 ? inertia().toFixed(3) : "—";
+  const st=document.getElementById("status");
+  if(converged){ st.textContent="✓ converged"; st.className="font-bold text-sky-600"; }
+  else if(iter>0){ st.textContent="running…"; st.className="font-bold text-slate-500"; }
+  else { st.textContent="ready"; st.className="font-bold text-slate-400"; }
+}
+
+// ---- interaction ----
+function stop(){ if(anim){ clearInterval(anim); anim=null; document.getElementById("run").textContent="▶▶ run to convergence"; } }
+document.getElementById("step").onclick=()=>{ stop(); oneStep(); draw(); };
+document.getElementById("run").onclick=()=>runToConvergence();
+document.getElementById("reseed").onclick=()=>{ stop(); initCentroids(); draw(); };
+document.getElementById("newdata").onclick=()=>{ stop(); genData(); initCentroids(); draw(); };
+document.getElementById("kslider").oninput=function(){ stop(); K=+this.value; initCentroids(); draw(); };
+// click canvas to add a point (it joins as unlabelled until next step)
+c.addEventListener("click",e=>{
+  const r=c.getBoundingClientRect();
+  const a=( (e.clientX-r.left)*(c.width/r.width) -PAD)/(c.width-2*PAD);
+  const bb=( (c.height-PAD) - (e.clientY-r.top)*(c.height/r.height) )/(c.height-2*PAD);
+  if(a<0||a>1||bb<0||bb>1) return;
+  stop(); pts.push([a,bb]); labels.push(-1); converged=false; draw();
+});
+genData(); initCentroids(); draw();
+
+// ===== UNDERSTAND STEP-ENGINE =====
+const STEPS = [
+  { title:"1. Supervised vs unsupervised", why:"Most ML you've seen is supervised: every training point comes with a correct answer — a label or a number — and the model learns to predict it. Clustering is unsupervised: there are no answers at all, just raw points. The job isn't to predict a known target, it's to discover structure that nobody told you about. K-Means is the simplest, most-used way to do that.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">supervised = points + answers &nbsp;|&nbsp; unsupervised = points only, find the structure</div>`, code:`// no y here — only X. the model never sees a 'correct' grouping.` },
+  { title:"2. What is clustering?", why:"Clustering means grouping points so that items in the same group are similar to each other and different from items in other groups. 'Similar' here just means 'close together' in feature space. You decide how many groups to look for, and the algorithm partitions every point into exactly one of them. The output is a label per point — but a label the algorithm invented, not one you supplied.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">put nearby points in the same bucket → similar together, different apart</div>`, code:`labels = cluster(data);   // each point gets an invented group id` },
+  { title:"3. The K-Means goal", why:"K-Means makes the goal concrete: pick K group centres so that the total squared distance from every point to its own centre is as small as possible. That total is called the inertia, or within-cluster sum of squares. A small inertia means every point sits close to its centre — tight, well-separated blobs. The whole algorithm is just a clever way to drive that one number down.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">minimise Σ (distance from point to its centre)² — the 'inertia'</div>`, code:`inertia = Σ dist2(point, centreOf(point));   // make this small` },
+  { title:"4. The two-step loop: assign → update", why:"K-Means can't solve that goal in one shot, so it alternates two easy moves. First, the assign step: with the centres fixed, snap each point to whichever centre is nearest. Then the update step: with the assignments fixed, move each centre to the average position of the points that chose it. Each move can only lower the inertia, so you just repeat the pair over and over. Step it in the demo and watch it tighten.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">①&nbsp;assign points to nearest centre &nbsp;→&nbsp; ②&nbsp;move centre to its average &nbsp;→&nbsp; repeat</div>`, code:`labels = assign(centroids);
+centroids = update(labels);  // mean of each cluster` },
+  { title:"5. Initialization matters", why:"Where you drop the first K centres changes the answer. Pure random placement sometimes seeds two centres inside the same blob, and K-Means can settle into a poor 'local minimum' it never escapes. The standard fix is k-means++: place the first centre at random, then bias each later centre toward points far from the ones already chosen, spreading the seeds out. In practice you also run the whole thing several times and keep the result with the lowest inertia.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">k-means++ spreads the first centres out → avoids unlucky local minima</div>`, code:`// next centre sampled ∝ distance² from existing centres
+centroids = kMeansPlusPlus(data, K);` },
+  { title:"6. Convergence: why it always stops", why:"There are only finitely many ways to split N points into K groups. Every assign step and every update step lowers (or keeps) the inertia, and inertia can't drop forever because it never goes below zero. So the assignments must eventually stop changing — at which point the centres stop moving and the algorithm halts. It's guaranteed to converge, usually within a handful of iterations, though to a local rather than the global optimum.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">inertia only ever goes ↓ and can't go below 0 → it MUST stop</div>`, code:`if (noPointChangedCluster) break;   // converged` },
+  { title:"7. Choosing K: the elbow method", why:"K-Means needs you to pick K up front, but how many groups are really there? Trying to read it off the inertia directly fails: inertia always shrinks as K grows, hitting zero when every point is its own cluster. The trick is the elbow method — plot inertia against K and look for the bend where adding another cluster stops buying much improvement. That elbow is usually a sensible K. Silhouette score is a common alternative.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">📉 plot inertia vs K, pick the 'elbow' where the curve flattens</div>`, code:`for (k of [1..8]) plot(k, kmeans(data, k).inertia);` },
+  { title:"8. Strengths and limits", why:"K-Means is fast, simple, and scales to millions of points, which is why it's everywhere. But it makes strong assumptions: it expects clusters that are roughly round, similar in size, and similar in density, because it judges everything by straight-line distance to a centre. Long thin shapes, nested rings, or one giant blob beside one tiny one all fool it. When your clusters aren't blobs, reach for DBSCAN or a Gaussian mixture instead.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">great for round, similar-size blobs &nbsp;|&nbsp; struggles with rings, snakes, uneven sizes</div>`, code:`// assumes spherical, comparable-size clusters (Euclidean distance)` },
+  { title:"9. Scale your features first", why:"K-Means measures distance, and distance is dominated by whatever feature has the largest numeric range. If one column is income in the tens of thousands and another is age in tens, income alone decides every cluster and age is ignored. Standardise the features first — subtract the mean and divide by the standard deviation — so each one contributes fairly. Skipping this is the single most common K-Means mistake.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">unscaled? the biggest-range feature hijacks every distance — scale first!</div>`, code:`X = StandardScaler().fit_transform(X);   // ALWAYS before K-Means` },
+  { title:"10. Where it's used in the real world", why:"Clustering shows up anywhere you want to find natural groups without labels. Marketers use it for customer segmentation — splitting buyers into behavioural groups. Image tools use it for colour compression, replacing millions of colours with the K most representative ones. It powers document and topic grouping, and analysts use it to bucket events so that anything left far from every centre stands out as a possible anomaly. Same loop, endless uses.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Assign, move, repeat — finding groups in data nobody labelled.</p></div>`, code:`// segmentation · image compression · topic grouping · anomaly buckets` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+function copy(btn) {
+  const pre = btn.parentElement.querySelector("pre");
+  navigator.clipboard.writeText(pre.textContent);
+  const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => btn.textContent = o, 1500);
+}
+</script>
+</body>
+</html>

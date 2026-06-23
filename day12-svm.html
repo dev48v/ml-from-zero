@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 12 — Support Vector Machines</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .copy-btn:hover { background:#1e293b; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; cursor:crosshair; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 12</div>
+      <h1 class="text-xl font-bold">📐 Support Vector Machines — The Widest-Margin Classifier</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Click to add points and watch the widest "street" appear</h2>
+      <p class="text-slate-500 text-center mb-6">SVM finds the line with the <b>widest margin</b> between the two classes. Only the closest points — the <b>support vectors</b> (circled) — hold the street in place. Everything else could move freely and the line wouldn't budge.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 flex justify-center"><canvas id="c" width="480" height="360"></canvas></div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="text-slate-500 mb-1">Click on the canvas to add a point of:</div>
+            <div class="flex gap-2">
+              <button id="clsA" class="flex-1 py-2 rounded-lg font-semibold text-sm border-2 border-sky-500 bg-sky-50 text-sky-700">● Blue</button>
+              <button id="clsB" class="flex-1 py-2 rounded-lg font-semibold text-sm border-2 border-slate-200 text-slate-600">● Red</button>
+            </div>
+            <div class="flex justify-between pt-2"><span class="text-slate-500">C (margin softness)</span><span id="cval" class="font-bold text-sky-600">1.0</span></div>
+            <input id="cslider" type="range" min="-2" max="2" step="0.1" value="0" class="w-full accent-sky-600" />
+            <p class="text-[11px] text-slate-400 leading-snug">Low&nbsp;C = wide, forgiving street (tolerates misclassified points). High&nbsp;C = tight street that tries hard to classify every point correctly.</p>
+            <div class="flex justify-between pt-2"><span class="text-slate-500">Support vectors</span><span id="svc" class="font-bold text-sky-600">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Margin width</span><span id="mw" class="font-bold text-sky-600">—</span></div>
+          </div>
+          <label class="flex items-center gap-2 text-sm bg-white rounded-xl border border-slate-200 p-3 cursor-pointer">
+            <input id="rbf" type="checkbox" class="accent-sky-600 w-4 h-4" />
+            <span>🌀 RBF kernel + circular data <span class="text-slate-400">(non-linear)</span></span>
+          </label>
+          <button id="reset" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 New data</button>
+          <p class="text-xs text-slate-400">Toggle the kernel on: a straight line can never split a ring inside a ring, but the <b>kernel trick</b> bends the space so a curved boundary appears. The math never leaves 2D — it just measures distances differently.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How an SVM works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">A linear SVM from scratch: define the hinge loss, descend on <b>w</b> and <b>b</b>, then predict and draw the widest street.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The data: points with labels +1 / −1</h3></div>
+        <div class="relative">
+<pre>// each point is [x1, x2]; label y is +1 or -1 (NOT 0/1 — the sign matters)
+const data = [
+  { x: [0.2, 0.8], y: +1 },
+  { x: [0.9, 0.3], y: -1 },
+  // ...
+];</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The model: a line w·x + b</h3></div>
+        <div class="relative">
+<pre>let w = [0, 0], b = 0;                       // start flat
+const score   = x => w[0]*x[0] + w[1]*x[1] + b;   // signed distance-ish
+const predict = x => (score(x) >= 0 ? +1 : -1);</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The hinge loss: penalise points inside the margin</h3></div>
+        <div class="relative">
+<pre>// loss = ½‖w‖²  +  C · Σ max(0, 1 − y·(w·x + b))
+//          ↑ wide margin            ↑ pay only when a point
+//                                     is wrong OR inside the street
+function loss(C) {
+  const reg = 0.5 * (w[0]*w[0] + w[1]*w[1]);
+  const hinge = data.reduce((s, p) =>
+    s + Math.max(0, 1 - p.y * score(p.x)), 0);
+  return reg + C * hinge;
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Gradient descent on w and b</h3></div>
+        <div class="relative">
+<pre>function step(C, lr) {
+  let dw = [w[0], w[1]], db = 0;             // gradient of ½‖w‖² is w
+  for (const p of data) {
+    if (p.y * score(p.x) < 1) {              // point violates the margin
+      dw[0] -= C * p.y * p.x[0];
+      dw[1] -= C * p.y * p.x[1];
+      db    -= C * p.y;
+    }                                        // else: only the ‖w‖² term pulls
+  }
+  w[0] -= lr * dw[0];  w[1] -= lr * dw[1];  b -= lr * db;
+}
+for (let i = 0; i < 2000; i++) step(1.0, 0.01);   // train</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Find the support vectors</h3></div>
+        <div class="relative">
+<pre>// support vectors = the points sitting ON or inside the margin.
+// they are the only points that ever changed w & b above.
+const supportVectors = data.filter(p =>
+  p.y * score(p.x) <= 1 + 1e-3);
+const marginWidth = 2 / Math.hypot(w[0], w[1]);   // street width = 2/‖w‖</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Plot the boundary and the two margin lines</h3></div>
+        <div class="relative">
+<pre>// decision boundary:  w·x + b = 0
+// margin lines:        w·x + b = +1   and   w·x + b = −1
+// solve for x2 given x1:  x2 = -(w0·x1 + b - level) / w1
+function lineY(x1, level) { return -(w[0]*x1 + b - level) / w[1]; }
+drawLine(lineY(0, 0),  lineY(1, 0),  "solid");    // boundary
+drawLine(lineY(0, +1), lineY(1, +1), "dashed");   // margin edge
+drawLine(lineY(0, -1), lineY(1, -1), "dashed");   // margin edge</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Go non-linear: the kernel trick</h3></div>
+        <div class="relative">
+<pre>// can't split a ring with a line? swap dot-products for a KERNEL.
+// RBF kernel = "how close are two points" (1 if identical, →0 if far)
+const rbf = (a, b, g = 8) =>
+  Math.exp(-g * ((a[0]-b[0])**2 + (a[1]-b[1])**2));
+// the math stays 2D, but distances are measured so a curved
+// boundary in the original space becomes a flat one in kernel space.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">In the real world: scikit-learn</h3></div>
+        <div class="relative">
+<pre>from sklearn.svm import SVC
+
+clf = SVC(kernel="rbf", C=1.0, gamma="scale")   # or kernel="linear"
+clf.fit(X, y)
+clf.predict(X_new)
+clf.support_vectors_      # the points that define the boundary</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 12 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Widest margin, support vectors, the kernel trick — the geometry of classification. Next up: PCA and gradient boosting.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== SUPPORT VECTOR MACHINE =====
+const c=document.getElementById("c"), ctx=c.getContext("2d"), PAD=24;
+const C0="#38bdf8", C1="#fb7185";   // blue=+1, red=-1
+const px=v=>PAD+v*(c.width-2*PAD), py=v=>(c.height-PAD)-v*(c.height-2*PAD);
+const ux=p=>(p-PAD)/(c.width-2*PAD), uy=p=>((c.height-PAD)-p)/(c.height-2*PAD);
+let pts=[], curClass=1, useRBF=false, C=1.0;
+// linear model
+let w=[0,0], b=0;
+// rbf model (dual): alpha per point
+let alpha=[];
+
+function genLinear(){
+  pts=[];
+  for(let i=0;i<14;i++){ const a=0.10+Math.random()*0.30, bb=0.55+Math.random()*0.35; pts.push({x:[a,bb],y:1}); }
+  for(let i=0;i<14;i++){ const a=0.55+Math.random()*0.35, bb=0.10+Math.random()*0.35; pts.push({x:[a,bb],y:-1}); }
+}
+function genCircles(){
+  pts=[];
+  for(let i=0;i<22;i++){ const t=Math.random()*Math.PI*2, r=0.05+Math.random()*0.10; pts.push({x:[0.5+r*Math.cos(t),0.5+r*Math.sin(t)],y:1}); }
+  for(let i=0;i<30;i++){ const t=Math.random()*Math.PI*2, r=0.30+Math.random()*0.08; pts.push({x:[0.5+r*Math.cos(t),0.5+r*Math.sin(t)],y:-1}); }
+}
+
+// ----- LINEAR SVM: subgradient descent on  ½‖w‖² + C·Σ hinge -----
+function trainLinear(){
+  w=[0,0]; b=0;
+  const lr=0.02;
+  for(let it=0; it<4000; it++){
+    let dw0=w[0], dw1=w[1], db=0;
+    for(const p of pts){
+      const s=w[0]*p.x[0]+w[1]*p.x[1]+b;
+      if(p.y*s < 1){ dw0-=C*p.y*p.x[0]; dw1-=C*p.y*p.x[1]; db-=C*p.y; }
+    }
+    w[0]-=lr*dw0; w[1]-=lr*dw1; b-=lr*db;
+  }
+}
+const scoreLin=x=>w[0]*x[0]+w[1]*x[1]+b;
+
+// ----- RBF SVM (dual): coordinate ascent on the kernel Gram matrix -----
+const GAMMA=14;
+const rbf=(a,bb)=>Math.exp(-GAMMA*((a[0]-bb[0])**2+(a[1]-bb[1])**2));
+let bRBF=0, K=[];
+function trainRBF(){
+  const n=pts.length;
+  K=Array.from({length:n},(_,i)=>pts.map((_,j)=>rbf(pts[i].x,pts[j].x)));
+  alpha=new Array(n).fill(0);
+  const Ccap=C, lr=0.6;
+  // projected gradient ascent on dual:  maxΣα - ½ΣΣ αi αj yi yj K, 0≤α≤C
+  for(let it=0; it<600; it++){
+    for(let i=0;i<n;i++){
+      let sum=0;
+      for(let j=0;j<n;j++) sum+=alpha[j]*pts[j].y*K[i][j];
+      let grad=1 - pts[i].y*sum;
+      alpha[i]+=lr*grad;
+      if(alpha[i]<0)alpha[i]=0; if(alpha[i]>Ccap)alpha[i]=Ccap;
+    }
+  }
+  // bias from on-margin support vectors (0 < α < C)
+  let bs=0, cnt=0;
+  for(let i=0;i<n;i++){
+    if(alpha[i]>1e-4 && alpha[i]<Ccap-1e-4){
+      let sum=0; for(let j=0;j<n;j++) sum+=alpha[j]*pts[j].y*K[i][j];
+      bs+=pts[i].y-sum; cnt++;
+    }
+  }
+  bRBF = cnt? bs/cnt : 0;
+}
+function scoreRBF(x){
+  let s=bRBF;
+  for(let j=0;j<pts.length;j++) if(alpha[j]>1e-5) s+=alpha[j]*pts[j].y*rbf(pts[j].x,x);
+  return s;
+}
+
+function train(){ if(useRBF) trainRBF(); else trainLinear(); }
+function score(x){ return useRBF? scoreRBF(x): scoreLin(x); }
+function isSV(p,i){
+  if(useRBF) return alpha[i]>1e-3;
+  return p.y*scoreLin(p.x) <= 1+0.04;     // on/inside the margin
+}
+
+function draw(){
+  ctx.clearRect(0,0,c.width,c.height); ctx.fillStyle="#020617"; ctx.fillRect(0,0,c.width,c.height);
+  // shaded decision regions
+  const GX=64,GY=48,cw=(c.width-2*PAD)/GX,ch=(c.height-2*PAD)/GY;
+  for(let i=0;i<GX;i++)for(let j=0;j<GY;j++){
+    const a=(i+0.5)/GX,bb=(j+0.5)/GY; const s=score([a,bb]);
+    ctx.fillStyle = s>=0 ? "rgba(56,189,248,0.16)" : "rgba(251,113,133,0.16)";
+    ctx.fillRect(px(a-0.5/GX),py(bb+0.5/GY),cw+1,ch+1);
+  }
+  if(!useRBF){
+    drawLinearLines();
+  } else {
+    drawRBFContour();
+  }
+  // points (support vectors get a white ring)
+  for(let i=0;i<pts.length;i++){ const p=pts[i];
+    if(isSV(p,i)){ ctx.beginPath(); ctx.arc(px(p.x[0]),py(p.x[1]),8,0,Math.PI*2); ctx.strokeStyle="#fff"; ctx.lineWidth=2.5; ctx.stroke(); }
+    ctx.fillStyle=p.y===1?C0:C1; ctx.strokeStyle="#020617"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(px(p.x[0]),py(p.x[1]),4.5,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  }
+  updateStats();
+}
+
+function drawLinearLines(){
+  if(Math.abs(w[1])<1e-6 && Math.abs(w[0])<1e-6) return;
+  const lineY=(x1,level)=>(level - w[0]*x1 - b)/w[1];
+  // boundary (solid) + margins (dashed) — clip to [0,1] in canvas space
+  const seg=(level,dash,col)=>{
+    ctx.save(); ctx.beginPath(); ctx.rect(px(0),py(1),px(1)-px(0),py(0)-py(1)); ctx.clip();
+    ctx.beginPath();
+    if(Math.abs(w[1])>=Math.abs(w[0])){ ctx.moveTo(px(-0.2),py(lineY(-0.2,level))); ctx.lineTo(px(1.2),py(lineY(1.2,level))); }
+    else { const lineX=(x2)=>(level - w[1]*x2 - b)/w[0]; ctx.moveTo(px(lineX(-0.2)),py(-0.2)); ctx.lineTo(px(lineX(1.2)),py(1.2)); }
+    ctx.setLineDash(dash); ctx.strokeStyle=col; ctx.lineWidth=dash.length?1.5:2.5; ctx.stroke();
+    ctx.restore();
+  };
+  // margin street fill
+  seg(1,[6,5],"rgba(226,232,240,0.65)");
+  seg(-1,[6,5],"rgba(226,232,240,0.65)");
+  seg(0,[],"#e2e8f0");
+}
+
+function drawRBFContour(){
+  // trace the boundary score=0 by marching the grid edges (simple thresholding)
+  const GX=120,GY=90;
+  ctx.fillStyle="#f1f5f9";
+  let prev=[];
+  for(let i=0;i<=GX;i++){
+    prev[i]=score([i/GX,0]);
+  }
+  for(let j=1;j<=GY;j++){
+    let row=[];
+    for(let i=0;i<=GX;i++){
+      const a=i/GX, bb=j/GY, s=score([a,bb]); row[i]=s;
+      // mark cells where sign flips vs left or up neighbour → boundary
+      if(i>0 && Math.sign(row[i])!==Math.sign(row[i-1])) dot(px((i-0.5)/GX),py(bb));
+      if(Math.sign(s)!==Math.sign(prev[i])) dot(px(a),py((j-0.5)/GY));
+    }
+    prev=row;
+  }
+  function dot(x,y){ ctx.fillRect(x-0.9,y-0.9,1.8,1.8); }
+}
+
+function updateStats(){
+  document.getElementById("cval").textContent=C.toFixed(C<10?1:0);
+  let svCount=pts.filter((p,i)=>isSV(p,i)).length;
+  document.getElementById("svc").textContent=svCount;
+  if(!useRBF){ const mw=2/Math.hypot(w[0],w[1]); document.getElementById("mw").textContent=isFinite(mw)?mw.toFixed(2):"—"; }
+  else document.getElementById("mw").textContent="(curved)";
+}
+
+// ---- interaction ----
+c.addEventListener("click",e=>{
+  const r=c.getBoundingClientRect();
+  const a=ux((e.clientX-r.left)*(c.width/r.width)), bb=uy((e.clientY-r.top)*(c.height/r.height));
+  if(a<0||a>1||bb<0||bb>1) return;
+  pts.push({x:[a,bb],y:useRBF?(curClass?1:-1):curClass}); train(); draw();
+});
+const clsA=document.getElementById("clsA"), clsB=document.getElementById("clsB");
+function setClass(blue){ curClass=blue?1:-1;
+  clsA.className="flex-1 py-2 rounded-lg font-semibold text-sm border-2 "+(blue?"border-sky-500 bg-sky-50 text-sky-700":"border-slate-200 text-slate-600");
+  clsB.className="flex-1 py-2 rounded-lg font-semibold text-sm border-2 "+(!blue?"border-rose-400 bg-rose-50 text-rose-600":"border-slate-200 text-slate-600");
+}
+clsA.onclick=()=>setClass(true); clsB.onclick=()=>setClass(false);
+document.getElementById("cslider").oninput=function(){ C=Math.pow(10,+this.value); train(); draw(); };
+document.getElementById("rbf").onchange=function(){ useRBF=this.checked; if(useRBF) genCircles(); else genLinear(); setClass(true); train(); draw(); };
+document.getElementById("reset").onclick=()=>{ if(useRBF) genCircles(); else genLinear(); train(); draw(); };
+setClass(true); genLinear(); train(); draw();
+
+// ===== UNDERSTAND STEP-ENGINE =====
+const STEPS = [
+  { title:"1. Classification: draw a dividing line", why:"A classifier's job is to split the plane so blue points land on one side and red on the other. With two features that line is a straight line; with more features it's a flat 'hyperplane'. Given data that the two classes don't overlap, a line that separates them perfectly definitely exists. The interesting question isn't whether a line exists — it's which line.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">two classes → find a line that puts blue on one side, red on the other</div>`, code:`const predict = x => (w·x + b >= 0 ? "blue" : "red");` },
+  { title:"2. Many lines separate — which is best?", why:"If the classes are cleanly apart, there are infinitely many lines that separate them — you could tilt or shift the line a little and still get every point right. But a line that skims right past one class will misclassify the very next new point that lands nearby. We want the safest line, not just any correct one. SVM answers this precisely.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">∞ separating lines exist — most are too close to the points</div>`, code:`// all of these get 100% on training data — but they're not equally safe` },
+  { title:"3. The maximum-margin idea", why:"SVM picks the line that sits as far as possible from BOTH classes — the line with the widest empty gap, called the margin, around it. Think of the boundary as a road: SVM builds the road as wide as it can before it bumps into a point on either side. A wide gap means new points have room to land before they get misclassified, so the model generalises better.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">pick the line with the WIDEST empty 'street' between the classes</div>`, code:`maximize  margin   subject to  every point on the correct side` },
+  { title:"4. The margin = the 'street'", why:"The margin is bounded by two parallel lines, one touching the nearest blue points and one touching the nearest red points. The width of that street equals 2 divided by the length of the weight vector w. So making the margin WIDE is the same as making ‖w‖ SMALL — that's why the SVM objective shrinks w. The decision boundary runs right down the centre of the street.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">street width = 2 / ‖w‖ → maximise margin = minimise ‖w‖</div>`, code:`marginWidth = 2 / Math.hypot(w[0], w[1]);` },
+  { title:"5. Support vectors: only they matter", why:"The only points that actually touch the edges of the street are called support vectors. They alone pin the boundary in place — if you deleted every other point and retrained, you'd get the exact same line. Move a faraway point and nothing changes; move a support vector and the whole street shifts. This is why SVM is memory-light: the model is defined by just a handful of points.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">⊙ circled points hold the street — the rest are irrelevant</div>`, code:`supportVectors = data.filter(p => p.y * score(p.x) <= 1);` },
+  { title:"6. Hard vs soft margin: the C knob", why:"Real data is messy and classes overlap, so demanding a perfectly clean street is impossible. A soft margin lets some points sit inside the street, or even on the wrong side, for a penalty. The C parameter sets the price of those violations: large C means 'classify everyone correctly' (a tight, narrow street), small C means 'keep the street wide even if a few points are misplaced'. Try the slider in the demo.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">low C = wide, forgiving street &nbsp;|&nbsp; high C = tight, strict street</div>`, code:`loss = 0.5*‖w‖²  +  C * Σ violations;   // C trades width vs errors` },
+  { title:"7. The hinge loss", why:"How do we charge for a violation? The hinge loss is max(0, 1 − y·score). If a point is on the correct side AND outside the street, its score comfortably beats 1, the term is zero, and it pays nothing. The moment a point drifts inside the margin or onto the wrong side, the loss grows linearly with how far it strayed. Minimising the hinge loss plus ½‖w‖² is the whole SVM in one line.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">max(0, 1 − y·(w·x+b)) → 0 if safe, grows if it strays inside</div>`, code:`hinge = Math.max(0, 1 - p.y * score(p.x));` },
+  { title:"8. When a line just can't do it", why:"Some data is impossible to split with any straight line — picture one class forming a ring around the other (toggle the demo's circular dataset). No line, no matter how you tilt it, can wrap around a circle. A purely linear SVM is stuck here. We need a way to bend the boundary without abandoning the simple, well-behaved max-margin math.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">🌀 a ring inside a ring — no straight line can ever separate this</div>`, code:`// linearly inseparable → a line scores ~50%, useless` },
+  { title:"9. The kernel trick (RBF)", why:"The kernel trick measures similarity between points instead of raw coordinates. The RBF kernel returns 1 for identical points and fades toward 0 as points get farther apart. Swapping every dot-product for this kernel is mathematically equivalent to lifting the data into a higher dimension where it IS linearly separable — but you never actually compute those new dimensions. The boundary stays max-margin; it just becomes curved back in the original 2D space.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">replace x·x' with K(x,x') → flat boundary 'up there' = curve down here</div>`, code:`const rbf = (a,b,g=8) => Math.exp(-g * dist2(a,b));` },
+  { title:"10. Strengths, weaknesses & when to use", why:"SVMs shine on small-to-medium datasets with clear margins and many features (text, gene data) — they're accurate and defined by only a few support vectors. The downsides: they don't scale well to huge datasets (training is roughly quadratic), the C and gamma knobs need tuning, and they hand you a hard yes/no rather than a clean probability. Reach for an SVM when you have crisp, moderately sized, high-dimensional data; reach for trees or boosting when you have lots of messy tabular rows.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Widest margin, a few support vectors, a kernel to bend space.</p></div>`, code:`// great for small/medium, high-dim, clean-margin data` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+function copy(btn) {
+  const pre = btn.parentElement.querySelector("pre");
+  navigator.clipboard.writeText(pre.textContent);
+  const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => btn.textContent = o, 1500);
+}
+</script>
+</body>
+</html>
