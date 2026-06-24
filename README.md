@@ -1,10 +1,10 @@
 # MachineLearningFromZero
 
-Machine learning from scratch — every algorithm as a live, interactive demo.
+Machine learning from scratch - every algorithm as a live, interactive demo.
 
 🌐 **Live (all days):** https://dev48v.infy.uk/machinelearningfromzero.php
 
-Every lesson is a single, self-contained HTML file with three tabs — 👁 **LOOK** (an interactive demo), 🧠 **UNDERSTAND** (the concept, step by step), 🔨 **BUILD** (do it yourself). No build tools, no install — open any file in a browser.
+Every lesson is a single, self-contained HTML file with three tabs — 👁 **LOOK** (interactive demo), 🧠 **UNDERSTAND** (the concept, step by step), 🔨 **BUILD** (do it yourself). No build tools, no install — open any file in a browser.
 
 ## Days
 - [MachineLearningFromZero · Day 1 — Linear Regression](https://dev48v.infy.uk/ml/day1-linear-regression.html) — `day1-linear-regression.html`
@@ -21,6 +21,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 12 — Support Vector Machines](https://dev48v.infy.uk/ml/day12-svm.html) — `day12-svm.html`
 - [MachineLearningFromZero · Day 13 — K-Means Clustering](https://dev48v.infy.uk/ml/day13-kmeans.html) — `day13-kmeans.html`
 - [MachineLearningFromZero · Day 14 — PCA (Principal Component Analysis)](https://dev48v.infy.uk/ml/day14-pca.html) — `day14-pca.html`
+- [MachineLearningFromZero · Day 15 — Gradient Boosting](https://dev48v.infy.uk/ml/day15-gradient-boosting.html) — `day15-gradient-boosting.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

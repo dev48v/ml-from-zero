@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 15 — Gradient Boosting</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .copy-btn:hover { background:#1e293b; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; cursor:crosshair; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 15</div>
+      <h1 class="text-xl font-bold">🌲 Gradient Boosting — Many Weak Trees, Fixing Each Other</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Watch boosting bend a flat line into the curve, one tree at a time</h2>
+      <p class="text-slate-500 text-center mb-6">Start with a constant guess — the <b>mean</b> of all the points. Each round fits a tiny <b>regression tree</b> to the <b>residuals</b> (the errors still left), then adds a small slice of it to the running prediction, scaled by the <b>learning rate</b>. The sky curve is the ensemble so far; the rose bars are the residuals. Add trees and watch the curve bend to the data while the bars shrink.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 flex justify-center"><canvas id="c" width="480" height="360"></canvas></div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between pt-1"><span class="text-slate-500">Learning rate</span><span id="lrval" class="font-bold text-sky-600">0.30</span></div>
+            <input id="lrslider" type="range" min="5" max="100" step="5" value="30" class="w-full accent-sky-600" />
+            <p class="text-[11px] text-slate-400 leading-snug">How big a step each tree takes. Small steps (0.05–0.3) generalize better but need more trees; big steps fit fast but can overshoot and overfit.</p>
+            <div class="flex justify-between pt-2"><span class="text-slate-500">Trees added</span><span id="nrounds" class="font-bold text-sky-600">0</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Training error (MSE)</span><span id="mse" class="font-bold text-sky-600">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Tree depth</span><span class="font-bold text-slate-400">2 (shallow stump)</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Status</span><span id="status" class="font-bold text-slate-400">flat (mean only)</span></div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="addtree" class="text-sm font-semibold border-2 border-sky-500 bg-sky-50 text-sky-700 rounded-xl py-2 hover:bg-sky-100">▶ add a tree</button>
+            <button id="run" class="text-sm font-semibold bg-sky-600 text-white rounded-xl py-2 hover:bg-sky-700">▶▶ run</button>
+          </div>
+          <button id="reset" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">↺ reset</button>
+          <button id="newdata" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 new data</button>
+          <p class="text-xs text-slate-400">Boosting builds many <b>weak</b> trees <b>sequentially</b> — each one only learns the mistakes the ensemble has left over. That's the opposite of a <b>random forest</b>, which grows many full trees <b>independently in parallel</b> and averages them.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How gradient boosting works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Gradient boosting from scratch: start the prediction at the <b>mean</b>, then loop — compute the <b>residuals</b>, fit a <b>small tree</b> to them, add <b>learning-rate × tree</b> to the running prediction, repeat. A handful of honest steps and you've built the algorithm behind XGBoost.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The data + a weak learner (a shallow tree)</h3></div>
+        <div class="relative">
+<pre>// regression: predict a continuous y from features X.
+const X = [[0.1],[0.4],[0.6],[0.9],[1.2],[1.5],[1.8],[2.1]];
+const y = [0.2, 0.9, 1.1, 0.4,-0.3,-0.8,-0.5, 0.6];
+
+// a "weak learner" = a tiny tree, depth 1-3. on its own it's
+// barely better than guessing — that's the point. boosting
+// turns a crowd of these weaklings into one strong predictor.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Initialise the prediction = the mean</h3></div>
+        <div class="relative">
+<pre>// the dumbest possible model: predict the average for everyone.
+// for squared-error loss the mean is provably the best constant.
+// every tree from here on only has to fix what this leaves wrong.
+const n = y.length;
+const base = y.reduce((s, v) => s + v, 0) / n;   // F0(x) = mean
+let pred = Array(n).fill(base);                  // running prediction
+const lr = 0.3;                                  // learning rate (shrinkage)
+const trees = [];                                // the ensemble we build up</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Compute the residuals (what's still wrong)</h3></div>
+        <div class="relative">
+<pre>// residual = the error still left after the current ensemble.
+// for squared-error loss this is exactly the negative gradient,
+// which is why the method is called *gradient* boosting.
+// the NEXT tree's whole job is to predict these residuals.
+function residuals(y, pred) {
+  return y.map((yi, i) => yi - pred[i]);   // r_i = y_i - F(x_i)
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Fit a small tree to the residuals</h3></div>
+        <div class="relative">
+<pre>// fit a shallow regression tree to predict r from X. a tree
+// splits the feature into regions and predicts a constant
+// (the mean residual) inside each region. depth 2 ≈ 4 leaves.
+function fitStump(X, r) {
+  // pick the split that most reduces the residual variance,
+  // then store the mean residual on each side as the leaf value.
+  const best = bestSplit(X, r);              // {feature, threshold}
+  const left = mean(r.filter((_, i) => X[i][best.feature] <  best.threshold));
+  const right= mean(r.filter((_, i) => X[i][best.feature] >= best.threshold));
+  return { ...best, left, right };
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Add learning-rate × tree to the prediction</h3></div>
+        <div class="relative">
+<pre>// don't trust any one tree fully — take only a small step toward
+// it. the learning rate (shrinkage) keeps each correction modest,
+// so the ensemble inches toward the answer and generalizes better.
+function predictTree(tree, x) {
+  return x[tree.feature] < tree.threshold ? tree.left : tree.right;
+}
+function addTree(tree) {
+  trees.push(tree);
+  for (let i = 0; i < n; i++)
+    pred[i] += lr * predictTree(tree, X[i]);   // F = F + lr · tree
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Loop — and stop early</h3></div>
+        <div class="relative">
+<pre>// repeat: residuals → fit tree → add it. each round shrinks the
+// error a little more. watch a VALIDATION error, not just training:
+// when it stops dropping, stop adding trees (early stopping) —
+// otherwise the ensemble starts memorising noise and overfits.
+const MAX_TREES = 200;
+for (let m = 0; m < MAX_TREES; m++) {
+  const r = residuals(y, pred);
+  addTree(fitStump(X, r));
+  const trainMSE = mean(r.map(e => e * e));
+  // if validationMSE has not improved for K rounds → break;
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Predict = mean + sum of all the steps</h3></div>
+        <div class="relative">
+<pre>// to score a NEW point, start at the base mean and add every
+// tree's contribution, each scaled by the same learning rate.
+// the final model is just one big sum of tiny corrections.
+function predict(x) {
+  let f = base;
+  for (const tree of trees) f += lr * predictTree(tree, x);
+  return f;
+}
+// F(x) = F0 + lr·tree1(x) + lr·tree2(x) + ... + lr·treeM(x)</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">In the real world: XGBoost</h3></div>
+        <div class="relative">
+<pre>from xgboost import XGBRegressor
+
+model = XGBRegressor(
+    n_estimators=500,        # number of boosting rounds (trees)
+    learning_rate=0.05,      # shrinkage — small + many trees generalizes
+    max_depth=3,             # keep each tree weak/shallow
+    subsample=0.8,           # row sampling = regularization
+    early_stopping_rounds=20 # stop when validation stops improving
+)
+model.fit(X_train, y_train, eval_set=[(X_val, y_val)])
+# LightGBM and CatBoost are the same idea, tuned for speed/categories.
+# Gradient boosting is the go-to winner for TABULAR data.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 15 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Mean, residuals, fit a small tree, add a shrunken step, repeat — a crowd of weak trees becomes the strongest model on tabular data. Next up: more ensembles and model tuning.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== GRADIENT BOOSTING — REAL SEQUENTIAL FIT ON 1-D REGRESSION =====
+const c=document.getElementById("c"), ctx=c.getContext("2d"), PAD=34;
+const SKY="#38bdf8", ROSE="#fb7185";
+// data lives in x∈[0,1], y∈[-1,1]; map to canvas pixels
+const px=x=>PAD+x*(c.width-2*PAD);
+const py=y=>(c.height/2) - y*((c.height-2*PAD)/2);   // y=0 in the middle
+
+let X=[], Y=[];                 // training points
+let lr=0.30;                    // learning rate
+let base=0;                     // initial constant prediction (mean of Y)
+let trees=[];                   // ensemble of shallow regression trees
+let pred=[];                    // current ensemble prediction at each training x
+let rounds=0, anim=null;
+const MAX_DEPTH=2;              // shallow tree (a few leaves)
+
+// standard-normal sample (Box–Muller) for noise
+function gauss(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+// true underlying wiggly curve (sine) — we only ever SEE noisy samples of it
+function trueCurve(x){ return 0.75*Math.sin(x*Math.PI*2.1); }
+
+function genData(){
+  X=[]; Y=[];
+  const n=30;
+  for(let i=0;i<n;i++){
+    const x=Math.random();
+    const y=trueCurve(x)+gauss()*0.16;            // sine + noise
+    X.push(x); Y.push(y);
+  }
+  reset();
+}
+
+function reset(){
+  base = Y.reduce((s,v)=>s+v,0)/Y.length;          // start at the mean
+  pred = X.map(()=>base);
+  trees=[]; rounds=0;
+  draw();
+}
+
+// ---- shallow regression tree fit to residuals ----
+// recursively split the x-range to most reduce residual variance, up to MAX_DEPTH.
+function mean(arr){ return arr.length? arr.reduce((s,v)=>s+v,0)/arr.length : 0; }
+
+function buildTree(idx, r, depth){
+  // idx = indices of training points in this node; predict the mean residual here
+  const leafVal = mean(idx.map(i=>r[i]));
+  if(depth>=MAX_DEPTH || idx.length<4){
+    return { leaf:true, value:leafVal };
+  }
+  // find best threshold on x that minimises summed squared error of the two sides
+  let bestErr=Infinity, bestThr=null, bestL=null, bestR=null;
+  const xs=idx.map(i=>X[i]).slice().sort((a,b)=>a-b);
+  for(let k=0;k<xs.length-1;k++){
+    const thr=(xs[k]+xs[k+1])/2;
+    const L=idx.filter(i=>X[i]<thr), R=idx.filter(i=>X[i]>=thr);
+    if(!L.length||!R.length) continue;
+    const mL=mean(L.map(i=>r[i])), mR=mean(R.map(i=>r[i]));
+    let err=0;
+    for(const i of L) err+=(r[i]-mL)**2;
+    for(const i of R) err+=(r[i]-mR)**2;
+    if(err<bestErr){ bestErr=err; bestThr=thr; bestL=L; bestR=R; }
+  }
+  if(bestThr===null) return { leaf:true, value:leafVal };
+  return {
+    leaf:false, threshold:bestThr,
+    left:  buildTree(bestL, r, depth+1),
+    right: buildTree(bestR, r, depth+1)
+  };
+}
+function predictTree(node, x){
+  while(!node.leaf) node = x<node.threshold ? node.left : node.right;
+  return node.value;
+}
+
+// ---- one boosting round: residuals → fit tree → add lr·tree ----
+function addTree(){
+  const r = X.map((_,i)=>Y[i]-pred[i]);            // residuals (negative gradient)
+  const tree = buildTree(X.map((_,i)=>i), r, 0);   // fit shallow tree to residuals
+  trees.push(tree);
+  for(let i=0;i<X.length;i++) pred[i]+=lr*predictTree(tree,X[i]);  // F = F + lr·tree
+  rounds++;
+  draw();
+}
+
+// evaluate full ensemble at an arbitrary x (for drawing the smooth curve)
+function ensembleAt(x){
+  let f=base;
+  for(const t of trees) f+=lr*predictTree(t,x);
+  return f;
+}
+function mse(){
+  let s=0; for(let i=0;i<X.length;i++){ const e=Y[i]-pred[i]; s+=e*e; }
+  return s/X.length;
+}
+
+function draw(){
+  ctx.clearRect(0,0,c.width,c.height); ctx.fillStyle="#020617"; ctx.fillRect(0,0,c.width,c.height);
+
+  // zero / baseline axis
+  ctx.strokeStyle="#1e293b"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(PAD,py(0)); ctx.lineTo(c.width-PAD,py(0)); ctx.stroke();
+
+  // residual error bars (rose): vertical line from each point to the prediction
+  ctx.strokeStyle=ROSE+"99"; ctx.lineWidth=1.5;
+  for(let i=0;i<X.length;i++){
+    ctx.beginPath(); ctx.moveTo(px(X[i]),py(Y[i])); ctx.lineTo(px(X[i]),py(pred[i])); ctx.stroke();
+  }
+
+  // the ensemble prediction curve (sky), sampled densely across x
+  ctx.strokeStyle=SKY; ctx.lineWidth=2.5; ctx.beginPath();
+  for(let s=0;s<=120;s++){
+    const x=s/120, y=ensembleAt(x);
+    if(s===0) ctx.moveTo(px(x),py(y)); else ctx.lineTo(px(x),py(y));
+  }
+  ctx.stroke();
+
+  // the training points
+  for(let i=0;i<X.length;i++){
+    ctx.fillStyle="#fff"; ctx.strokeStyle="#020617"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(px(X[i]),py(Y[i]),3.4,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  }
+
+  updateStats();
+}
+
+function updateStats(){
+  document.getElementById("lrval").textContent=lr.toFixed(2);
+  document.getElementById("nrounds").textContent=rounds;
+  document.getElementById("mse").textContent=mse().toFixed(4);
+  const st=document.getElementById("status");
+  if(rounds===0){ st.textContent="flat (mean only)"; st.className="font-bold text-slate-400"; }
+  else if(rounds> 90 || (lr>=0.8 && rounds>40)){ st.textContent="⚠ overfitting (chasing noise)"; st.className="font-bold text-rose-500"; }
+  else if(rounds<15){ st.textContent="learning…"; st.className="font-bold text-slate-500"; }
+  else { st.textContent="✓ fitting the curve"; st.className="font-bold text-sky-600"; }
+}
+
+// ---- interaction ----
+document.getElementById("addtree").onclick=()=>{ if(anim) return; addTree(); };
+document.getElementById("run").onclick=()=>{
+  if(anim){ clearInterval(anim); anim=null; return; }
+  anim=setInterval(()=>{
+    addTree();
+    if(rounds>=120){ clearInterval(anim); anim=null; }
+  },90);
+};
+document.getElementById("reset").onclick=()=>{ if(anim){clearInterval(anim);anim=null;} reset(); };
+document.getElementById("newdata").onclick=()=>{ if(anim){clearInterval(anim);anim=null;} genData(); };
+document.getElementById("lrslider").oninput=function(){
+  lr=+this.value/100;
+  if(anim){clearInterval(anim);anim=null;}
+  reset();                                          // restart with new step size
+};
+// click canvas to add a training point (in data coords), then restart fit
+c.addEventListener("click",e=>{
+  const r=c.getBoundingClientRect();
+  const x=( (e.clientX-r.left)*(c.width/r.width) - PAD)/(c.width-2*PAD);
+  const yPix=(e.clientY-r.top)*(c.height/r.height);
+  const y=( (c.height/2) - yPix )/((c.height-2*PAD)/2);
+  if(x<0||x>1||y<-1.2||y>1.2) return;
+  if(anim){clearInterval(anim);anim=null;}
+  X.push(x); Y.push(y); reset();
+});
+genData();
+
+// ===== UNDERSTAND STEP-ENGINE =====
+const STEPS = [
+  { title:"1. Weak learners vs strong", why:"A weak learner is a model only slightly better than random guessing — for boosting that's a very shallow regression tree, often just one to three levels deep (a 'stump'). On its own such a tree is hopeless: it can carve the data into only a handful of crude regions. A strong learner, by contrast, makes confident, accurate predictions. The surprising idea behind boosting is that you can chain a whole crowd of these deliberately-weak trees together and end up with one of the strongest predictors there is.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">one shallow tree = barely-better-than-guessing &nbsp;→&nbsp; chain hundreds &nbsp;→&nbsp; a strong model</div>`, code:`// weak learner = a depth-1..3 tree. weak on purpose.` },
+  { title:"2. The boosting idea: fix the previous errors", why:"Boosting builds its trees one after another, in sequence, and each new tree has a single job: correct the mistakes made by all the trees before it. Instead of every model trying to predict the target directly, model number two cleans up what model one got wrong, model three cleans up what one and two still got wrong, and so on. Because each tree is added on top of the running total, the trees are dependent — you cannot build the fifth without first building the fourth.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">tree₁ → tree₂ fixes tree₁'s errors → tree₃ fixes what's left → … (sequential, dependent)</div>`, code:`// F = F0;  then repeatedly: F = F + (a tree that fixes F's errors)` },
+  { title:"3. Residuals = what's still left to predict", why:"After the current ensemble makes its predictions, the residual for each point is simply the true value minus the prediction — the leftover error. A big positive residual means the model under-shot that point; a big negative one means it over-shot. These residuals are the to-do list for the next tree. Points the model already nails have residuals near zero and need no further attention, so the next tree naturally focuses its effort where the error still lives.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">residual<sub>i</sub> = y<sub>i</sub> − prediction<sub>i</sub> &nbsp;|&nbsp; the error still left on each point</div>`, code:`r = y - pred;   // big |r| = still wrong, ~0 = already handled` },
+  { title:"4. Fit the next tree to the residuals", why:"Here is the trick that makes boosting work: the next tree is not trained on the original target at all — it is trained to predict the residuals. By learning the pattern in the leftover errors, the new tree knows exactly how to nudge each region of the data closer to the truth. Add its predictions to the running total and the overall error drops. Then you recompute fresh residuals and repeat, each tree chipping away at whatever error survives.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">train tree on (X → residuals), not (X → y) &nbsp;→&nbsp; it learns how to shrink the error</div>`, code:`tree = fit(X, r);          // predict the residuals
+pred += tree.predict(X);    // add its correction` },
+  { title:"5. The learning rate (shrinkage)", why:"Rather than trusting each tree's correction in full, boosting multiplies it by a small learning rate — typically 0.01 to 0.3 — before adding it. This 'shrinkage' makes the ensemble take many small, cautious steps toward the answer instead of a few reckless leaps. Small steps almost always generalize better, because no single tree gets to dominate and overshoot. The trade-off is that smaller steps need more trees to reach the same fit, so learning rate and number of trees are tuned together.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">F = F + <b>lr</b> × tree &nbsp;|&nbsp; small lr = small steps = better generalization (but more trees)</div>`, code:`pred += lr * tree.predict(X);   // lr ≈ 0.01–0.3, take small steps` },
+  { title:"6. The ensemble = sum of all the trees", why:"The final model is nothing more than the starting constant plus every tree's contribution, each scaled by the learning rate. To predict a new point you run it through every tree, multiply each output by the learning rate, and add them all to the initial mean. There is no averaging and no voting — it is a straight sum of one base guess and a long series of small corrections that together trace out the target function.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">F(x) = mean + lr·tree₁(x) + lr·tree₂(x) + … + lr·tree<sub>M</sub>(x)</div>`, code:`function predict(x){ let f=base; for(const t of trees) f+=lr*t.predict(x); return f; }` },
+  { title:"7. Bagging / random forest vs boosting", why:"A random forest also combines many trees, but in the opposite way. It builds full, deep trees independently and in parallel, each on a random slice of the data and features, then averages their votes — this is bagging, and it mainly reduces variance. Boosting instead grows shallow trees one at a time in sequence, each dependent on the last, and mainly reduces bias by relentlessly correcting errors. Forests are easy to parallelise and hard to overfit; boosting is usually more accurate but must be tuned with more care.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>Forest:</b> deep trees, parallel, independent, averaged &nbsp;&nbsp;vs&nbsp;&nbsp; <b>Boosting:</b> shallow trees, sequential, dependent, summed</div>`, code:`// forest: trees vote in parallel    |  boosting: trees correct in sequence` },
+  { title:"8. Overfitting, early stopping, regularization", why:"Because each tree chases the remaining error, boosting will eventually start fitting the noise in the training data if you let it add too many trees — training error keeps falling while real-world error climbs back up. The cure is early stopping: track the error on a held-out validation set and stop adding trees the moment it stops improving. On top of that, a small learning rate, shallow trees, and randomly subsampling rows and columns each round all act as regularization, keeping the ensemble honest.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">too many trees → memorises noise → stop when validation error stops dropping (early stopping)</div>`, code:`if (val_error_not_improving_for_K_rounds) break;   // + small lr, shallow trees, subsample` },
+  { title:"9. Why it's called *gradient* boosting", why:"Fitting each tree to the residual y − prediction is the special case for squared-error loss, where the residual happens to equal the negative gradient of the loss. The general algorithm replaces 'residual' with 'negative gradient of whatever loss you chose', so the same machinery handles classification, ranking, and robust losses, not just regression. That is the leap from simple residual-fitting to gradient boosting: each tree takes a step in the direction that most reduces the loss — gradient descent, but in function space.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">residual = negative gradient (for squared error) &nbsp;→&nbsp; swap in any loss's gradient = gradient boosting</div>`, code:`g = -dLoss/dpred;   tree = fit(X, g);   pred += lr * tree.predict(X);` },
+  { title:"10. The real tools + where boosting wins", why:"In practice nobody codes boosting by hand — they reach for XGBoost, LightGBM, or CatBoost, three battle-tested libraries that add clever regularization, histogram-based splits, parallel tree building, and native handling of missing values and categories, all running at high speed. These libraries dominate competitions and production systems alike on structured, tabular data — spreadsheets of rows and columns — where they routinely beat neural networks. For images, audio, and text, deep learning still leads, but for everyday tabular problems, gradient boosting is the default winner.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Mean → residuals → small tree → shrunken step → repeat. XGBoost / LightGBM / CatBoost: the kings of tabular data.</p></div>`, code:`from xgboost import XGBRegressor   # the default winner on tabular data` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+function copy(btn) {
+  const pre = btn.parentElement.querySelector("pre");
+  navigator.clipboard.writeText(pre.textContent);
+  const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => btn.textContent = o, 1500);
+}
+</script>
+</body>
+</html>
