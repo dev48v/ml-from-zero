@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 16 — DBSCAN</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .copy-btn:hover { background:#1e293b; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; cursor:crosshair; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 16</div>
+      <h1 class="text-xl font-bold">🌌 DBSCAN — Clustering by Density (with Noise)</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Watch density carve out clusters of any shape — and flag the loners as noise</h2>
+      <p class="text-slate-500 text-center mb-6">DBSCAN never asks you how many clusters there are. It just grows them outward from <b>dense</b> regions. A point is a <b>core</b> point if at least <b>minPts</b> neighbours sit within radius <b>eps</b>; clusters form by chaining core points together, sweeping in their <b>border</b> neighbours, and leaving the stragglers as <b>noise</b>. Pick the two-moons or rings dataset — shapes K-Means could never split — drag <b>eps</b> and <b>minPts</b>, and watch the clusters and the gray ✕ noise points emerge from the data itself.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 flex justify-center"><canvas id="c" width="480" height="360"></canvas></div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500">Dataset</span></div>
+            <select id="dataset" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-semibold text-slate-700">
+              <option value="moons">two moons</option>
+              <option value="circles">concentric circles</option>
+              <option value="blobs">blobs + noise</option>
+            </select>
+            <div class="flex justify-between pt-2"><span class="text-slate-500">eps (radius)</span><span id="epsval" class="font-bold text-sky-600">0.090</span></div>
+            <input id="epsslider" type="range" min="20" max="200" step="2" value="90" class="w-full accent-sky-600" />
+            <p class="text-[11px] text-slate-400 leading-snug">The neighbourhood radius. Too small and dense regions shatter into noise; too big and separate clusters merge into one blob.</p>
+            <div class="flex justify-between pt-2"><span class="text-slate-500">minPts</span><span id="minptsval" class="font-bold text-sky-600">4</span></div>
+            <input id="minptsslider" type="range" min="2" max="12" step="1" value="4" class="w-full accent-sky-600" />
+            <p class="text-[11px] text-slate-400 leading-snug">How many neighbours (within eps) a point needs to count as a dense <b>core</b> point. Higher = stricter, more points become noise.</p>
+            <div class="flex justify-between pt-2"><span class="text-slate-500">Clusters found</span><span id="nclusters" class="font-bold text-sky-600">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Noise points</span><span id="nnoise" class="font-bold text-slate-400">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Core points</span><span id="ncore" class="font-bold text-slate-400">—</span></div>
+          </div>
+          <button id="run" class="w-full text-sm font-semibold bg-sky-600 text-white rounded-xl py-2 hover:bg-sky-700">▶ run DBSCAN</button>
+          <button id="newdata" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 new data</button>
+          <p class="text-xs text-slate-400">Notice you <b>never</b> typed a number of clusters. DBSCAN groups points that are packed closely together and marks loners as noise — so it finds arbitrary shapes and the cluster count emerges from the data, unlike K-Means.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How DBSCAN works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">DBSCAN from scratch: write a <b>region query</b> that finds every neighbour within <b>eps</b>, label each point <b>core / border / noise</b>, then grow each cluster by a <b>breadth-first expansion</b> over density-connected core points. No K, no centroids — just two knobs and a flood fill.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The data + the two knobs</h3></div>
+        <div class="relative">
+<pre>// points live in 2-D; no labels — clustering is unsupervised.
+const P = [[0.10,0.20],[0.12,0.18],[0.14,0.22],   // a dense clump
+           [0.80,0.78],[0.82,0.81],[0.79,0.83],   // another clump
+           [0.50,0.95]];                           // a lonely outlier
+
+// DBSCAN has exactly two hyper-parameters — and that's all:
+const eps    = 0.08;   // neighbourhood radius
+const minPts = 3;      // neighbours-within-eps needed to be "dense"
+// you do NOT pass the number of clusters — it emerges from the data.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The region query — find the eps-neighbours</h3></div>
+        <div class="relative">
+<pre>// the heart of DBSCAN: given a point, return every OTHER point
+// (its own index included) that sits within distance eps.
+function dist(a, b) {
+  return Math.hypot(a[0] - b[0], a[1] - b[1]);   // Euclidean
+}
+function regionQuery(P, i, eps) {
+  const neighbours = [];
+  for (let j = 0; j < P.length; j++)
+    if (dist(P[i], P[j]) <= eps) neighbours.push(j);
+  return neighbours;                              // includes i itself
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Label core points (the dense ones)</h3></div>
+        <div class="relative">
+<pre>// a point is a CORE point if its eps-neighbourhood is crowded:
+// at least minPts points (counting itself) live within eps.
+// core points are the seeds clusters will grow out from.
+const isCore = P.map((_, i) =>
+  regionQuery(P, i, eps).length >= minPts
+);
+// border points (in a core's neighbourhood but not core themselves)
+// and noise points get sorted out during expansion, below.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Scan every point, seed a cluster from each core</h3></div>
+        <div class="relative">
+<pre>// labels: -1 = noise (default), 0,1,2,… = cluster id.
+const labels = Array(P.length).fill(undefined);   // undefined = unvisited
+let clusterId = 0;
+
+for (let i = 0; i < P.length; i++) {
+  if (labels[i] !== undefined) continue;          // already handled
+  const neigh = regionQuery(P, i, eps);
+  if (neigh.length < minPts) { labels[i] = -1; continue; }  // not core → noise (for now)
+  expandCluster(P, labels, i, neigh, clusterId, eps, minPts); // grow a cluster
+  clusterId++;
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Expand the cluster with a BFS flood-fill</h3></div>
+        <div class="relative">
+<pre>// from a core seed, flood outward: visit every neighbour, claim it,
+// and if a neighbour is ALSO core, add ITS neighbours to the queue.
+// this chains density-reachable core points into one cluster — and
+// is exactly why DBSCAN can trace long, curved, arbitrary shapes.
+function expandCluster(P, labels, i, neigh, cid, eps, minPts) {
+  labels[i] = cid;
+  const queue = [...neigh];
+  for (let q = 0; q < queue.length; q++) {
+    const j = queue[q];
+    if (labels[j] === -1) labels[j] = cid;        // noise → border of THIS cluster
+    if (labels[j] !== undefined) continue;        // already in a cluster
+    labels[j] = cid;
+    const jn = regionQuery(P, j, eps);
+    if (jn.length >= minPts) queue.push(...jn);   // j is core → keep expanding
+  }                                                // else j is a border point, stop
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Read off the result — clusters + noise</h3></div>
+        <div class="relative">
+<pre>// after the scan, every point carries a label:
+//   -1        → noise / outlier  (belongs to no cluster)
+//   0,1,2,…   → which cluster it landed in
+const noise    = labels.filter(l => l === -1).length;
+const nClusters = new Set(labels.filter(l => l >= 0)).size;
+
+console.log(`found ${nClusters} clusters, ${noise} noise points`);
+// the COUNT of clusters was never specified — it fell out of the data,
+// and points that never joined a dense region are honestly flagged noise.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Choosing eps — the k-distance elbow</h3></div>
+        <div class="relative">
+<pre># a principled way to pick eps: for every point, measure the distance
+# to its k-th nearest neighbour (k ≈ minPts), sort those distances,
+# and plot them. the "elbow" — where the curve bends sharply up —
+# is a good eps: below it points are dense, above it they're sparse.
+from sklearn.neighbors import NearestNeighbors
+import numpy as np
+
+k = minPts
+nbrs = NearestNeighbors(n_neighbors=k).fit(X)
+d, _ = nbrs.kneighbors(X)
+kdist = np.sort(d[:, -1])      # distance to k-th neighbour, ascending
+# plot kdist → read eps off the elbow. rule of thumb: minPts ≈ 2 * dims.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">In the real world: scikit-learn DBSCAN</h3></div>
+        <div class="relative">
+<pre>from sklearn.cluster import DBSCAN
+
+db = DBSCAN(eps=0.08, min_samples=4).fit(X)
+labels = db.labels_            # -1 = noise, 0,1,2,… = cluster ids
+n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+core_mask = db.core_sample_indices_   # which points were core
+
+# scikit-learn uses a KD-/ball-tree so region queries are fast.
+# DBSCAN shines for spatial/geo data and anomaly detection; when
+# clusters have very different densities, try HDBSCAN instead.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 16 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Region query, label core/border/noise, flood-fill the dense regions — and clusters of any shape fall out of the data, loners flagged as noise, no K required. Next up: more clustering and dimensionality reduction.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== DBSCAN — REAL DENSITY CLUSTERING ON 2-D POINTS =====
+const c=document.getElementById("c"), ctx=c.getContext("2d"), PAD=24;
+const SKY="#38bdf8";
+// cluster palette (sky-led, distinct hues) + gray for noise
+const PALETTE=["#38bdf8","#fb7185","#a3e635","#fbbf24","#c084fc","#34d399","#f97316","#60a5fa"];
+const NOISE="#64748b";
+// data lives in [0,1]x[0,1]; map to canvas pixels (y flipped so up = larger)
+const px=x=>PAD + x*(c.width-2*PAD);
+const py=y=>(c.height-PAD) - y*(c.height-2*PAD);
+
+let P=[];                       // 2-D points, each [x,y] in [0,1]
+let eps=0.09, minPts=4;         // the two DBSCAN knobs
+let labels=[];                  // per-point: -1 noise, >=0 cluster id, undefined unvisited
+let coreFlags=[];               // per-point: is it a core point?
+let dataset="moons";
+
+// standard-normal sample (Box–Muller) for jitter
+function gauss(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+// ---- dataset generators (all return points in [0,1]^2) ----
+function genMoons(){
+  const pts=[], n=70;
+  for(let i=0;i<n;i++){                            // upper moon
+    const t=Math.PI*(i/(n-1));
+    pts.push([0.30+0.30*Math.cos(t)+gauss()*0.025, 0.55+0.30*Math.sin(t)+gauss()*0.025]);
+  }
+  for(let i=0;i<n;i++){                            // lower moon (shifted + flipped)
+    const t=Math.PI*(i/(n-1));
+    pts.push([0.55+0.30*Math.cos(t)+gauss()*0.025, 0.45-0.30*Math.sin(t)+gauss()*0.025]);
+  }
+  for(let i=0;i<6;i++) pts.push([Math.random(),Math.random()]);   // a few stray noise points
+  return pts;
+}
+function genCircles(){
+  const pts=[];
+  const nOut=120, nIn=64;
+  for(let i=0;i<nOut;i++){                          // outer ring (even angular spacing)
+    const t=2*Math.PI*(i/nOut);
+    pts.push([0.5+0.40*Math.cos(t)+gauss()*0.012, 0.5+0.40*Math.sin(t)+gauss()*0.012]);
+  }
+  for(let i=0;i<nIn;i++){                           // inner ring
+    const t=2*Math.PI*(i/nIn);
+    pts.push([0.5+0.18*Math.cos(t)+gauss()*0.012, 0.5+0.18*Math.sin(t)+gauss()*0.012]);
+  }
+  for(let i=0;i<6;i++) pts.push([Math.random(),Math.random()]);   // noise
+  return pts;
+}
+function genBlobs(){
+  const pts=[], centers=[[0.25,0.30],[0.75,0.28],[0.50,0.75]];
+  for(const ctr of centers)
+    for(let i=0;i<40;i++) pts.push([ctr[0]+gauss()*0.06, ctr[1]+gauss()*0.06]);
+  for(let i=0;i<14;i++) pts.push([Math.random(),Math.random()]);  // scattered noise
+  return pts;
+}
+function genData(){
+  if(dataset==="moons")   P=genMoons();
+  else if(dataset==="circles") P=genCircles();
+  else                    P=genBlobs();
+  // clamp into the unit square so nothing draws off-canvas
+  P=P.map(p=>[Math.min(0.99,Math.max(0.01,p[0])), Math.min(0.99,Math.max(0.01,p[1]))]);
+  runDBSCAN();
+}
+
+// ---- REAL DBSCAN ----
+function dist(a,b){ return Math.hypot(a[0]-b[0], a[1]-b[1]); }
+
+function regionQuery(i){
+  const out=[];
+  for(let j=0;j<P.length;j++) if(dist(P[i],P[j])<=eps) out.push(j);
+  return out;                                      // includes i itself
+}
+
+function runDBSCAN(){
+  const n=P.length;
+  labels=Array(n).fill(undefined);                 // undefined = unvisited
+  coreFlags=Array(n).fill(false);
+  let cid=0;
+  for(let i=0;i<n;i++){
+    if(labels[i]!==undefined) continue;            // already processed
+    const neigh=regionQuery(i);
+    if(neigh.length<minPts){ labels[i]=-1; continue; }   // not core → noise (may be reclaimed as border)
+    // i is a core point — seed a new cluster and flood-fill outward (BFS)
+    coreFlags[i]=true;
+    labels[i]=cid;
+    const queue=neigh.slice();
+    for(let q=0;q<queue.length;q++){
+      const j=queue[q];
+      if(labels[j]===-1) labels[j]=cid;            // previously noise → becomes a border point
+      if(labels[j]!==undefined) continue;          // already assigned
+      labels[j]=cid;
+      const jn=regionQuery(j);
+      if(jn.length>=minPts){ coreFlags[j]=true; for(const k of jn) queue.push(k); }  // j core → expand
+      // else j is a border point: claimed, but we don't expand from it
+    }
+    cid++;
+  }
+  draw();
+}
+
+function draw(){
+  ctx.clearRect(0,0,c.width,c.height); ctx.fillStyle="#020617"; ctx.fillRect(0,0,c.width,c.height);
+
+  // optional eps radius hint ring on the first core point, so eps is visible
+  const firstCore=coreFlags.indexOf(true);
+  if(firstCore>=0){
+    ctx.strokeStyle="#1e293b"; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    ctx.arc(px(P[firstCore][0]),py(P[firstCore][1]), eps*(c.width-2*PAD), 0, Math.PI*2);
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  // draw points: noise = gray ✕, clustered = filled circle (core ring, border lighter)
+  for(let i=0;i<P.length;i++){
+    const x=px(P[i][0]), y=py(P[i][1]);
+    if(labels[i]===-1 || labels[i]===undefined){
+      // noise / outlier — gray ✕
+      ctx.strokeStyle=NOISE; ctx.lineWidth=1.6;
+      ctx.beginPath(); ctx.moveTo(x-4,y-4); ctx.lineTo(x+4,y+4);
+      ctx.moveTo(x+4,y-4); ctx.lineTo(x-4,y+4); ctx.stroke();
+    } else {
+      const col=PALETTE[labels[i]%PALETTE.length];
+      ctx.fillStyle=col;
+      ctx.beginPath(); ctx.arc(x,y, coreFlags[i]?4.2:3.2, 0, Math.PI*2); ctx.fill();
+      if(coreFlags[i]){                            // core points get a white ring
+        ctx.strokeStyle="#e2e8f0"; ctx.lineWidth=1; ctx.stroke();
+      }
+    }
+  }
+  updateStats();
+}
+
+function updateStats(){
+  document.getElementById("epsval").textContent=eps.toFixed(3);
+  document.getElementById("minptsval").textContent=minPts;
+  const clusterIds=new Set(labels.filter(l=>typeof l==="number" && l>=0));
+  const noise=labels.filter(l=>l===-1).length;
+  const cores=coreFlags.filter(Boolean).length;
+  document.getElementById("nclusters").textContent=clusterIds.size;
+  document.getElementById("nnoise").textContent=noise;
+  document.getElementById("ncore").textContent=cores;
+}
+
+// ---- interaction ----
+document.getElementById("run").onclick=()=>runDBSCAN();
+document.getElementById("newdata").onclick=()=>genData();
+document.getElementById("dataset").onchange=function(){
+  dataset=this.value;
+  // sensible default eps per dataset so each one clusters nicely out of the box
+  if(dataset==="moons"){ eps=0.09; minPts=4; }
+  else if(dataset==="circles"){ eps=0.07; minPts=4; }
+  else { eps=0.10; minPts=5; }
+  document.getElementById("epsslider").value=Math.round(eps*1000);
+  document.getElementById("minptsslider").value=minPts;
+  genData();
+};
+document.getElementById("epsslider").oninput=function(){ eps=+this.value/1000; runDBSCAN(); };
+document.getElementById("minptsslider").oninput=function(){ minPts=+this.value; runDBSCAN(); };
+// click canvas to drop a new point, then re-cluster
+c.addEventListener("click",e=>{
+  const r=c.getBoundingClientRect();
+  const x=((e.clientX-r.left)*(c.width/r.width)-PAD)/(c.width-2*PAD);
+  const y=( (c.height-PAD) - (e.clientY-r.top)*(c.height/r.height) )/(c.height-2*PAD);
+  if(x<0||x>1||y<0||y>1) return;
+  P.push([x,y]); runDBSCAN();
+});
+genData();
+
+// ===== UNDERSTAND STEP-ENGINE =====
+const STEPS = [
+  { title:"1. Where K-Means falls short", why:"K-Means is fast and famous, but it carries three baked-in assumptions that often fail. First, you must tell it how many clusters K to look for before you start — guess wrong and the answer is wrong. Second, it draws clusters around centre points, so every cluster comes out roughly round and roughly equal in size; it cannot trace a crescent or a ring. Third, it has no notion of noise — every single point is forced into the nearest cluster, so a lone outlier gets dragged into a group it has nothing to do with. DBSCAN was built to fix exactly these three problems.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">K-Means: must pick K · only round clusters · no concept of noise — every point forced in</div>`, code:`# K-Means(n_clusters=K)  → round blobs, no outliers, you must guess K` },
+  { title:"2. The core idea: clusters are dense regions", why:"DBSCAN flips the question. Instead of asking 'which centre is this point closest to?', it asks 'is this point in a crowded neighbourhood?'. A cluster is simply a region of the space where points are packed tightly together, and clusters are separated by the sparse, near-empty gaps between those crowds. Because density follows the shape of the data, a dense region can be a long curve, a ring, or a blob — any shape at all. This single shift, from distance-to-a-centre to local density, is what gives DBSCAN all of its power.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">cluster = a crowded region · gap = a sparse region · shape can be anything</div>`, code:`// no centroids: a cluster is wherever the points are densely packed` },
+  { title:"3. The two knobs: eps and minPts", why:"DBSCAN has just two parameters, and together they define what 'dense enough' means. eps is a radius: it sets the size of the neighbourhood around each point that DBSCAN looks at. minPts is a count: it sets how many points must fall inside that eps-radius for the neighbourhood to count as crowded. So 'dense' literally means 'at least minPts points within distance eps'. Crucially, the number of clusters is NOT a parameter — you tune how dense a region must be, and the clusters that satisfy that threshold simply appear.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>eps</b> = neighbourhood radius &nbsp;·&nbsp; <b>minPts</b> = how many neighbours = crowded &nbsp;·&nbsp; (you never set K)</div>`, code:`const eps = 0.08;    // radius
+const minPts = 4;    // neighbours needed to be "dense"` },
+  { title:"4. Three kinds of point: core, border, noise", why:"Every point gets sorted into one of three roles. A core point has at least minPts neighbours within eps — it lives deep inside a dense region. A border point has fewer than minPts neighbours of its own, but it sits within eps of some core point, so it clings to the edge of a cluster. A noise point is neither: it has too few neighbours and no core point nearby, so it belongs to no cluster at all and is flagged as an outlier. This three-way split is the whole vocabulary of the algorithm.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>core</b> = ≥ minPts neighbours &nbsp;·&nbsp; <b>border</b> = near a core, but sparse itself &nbsp;·&nbsp; <b>noise</b> = neither (outlier)</div>`, code:`isCore  = neighbours(p).length >= minPts;
+// border = not core, but inside some core's eps-radius
+// noise  = not core, and near no core` },
+  { title:"5. Density-reachable & density-connected", why:"Clusters are stitched together by chaining core points. A point is directly density-reachable from a core point if it sits within that core's eps-radius. Reachability then chains: if A reaches B and B is itself core and reaches C, then A reaches C, and so on down the chain. Two points are density-connected if some core point can reach them both. A DBSCAN cluster is exactly one maximal set of density-connected points — which is why a cluster can snake along a thin curve: each core point only has to reach the next one in the chain, never the far end.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">core → reaches a neighbour → that's core → reaches the next → … a chain becomes one cluster</div>`, code:`// a cluster = all points connected through a chain of core points` },
+  { title:"6. The algorithm: scan, region-query, expand", why:"The procedure is short. Walk through the points one at a time; skip any you've already labelled. For the current point, run a region query to list its eps-neighbours. If that list is smaller than minPts, tentatively mark the point as noise and move on. If it is large enough, the point is core, so start a brand-new cluster and expand it: visit each neighbour, claim it for the cluster, and whenever a neighbour turns out to be core as well, add ITS neighbours to the queue. Keep going until the queue drains — the cluster has grown to fill its entire dense region.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">for each unvisited point → region-query → if core, start a cluster and expand it; else mark noise</div>`, code:`for (i of points) {
+  if (visited[i]) continue;
+  const N = regionQuery(i);
+  if (N.length < minPts) label[i] = NOISE;
+  else expandCluster(i, N, cid++);   // grow it
+}` },
+  { title:"7. Expansion = a breadth-first flood fill", why:"Expanding a cluster is just a breadth-first search over density-reachable points. Put the seed core point's neighbours in a queue. Pop one: if it was previously tagged noise, reclaim it as a border point of this cluster; if it is unlabelled, give it this cluster's id. Then check whether it is core — if so, push all of its neighbours onto the queue so the flood spreads further; if not, it is a border point and the flood stops there. Drain the queue and the cluster has captured exactly its connected dense region — the same flood-fill idea used to paint-bucket a shape.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">seed core → queue its neighbours → claim each → if core, enqueue its neighbours → repeat until queue empties</div>`, code:`const q = [...neigh];
+for (let p = 0; p < q.length; p++) {
+  const j = q[p];
+  label[j] = cid;
+  if (isCore(j)) q.push(...regionQuery(j));  // keep flooding
+}` },
+  { title:"8. No K, and any shape — for free", why:"Two huge wins fall straight out of this design. Because clusters grow from wherever density happens to be, the algorithm discovers however many clusters exist on its own — you never specify K, and the count emerges from the data. And because expansion only ever links a core point to its near neighbours, a cluster can bend and curve to follow the points; it is never forced into a round blob. That is why DBSCAN cleanly separates two interlocking moons or two concentric rings, shapes that defeat K-Means entirely.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">cluster count emerges from the data (no K) &nbsp;·&nbsp; arbitrary shapes: moons, rings, snakes</div>`, code:`// moons & rings → DBSCAN: separate clusters · K-Means: garbage` },
+  { title:"9. Choosing eps and minPts", why:"DBSCAN's quality lives and dies by its two knobs. For minPts a common rule of thumb is roughly twice the number of dimensions, with a floor of about 3 or 4; larger minPts makes the algorithm stricter and pushes more points into noise. For eps, the standard trick is the k-distance plot: for each point measure the distance to its k-th nearest neighbour (k = minPts), sort all those distances, and look for the 'elbow' where the curve suddenly bends upward — that knee is a good eps, the radius that separates the dense interiors from the sparse gaps. Set eps too small and clusters shatter into noise; too large and everything merges into one.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">minPts ≈ 2 × dimensions &nbsp;·&nbsp; eps = the elbow of the sorted k-distance plot</div>`, code:`# sort distance-to-kth-neighbour, pick eps at the elbow
+kdist = sort(distance_to_kth_neighbour(X, k=minPts))` },
+  { title:"10. Strengths, limits, and real-world uses", why:"DBSCAN's strengths are clear: it finds clusters of any shape, it discovers the number of clusters automatically, and it builds outlier detection right in by labelling sparse points as noise. Its limits matter too: a single global eps struggles when different clusters have very different densities, and like all distance-based methods it weakens in high dimensions, where distances grow meaningless. In practice it is the go-to for spatial and geographic clustering — grouping GPS check-ins, crime hotspots, or store locations — and for anomaly detection, where the 'noise' label is exactly the fraud or fault you were hunting for. When densities vary a lot, reach for its successor, HDBSCAN.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Any shape, auto cluster count, built-in noise detection. Great for geo/spatial data and anomaly hunting — when densities vary, use HDBSCAN.</p></div>`, code:`from sklearn.cluster import DBSCAN   # spatial clustering + anomaly detection` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+function copy(btn) {
+  const pre = btn.parentElement.querySelector("pre");
+  navigator.clipboard.writeText(pre.textContent);
+  const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => btn.textContent = o, 1500);
+}
+</script>
+</body>
+</html>
