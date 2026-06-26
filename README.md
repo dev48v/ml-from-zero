@@ -23,6 +23,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 14 — PCA (Principal Component Analysis)](https://dev48v.infy.uk/ml/day14-pca.html) — `day14-pca.html`
 - [MachineLearningFromZero · Day 15 — Gradient Boosting](https://dev48v.infy.uk/ml/day15-gradient-boosting.html) — `day15-gradient-boosting.html`
 - [MachineLearningFromZero · Day 16 — DBSCAN](https://dev48v.infy.uk/ml/day16-dbscan.html) — `day16-dbscan.html`
+- [MachineLearningFromZero · Day 17 — Regularization](https://dev48v.infy.uk/ml/day17-regularization.html) — `day17-regularization.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

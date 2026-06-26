@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 17 — Regularization</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .copy-btn:hover { background:#1e293b; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 17</div>
+      <h1 class="text-xl font-bold">🪢 Regularization — Tame Overfitting With L1 & L2</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Watch a penalty on coefficient size turn a wild overfit into a sensible curve</h2>
+      <p class="text-slate-500 text-center mb-6 max-w-4xl mx-auto">Twelve noisy dots come from a smooth underlying curve. We fit them with a <b>degree-9 polynomial</b> — way too flexible — so with no penalty it wiggles violently through every point: that's <b>overfitting</b>. Regularization adds a term to the loss that punishes large coefficients. Drag <b>λ (lambda)</b> up and the fit smooths toward the true curve; push it too far and it flattens into <b>underfitting</b>. Flip between <b>L2 (Ridge)</b> and <b>L1 (Lasso)</b> and watch the coefficient bars: L2 shrinks them all smoothly, while L1 drives some of them to <b>exactly zero</b> — automatic feature selection.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 space-y-4">
+          <div class="flex justify-center"><canvas id="c" width="520" height="340"></canvas></div>
+          <div class="flex justify-center"><canvas id="bars" width="520" height="150"></canvas></div>
+          <p class="text-center text-[11px] text-slate-400">Top: the data (sky dots), the true curve (dashed gray), and the fitted degree-9 polynomial (sky line). Bottom: the magnitude of each of the 10 coefficients (w₀…w₉) — bars that vanish are coefficients L1 has zeroed out.</p>
+        </div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500">Penalty type</span></div>
+            <select id="penalty" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm font-semibold text-slate-700">
+              <option value="l2">L2 — Ridge (shrink all)</option>
+              <option value="l1">L1 — Lasso (zero some out)</option>
+            </select>
+            <div class="flex justify-between pt-2"><span class="text-slate-500">λ (lambda)</span><span id="lamval" class="font-bold text-sky-600">0.0000</span></div>
+            <input id="lamslider" type="range" min="0" max="100" step="1" value="0" class="w-full accent-sky-600" />
+            <p class="text-[11px] text-slate-400 leading-snug">The penalty strength. λ = 0 means no penalty (pure least-squares → overfit). As λ grows, coefficients are pulled toward zero and the curve smooths; too large and it underfits.</p>
+            <div class="flex justify-between pt-2"><span class="text-slate-500">Train error (MSE)</span><span id="trainerr" class="font-bold text-sky-600">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Test error (held-out)</span><span id="testerr" class="font-bold text-rose-500">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">‖w‖ (coef size)</span><span id="wnorm" class="font-bold text-slate-400">—</span></div>
+            <div class="flex justify-between"><span class="text-slate-500">Non-zero coefs</span><span id="nnz" class="font-bold text-slate-400">—</span></div>
+          </div>
+          <button id="newdata" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 new data</button>
+          <p class="text-xs text-slate-400">Watch the <b>test error</b>: at λ = 0 it's huge (the wiggly fit memorised the noise), it dips to a minimum at a sensible λ (the sweet spot), then climbs again as the curve underfits. That dip is the whole point — trade a little training fit for much better generalization.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How regularization works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Regularized regression from scratch: build <b>polynomial features</b>, solve <b>Ridge</b> in closed form by adding <b>λI</b> to the normal equations, trace the <b>coefficient path</b> as λ sweeps, implement <b>Lasso</b> with coordinate descent so coefficients hit exactly zero, then pick λ honestly with <b>cross-validation</b>. The same two-line idea you'd reach for in scikit-learn — now you'll know what's underneath it.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Build polynomial features</h3></div>
+        <div class="relative">
+<pre>// one input x becomes a row of powers: [1, x, x², …, x^d].
+// a high degree d gives the model lots of flexibility — which is
+// exactly what lets it overfit, and exactly what we'll rein back in.
+function polyFeatures(xs, degree) {
+  return xs.map(x => {
+    const row = [];
+    for (let p = 0; p <= degree; p++) row.push(Math.pow(x, p));
+    return row;                       // [x^0, x^1, …, x^degree]
+  });
+}
+const X = polyFeatures(xs, 9);        // 10 columns (w0…w9)</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Standardize the features first</h3></div>
+        <div class="relative">
+<pre># x⁹ is astronomically larger than x¹, so a single λ would punish
+# them unfairly. center & scale each column to mean 0, std 1 so the
+# penalty hits every coefficient on equal footing. (don't penalise
+# the intercept — fit it separately or on centered targets.)
+mu, sd = X.mean(0), X.std(0)
+Xs = (X - mu) / sd            # every column now ~ N(0, 1)
+# always standardize before Ridge/Lasso — it's not optional.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Ridge (L2) in closed form: add λI</h3></div>
+        <div class="relative">
+<pre>// ordinary least squares solves  w = (XᵀX)⁻¹ Xᵀy.
+// Ridge adds λ·‖w‖² to the loss, and the solution barely changes:
+//        w = (XᵀX + λI)⁻¹ Xᵀy
+// that +λI bumps the diagonal, shrinking every coefficient toward 0
+// AND it makes the matrix invertible even when XᵀX is singular.
+function ridge(X, y, lambda) {
+  const XtX = matMul(transpose(X), X);
+  for (let i = 0; i < XtX.length; i++) XtX[i][i] += lambda;   // + λI
+  const Xty = matVec(transpose(X), y);
+  return solve(XtX, Xty);             // Gaussian elimination
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Trace the coefficient path</h3></div>
+        <div class="relative">
+<pre># sweep λ across many orders of magnitude and record the weights.
+# the "regularization path" shows coefficients shrink toward 0 as λ
+# grows — smoothly for Ridge, and snapping to exactly 0 for Lasso.
+import numpy as np
+lambdas = np.logspace(-4, 2, 50)      # 1e-4 … 1e2
+path = np.array([ridge(Xs, y, lam) for lam in lambdas])
+# plot path[:, j] vs lambdas (log x-axis) to SEE the shrinkage.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Lasso (L1) via coordinate descent</h3></div>
+        <div class="relative">
+<pre>// L1 has no clean closed form — the |w| kink isn't differentiable.
+// coordinate descent fixes that: optimise ONE coefficient at a time,
+// each via a soft-threshold that can snap it to EXACTLY zero.
+function softThreshold(rho, lam) {        // the sparsity-maker
+  if (rho >  lam) return rho - lam;
+  if (rho < -lam) return rho + lam;
+  return 0;                               // |rho| <= lam  →  exactly 0
+}
+function lasso(X, y, lambda, iters = 200) {
+  const n = X.length, d = X[0].length, w = new Array(d).fill(0);
+  for (let t = 0; t < iters; t++)
+    for (let j = 0; j < d; j++) {
+      // residual ignoring feature j, then its correlation rho
+      let rho = 0;
+      for (let i = 0; i < n; i++) {
+        let pred = 0;
+        for (let k = 0; k < d; k++) if (k !== j) pred += X[i][k]*w[k];
+        rho += X[i][j] * (y[i] - pred);
+      }
+      w[j] = softThreshold(rho / n, lambda);   // may become 0
+    }
+  return w;                                // many entries land on 0
+}</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Pick λ by cross-validation</h3></div>
+        <div class="relative">
+<pre># λ is a knob YOU choose — and the honest way is k-fold CV.
+# for each candidate λ, train on k-1 folds, score the held-out fold,
+# average. the λ with the lowest mean validation error wins.
+from sklearn.model_selection import cross_val_score
+best_lam, best_score = None, -1e9
+for lam in lambdas:
+    score = cross_val_score(Ridge(alpha=lam), Xs, y,
+                            cv=5, scoring="neg_mean_squared_error").mean()
+    if score > best_score: best_score, best_lam = score, lam
+# never pick λ on the training error — it always prefers λ = 0.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">In the real world: scikit-learn</h3></div>
+        <div class="relative">
+<pre>from sklearn.linear_model import Ridge, Lasso, ElasticNet
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+
+# Ridge: shrinks everything, keeps all features (alpha == λ)
+ridge = make_pipeline(StandardScaler(), Ridge(alpha=1.0)).fit(X, y)
+
+# Lasso: zeroes weak features → built-in feature selection
+lasso = make_pipeline(StandardScaler(), Lasso(alpha=0.1)).fit(X, y)
+print((lasso[-1].coef_ != 0).sum(), "features kept")
+
+# ElasticNet: blend of both via l1_ratio (1=Lasso, 0=Ridge)
+enet = ElasticNet(alpha=0.1, l1_ratio=0.5).fit(X, y)</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 17 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Add a penalty on coefficient size to the loss, and a wild overfit becomes a sensible fit — Ridge shrinks every weight, Lasso zeroes the useless ones for free feature selection, and λ (tuned by CV) sets how hard you push. Next up: more model tuning and the bias–variance trade-off.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== REGULARIZED POLYNOMIAL REGRESSION — REAL COMPUTATION =====
+const c=document.getElementById("c"), ctx=c.getContext("2d"), PAD=30;
+const bars=document.getElementById("bars"), bx=bars.getContext("2d");
+const SKY="#38bdf8";
+const DEGREE=9;                 // degree-9 polynomial → 10 coefficients (w0..w9)
+
+let trainX=[], trainY=[], testX=[], testY=[];   // raw data in [0,1] x roughly[-1,1]
+let mu=[], sd=[];               // per-feature standardization stats (from train)
+let lambda=0, penalty="l2";
+let w=[];                       // fitted standardized coefficients (length DEGREE+1)
+
+// the smooth underlying function the noisy data is sampled from
+function trueF(x){ return Math.sin(2*Math.PI*x)*0.7; }
+
+// standard-normal sample (Box–Muller) for noise
+function gauss(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+// ---- linear algebra helpers (plain arrays) ----
+function transpose(M){ const r=M.length,cc=M[0].length,T=[]; for(let j=0;j<cc;j++){T[j]=[]; for(let i=0;i<r;i++)T[j][i]=M[i][j];} return T; }
+function matMul(A,B){ const r=A.length,c2=B[0].length,inner=B.length,R=[]; for(let i=0;i<r;i++){R[i]=[]; for(let j=0;j<c2;j++){let s=0; for(let k=0;k<inner;k++)s+=A[i][k]*B[k][j]; R[i][j]=s;}} return R; }
+function matVec(A,v){ return A.map(row=>row.reduce((s,a,k)=>s+a*v[k],0)); }
+// solve M w = b by Gauss–Jordan elimination with partial pivoting
+function gaussSolve(M,b){
+  const n=b.length, A=M.map((row,i)=>row.slice().concat([b[i]]));
+  for(let col=0;col<n;col++){
+    let piv=col; for(let r=col+1;r<n;r++) if(Math.abs(A[r][col])>Math.abs(A[piv][col])) piv=r;
+    [A[col],A[piv]]=[A[piv],A[col]];
+    const d=A[col][col]||1e-12;
+    for(let r=0;r<n;r++){ if(r===col) continue; const f=A[r][col]/d; for(let k=col;k<=n;k++) A[r][k]-=f*A[col][k]; }
+  }
+  const x=new Array(n);
+  for(let i=0;i<n;i++) x[i]=A[i][n]/(A[i][i]||1e-12);
+  return x;
+}
+
+// ---- features + standardization ----
+function polyRow(x){ const row=[]; for(let p=0;p<=DEGREE;p++) row.push(Math.pow(x,p)); return row; }
+function designMatrix(xs){ return xs.map(polyRow); }
+
+function computeStats(M){
+  const cols=M[0].length, n=M.length; mu=[]; sd=[];
+  for(let j=0;j<cols;j++){
+    let m=0; for(let i=0;i<n;i++) m+=M[i][j]; m/=n;
+    let s=0; for(let i=0;i<n;i++) s+=(M[i][j]-m)**2; s=Math.sqrt(s/n);
+    mu[j]=m; sd[j]= (j===0? 1 : (s||1e-9));   // leave intercept column (all 1s) alone
+  }
+}
+function standardize(M){ return M.map(row=>row.map((v,j)=> j===0 ? 1 : (v-mu[j])/sd[j])); }
+
+// ---- the two regularized fits (real computation on standardized features) ----
+function fitRidge(X,y,lam){
+  const Xt=transpose(X), XtX=matMul(Xt,X), Xty=matVec(Xt,y);
+  for(let i=1;i<XtX.length;i++) XtX[i][i]+=lam;   // + λI  (skip intercept i=0)
+  return gaussSolve(XtX,Xty);
+}
+function softThreshold(rho,lam){ if(rho>lam) return rho-lam; if(rho<-lam) return rho+lam; return 0; }
+function fitLasso(X,y,lam){
+  const n=X.length, d=X[0].length, ww=new Array(d).fill(0);
+  // precompute column sums of squares for the coordinate update denominator
+  const colSS=new Array(d).fill(0);
+  for(let j=0;j<d;j++){ let s=0; for(let i=0;i<n;i++) s+=X[i][j]*X[i][j]; colSS[j]=s||1e-9; }
+  for(let t=0;t<400;t++){
+    for(let j=0;j<d;j++){
+      let rho=0;
+      for(let i=0;i<n;i++){
+        let pred=0; for(let k=0;k<d;k++) if(k!==j) pred+=X[i][k]*ww[k];
+        rho+=X[i][j]*(y[i]-pred);
+      }
+      if(j===0) ww[j]=rho/colSS[j];                 // intercept unpenalized
+      else      ww[j]=softThreshold(rho, lam*n)/colSS[j];   // L1 soft-threshold → can be 0
+    }
+  }
+  return ww;
+}
+
+function fit(){
+  const X=standardize(designMatrix(trainX));
+  // map slider 0..100 → λ on a log scale so the sweep covers tiny→large
+  // λ=0 exactly at slider 0 (pure least squares / overfit)
+  w = (penalty==="l2") ? fitRidge(X,trainY,lambda) : fitLasso(X,trainY,lambda);
+  draw();
+}
+
+// predict for a raw x using standardized coefficients
+function predict(x){
+  const row=polyRow(x); let s=0;
+  for(let j=0;j<row.length;j++){ const xj = j===0 ? 1 : (row[j]-mu[j])/sd[j]; s+=xj*w[j]; }
+  return s;
+}
+function mse(xs,ys){ let s=0; for(let i=0;i<xs.length;i++){ const e=predict(xs[i])-ys[i]; s+=e*e; } return s/xs.length; }
+
+// ---- data ----
+function genData(){
+  trainX=[]; trainY=[]; testX=[]; testY=[];
+  // 12 noisy training points spread across [0.04, 0.96]
+  for(let i=0;i<12;i++){ const x=0.04+0.92*(i/11); trainX.push(x); trainY.push(trueF(x)+gauss()*0.18); }
+  // held-out test points at offset positions (unseen during fit)
+  for(let i=0;i<10;i++){ const x=0.09+0.9*(i/9); testX.push(x); testY.push(trueF(x)+gauss()*0.18); }
+  computeStats(designMatrix(trainX));
+  fit();
+}
+
+// ---- drawing ----
+// y data range roughly [-1.1, 1.1]; map to canvas
+const X0=0, X1=1, Y0=-1.3, Y1=1.3;
+const px=x=>PAD + (x-X0)/(X1-X0)*(c.width-2*PAD);
+const py=y=>(c.height-PAD) - (y-Y0)/(Y1-Y0)*(c.height-2*PAD);
+
+function draw(){
+  ctx.clearRect(0,0,c.width,c.height); ctx.fillStyle="#020617"; ctx.fillRect(0,0,c.width,c.height);
+  // axes (y=0 baseline)
+  ctx.strokeStyle="#1e293b"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(PAD,py(0)); ctx.lineTo(c.width-PAD,py(0)); ctx.stroke();
+
+  // true underlying curve (dashed gray)
+  ctx.strokeStyle="#64748b"; ctx.lineWidth=1.5; ctx.setLineDash([5,4]); ctx.beginPath();
+  for(let i=0;i<=200;i++){ const x=i/200; const X=px(x),Y=py(trueF(x)); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }
+  ctx.stroke(); ctx.setLineDash([]);
+
+  // fitted polynomial (sky), clamped vertically so wild overfits stay on-canvas
+  ctx.strokeStyle=SKY; ctx.lineWidth=2.5; ctx.beginPath(); let started=false;
+  for(let i=0;i<=300;i++){
+    const x=i/300; let yv=predict(x);
+    yv=Math.max(Y0+0.02,Math.min(Y1-0.02,yv));   // clamp for display only
+    const X=px(x),Y=py(yv);
+    if(!started){ctx.moveTo(X,Y);started=true;} else ctx.lineTo(X,Y);
+  }
+  ctx.stroke();
+
+  // training points (sky filled)
+  for(let i=0;i<trainX.length;i++){ ctx.fillStyle=SKY; ctx.beginPath(); ctx.arc(px(trainX[i]),py(trainY[i]),4,0,Math.PI*2); ctx.fill(); ctx.strokeStyle="#0c4a6e"; ctx.lineWidth=1; ctx.stroke(); }
+  // test points (hollow rose) so generalization is visible
+  for(let i=0;i<testX.length;i++){ bxDot(ctx,px(testX[i]),py(testY[i])); }
+
+  drawBars();
+  updateStats();
+}
+function bxDot(g,x,y){ g.strokeStyle="#fb7185"; g.lineWidth=1.5; g.beginPath(); g.arc(x,y,3.2,0,Math.PI*2); g.stroke(); }
+
+function drawBars(){
+  bx.clearRect(0,0,bars.width,bars.height); bx.fillStyle="#020617"; bx.fillRect(0,0,bars.width,bars.height);
+  const d=w.length, gap=8, bw=(bars.width-2*PAD-(d-1)*gap)/d;
+  const maxAbs=Math.max(1e-6,...w.map(Math.abs));
+  const base=bars.height-22;
+  for(let j=0;j<d;j++){
+    const x=PAD + j*(bw+gap);
+    const h=(Math.abs(w[j])/maxAbs)*(base-12);
+    const isZero=Math.abs(w[j])<1e-6;
+    bx.fillStyle = isZero ? "#334155" : SKY;
+    bx.fillRect(x, base-h, bw, Math.max(isZero?2:h,2));
+    bx.fillStyle="#64748b"; bx.font="9px monospace"; bx.textAlign="center";
+    bx.fillText("w"+j, x+bw/2, base+12);
+  }
+  bx.fillStyle="#94a3b8"; bx.font="10px sans-serif"; bx.textAlign="left";
+  bx.fillText("|coefficient| — gray bars = zeroed by L1", PAD, 14);
+}
+
+function updateStats(){
+  document.getElementById("lamval").textContent=lambda.toFixed(4);
+  document.getElementById("trainerr").textContent=mse(trainX,trainY).toFixed(4);
+  document.getElementById("testerr").textContent=mse(testX,testY).toFixed(4);
+  const norm=Math.sqrt(w.reduce((s,v)=>s+v*v,0));
+  document.getElementById("wnorm").textContent=norm.toFixed(2);
+  document.getElementById("nnz").textContent=w.filter(v=>Math.abs(v)>=1e-6).length+" / "+w.length;
+}
+
+// ---- interaction ----
+function sliderToLambda(v){ return v===0 ? 0 : Math.pow(10, -4 + (v/100)*5); }   // 0, then 1e-4 … 1e1
+document.getElementById("lamslider").oninput=function(){ lambda=sliderToLambda(+this.value); fit(); };
+document.getElementById("penalty").onchange=function(){ penalty=this.value; fit(); };
+document.getElementById("newdata").onclick=()=>genData();
+genData();
+
+// ===== UNDERSTAND STEP-ENGINE =====
+const STEPS = [
+  { title:"1. Recap: what overfitting looks like", why:"When a model is far more flexible than the data warrants — like fitting a degree-9 polynomial to a dozen noisy points — it stops learning the real pattern and starts memorising the noise. The fitted curve bends and lunges to pass exactly through every training point, which drives the training error down to almost nothing. But on new, unseen data that wild curve is hopeless, because it learned the random wobble of this particular sample rather than the smooth truth underneath. A tell-tale fingerprint of this is that the coefficients become enormous: huge positive and negative weights fighting each other to produce those violent wiggles.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">too flexible → fits the noise → tiny train error, terrible test error → giant see-saw coefficients</div>`, code:`# degree-9 fit, no penalty → wiggles through every point
+w = lstsq(X, y)        # huge +/- coefficients, memorises noise` },
+  { title:"2. The idea: penalize big coefficients", why:"Regularization fixes overfitting by changing what 'best fit' means. Normally we minimise just the error between predictions and targets. Regularization adds a second term — a penalty that grows with the size of the coefficients — so the new loss is error PLUS penalty. Now the model can no longer use giant weights for free: every bit of extra wiggle costs it penalty. The result is a deliberate compromise. The model accepts slightly worse training error in exchange for far smaller, calmer coefficients, and those calmer coefficients generalise much better to data it has never seen.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>loss = fit error + λ · (size of the coefficients)</b><br>minimise both at once → simpler model</div>`, code:`# loss = MSE(prediction, y)  +  lambda * penalty(weights)
+# the penalty pushes weights toward zero` },
+  { title:"3. L2 / Ridge: penalize the sum of squares", why:"Ridge regression uses the squared size of the coefficients as its penalty — the sum of every weight squared, scaled by λ. Squaring punishes big weights much harder than small ones, so Ridge's strongest pressure is on the largest, most unstable coefficients, pulling them sharply down. As λ grows it shrinks every coefficient smoothly toward zero, but essentially never all the way to exactly zero — it keeps all the features, just makes each one quieter. Ridge has a beautiful bonus: because squaring is smooth, the whole thing still has a clean closed-form solution.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>L2 penalty = λ · Σ wⱼ²</b><br>shrinks ALL coefficients smoothly toward 0 — but rarely to exactly 0</div>`, code:`# Ridge penalty: lambda * sum(w_j ** 2)
+# big weights cost the most → smooth shrinkage` },
+  { title:"4. L1 / Lasso: penalize the sum of absolutes", why:"Lasso swaps the squared penalty for the sum of the absolute values of the coefficients, again scaled by λ. This small change has a dramatic effect: instead of just shrinking weights, Lasso drives many of them to exactly zero. A coefficient pinned at exactly zero means that feature is dropped from the model entirely. So Lasso performs automatic feature selection — it hands you back a sparse model that uses only the handful of inputs that actually matter, which is wonderful when you have hundreds of features and suspect most are useless.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>L1 penalty = λ · Σ |wⱼ|</b><br>drives many coefficients to EXACTLY 0 → sparse model = feature selection</div>`, code:`# Lasso penalty: lambda * sum(abs(w_j))
+# many weights snap to EXACTLY 0 → features dropped` },
+  { title:"5. λ controls the strength (bias–variance)", why:"Lambda (λ) is the dial that sets how hard the penalty pushes. At λ = 0 there is no penalty at all, so you are back to the unregularized, overfitting model — high variance, it swings wildly with the data. Crank λ very high and the penalty dominates, crushing every coefficient toward zero until the model is too simple and underfits — high bias, it ignores real structure. The sweet spot sits in between, and it is exactly the bias–variance trade-off made tunable: a little λ buys a big drop in variance for only a small rise in bias, and the test error bottoms out at that balance point.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">λ = 0 → overfit (high variance) &nbsp;·&nbsp; λ huge → underfit (high bias) &nbsp;·&nbsp; best λ = lowest test error</div>`, code:`# small lambda  -> close to overfit
+# large lambda  -> close to underfit
+# tune lambda to minimise held-out error` },
+  { title:"6. Why L1 zeroes out (the geometry)", why:"The reason L1 creates exact zeros while L2 does not comes from the shape of their constraint regions. Picture minimising the error subject to a budget on the coefficients. The L2 budget is a circle (a sphere in higher dimensions) — smooth all around, so the best solution usually touches it at some slanted point where every coordinate is non-zero. The L1 budget is a diamond, and a diamond has sharp corners that poke out exactly along the axes. The error contours are overwhelmingly likely to first touch one of those corners, and a corner sits ON an axis — meaning one or more coefficients are precisely zero. Sharp corners create sparsity.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">L2 = round ball (no corners) → all weights survive &nbsp;·&nbsp; L1 = diamond with corners on the axes → weights snap to 0</div>`, code:`# L1's diamond has corners ON the axes;
+# solutions land on corners -> those coords = 0` },
+  { title:"7. Standardize features first", why:"Regularization is sensitive to the scale of your features, so you almost always standardize them before fitting — subtract each feature's mean and divide by its standard deviation, giving every column mean 0 and variance 1. The reason is that a single λ multiplies every coefficient's penalty equally, but a feature measured in large units (say, x⁹, or income in dollars) naturally needs a tiny coefficient, while a small-unit feature needs a large one. Without standardizing, λ would punish features unfairly based purely on their units. We also leave the intercept out of the penalty, since shrinking the overall offset toward zero makes no sense.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">center & scale every feature to mean 0, std 1 &nbsp;·&nbsp; one λ now penalises all features fairly &nbsp;·&nbsp; don't penalise the intercept</div>`, code:`Xs = (X - X.mean(0)) / X.std(0)   # mean 0, std 1
+# always do this before Ridge / Lasso` },
+  { title:"8. Closed-form Ridge vs iterative Lasso", why:"Because the L2 penalty is smooth, Ridge has an exact, one-shot solution: take the ordinary least-squares formula w = (XᵀX)⁻¹Xᵀy and simply add λ on the diagonal, giving w = (XᵀX + λI)⁻¹Xᵀy. That little +λI both shrinks the weights and, as a bonus, makes the matrix invertible even when features are collinear. Lasso has no such luck — the absolute-value kink is not differentiable at zero, so there's no clean formula. Instead we optimise it iteratively, most simply with coordinate descent: cycle through the coefficients one at a time, and update each with a soft-threshold operator that can clip it to exactly zero. That clip is precisely what produces the sparsity.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>Ridge:</b> w = (XᵀX + λI)⁻¹Xᵀy — one shot &nbsp;·&nbsp; <b>Lasso:</b> coordinate descent + soft-threshold — iterative</div>`, code:`# Ridge: w = inv(X.T@X + lam*I) @ X.T@y     # closed form
+# Lasso: loop coordinates, soft_threshold()  # iterative` },
+  { title:"9. Elastic Net: blend L1 and L2", why:"You don't have to choose between Ridge and Lasso — Elastic Net mixes both penalties together, adding an L1 term and an L2 term controlled by a blend ratio. This combines their best traits. It keeps Lasso's ability to zero out useless features for sparsity, while borrowing Ridge's stability when features are highly correlated. Pure Lasso tends to behave erratically with groups of correlated features — it arbitrarily picks one and drops the rest — whereas Elastic Net's L2 component encourages those correlated features to be kept or dropped together. It's the pragmatic default when you have many features and some of them travel in packs.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>Elastic Net = λ(α·Σ|wⱼ| + (1−α)·Σwⱼ²)</b><br>Lasso's sparsity + Ridge's stability with correlated features</div>`, code:`from sklearn.linear_model import ElasticNet
+ElasticNet(alpha=0.1, l1_ratio=0.5)   # 0.5 = half L1, half L2` },
+  { title:"10. When to use which", why:"Reach for Ridge (L2) as your safe default when you believe most features carry at least a little useful signal and you mainly want to stabilise the model and curb overfitting — it keeps every feature but quietens them all. Reach for Lasso (L1) when you suspect many features are irrelevant and you want the model to pick the important few for you, since the exact zeros give you a compact, interpretable model and built-in feature selection. Reach for Elastic Net when you have lots of features, some heavily correlated, and want sparsity without Lasso's instability. And across all three, always choose λ honestly with cross-validation — never read it off the training error, which will always cheat toward λ = 0.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Ridge to stabilise & keep all features · Lasso to select a sparse few · Elastic Net for correlated feature groups. Tune λ with cross-validation, always.</p></div>`, code:`# Ridge   -> stabilise, keep all features
+# Lasso   -> sparse, automatic feature selection
+# Elastic -> both, for correlated features
+# pick lambda with cross-validation` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+function copy(btn) {
+  const pre = btn.parentElement.querySelector("pre");
+  navigator.clipboard.writeText(pre.textContent);
+  const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => btn.textContent = o, 1500);
+}
+</script>
+</body>
+</html>
