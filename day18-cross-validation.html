@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 18 — Cross-Validation</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .copy-btn:hover { background:#1e293b; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 18</div>
+      <h1 class="text-xl font-bold">🔁 Cross-Validation — Trust Your Score</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Rotate every chunk through validation and average — one number you can trust</h2>
+      <p class="text-slate-500 text-center mb-6 max-w-4xl mx-auto">Twenty data points (the row of blocks) come from a smooth curve plus noise. Pick <b>k</b> and we slice the data into k equal <b>folds</b>, shown as colored segments. Press <b>▶ run CV</b> and each fold takes a turn as the <b>validation set</b> (lifted & highlighted) while the other k−1 folds <b>train</b> a tiny model — for every fold we actually fit on the train portion and compute a real held-out error. Watch the <b>per-fold scores</b> fill in, then the <b>average ± std</b>. Compare it to a <b>single train/test split</b> on the right: one lonely number that swings wildly when you reshuffle. k-fold gives you k numbers and a stable estimate of how the model truly generalizes.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 space-y-4">
+          <div class="flex justify-center"><canvas id="folds" width="540" height="120"></canvas></div>
+          <div class="flex justify-center"><canvas id="scores" width="540" height="220"></canvas></div>
+          <p class="text-center text-[11px] text-slate-400">Top: the 20 samples sliced into k folds. The lifted, bright segment is the current validation fold; the rest is the training set. Bottom: each fold's real validation error (MSE) as a bar, with the dashed line marking the running average across folds.</p>
+        </div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between pt-1"><span class="text-slate-500">k (number of folds)</span><span id="kval" class="font-bold text-sky-600">5</span></div>
+            <input id="kslider" type="range" min="3" max="10" step="1" value="5" class="w-full accent-sky-600" />
+            <p class="text-[11px] text-slate-400 leading-snug">How many chunks to split into. Each fold serves as validation exactly once, so the model is trained k times. More folds = more training data per fit (less bias) but k× the cost.</p>
+            <div class="border-t border-slate-100 pt-2 mt-1">
+              <div class="flex justify-between"><span class="text-slate-500 font-semibold">k-fold CV</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">avg validation MSE</span><span id="cvavg" class="font-bold text-sky-600">—</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">std (spread)</span><span id="cvstd" class="font-bold text-slate-400">—</span></div>
+            </div>
+            <div class="border-t border-slate-100 pt-2">
+              <div class="flex justify-between"><span class="text-slate-500 font-semibold">single split</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">one held-out MSE</span><span id="splitscore" class="font-bold text-rose-500">—</span></div>
+              <p class="text-[11px] text-slate-400 leading-snug mt-1">Just the last 20% as test. Hit <b>🎲 reshuffle</b> a few times: this single number jumps around a lot, while the CV average barely moves.</p>
+            </div>
+          </div>
+          <button id="run" class="w-full text-sm bg-sky-600 text-white rounded-xl py-2 font-semibold hover:bg-sky-700">▶ run CV</button>
+          <button id="reshuffle" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 reshuffle data</button>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500 font-semibold">Tune a hyperparameter</span></div>
+            <p class="text-[11px] text-slate-400 leading-snug">Use CV to pick the polynomial <b>degree</b>. We run k-fold for degree 1, 3 and 9 and keep the one with the best (lowest) average — that's model selection done honestly.</p>
+            <button id="tune" class="w-full text-sm border border-sky-200 bg-sky-50 text-sky-700 rounded-xl py-1.5 font-semibold hover:bg-sky-100">🔧 pick best degree by CV</button>
+            <div id="tuneout" class="text-[12px] text-slate-600 leading-relaxed"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How cross-validation works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">k-fold cross-validation from scratch: <b>shuffle</b> the data and slice it into k <b>folds</b>, loop so each fold takes its turn as validation while the rest train, <b>score</b> every fold and report the <b>mean ± std</b>, then <b>grid-search a hyperparameter</b> using CV to pick the best setting — all while keeping a final <b>test set</b> untouched. The exact loop scikit-learn's <code>cross_val_score</code> and <code>KFold</code> run for you, now demystified.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Shuffle, then split into k folds</h3></div>
+        <div class="relative">
+<pre># shuffle so the folds aren't accidentally ordered (e.g. sorted by
+# label or by time). then chop the shuffled indices into k roughly
+# equal chunks — those chunks are your folds.
+import numpy as np
+def make_folds(n, k, seed=0):
+    idx = np.random.default_rng(seed).permutation(n)   # shuffle
+    return np.array_split(idx, k)                       # k chunks
+folds = make_folds(len(X), k=5)
+# each fold is a set of row-indices that will be the validation set once.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Loop: each fold takes a turn as validation</h3></div>
+        <div class="relative">
+<pre># for fold i: validation = fold i, training = all the OTHER folds.
+# this is the heart of CV — every row is validated exactly once,
+# and every row is used for training k-1 times.
+for i in range(k):
+    val_idx   = folds[i]
+    train_idx = np.concatenate([folds[j] for j in range(k) if j != i])
+    X_tr, y_tr = X[train_idx], y[train_idx]
+    X_va, y_va = X[val_idx],   y[val_idx]
+    # ... fit on (X_tr, y_tr), score on (X_va, y_va) ...</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Fit & score inside the fold (no leakage)</h3></div>
+        <div class="relative">
+<pre># CRITICAL: fit any preprocessing (scaler, imputer, encoder) on the
+# TRAINING fold only, then apply it to the validation fold. fitting a
+# scaler on the whole dataset leaks validation stats into training.
+def fit_and_score(X_tr, y_tr, X_va, y_va):
+    mu, sd = X_tr.mean(0), X_tr.std(0) + 1e-9   # stats from TRAIN only
+    Xtr, Xva = (X_tr - mu) / sd, (X_va - mu) / sd
+    w = np.linalg.lstsq(Xtr, y_tr, rcond=None)[0]   # train the model
+    pred = Xva @ w
+    return ((pred - y_va) ** 2).mean()              # validation MSE</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Average the folds: mean ± std</h3></div>
+        <div class="relative">
+<pre># collect the k validation scores, then summarise them.
+# the MEAN is your honest performance estimate; the STD tells you how
+# sensitive the model is to which data it saw (stability).
+def cross_validate(X, y, k=5):
+    folds = make_folds(len(X), k)
+    scores = []
+    for i in range(k):
+        val = folds[i]
+        tr  = np.concatenate([folds[j] for j in range(k) if j != i])
+        scores.append(fit_and_score(X[tr], y[tr], X[val], y[val]))
+    scores = np.array(scores)
+    return scores.mean(), scores.std()      # estimate ± spread</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Grid-search a hyperparameter with CV</h3></div>
+        <div class="relative">
+<pre># to TUNE a knob (here, polynomial degree), run CV for each candidate
+# and keep the one with the best average validation score. this is how
+# you choose models without ever peeking at the test set.
+best_deg, best_mse = None, np.inf
+for deg in [1, 2, 3, 5, 9]:
+    Xp = np.vander(x, deg + 1)              # build degree-deg features
+    mean_mse, std_mse = cross_validate(Xp, y, k=5)
+    print(f"degree {deg}: {mean_mse:.4f} +/- {std_mse:.4f}")
+    if mean_mse < best_mse:
+        best_mse, best_deg = mean_mse, deg
+print("chosen degree:", best_deg)</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Keep a final test set untouched</h3></div>
+        <div class="relative">
+<pre># discipline: split OFF a test set first and never use it for tuning.
+# CV runs only on the train/val portion. after picking hyperparameters,
+# refit on ALL the train data and report ONE honest number on test.
+from sklearn.model_selection import train_test_split
+X_pool, X_test, y_pool, y_test = train_test_split(X, y, test_size=0.2)
+# ...run CV + grid-search on (X_pool, y_pool) to pick best_deg...
+final = fit_model(X_pool, y_pool, degree=best_deg)   # refit on all pool
+test_score = score(final, X_test, y_test)            # the ONLY test use</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Stratified & time-series variants</h3></div>
+        <div class="relative">
+<pre># classification with imbalanced classes? use STRATIFIED folds so each
+# fold keeps the same class ratio. time series? never shuffle — train on
+# the past, validate on the future, with an expanding window.
+from sklearn.model_selection import StratifiedKFold, TimeSeriesSplit
+skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)  # classes
+tss = TimeSeriesSplit(n_splits=5)                                # ordered
+for tr, va in skf.split(X, y):   # va keeps the class balance
+    ...
+for tr, va in tss.split(X):      # va is always AFTER tr in time
+    ...</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">In the real world: scikit-learn</h3></div>
+        <div class="relative">
+<pre>from sklearn.model_selection import cross_val_score, KFold, GridSearchCV
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import Ridge
+
+pipe = make_pipeline(StandardScaler(), Ridge())   # scaler fit per-fold!
+kf   = KFold(n_splits=5, shuffle=True, random_state=0)
+
+# one line: k scores, then mean & std
+scores = cross_val_score(pipe, X, y, cv=kf, scoring="neg_mean_squared_error")
+print(-scores.mean(), "+/-", scores.std())
+
+# tune a hyperparameter with CV baked in
+grid = GridSearchCV(pipe, {"ridge__alpha": [0.01, 0.1, 1, 10]}, cv=kf)
+grid.fit(X, y); print(grid.best_params_)</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 18 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">A single train/test split can be lucky or unlucky. k-fold cross-validation rotates every chunk through validation, giving you k scores whose mean ± std is a trustworthy estimate — and the honest way to tune hyperparameters, as long as you fit preprocessing inside each fold and never touch the final test set. Next up: the bias–variance trade-off in full.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== K-FOLD CROSS-VALIDATION — REAL COMPUTATION =====
+const foldsCan=document.getElementById("folds"), fx=foldsCan.getContext("2d");
+const scoreCan=document.getElementById("scores"), sx=scoreCan.getContext("2d");
+const SKY="#38bdf8", DIM="#1e3a4a", ROSE="#fb7185";
+const N=20;                       // number of sample blocks
+const FOLD_COLORS=["#38bdf8","#a78bfa","#34d399","#fbbf24","#fb7185","#22d3ee","#f472b6","#84cc16","#fb923c","#60a5fa"];
+
+let xs=[], ys=[], order=[];       // raw data (xs in [0,1]) and a shuffled index order
+let k=5, degree=3;                // folds, model complexity
+let foldScores=[], curFold=-1, running=false;
+
+// the smooth underlying function the noisy data is sampled from
+function trueF(x){ return Math.sin(2*Math.PI*x)*0.7; }
+function gauss(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+// ---- tiny polynomial model fit by least squares (normal equations) ----
+function polyRow(x,deg){ const r=[]; for(let p=0;p<=deg;p++) r.push(Math.pow(x,p)); return r; }
+function transpose(M){ const r=M.length,cc=M[0].length,T=[]; for(let j=0;j<cc;j++){T[j]=[]; for(let i=0;i<r;i++)T[j][i]=M[i][j];} return T; }
+function matMul(A,B){ const r=A.length,c2=B[0].length,inner=B.length,R=[]; for(let i=0;i<r;i++){R[i]=[]; for(let j=0;j<c2;j++){let s=0; for(let kk=0;kk<inner;kk++)s+=A[i][kk]*B[kk][j]; R[i][j]=s;}} return R; }
+function matVec(A,v){ return A.map(row=>row.reduce((s,a,kk)=>s+a*v[kk],0)); }
+function gaussSolve(M,b){
+  const n=b.length, A=M.map((row,i)=>row.slice().concat([b[i]]));
+  for(let col=0;col<n;col++){
+    let piv=col; for(let r=col+1;r<n;r++) if(Math.abs(A[r][col])>Math.abs(A[piv][col])) piv=r;
+    [A[col],A[piv]]=[A[piv],A[col]];
+    const d=A[col][col]||1e-9; A[col][col]+=1e-9;   // tiny ridge for numerical safety
+    for(let r=0;r<n;r++){ if(r===col) continue; const f=A[r][col]/(A[col][col]); for(let kk=col;kk<=n;kk++) A[r][kk]-=f*A[col][kk]; }
+  }
+  const x=new Array(n);
+  for(let i=0;i<n;i++) x[i]=A[i][n]/(A[i][i]||1e-9);
+  return x;
+}
+// fit degree-`deg` poly on (txs,tys); return weights
+function fitModel(txs,tys,deg){
+  const X=txs.map(x=>polyRow(x,deg));
+  const Xt=transpose(X), XtX=matMul(Xt,X), Xty=matVec(Xt,tys);
+  for(let i=0;i<XtX.length;i++) XtX[i][i]+=1e-6;   // small ridge so it never blows up
+  return gaussSolve(XtX,Xty);
+}
+function predict(w,x){ const row=polyRow(x,w.length-1); let s=0; for(let j=0;j<row.length;j++) s+=row[j]*w[j]; return s; }
+function mseOn(w,vxs,vys){ let s=0; for(let i=0;i<vxs.length;i++){ const e=predict(w,vxs[i])-vys[i]; s+=e*e; } return s/vxs.length; }
+
+// ---- build k folds from the current shuffled order ----
+function makeFolds(){
+  const f=Array.from({length:k},()=>[]);
+  for(let i=0;i<order.length;i++) f[i%k].push(order[i]);   // round-robin keeps sizes balanced
+  return f;
+}
+
+// run real CV for a given degree, return {scores, mean, std}
+function runCV(deg){
+  const f=makeFolds(), scores=[];
+  for(let i=0;i<k;i++){
+    const valIdx=f[i];
+    const trIdx=[]; for(let j=0;j<k;j++) if(j!==i) trIdx.push(...f[j]);
+    const txs=trIdx.map(ix=>xs[ix]), tys=trIdx.map(ix=>ys[ix]);
+    const vxs=valIdx.map(ix=>xs[ix]), vys=valIdx.map(ix=>ys[ix]);
+    const w=fitModel(txs,tys,deg);
+    scores.push(mseOn(w,vxs,vys));
+  }
+  const mean=scores.reduce((a,b)=>a+b,0)/scores.length;
+  const std=Math.sqrt(scores.reduce((a,b)=>a+(b-mean)**2,0)/scores.length);
+  return {scores,mean,std};
+}
+
+// single train/test split: last 20% (in shuffled order) as test
+function singleSplit(deg){
+  const nTest=Math.max(2,Math.round(N*0.2));
+  const testIdx=order.slice(N-nTest), trIdx=order.slice(0,N-nTest);
+  const w=fitModel(trIdx.map(ix=>xs[ix]),trIdx.map(ix=>ys[ix]),deg);
+  return mseOn(w,testIdx.map(ix=>xs[ix]),testIdx.map(ix=>ys[ix]));
+}
+
+// ---- data ----
+function genData(){
+  xs=[]; ys=[]; order=[];
+  for(let i=0;i<N;i++){ const x=0.02+0.96*(i/(N-1)); xs.push(x); ys.push(trueF(x)+gauss()*0.18); }
+  reshuffle();
+}
+function reshuffle(){
+  order=[...Array(N).keys()];
+  for(let i=N-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [order[i],order[j]]=[order[j],order[i]]; }
+  foldScores=[]; curFold=-1;
+  document.getElementById("splitscore").textContent=singleSplit(degree).toFixed(4);
+  drawFolds(); drawScores(); updateStats();
+}
+
+// ---- which fold does each block index belong to? ----
+function foldOfIndex(idx){
+  const f=makeFolds();
+  for(let i=0;i<k;i++) if(f[i].includes(idx)) return i;
+  return 0;
+}
+
+// ---- drawing: the row of blocks split into folds ----
+function drawFolds(){
+  fx.clearRect(0,0,foldsCan.width,foldsCan.height); fx.fillStyle="#020617"; fx.fillRect(0,0,foldsCan.width,foldsCan.height);
+  const PAD=18, gap=4, top=44;
+  const bw=(foldsCan.width-2*PAD-(N-1)*gap)/N;
+  const bh=42;
+  // each display position maps to a fold by round-robin (matches makeFolds)
+  for(let pos=0;pos<N;pos++){
+    const foldId=pos % k;
+    const isVal=(foldId===curFold);
+    const x=PAD+pos*(bw+gap);
+    const y=isVal? top-12 : top;     // lift the validation fold
+    fx.fillStyle=isVal? FOLD_COLORS[foldId%FOLD_COLORS.length] : DIM;
+    fx.fillRect(x,y,bw,bh);
+    if(isVal){ fx.strokeStyle="#fff"; fx.lineWidth=1.5; fx.strokeRect(x,y,bw,bh); }
+  }
+  // legend
+  fx.fillStyle="#94a3b8"; fx.font="11px sans-serif"; fx.textAlign="left";
+  fx.fillText(curFold>=0? ("Fold "+(curFold+1)+" of "+k+" = VALIDATION (lifted) · the rest = TRAIN") : (k+" folds — press ▶ run CV"), PAD, 16);
+  // fold separators / labels along the bottom
+  fx.font="10px monospace"; fx.fillStyle="#475569"; fx.textAlign="center";
+  for(let pos=0;pos<N;pos++){ const x=PAD+pos*(bw+gap)+bw/2; fx.fillText((pos%k)+1, x, top+bh+16); }
+}
+
+// ---- drawing: per-fold score bars + running average line ----
+function drawScores(){
+  sx.clearRect(0,0,scoreCan.width,scoreCan.height); sx.fillStyle="#020617"; sx.fillRect(0,0,scoreCan.width,scoreCan.height);
+  const PAD=34, base=scoreCan.height-26, topY=24;
+  const shown=foldScores.length;
+  // scale: include all known scores so far (and a sane minimum)
+  const maxV=Math.max(0.05,...foldScores, 0.05);
+  const gap=10, bw=(scoreCan.width-2*PAD-(k-1)*gap)/k;
+  // baseline
+  sx.strokeStyle="#1e293b"; sx.lineWidth=1; sx.beginPath(); sx.moveTo(PAD,base); sx.lineTo(scoreCan.width-PAD,base); sx.stroke();
+  for(let i=0;i<k;i++){
+    const x=PAD+i*(bw+gap);
+    if(i<shown){
+      const h=(foldScores[i]/maxV)*(base-topY);
+      sx.fillStyle=FOLD_COLORS[i%FOLD_COLORS.length];
+      sx.fillRect(x,base-h,bw,Math.max(h,2));
+      sx.fillStyle="#e2e8f0"; sx.font="9px monospace"; sx.textAlign="center";
+      sx.fillText(foldScores[i].toFixed(3), x+bw/2, base-h-4);
+    } else {
+      sx.fillStyle="#1e293b"; sx.fillRect(x,base-6,bw,6);   // not-yet-computed placeholder
+    }
+    sx.fillStyle="#64748b"; sx.font="9px monospace"; sx.textAlign="center";
+    sx.fillText("f"+(i+1), x+bw/2, base+14);
+  }
+  // running average dashed line
+  if(shown>0){
+    const mean=foldScores.reduce((a,b)=>a+b,0)/shown;
+    const yy=base-(mean/maxV)*(base-topY);
+    sx.strokeStyle=SKY; sx.lineWidth=1.5; sx.setLineDash([6,4]);
+    sx.beginPath(); sx.moveTo(PAD,yy); sx.lineTo(scoreCan.width-PAD,yy); sx.stroke(); sx.setLineDash([]);
+    sx.fillStyle=SKY; sx.font="10px sans-serif"; sx.textAlign="left";
+    sx.fillText("avg "+mean.toFixed(4), PAD+2, yy-4);
+  }
+  sx.fillStyle="#94a3b8"; sx.font="10px sans-serif"; sx.textAlign="left";
+  sx.fillText("per-fold validation MSE", PAD, 14);
+}
+
+function updateStats(){
+  if(foldScores.length>0){
+    const mean=foldScores.reduce((a,b)=>a+b,0)/foldScores.length;
+    const std=Math.sqrt(foldScores.reduce((a,b)=>a+(b-mean)**2,0)/foldScores.length);
+    document.getElementById("cvavg").textContent=mean.toFixed(4);
+    document.getElementById("cvstd").textContent="± "+std.toFixed(4);
+  } else {
+    document.getElementById("cvavg").textContent="—";
+    document.getElementById("cvstd").textContent="—";
+  }
+}
+
+// ---- animate the CV run: reveal one fold's real score at a time ----
+function animateCV(){
+  if(running) return;
+  running=true; foldScores=[]; curFold=-1;
+  const {scores}=runCV(degree);     // compute all real scores up front
+  let i=0;
+  const step=()=>{
+    curFold=i;
+    drawFolds();
+    foldScores.push(scores[i]);     // reveal this fold's true validation MSE
+    drawScores(); updateStats();
+    i++;
+    if(i<k){ setTimeout(step,650); }
+    else { setTimeout(()=>{ curFold=-1; drawFolds(); running=false; },700); }
+  };
+  step();
+}
+
+// ---- interaction ----
+document.getElementById("kslider").oninput=function(){
+  k=+this.value; document.getElementById("kval").textContent=k;
+  foldScores=[]; curFold=-1; drawFolds(); drawScores(); updateStats();
+};
+document.getElementById("run").onclick=animateCV;
+document.getElementById("reshuffle").onclick=()=>{ if(!running) reshuffle(); };
+document.getElementById("tune").onclick=()=>{
+  if(running) return;
+  const cands=[1,3,9]; let best=null;
+  let html='';
+  cands.forEach(deg=>{
+    const r=runCV(deg);
+    if(!best||r.mean<best.mean) best={deg,mean:r.mean,std:r.std};
+    html+=`<div>degree ${deg}: <b>${r.mean.toFixed(4)}</b> ± ${r.std.toFixed(4)}</div>`;
+  });
+  html+=`<div class="mt-1 text-sky-700 font-semibold">✓ best: degree ${best.deg} (lowest avg)</div>`;
+  document.getElementById("tuneout").innerHTML=html;
+};
+genData();
+
+// ===== UNDERSTAND STEP-ENGINE =====
+const STEPS = [
+  { title:"1. The problem: one split can lie", why:"The usual way to check a model is to hold out a slice of data as a test set, train on the rest, and read off a single score. The trouble is that this one number depends entirely on which rows happened to land in that slice. If an unusually easy bunch of examples ended up in the test set you get a flatteringly good score; if a hard or weird bunch landed there you get a misleadingly bad one. With limited data this luck-of-the-draw can swing the estimate dramatically. So a single train/test split is a high-variance way to judge a model — reshuffle once and the verdict can change.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">one held-out slice → one score → that score depends on WHICH rows you held out → high variance, can mislead</div>`, code:`# single split: one lucky/unlucky number
+score = model.fit(X_train, y_train).score(X_test, y_test)` },
+  { title:"2. The fix: k-fold cross-validation", why:"Cross-validation removes the luck by not relying on a single split. Instead of holding out one chunk, it rotates the role of the validation set across the whole dataset. You divide the data into k equal parts called folds, and then let each fold take its turn being the validation set while the other folds do the training. Because every fold gets a turn, every single data point is validated exactly once and used for training k−1 times. You end up with k separate scores instead of one, computed on genuinely different held-out data each time.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>split into k folds → each fold validates once → get k scores</b><br>every row is held out exactly once</div>`, code:`# k-fold: k scores, one per fold
+# each fold is the validation set exactly once` },
+  { title:"3. The procedure, step by step", why:"The mechanics are simple. First shuffle the data so the folds aren't accidentally ordered by label or time. Slice it into k roughly equal folds. Then loop k times: on iteration i, set fold i aside as the validation set, glue the remaining k−1 folds together as the training set, fit a fresh model on that training set, and measure its error on the held-out fold i. Record that error. After k iterations you have a clean score for each fold, every one of them computed on data the model did not see during that particular fit.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">shuffle → cut into k folds → for each i: train on all-but-i, validate on i → collect k errors</div>`, code:`for i in range(k):
+    val = folds[i]
+    train = everything_except(folds[i])
+    fit(train); scores.append(error_on(val))` },
+  { title:"4. Average ± std is the estimate", why:"Once you have the k fold scores, you summarise them with two numbers. The mean of the k scores is your performance estimate — far more stable than any single split because the lucky and unlucky folds tend to cancel out. The standard deviation of the scores is just as valuable: it tells you how much the result wobbles depending on which data the model trained on. A small std means the model is stable and your estimate is reliable; a large std warns that performance is sensitive to the data sample, which is itself useful to know before you trust the model.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>estimate = mean(scores) ± std(scores)</b><br>mean = honest performance · std = how stable it is</div>`, code:`import numpy as np
+scores = np.array(scores)
+print(scores.mean(), "+/-", scores.std())` },
+  { title:"5. Choosing k (5, 10, or LOOCV)", why:"The value of k trades off bias, variance and cost. A small k like 3 trains on less data per fold, so each model is a bit weaker and the estimate is slightly pessimistic (more bias), but it's cheap. The popular choices are k=5 and k=10, which give a good balance: most of the data trains each model while keeping the cost reasonable. The extreme is leave-one-out CV (LOOCV), where k equals the number of rows so each fold is a single point — almost unbiased but very expensive and high-variance. For most problems, 5 or 10 folds is the sensible default.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">small k → cheaper, more bias &nbsp;·&nbsp; k=5/10 → the sweet spot &nbsp;·&nbsp; LOOCV (k=n) → near-unbiased but costly</div>`, code:`# k=5 or k=10 are the usual defaults
+# LeaveOneOut: k == n  (one row per fold)` },
+  { title:"6. Tuning hyperparameters with CV", why:"Cross-validation isn't only for judging a finished model — it's the honest way to choose its settings. To tune a hyperparameter (a regularization strength, a tree depth, a polynomial degree), you try each candidate value, run full k-fold CV for it, and keep the value whose average validation score is best. The crucial discipline is the three-way split: training data trains the model, validation data (the rotating CV folds) chooses the hyperparameters, and a separate test set — which you never touch during tuning — gives the final unbiased report. Tuning on the test set silently inflates your score.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">try each setting → CV-score it → keep the best average<br><b>train fits · validation (CV) tunes · test is touched ONCE, at the end</b></div>`, code:`for setting in candidates:
+    mean_score = cross_validate(model(setting), X, y, k=5)
+best = setting_with_best(mean_score)   # never use test here` },
+  { title:"7. Stratified CV for imbalanced classes", why:"Plain k-fold just chops the shuffled data into chunks, which is fine for regression but risky for classification when the classes are imbalanced. If only 5% of your rows are the positive class, a random fold might end up with almost none of them, making that fold's score meaningless. Stratified k-fold fixes this by splitting each class separately, so every fold keeps the same class proportions as the full dataset. This gives each fold a fair, representative mix and produces far more reliable scores. For classification you should reach for stratified folds by default.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">imbalanced classes + random folds → some folds miss the rare class<br><b>stratified k-fold keeps each fold's class ratio = the whole set's</b></div>`, code:`from sklearn.model_selection import StratifiedKFold
+skf = StratifiedKFold(n_splits=5, shuffle=True)
+for tr, va in skf.split(X, y): ...   # va keeps class balance` },
+  { title:"8. Avoid data leakage: fit inside the fold", why:"The most common way to ruin cross-validation is data leakage — letting information from the validation fold sneak into training. The classic mistake is standardizing or imputing or selecting features using the whole dataset BEFORE splitting. Then the scaler's mean and std (or the imputed values) were computed using rows that later become validation data, so the model has effectively peeked. The fix is strict: do all preprocessing inside each fold, fitting it on the training portion only and merely applying it to the validation portion. In scikit-learn you guarantee this by wrapping steps in a Pipeline.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">fit scaler / imputer / feature-selector on the TRAIN fold only<br><b>fitting on the whole dataset leaks validation info → optimistic, fake scores</b></div>`, code:`# WRONG: scaler.fit(X_all) then CV  -> leakage
+# RIGHT: Pipeline fits the scaler inside every fold
+pipe = make_pipeline(StandardScaler(), model)` },
+  { title:"9. Time-series CV (don't shuffle)", why:"When the data has a time order — stock prices, sensor readings, sales — ordinary shuffled k-fold cheats, because it would let the model train on future rows to predict the past. That's information it could never have in reality, so the score is fantasy. Time-series cross-validation respects the arrow of time: it never shuffles, and always validates on data that comes after the training window. A typical scheme uses an expanding window — train on the first month and validate on the second, then train on the first two months and validate on the third, and so on — so every test is a genuine forecast.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">ordered data → NEVER shuffle → always train on the past, validate on the future<br><b>expanding window: each validation fold comes after its training data</b></div>`, code:`from sklearn.model_selection import TimeSeriesSplit
+tss = TimeSeriesSplit(n_splits=5)
+for tr, va in tss.split(X): ...   # va is always AFTER tr in time` },
+  { title:"10. The cost & the payoff", why:"Cross-validation isn't free: running k folds means training your model k times, so 10-fold CV costs roughly ten times a single fit, and grid-searching many hyperparameters multiplies that again. For very large datasets or very slow models this matters, and people sometimes drop to fewer folds or a single large validation set. But for the vast majority of problems the payoff is enormous — instead of one fragile number that could be luck, you get a stable estimate plus a measure of its uncertainty, and an honest way to choose between models. That trustworthy score is worth the extra compute almost every time.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">k-fold costs k× the training, but turns a lucky guess into a stable estimate with error bars — and the only honest way to tune. Fit preprocessing inside each fold, stratify for classes, respect time order, and never touch test until the end.</p></div>`, code:`# cost: k trainings per CV run (x candidates for tuning)
+# payoff: stable mean +/- std, honest model selection
+# the trade almost always worth it` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+function copy(btn) {
+  const pre = btn.parentElement.querySelector("pre");
+  navigator.clipboard.writeText(pre.textContent);
+  const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => btn.textContent = o, 1500);
+}
+</script>
+</body>
+</html>
