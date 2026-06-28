@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 19 — Bias-Variance Tradeoff</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .copy-btn:hover { background:#1e293b; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 19</div>
+      <h1 class="text-xl font-bold">⚖️ Bias-Variance — The Tradeoff Behind Over/Underfitting</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Slide the model complexity and watch underfit turn into overfit</h2>
+      <p class="text-slate-500 text-center mb-6 max-w-4xl mx-auto">The faint gray curve on the left is the <b>true</b> function; the dots are noisy samples of it. Drag the <b>complexity slider</b> (polynomial degree 1→12) and we <b>actually fit</b> that model to the data — the bright sky curve is the fit. We also fit on <b>several resampled datasets</b> and overlay those fits (thin lines): at low complexity they all look the same but miss the curve (<b>high bias / underfit</b>); at high complexity they wiggle wildly and disagree (<b>high variance / overfit</b>). The right chart plots <b>real measured error vs complexity</b>: <b>training error</b> falls forever, but <b>test error</b> is <b>U-shaped</b> — high when too simple, lowest at the sweet spot, climbing again when too complex. The dot marks your current degree. <b>Total error = bias² + variance + irreducible noise</b>: too simple → high bias, too complex → high variance, and the best model is the dip in between.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 space-y-4">
+          <div class="flex justify-center"><canvas id="fit" width="540" height="240"></canvas></div>
+          <div class="flex justify-center"><canvas id="err" width="540" height="220"></canvas></div>
+          <p class="text-center text-[11px] text-slate-400">Top: the noisy data, the gray true curve, the bright fit at the chosen degree, and faint fits from resampled datasets (their spread = variance). Bottom: train error (drops monotonically) and test error (U-shape) measured from real fits at every degree, with the marker on your current degree and the sweet-spot degree flagged.</p>
+        </div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between pt-1"><span class="text-slate-500">model complexity (polynomial degree)</span><span id="degval" class="font-bold text-sky-600">1</span></div>
+            <input id="degslider" type="range" min="1" max="12" step="1" value="1" class="w-full accent-sky-600" />
+            <p class="text-[11px] text-slate-400 leading-snug">Degree 1 = a straight line (too simple). Higher degrees bend more, eventually threading every noisy point. The fit is computed live by least squares each time you move the slider.</p>
+            <div class="border-t border-slate-100 pt-2 mt-1">
+              <div class="flex justify-between"><span class="text-slate-500">training error (MSE)</span><span id="trainmse" class="font-bold text-emerald-500">—</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">test error (MSE)</span><span id="testmse" class="font-bold text-rose-500">—</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">fit-to-fit variance</span><span id="varval" class="font-bold text-amber-500">—</span></div>
+            </div>
+            <div class="border-t border-slate-100 pt-2">
+              <div id="verdict" class="text-[12px] font-semibold text-slate-600 leading-snug">—</div>
+            </div>
+          </div>
+          <button id="reshuffle" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 resample the noisy data</button>
+          <label class="flex items-center gap-2 text-sm text-slate-600 px-1"><input id="showresamp" type="checkbox" checked class="accent-sky-600" /> overlay resampled fits (show variance)</label>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500 font-semibold">Find the sweet spot</span></div>
+            <p class="text-[11px] text-slate-400 leading-snug">Jump the slider to the degree with the lowest <b>test</b> error — the bottom of the U. That's the best bias-variance balance for this data.</p>
+            <button id="best" class="w-full text-sm border border-sky-200 bg-sky-50 text-sky-700 rounded-xl py-1.5 font-semibold hover:bg-sky-100">🎯 jump to min-test-error degree</button>
+            <div id="bestout" class="text-[12px] text-slate-600 leading-relaxed"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How bias and variance trade off</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Reproduce the U-shaped curve from scratch: <b>generate</b> noisy data from a known true function, <b>fit</b> polynomial models of increasing degree, <b>measure</b> training error and held-out test error for each, <b>plot</b> both against complexity, and <b>pick</b> the degree with the lowest test error. You'll watch train error fall forever while test error dives then climbs — the bias-variance tradeoff, made of real numbers you computed.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Generate noisy data from a known true curve</h3></div>
+        <div class="relative">
+<pre># the "true" signal is a smooth function we secretly know.
+# real samples = true(x) + irreducible noise. that noise is the
+# error floor no model can ever beat — it's not bias or variance.
+import numpy as np
+rng = np.random.default_rng(0)
+def true_f(x): return np.sin(2*np.pi*x) * 0.7      # the smooth signal
+x = np.sort(rng.uniform(0, 1, 60))
+y = true_f(x) + rng.normal(0, 0.18, x.shape)       # + irreducible noise</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Split into train and held-out test</h3></div>
+        <div class="relative">
+<pre># test error is the only honest gauge of overfitting, so carve out
+# a chunk the models never train on. train error alone always drops
+# with complexity — it can't tell you when you've started overfitting.
+from sklearn.model_selection import train_test_split
+x_tr, x_te, y_tr, y_te = train_test_split(x, y, test_size=0.35,
+                                          random_state=0)</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Fit polynomials of increasing degree</h3></div>
+        <div class="relative">
+<pre># complexity = polynomial degree. degree 1 is a line (high bias);
+# a high degree can snake through every training point (high variance).
+# np.polyfit fits degree-d least-squares; np.polyval evaluates it.
+def fit_poly(xt, yt, degree):
+    return np.polyfit(xt, yt, degree)        # the model's coefficients
+def predict(coef, xq):
+    return np.polyval(coef, xq)</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Measure train vs held-out error at each degree</h3></div>
+        <div class="relative">
+<pre># for every candidate degree, fit on TRAIN only, then score both
+# the training points and the untouched test points. collect both
+# curves — this is the raw material of the bias-variance picture.
+def mse(a, b): return np.mean((a - b) ** 2)
+degrees = range(1, 13)
+train_err, test_err = [], []
+for d in degrees:
+    coef = fit_poly(x_tr, y_tr, d)
+    train_err.append(mse(predict(coef, x_tr), y_tr))   # always falls
+    test_err.append(mse(predict(coef, x_te), y_te))    # U-shaped</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Plot both curves — see the U</h3></div>
+        <div class="relative">
+<pre># train error sliding down while test error dives then climbs is the
+# canonical bias-variance plot. the gap between the two curves widens
+# as variance grows: a big train/test gap is the signature of overfit.
+import matplotlib.pyplot as plt
+plt.plot(degrees, train_err, "o-", label="train (always drops)")
+plt.plot(degrees, test_err,  "o-", label="test (U-shaped)")
+plt.xlabel("model complexity (degree)"); plt.ylabel("MSE"); plt.legend()
+plt.show()</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Pick the min-test-error complexity</h3></div>
+        <div class="relative">
+<pre># the sweet spot is simply the bottom of the U: the degree whose
+# held-out error is smallest. that's the best bias-variance balance
+# for this data. (in practice use CV instead of one split — Day 18.)
+best_i = int(np.argmin(test_err))
+best_degree = list(degrees)[best_i]
+print("sweet spot: degree", best_degree,
+      "test MSE", round(test_err[best_i], 4))</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Estimate variance by refitting on resamples</h3></div>
+        <div class="relative">
+<pre># variance = how much the fit JUMPS when the training data changes.
+# refit the same degree on many resampled datasets and look at the
+# spread of predictions at each x. high degree -> huge spread.
+def fit_variance(degree, n_sets=40, grid=np.linspace(0,1,100)):
+    preds = []
+    for _ in range(n_sets):
+        xs = np.sort(rng.uniform(0,1,60))
+        ys = true_f(xs) + rng.normal(0,0.18,xs.shape)   # a fresh draw
+        preds.append(predict(fit_poly(xs, ys, degree), grid))
+    return np.var(np.array(preds), axis=0).mean()       # avg variance
+print(fit_variance(1), fit_variance(11))   # low vs high</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">In the real world: validation curves & regularization</h3></div>
+        <div class="relative">
+<pre>from sklearn.model_selection import validation_curve
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import Ridge
+
+# scikit-learn draws the whole train-vs-CV curve in one call
+pipe = make_pipeline(PolynomialFeatures(), Ridge(alpha=1.0))
+tr, va = validation_curve(pipe, x.reshape(-1,1), y,
+            param_name="polynomialfeatures__degree",
+            param_range=range(1,13), cv=5, scoring="neg_mean_squared_error")
+# levers that move the tradeoff: less complexity / more data / a
+# bigger Ridge alpha all CUT variance; richer features cut bias.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 19 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">Every model's error splits into bias² + variance + irreducible noise. Too simple means high bias and underfitting; too complex means high variance and overfitting; lowering one tends to raise the other. Training error keeps falling, but the U-shaped test error reveals the sweet spot — find it with validation or cross-validation, and shift it with more data, regularization, or smarter features. Next up: regularization (Ridge & Lasso) — the dial that tames variance directly.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== BIAS-VARIANCE — REAL COMPUTATION =====
+const fitCan=document.getElementById("fit"), fc=fitCan.getContext("2d");
+const errCan=document.getElementById("err"), ec=errCan.getContext("2d");
+const SKY="#38bdf8", GRAY="#475569", EMER="#34d399", ROSE="#fb7185", AMBER="#fbbf24";
+const N=60;                          // total samples per dataset
+const MAXDEG=12;
+let degree=1;
+let showResamp=true;
+
+// the smooth underlying function the noisy data is sampled from
+function trueF(x){ return Math.sin(2*Math.PI*x)*0.7; }
+function gauss(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+const NOISE=0.18;
+
+// ---- polynomial least-squares fit via normal equations ----
+// x is mapped from [0,1] to [-1,1] before raising to powers: this keeps the
+// design columns well-conditioned so high-degree models genuinely overfit
+// (instead of collapsing into a tame near-linear fit) — that's what makes the
+// test-error U real. predict() uses the same polyRow, so it stays consistent.
+function polyRow(x,deg){ const z=x*2-1; const r=[]; for(let p=0;p<=deg;p++) r.push(Math.pow(z,p)); return r; }
+function transpose(M){ const r=M.length,cc=M[0].length,T=[]; for(let j=0;j<cc;j++){T[j]=[]; for(let i=0;i<r;i++)T[j][i]=M[i][j];} return T; }
+function matMul(A,B){ const r=A.length,c2=B[0].length,inner=B.length,R=[]; for(let i=0;i<r;i++){R[i]=[]; for(let j=0;j<c2;j++){let s=0; for(let kk=0;kk<inner;kk++)s+=A[i][kk]*B[kk][j]; R[i][j]=s;}} return R; }
+function matVec(A,v){ return A.map(row=>row.reduce((s,a,kk)=>s+a*v[kk],0)); }
+function gaussSolve(M,b){
+  const n=b.length, A=M.map((row,i)=>row.slice().concat([b[i]]));
+  for(let col=0;col<n;col++){
+    let piv=col; for(let r=col+1;r<n;r++) if(Math.abs(A[r][col])>Math.abs(A[piv][col])) piv=r;
+    [A[col],A[piv]]=[A[piv],A[col]];
+    A[col][col]+=1e-9;
+    for(let r=0;r<n;r++){ if(r===col) continue; const f=A[r][col]/(A[col][col]); for(let kk=col;kk<=n;kk++) A[r][kk]-=f*A[col][kk]; }
+  }
+  const x=new Array(n);
+  for(let i=0;i<n;i++) x[i]=A[i][n]/(A[i][i]||1e-9);
+  return x;
+}
+// fit degree-`deg` poly on (txs,tys); return weights. a whisper of ridge keeps
+// the solve numerically safe without suppressing the high-degree overfitting.
+function fitModel(txs,tys,deg){
+  const X=txs.map(x=>polyRow(x,deg));
+  const Xt=transpose(X), XtX=matMul(Xt,X), Xty=matVec(Xt,tys);
+  for(let i=0;i<XtX.length;i++) XtX[i][i]+=1e-9;
+  return gaussSolve(XtX,Xty);
+}
+function predict(w,x){ const row=polyRow(x,w.length-1); let s=0; for(let j=0;j<row.length;j++) s+=row[j]*w[j]; return s; }
+function mseOn(w,vxs,vys){ let s=0; for(let i=0;i<vxs.length;i++){ const e=predict(w,vxs[i])-vys[i]; s+=e*e; } return s/vxs.length; }
+
+// ---- data: one dataset split into train / test ----
+let xs=[], ys=[], trIdx=[], teIdx=[];
+function genData(){
+  xs=[]; ys=[];
+  for(let i=0;i<N;i++){ const x=i/(N-1); xs.push(x); ys.push(trueF(x)+gauss()*NOISE); }
+  // deterministic interleaved split: ~65% train, ~35% test, spread across the range
+  trIdx=[]; teIdx=[];
+  for(let i=0;i<N;i++){ if(i%3===0) teIdx.push(i); else trIdx.push(i); }
+}
+function reshuffle(){ genData(); recomputeCurves(); render(); }
+
+// ---- error curves vs complexity (REAL fits at every degree) ----
+let trainCurve=[], testCurve=[], bestDeg=1;
+function recomputeCurves(){
+  trainCurve=[]; testCurve=[];
+  const txs=trIdx.map(i=>xs[i]), tys=trIdx.map(i=>ys[i]);
+  const vxs=teIdx.map(i=>xs[i]), vys=teIdx.map(i=>ys[i]);
+  for(let d=1;d<=MAXDEG;d++){
+    const w=fitModel(txs,tys,d);
+    trainCurve.push(mseOn(w,txs,tys));
+    testCurve.push(mseOn(w,vxs,vys));
+  }
+  bestDeg=1; let bv=Infinity;
+  for(let d=1;d<=MAXDEG;d++){ if(testCurve[d-1]<bv){ bv=testCurve[d-1]; bestDeg=d; } }
+}
+
+// ---- variance probe: fit the chosen degree on many fresh datasets ----
+function resampledFits(deg,nSets){
+  const grid=[]; for(let i=0;i<=100;i++) grid.push(i/100);
+  const allPreds=[];
+  for(let s=0;s<nSets;s++){
+    const sxs=[], sys=[];
+    for(let i=0;i<N;i++){ const x=i/(N-1); sxs.push(x); sys.push(trueF(x)+gauss()*NOISE); }
+    // train on the same interleaved-train positions of this fresh draw
+    const stxs=trIdx.map(i=>sxs[i]), stys=trIdx.map(i=>sys[i]);
+    const w=fitModel(stxs,stys,deg);
+    allPreds.push(grid.map(x=>predict(w,x)));
+  }
+  // average pointwise variance across the resampled fits
+  let vsum=0;
+  for(let g=0;g<grid.length;g++){
+    let m=0; for(let s=0;s<nSets;s++) m+=allPreds[s][g]; m/=nSets;
+    let v=0; for(let s=0;s<nSets;s++){ const d=allPreds[s][g]-m; v+=d*d; } v/=nSets;
+    vsum+=v;
+  }
+  return { grid, preds:allPreds, variance:vsum/grid.length };
+}
+
+// ---- drawing: data + true curve + chosen fit + resampled fits ----
+const PADL=40, PADR=18, PADT=18, PADB=28;
+function plotX(can,x){ return PADL + x*(can.width-PADL-PADR); }
+function plotY(can,y,ymin,ymax){ return (can.height-PADB) - ((y-ymin)/(ymax-ymin))*(can.height-PADT-PADB); }
+
+function drawFit(){
+  fc.clearRect(0,0,fitCan.width,fitCan.height); fc.fillStyle="#020617"; fc.fillRect(0,0,fitCan.width,fitCan.height);
+  const ymin=-1.3, ymax=1.3;
+  // axes
+  fc.strokeStyle="#1e293b"; fc.lineWidth=1;
+  fc.beginPath(); fc.moveTo(PADL,plotY(fitCan,0,ymin,ymax)); fc.lineTo(fitCan.width-PADR,plotY(fitCan,0,ymin,ymax)); fc.stroke();
+
+  // resampled fits (variance) — thin amber lines
+  if(showResamp){
+    const rs=resampledFits(degree, 14);
+    fc.lineWidth=1; fc.strokeStyle="rgba(251,191,36,0.28)";
+    rs.preds.forEach(pr=>{
+      fc.beginPath();
+      rs.grid.forEach((x,i)=>{ const yy=Math.max(ymin,Math.min(ymax,pr[i])); const px=plotX(fitCan,x), py=plotY(fitCan,yy,ymin,ymax); i?fc.lineTo(px,py):fc.moveTo(px,py); });
+      fc.stroke();
+    });
+  }
+
+  // true curve — gray
+  fc.strokeStyle=GRAY; fc.lineWidth=2; fc.setLineDash([4,4]); fc.beginPath();
+  for(let i=0;i<=100;i++){ const x=i/100, y=trueF(x); const px=plotX(fitCan,x), py=plotY(fitCan,y,ymin,ymax); i?fc.lineTo(px,py):fc.moveTo(px,py); }
+  fc.stroke(); fc.setLineDash([]);
+
+  // data points: train (sky) + test (rose)
+  trIdx.forEach(i=>{ fc.fillStyle="#7dd3fc"; fc.beginPath(); fc.arc(plotX(fitCan,xs[i]),plotY(fitCan,ys[i],ymin,ymax),2.6,0,7); fc.fill(); });
+  teIdx.forEach(i=>{ fc.fillStyle="#fb7185"; fc.beginPath(); fc.arc(plotX(fitCan,xs[i]),plotY(fitCan,ys[i],ymin,ymax),2.6,0,7); fc.fill(); });
+
+  // the chosen fit — bright sky
+  const txs=trIdx.map(i=>xs[i]), tys=trIdx.map(i=>ys[i]);
+  const w=fitModel(txs,tys,degree);
+  fc.strokeStyle=SKY; fc.lineWidth=2.5; fc.beginPath();
+  for(let i=0;i<=200;i++){ const x=i/200; let y=predict(w,x); y=Math.max(ymin,Math.min(ymax,y)); const px=plotX(fitCan,x), py=plotY(fitCan,y,ymin,ymax); i?fc.lineTo(px,py):fc.moveTo(px,py); }
+  fc.stroke();
+
+  // legend
+  fc.font="10px sans-serif"; fc.textAlign="left";
+  fc.fillStyle=GRAY; fc.fillText("— true curve", PADL, 13);
+  fc.fillStyle=SKY; fc.fillText("— degree-"+degree+" fit", PADL+78, 13);
+  fc.fillStyle="#7dd3fc"; fc.fillText("• train", PADL+170, 13);
+  fc.fillStyle=ROSE; fc.fillText("• test", PADL+212, 13);
+  if(showResamp){ fc.fillStyle=AMBER; fc.fillText("— resampled fits (variance)", PADL+250, 13); }
+}
+
+function drawErr(){
+  ec.clearRect(0,0,errCan.width,errCan.height); ec.fillStyle="#020617"; ec.fillRect(0,0,errCan.width,errCan.height);
+  const all=trainCurve.concat(testCurve);
+  let ymax=Math.max(...all)*1.1, ymin=0;
+  if(!isFinite(ymax)||ymax<=0) ymax=1;
+  const px=(d)=> PADL + ((d-1)/(MAXDEG-1))*(errCan.width-PADL-PADR);
+  const py=(v)=> (errCan.height-PADB) - (Math.min(v,ymax)/ymax)*(errCan.height-PADT-PADB);
+
+  // axes
+  ec.strokeStyle="#1e293b"; ec.lineWidth=1;
+  ec.beginPath(); ec.moveTo(PADL,errCan.height-PADB); ec.lineTo(errCan.width-PADR,errCan.height-PADB); ec.stroke();
+  ec.beginPath(); ec.moveTo(PADL,PADT); ec.lineTo(PADL,errCan.height-PADB); ec.stroke();
+
+  // degree ticks
+  ec.fillStyle="#64748b"; ec.font="9px monospace"; ec.textAlign="center";
+  for(let d=1;d<=MAXDEG;d++) ec.fillText(d, px(d), errCan.height-PADB+13);
+  ec.textAlign="left"; ec.fillText("complexity (degree) →", PADL, errCan.height-6);
+
+  // sweet-spot vertical guide
+  ec.strokeStyle="rgba(56,189,248,0.25)"; ec.setLineDash([3,3]); ec.lineWidth=1;
+  ec.beginPath(); ec.moveTo(px(bestDeg),PADT); ec.lineTo(px(bestDeg),errCan.height-PADB); ec.stroke(); ec.setLineDash([]);
+
+  // train curve (emerald) — drops
+  ec.strokeStyle=EMER; ec.lineWidth=2; ec.beginPath();
+  trainCurve.forEach((v,i)=>{ const X=px(i+1),Y=py(v); i?ec.lineTo(X,Y):ec.moveTo(X,Y); }); ec.stroke();
+  // test curve (rose) — U-shape
+  ec.strokeStyle=ROSE; ec.lineWidth=2; ec.beginPath();
+  testCurve.forEach((v,i)=>{ const X=px(i+1),Y=py(v); i?ec.lineTo(X,Y):ec.moveTo(X,Y); }); ec.stroke();
+
+  // points + current-degree marker
+  trainCurve.forEach((v,i)=>{ ec.fillStyle=EMER; ec.beginPath(); ec.arc(px(i+1),py(v),2.5,0,7); ec.fill(); });
+  testCurve.forEach((v,i)=>{ ec.fillStyle=ROSE; ec.beginPath(); ec.arc(px(i+1),py(v),2.5,0,7); ec.fill(); });
+  // current degree marker (white ring on test curve)
+  ec.strokeStyle="#fff"; ec.lineWidth=2; ec.beginPath(); ec.arc(px(degree),py(testCurve[degree-1]),5.5,0,7); ec.stroke();
+  ec.beginPath(); ec.arc(px(degree),py(trainCurve[degree-1]),5.5,0,7); ec.stroke();
+
+  // labels
+  ec.font="10px sans-serif"; ec.textAlign="left";
+  ec.fillStyle=EMER; ec.fillText("— training error (always drops)", PADL+4, PADT+2+10);
+  ec.fillStyle=ROSE; ec.fillText("— test error (U-shape)", PADL+4, PADT+2+24);
+  ec.fillStyle=SKY; ec.textAlign="center"; ec.font="9px sans-serif";
+  ec.fillText("sweet spot", px(bestDeg), PADT+8);
+  // regions
+  ec.fillStyle="#64748b"; ec.font="9px sans-serif"; ec.textAlign="left";
+  ec.fillText("high bias", px(1)+2, errCan.height-PADB-4);
+  ec.textAlign="right"; ec.fillText("high variance", px(MAXDEG)-2, errCan.height-PADB-4);
+}
+
+function updateStats(){
+  const tr=trainCurve[degree-1], te=testCurve[degree-1];
+  document.getElementById("trainmse").textContent=tr.toFixed(4);
+  document.getElementById("testmse").textContent=te.toFixed(4);
+  const v=resampledFits(degree,14).variance;
+  document.getElementById("varval").textContent=v.toFixed(4);
+  let verdict, color;
+  if(degree<bestDeg){ verdict="⬅ too simple — HIGH BIAS (underfit). Test error is high because the model can't capture the curve."; color="text-amber-600"; }
+  else if(degree>bestDeg){ verdict="➡ too complex — HIGH VARIANCE (overfit). Train error is tiny but test error climbed back up."; color="text-rose-600"; }
+  else { verdict="🎯 the sweet spot — lowest test error, the best bias-variance balance for this data."; color="text-sky-600"; }
+  const ve=document.getElementById("verdict"); ve.textContent=verdict; ve.className="text-[12px] font-semibold leading-snug "+color;
+}
+
+function render(){ drawFit(); drawErr(); updateStats(); }
+
+// ---- interaction ----
+document.getElementById("degslider").oninput=function(){
+  degree=+this.value; document.getElementById("degval").textContent=degree; render();
+};
+document.getElementById("reshuffle").onclick=reshuffle;
+document.getElementById("showresamp").onchange=function(){ showResamp=this.checked; drawFit(); };
+document.getElementById("best").onclick=()=>{
+  degree=bestDeg;
+  document.getElementById("degslider").value=bestDeg;
+  document.getElementById("degval").textContent=bestDeg;
+  document.getElementById("bestout").innerHTML=`<div class="mt-1 text-sky-700 font-semibold">✓ degree ${bestDeg} → lowest test MSE ${testCurve[bestDeg-1].toFixed(4)}</div><div class="text-slate-500">bottom of the U = best balance</div>`;
+  render();
+};
+genData(); recomputeCurves(); render();
+
+// ===== UNDERSTAND STEP-ENGINE =====
+const STEPS = [
+  { title:"1. Prediction error has three parts", why:"When a trained model gets a prediction wrong, that error isn't one thing — it cleanly splits into three pieces. Bias squared is error from the model being too simple to capture the real pattern. Variance is error from the model being too sensitive to the particular training data it happened to see. Irreducible noise is the random scatter baked into the data itself, the floor that no model can ever get below. The famous decomposition is: expected error = bias² + variance + irreducible noise. Improving a model means shrinking bias and variance, because the noise is fixed.", concept:`<div class="bg-slate-100 p-4 rounded text-sm w-full text-center"><b>error = bias² + variance + irreducible noise</b><br><span class="text-xs text-slate-500">too simple · too sensitive · the data's own randomness (fixed)</span></div>`, code:`# the bias-variance decomposition (for squared error)
+# E[(y - prediction)^2] = bias^2 + variance + noise` },
+  { title:"2. Bias = wrong assumptions, too simple", why:"Bias is the error you get from a model that's structurally too simple for the truth. If the real relationship curves but you insist on fitting a straight line, the line will be systematically off no matter how much data you give it — it just can't bend that way. That's high bias, and it shows up as underfitting: the model does poorly on the training data AND on new data, because it never learned the real shape in the first place. High bias is a model with strong, wrong assumptions about how the world works.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>HIGH BIAS = UNDERFIT</b><br>too-simple model misses the real pattern<br>bad on train AND bad on test</div>`, code:`# a straight line through a curvy truth: high bias
+line = np.polyfit(x, y, 1)   # can't bend -> underfits` },
+  { title:"3. Variance = too sensitive to the training data", why:"Variance is the opposite failure: the model is so flexible that it chases every wiggle in the specific training sample, including the random noise. Train it on one batch of data and you get one wildly curvy fit; train the same model on a slightly different batch and you get a completely different curve. That instability is variance. It shows up as overfitting: near-perfect scores on the training data but poor scores on new data, because the model memorized the noise instead of learning the signal. High variance is a model that can't tell signal from accident.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>HIGH VARIANCE = OVERFIT</b><br>too-flexible model chases the noise<br>great on train, bad on test · fit jumps when data changes</div>`, code:`# a degree-12 poly threading every point: high variance
+wild = np.polyfit(x, y, 12)   # memorizes noise -> overfits` },
+  { title:"4. The tradeoff: lowering one raises the other", why:"Here's the catch that gives the whole topic its name. As you make a model more complex, you reduce its bias — it can now bend to fit the true shape. But that same added flexibility increases its variance, because it can also bend to fit the noise. Pull the complexity dial down and the reverse happens: variance falls but bias rises. You usually can't shrink both at once just by changing complexity; reducing one tends to inflate the other. Good modeling is finding the complexity where their sum — the total error — is smallest.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">more complexity → <b>bias ↓ but variance ↑</b><br>less complexity → <b>variance ↓ but bias ↑</b><br>minimize the SUM, not either one alone</div>`, code:`# complexity up:   bias goes down, variance goes up
+# complexity down: variance goes down, bias goes up
+# goal: the complexity that minimizes bias^2 + variance` },
+  { title:"5. The U-shaped test-error curve", why:"Plot test error against model complexity and you get the signature shape of this whole subject: a U. On the left, low complexity means high bias, so test error is high. As complexity rises, bias falls faster than variance grows, so test error drops — until it bottoms out at the sweet spot. Past that point variance grows faster than bias falls, and test error climbs back up. The lowest point of the U is the complexity with the best total error, the ideal balance between underfitting and overfitting for your data.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">test error vs complexity is a <b>U</b><br>left = high bias · bottom = sweet spot · right = high variance<br><span class="text-xs text-slate-500">aim for the dip</span></div>`, code:`# test_err is U-shaped over complexity
+best = degrees[np.argmin(test_err)]   # the dip = sweet spot` },
+  { title:"6. Training error always drops — don't trust it alone", why:"It's tempting to judge a model by how well it fits the data it trained on, but training error is a trap. As you add complexity, training error falls monotonically and eventually reaches zero — a flexible enough model can pass through every training point perfectly. That tells you nothing about generalization; a model that memorized the data scores beautifully on it. The widening gap between low training error and high test error is in fact the tell-tale sign of overfitting. You must judge generalization on data the model never saw.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>training error only goes down</b> as complexity rises<br>a big train↔test GAP = overfitting<br><span class="text-xs text-slate-500">never pick a model by train error alone</span></div>`, code:`# train_err falls forever; the gap test_err - train_err
+# growing wide is the signature of overfitting` },
+  { title:"7. Finding the sweet spot with validation / CV", why:"Since training error can't find the bottom of the U, you need held-out data to estimate test error honestly. The basic recipe is a validation set: train candidate models of different complexity, score each on data they didn't train on, and keep the one with the lowest validation error. A single split can be lucky or unlucky, so the robust version is k-fold cross-validation from Day 18 — rotate every chunk through validation and average the scores. That averaged validation curve is your reliable map of where the U bottoms out.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">use HELD-OUT data to locate the dip<br><b>cross-validation (Day 18)</b> averages many splits for a stable estimate<br><span class="text-xs text-slate-500">pick the complexity with the lowest CV error</span></div>`, code:`from sklearn.model_selection import cross_val_score
+# CV error for each complexity -> pick the minimum (the dip)
+scores = [cross_val_score(model(d), X, y, cv=5).mean() for d in degrees]` },
+  { title:"8. Levers that shift the tradeoff", why:"Complexity isn't the only dial. The most underrated lever is more data: with more training examples, a flexible model has less room to chase noise, so variance drops and you can afford more complexity. Regularization — like Ridge or Lasso — directly penalizes large weights, pulling a complex model back toward simplicity and cutting variance without dropping the model class entirely. On the other side, adding informative features or a richer model reduces bias by giving the model the capacity to capture the true pattern. Knowing which knob to turn comes from diagnosing whether you're bias-limited or variance-limited.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>cut variance:</b> simpler model · more data · regularization<br><b>cut bias:</b> richer model · more / better features<br><span class="text-xs text-slate-500">diagnose which problem you have, then pull that lever</span></div>`, code:`# more data + Ridge(alpha) -> lower variance
+# more / richer features    -> lower bias
+ridge = Ridge(alpha=1.0)   # alpha up = more regularization` },
+  { title:"9. Ensembles: bagging cuts variance, boosting cuts bias", why:"Ensembles are a powerful way to attack the tradeoff (callbacks to earlier days). Bagging and random forests average many high-variance models trained on different resamples of the data; the averaging cancels out their individual wobble, so the ensemble has much lower variance than any single tree while keeping its low bias. Boosting works from the other end: it stacks many weak, high-bias models in sequence, each one correcting the mistakes of the last, which steadily drives the bias down. So as a rule of thumb, bagging is a variance-reducer and boosting is a bias-reducer.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>bagging / random forest</b> → averages many fits → cuts VARIANCE<br><b>boosting</b> → stacks weak learners → cuts BIAS</div>`, code:`from sklearn.ensemble import RandomForestRegressor      # cuts variance
+from sklearn.ensemble import GradientBoostingRegressor  # cuts bias` },
+  { title:"10. A modern footnote: double descent", why:"The classic U-curve is the right mental model for traditional models, but very large modern models add a twist. As you keep increasing complexity past the point where the model can perfectly fit the training data (the interpolation threshold), test error can surprisingly start falling again — a second descent after the U. This 'double descent' is why hugely over-parameterized neural networks can generalize well despite having far more parameters than data points. It doesn't overturn bias-variance thinking; it shows the picture is richer in the extreme over-parameterized regime. For most everyday models, the plain U-curve still rules.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Error = bias² + variance + noise. Too simple → high bias / underfit; too complex → high variance / overfit. Training error always falls, so trust the U-shaped held-out error and find its dip with cross-validation — then shift it with data, regularization, features, or ensembles.</p></div>`, code:`# classic regime: test error is U-shaped (bias-variance)
+# huge over-parameterized models: a 2nd descent can appear
+# (double descent) -- the picture is richer at the extreme` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+function copy(btn) {
+  const pre = btn.parentElement.querySelector("pre");
+  navigator.clipboard.writeText(pre.textContent);
+  const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => btn.textContent = o, 1500);
+}
+</script>
+</body>
+</html>
