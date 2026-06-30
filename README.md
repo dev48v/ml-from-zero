@@ -26,6 +26,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 17 — Regularization](https://dev48v.infy.uk/ml/day17-regularization.html) — `day17-regularization.html`
 - [MachineLearningFromZero · Day 18 — Cross-Validation](https://dev48v.infy.uk/ml/day18-cross-validation.html) — `day18-cross-validation.html`
 - [MachineLearningFromZero · Day 19 — Bias-Variance Tradeoff](https://dev48v.infy.uk/ml/day19-bias-variance.html) — `day19-bias-variance.html`
+- [MachineLearningFromZero · Day 20 — ROC Curve & AUC](https://dev48v.infy.uk/ml/day20-roc-auc.html) — `day20-roc-auc.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 20 — ROC Curve & AUC</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .copy-btn:hover { background:#1e293b; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 20</div>
+      <h1 class="text-xl font-bold">📈 ROC & AUC — Scoring a Classifier Beyond Accuracy</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Drag the threshold and watch the ROC point move — pull the classes apart and watch AUC climb</h2>
+      <p class="text-slate-500 text-center mb-6 max-w-4xl mx-auto">On the left a binary classifier has produced a <b>score</b> for every example: the <b>rose</b> hump is the true <b>negatives</b>, the <b>sky</b> hump is the true <b>positives</b>. A classifier never decides by itself — you pick a <b>threshold</b> (the white line). Everything to the <b>right</b> of it is called positive, everything to the left negative. Drag the <b>threshold slider</b> and we <b>actually count</b> the four outcomes — <b>TP, FP, TN, FN</b> — and turn them into a single dot: <b>(FPR, TPR)</b>, which slides along the <b>ROC curve</b> on the right. The full ROC is traced by <b>sweeping every threshold</b>; the dashed diagonal is a <b>random</b> classifier. The <b>AUC</b> — area under that curve, summed with the trapezoid rule — is one number for the whole thing: <b>0.5 = random, 1.0 = perfect</b>. Now drag the <b>separation slider</b>: as the two humps pull apart the scores separate cleanly, the ROC <b>bows toward the top-left</b>, and AUC marches toward 1.0; slide them back together and ROC collapses onto the diagonal at ~0.5. Every number here is computed live from the data — nothing is faked.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 space-y-4">
+          <div class="flex justify-center"><canvas id="dist" width="540" height="240"></canvas></div>
+          <div class="flex justify-center"><canvas id="roc" width="540" height="240"></canvas></div>
+          <p class="text-center text-[11px] text-slate-400">Top: the two score distributions (negatives in rose, positives in sky) with your threshold as the white line; everything right of it is predicted positive. Bottom: the full ROC curve swept over all thresholds, the dashed random diagonal, and the big white dot is the operating point at your current threshold. The shaded region under the curve is the AUC.</p>
+        </div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between pt-1"><span class="text-slate-500">threshold (call positive if score ≥ this)</span><span id="thrval" class="font-bold text-sky-600">0.50</span></div>
+            <input id="thrslider" type="range" min="0" max="1" step="0.01" value="0.5" class="w-full accent-sky-600" />
+            <div class="flex justify-between pt-2"><span class="text-slate-500">class separation</span><span id="sepval" class="font-bold text-sky-600">2.0</span></div>
+            <input id="sepslider" type="range" min="0" max="4" step="0.05" value="2.0" class="w-full accent-sky-600" />
+            <p class="text-[11px] text-slate-400 leading-snug">The threshold moves only the operating dot; separation reshapes the whole problem — far apart = easy to separate (high AUC), fully overlapping = impossible (AUC ≈ 0.5).</p>
+            <div class="border-t border-slate-100 pt-2 mt-1">
+              <div class="flex justify-between"><span class="text-slate-500">AUC (area under ROC)</span><span id="aucval" class="font-bold text-sky-600">—</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">TPR (recall / sensitivity)</span><span id="tprval" class="font-bold text-emerald-500">—</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">FPR (1 − specificity)</span><span id="fprval" class="font-bold text-rose-500">—</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">precision</span><span id="precval" class="font-bold text-amber-500">—</span></div>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500 font-semibold">Confusion matrix at this threshold</span></div>
+            <div class="grid grid-cols-3 gap-1 text-center text-[12px]">
+              <div></div><div class="text-slate-400 font-semibold">pred +</div><div class="text-slate-400 font-semibold">pred −</div>
+              <div class="text-slate-400 font-semibold flex items-center justify-end pr-1">actual +</div><div class="bg-emerald-50 text-emerald-700 font-bold rounded py-2">TP <span id="tp">0</span></div><div class="bg-amber-50 text-amber-700 font-bold rounded py-2">FN <span id="fn">0</span></div>
+              <div class="text-slate-400 font-semibold flex items-center justify-end pr-1">actual −</div><div class="bg-rose-50 text-rose-700 font-bold rounded py-2">FP <span id="fp">0</span></div><div class="bg-slate-50 text-slate-700 font-bold rounded py-2">TN <span id="tn">0</span></div>
+            </div>
+            <div id="verdict" class="border-t border-slate-100 pt-2 text-[12px] font-semibold text-slate-600 leading-snug">—</div>
+          </div>
+          <button id="reshuffle" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 resample the scored data</button>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500 font-semibold">Find the best threshold</span></div>
+            <p class="text-[11px] text-slate-400 leading-snug">Jump to the threshold closest to the top-left corner (max TPR − FPR, the Youden point) — the best single operating point on this curve.</p>
+            <button id="best" class="w-full text-sm border border-sky-200 bg-sky-50 text-sky-700 rounded-xl py-1.5 font-semibold hover:bg-sky-100">🎯 jump to best operating point</button>
+            <div id="bestout" class="text-[12px] text-slate-600 leading-relaxed"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How ROC and AUC work</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Build a ROC curve and AUC from raw scores with no library doing the work for you: take a list of <b>scores</b> and true <b>labels</b>, <b>sort</b> by score, <b>sweep</b> every threshold, compute <b>TPR and FPR</b> at each, <b>plot</b> the (FPR, TPR) points to draw the curve, and <b>integrate</b> the area with the trapezoid rule to get the AUC. Then see the one-line scikit-learn call you'd actually use in practice.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Start from scores and true labels</h3></div>
+        <div class="relative">
+<pre># a classifier outputs a continuous SCORE per example (e.g. predicted
+# probability of being positive), NOT a hard yes/no. the labels are the
+# ground truth: 1 = positive, 0 = negative. ROC lives on these scores.
+import numpy as np
+rng = np.random.default_rng(0)
+# 200 negatives centered low, 200 positives centered high (overlapping)
+neg = rng.normal(0.0, 1.0, 200)
+pos = rng.normal(2.0, 1.0, 200)            # separation = 2.0
+scores = np.concatenate([neg, pos])
+labels = np.concatenate([np.zeros(200), np.ones(200)]).astype(int)</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Sort by score (descending)</h3></div>
+        <div class="relative">
+<pre># every distinct score is a candidate threshold. sorting once, high to
+# low, lets us sweep thresholds by walking the list top to bottom: as we
+# pass each example we "flip" it from predicted-negative to positive.
+order = np.argsort(-scores)        # indices, highest score first
+s_sorted = scores[order]
+y_sorted = labels[order]
+P = labels.sum()                   # total actual positives
+Nn = len(labels) - P               # total actual negatives</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Compute the confusion matrix at one threshold</h3></div>
+        <div class="relative">
+<pre># at a chosen threshold t, anything with score >= t is predicted
+# positive. count the four cells. TPR and FPR are the two rates that
+# the ROC plots — recall on the y-axis, false-alarm rate on the x-axis.
+def confusion(t):
+    pred = (scores >= t).astype(int)
+    TP = int(((pred == 1) & (labels == 1)).sum())
+    FP = int(((pred == 1) & (labels == 0)).sum())
+    TN = int(((pred == 0) & (labels == 0)).sum())
+    FN = int(((pred == 0) & (labels == 1)).sum())
+    return TP, FP, TN, FN
+TP, FP, TN, FN = confusion(1.0)
+TPR = TP / (TP + FN)               # recall / sensitivity
+FPR = FP / (FP + TN)               # 1 - specificity</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Sweep every threshold → list of (FPR, TPR)</h3></div>
+        <div class="relative">
+<pre># walk the score-sorted list. start at the strictest threshold (predict
+# nothing positive) = point (0,0). each step lowers the threshold past
+# one example: a true positive bumps TPR, a true negative bumps FPR.
+tp = fp = 0
+roc = [(0.0, 0.0)]
+for yi in y_sorted:                # already sorted high->low score
+    if yi == 1: tp += 1            # caught a real positive
+    else:       fp += 1            # raised a false alarm
+    roc.append((fp / Nn, tp / P))  # (FPR, TPR) after this threshold
+# roc now ends at (1,1): the loosest threshold predicts all positive
+fprs = [p[0] for p in roc]
+tprs = [p[1] for p in roc]</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Plot the ROC curve</h3></div>
+        <div class="relative">
+<pre># plotting TPR against FPR draws the ROC. the dashed diagonal y = x is
+# a coin-flip classifier; a good model bows up toward the top-left
+# corner (high TPR while FPR is still low). top-left = perfect.
+import matplotlib.pyplot as plt
+plt.plot(fprs, tprs, "-", label="ROC")
+plt.plot([0, 1], [0, 1], "--", label="random")   # the diagonal
+plt.xlabel("FPR (1 - specificity)"); plt.ylabel("TPR (recall)")
+plt.legend(); plt.show()</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Integrate the area = AUC (trapezoid rule)</h3></div>
+        <div class="relative">
+<pre># AUC is literally the area under that curve. since the points are
+# already sorted by FPR, sum the area of each little trapezoid between
+# consecutive points: width * average height. 0.5 = random, 1.0 = perfect.
+auc = 0.0
+for i in range(1, len(roc)):
+    x0, y0 = roc[i - 1]
+    x1, y1 = roc[i]
+    auc += (x1 - x0) * (y0 + y1) / 2.0     # trapezoid area
+print("AUC =", round(auc, 4))
+# np.trapz does the same in one line: np.trapz(tprs, fprs)</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Sanity check: AUC = P(score(pos) &gt; score(neg))</h3></div>
+        <div class="relative">
+<pre># beautiful identity: AUC equals the probability that a randomly chosen
+# positive is scored higher than a randomly chosen negative. count all
+# positive-vs-negative pairs the model ranks correctly. it should match.
+wins = ties = 0
+for sp in pos:
+    for sn in neg:
+        if   sp > sn: wins += 1
+        elif sp == sn: ties += 1
+auc_rank = (wins + 0.5 * ties) / (len(pos) * len(neg))
+print("rank AUC =", round(auc_rank, 4), "  (matches the area)")</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">In the real world: scikit-learn (and when to use PR instead)</h3></div>
+        <div class="relative">
+<pre>from sklearn.metrics import roc_curve, roc_auc_score, average_precision_score
+
+# the curve points and the single-number AUC, both in one call each:
+fpr, tpr, thr = roc_curve(labels, scores)
+print("AUC =", roc_auc_score(labels, scores))     # threshold-independent
+
+# when positives are RARE (fraud, disease), ROC can look optimistic
+# because a huge TN count keeps FPR tiny. prefer the precision-recall
+# curve / average precision there — it ignores TN and tracks the rare class.
+print("avg precision =", average_precision_score(labels, scores))</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 20 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">A classifier outputs a score, and a threshold turns it into a decision; the confusion matrix counts TP/FP/TN/FN, from which TPR (recall) and FPR (1 − specificity) fall out. Sweeping the threshold traces the ROC curve, the diagonal is random and the top-left is perfect, and AUC — the area under it — equals the chance a positive outscores a negative, summarizing the model independent of any single threshold and staying robust under class imbalance. When positives are rare, reach for the precision-recall curve instead. Next up: precision, recall & F1 — picking the operating point that matches the real cost of each mistake.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== ROC & AUC — REAL COMPUTATION =====
+const distCan=document.getElementById("dist"), dc=distCan.getContext("2d");
+const rocCan=document.getElementById("roc"), rc=rocCan.getContext("2d");
+const SKY="#38bdf8", GRAY="#475569", EMER="#34d399", ROSE="#fb7185", AMBER="#fbbf24";
+const NPOS=200, NNEG=200;            // examples per class
+const SMIN=-4, SMAX=8;               // score axis range covering both humps
+let threshold=2.0;                   // the score cutoff (white line), in score units
+let separation=2.0;                  // distance between the two class means
+
+// standard-normal sample (Box-Muller)
+function gauss(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+// ---- data: raw scores + true labels, drawn from two gaussians ----
+// negatives ~ N(0,1); positives ~ N(separation,1). label 1 = positive.
+let baseNeg=[], basePos=[];          // the *standard* draws; we shift positives by `separation`
+function genData(){
+  baseNeg=[]; basePos=[];
+  for(let i=0;i<NNEG;i++) baseNeg.push(gauss());          // centered at 0
+  for(let i=0;i<NPOS;i++) basePos.push(gauss());          // centered at 0, shifted later
+}
+function negScores(){ return baseNeg; }
+function posScores(){ return basePos.map(z=>z+separation); }
+
+// ---- confusion matrix at a given threshold (predict + if score >= t) ----
+function confusionAt(t){
+  let TP=0,FP=0,TN=0,FN=0;
+  const ns=negScores(), ps=posScores();
+  for(const s of ps){ if(s>=t) TP++; else FN++; }        // actual positives
+  for(const s of ns){ if(s>=t) FP++; else TN++; }        // actual negatives
+  return {TP,FP,TN,FN};
+}
+function ratesAt(t){
+  const c=confusionAt(t);
+  const tpr=c.TP/(c.TP+c.FN || 1);
+  const fpr=c.FP/(c.FP+c.TN || 1);
+  const prec=(c.TP+c.FP)>0 ? c.TP/(c.TP+c.FP) : 0;
+  return {tpr,fpr,prec,...c};
+}
+
+// ---- full ROC by sweeping all thresholds + trapezoidal AUC ----
+let rocPts=[], auc=0, bestT=0, bestJ=-1;
+function computeROC(){
+  // build (score,label) list, sort by score descending, walk it
+  const items=[];
+  for(const s of posScores()) items.push({s, y:1});
+  for(const s of negScores()) items.push({s, y:0});
+  items.sort((a,b)=>b.s-a.s);
+  const P=NPOS, Nn=NNEG;
+  let tp=0, fp=0;
+  rocPts=[{fpr:0, tpr:0, t:Infinity}];
+  let prevS=Infinity;
+  for(const it of items){
+    // emit a point each time the score value changes (proper threshold steps)
+    if(it.s!==prevS){ rocPts.push({fpr:fp/Nn, tpr:tp/P, t:it.s}); prevS=it.s; }
+    if(it.y===1) tp++; else fp++;
+  }
+  rocPts.push({fpr:fp/Nn, tpr:tp/P, t:-Infinity});        // ends at (1,1)
+  // trapezoidal area under the curve (points already ordered by increasing FPR)
+  auc=0;
+  for(let i=1;i<rocPts.length;i++){
+    const x0=rocPts[i-1].fpr, y0=rocPts[i-1].tpr, x1=rocPts[i].fpr, y1=rocPts[i].tpr;
+    auc += (x1-x0)*(y0+y1)/2;
+  }
+  // best operating point = max (TPR - FPR), the Youden J / top-left-most
+  bestJ=-1; bestT=0;
+  for(const p of rocPts){ const j=p.tpr-p.fpr; if(j>bestJ && isFinite(p.t)){ bestJ=j; bestT=p.t; } }
+}
+
+// ---- drawing helpers ----
+const PADL=42, PADR=18, PADT=20, PADB=30;
+function sx(can,score){ return PADL + ((score-SMIN)/(SMAX-SMIN))*(can.width-PADL-PADR); }
+
+// ---- top canvas: the two score distributions + threshold line ----
+function drawDist(){
+  dc.clearRect(0,0,distCan.width,distCan.height); dc.fillStyle="#020617"; dc.fillRect(0,0,distCan.width,distCan.height);
+  const W=distCan.width, H=distCan.height, base=H-PADB;
+  // histogram both classes into bins over [SMIN,SMAX]
+  const BINS=48, bw=(SMAX-SMIN)/BINS;
+  const hNeg=new Array(BINS).fill(0), hPos=new Array(BINS).fill(0);
+  for(const s of negScores()){ const b=Math.floor((s-SMIN)/bw); if(b>=0&&b<BINS) hNeg[b]++; }
+  for(const s of posScores()){ const b=Math.floor((s-SMIN)/bw); if(b>=0&&b<BINS) hPos[b]++; }
+  const peak=Math.max(1,...hNeg,...hPos);
+  const colW=(W-PADL-PADR)/BINS;
+  function bars(hist,color){
+    dc.fillStyle=color;
+    for(let b=0;b<BINS;b++){
+      if(!hist[b]) continue;
+      const x=PADL+b*colW, h=(hist[b]/peak)*(H-PADT-PADB);
+      dc.fillRect(x+0.5, base-h, colW-1, h);
+    }
+  }
+  bars(hNeg,"rgba(251,113,133,0.55)");   // negatives = rose
+  bars(hPos,"rgba(56,189,248,0.55)");    // positives = sky
+  // baseline
+  dc.strokeStyle="#1e293b"; dc.lineWidth=1; dc.beginPath(); dc.moveTo(PADL,base); dc.lineTo(W-PADR,base); dc.stroke();
+  // threshold line (white) + shaded "predicted positive" region to the right
+  const tx=sx(distCan,threshold);
+  dc.fillStyle="rgba(255,255,255,0.05)"; dc.fillRect(tx, PADT, (W-PADR)-tx, base-PADT);
+  dc.strokeStyle="#fff"; dc.lineWidth=2; dc.beginPath(); dc.moveTo(tx,PADT-4); dc.lineTo(tx,base); dc.stroke();
+  // labels
+  dc.font="10px sans-serif"; dc.textAlign="left";
+  dc.fillStyle=ROSE; dc.fillText("● negatives", PADL+4, PADT+2);
+  dc.fillStyle=SKY;  dc.fillText("● positives", PADL+78, PADT+2);
+  dc.fillStyle="#fff"; dc.textAlign="center"; dc.fillText("threshold", tx, PADT-6 < 8 ? 8 : PADT-6);
+  dc.fillStyle="#94a3b8"; dc.textAlign="center"; dc.font="9px sans-serif";
+  dc.fillText("← predicted negative", PADL+(tx-PADL)/2, base+13);
+  dc.fillText("predicted positive →", tx+((W-PADR)-tx)/2, base+13);
+  dc.textAlign="left"; dc.fillText("classifier score →", PADL, H-6);
+}
+
+// ---- bottom canvas: the ROC curve + diagonal + operating point + AUC fill ----
+function drawROC(){
+  rc.clearRect(0,0,rocCan.width,rocCan.height); rc.fillStyle="#020617"; rc.fillRect(0,0,rocCan.width,rocCan.height);
+  const W=rocCan.width, H=rocCan.height;
+  const X=(fpr)=> PADL + fpr*(W-PADL-PADR);
+  const Y=(tpr)=> (H-PADB) - tpr*(H-PADT-PADB);
+  // axes
+  rc.strokeStyle="#1e293b"; rc.lineWidth=1;
+  rc.beginPath(); rc.moveTo(PADL,H-PADB); rc.lineTo(W-PADR,H-PADB); rc.stroke();
+  rc.beginPath(); rc.moveTo(PADL,PADT); rc.lineTo(PADL,H-PADB); rc.stroke();
+  // AUC shaded area under the curve
+  rc.fillStyle="rgba(56,189,248,0.14)"; rc.beginPath(); rc.moveTo(X(0),Y(0));
+  rocPts.forEach(p=>rc.lineTo(X(p.fpr),Y(p.tpr)));
+  rc.lineTo(X(1),Y(0)); rc.closePath(); rc.fill();
+  // random diagonal
+  rc.strokeStyle="rgba(148,163,184,0.6)"; rc.setLineDash([4,4]); rc.lineWidth=1.5;
+  rc.beginPath(); rc.moveTo(X(0),Y(0)); rc.lineTo(X(1),Y(1)); rc.stroke(); rc.setLineDash([]);
+  // ROC curve (sky)
+  rc.strokeStyle=SKY; rc.lineWidth=2.5; rc.beginPath();
+  rocPts.forEach((p,i)=>{ const px=X(p.fpr),py=Y(p.tpr); i?rc.lineTo(px,py):rc.moveTo(px,py); }); rc.stroke();
+  // current operating point (big white dot)
+  const r=ratesAt(threshold);
+  rc.fillStyle="#fff"; rc.beginPath(); rc.arc(X(r.fpr),Y(r.tpr),5.5,0,7); rc.fill();
+  rc.strokeStyle=SKY; rc.lineWidth=2; rc.beginPath(); rc.arc(X(r.fpr),Y(r.tpr),5.5,0,7); rc.stroke();
+  // labels
+  rc.font="10px sans-serif"; rc.textAlign="left"; rc.fillStyle="#94a3b8";
+  rc.fillText("FPR (1 − specificity) →", PADL, H-6);
+  rc.save(); rc.translate(12,H-PADB); rc.rotate(-Math.PI/2); rc.fillText("TPR (recall) →",0,0); rc.restore();
+  rc.fillStyle="rgba(148,163,184,0.9)"; rc.textAlign="right"; rc.fillText("random", X(0.92), Y(0.86));
+  rc.fillStyle=SKY; rc.textAlign="left"; rc.font="bold 13px sans-serif";
+  rc.fillText("AUC = "+auc.toFixed(3), X(0.52), Y(0.18));
+  rc.fillStyle="#fff"; rc.font="9px sans-serif"; rc.textAlign="left";
+  rc.fillText("● your threshold", X(r.fpr)+8, Y(r.tpr)+3);
+}
+
+function updateStats(){
+  const r=ratesAt(threshold);
+  document.getElementById("aucval").textContent=auc.toFixed(3);
+  document.getElementById("tprval").textContent=r.tpr.toFixed(3);
+  document.getElementById("fprval").textContent=r.fpr.toFixed(3);
+  document.getElementById("precval").textContent=r.prec.toFixed(3);
+  document.getElementById("tp").textContent=r.TP;
+  document.getElementById("fp").textContent=r.FP;
+  document.getElementById("tn").textContent=r.TN;
+  document.getElementById("fn").textContent=r.FN;
+  let verdict, color;
+  if(auc>=0.97){ verdict="🟢 near-perfect separation — the ROC hugs the top-left and AUC ≈ 1.0. The scores almost always rank positives above negatives."; color="text-emerald-600"; }
+  else if(auc>=0.7){ verdict="🟡 a useful classifier — clearly above the random diagonal. Move the threshold to trade recall (TPR) against false alarms (FPR)."; color="text-amber-600"; }
+  else if(auc>0.55){ verdict="🟠 weak separation — only a little better than a coin flip. The humps overlap a lot, so no threshold is great."; color="text-rose-600"; }
+  else { verdict="🔴 basically random — the classes fully overlap, ROC sits on the diagonal and AUC ≈ 0.5. No threshold can separate them."; color="text-rose-600"; }
+  const ve=document.getElementById("verdict"); ve.textContent=verdict; ve.className="border-t border-slate-100 pt-2 text-[12px] font-semibold leading-snug "+color;
+}
+
+function render(){ computeROC(); drawDist(); drawROC(); updateStats(); }
+
+// ---- interaction ----
+document.getElementById("thrslider").oninput=function(){
+  // slider is 0..1; map to the score axis so it spans both humps
+  threshold=SMIN + (+this.value)*(SMAX-SMIN);
+  document.getElementById("thrval").textContent=threshold.toFixed(2);
+  drawDist(); drawROC(); updateStats();   // separation/ROC unchanged, just the operating point
+};
+document.getElementById("sepslider").oninput=function(){
+  separation=+this.value;
+  document.getElementById("sepval").textContent=separation.toFixed(1);
+  render();                                // reshapes the whole problem -> recompute ROC + AUC
+};
+document.getElementById("reshuffle").onclick=()=>{ genData(); render(); };
+document.getElementById("best").onclick=()=>{
+  threshold=bestT;
+  const sv=(bestT-SMIN)/(SMAX-SMIN);
+  document.getElementById("thrslider").value=sv;
+  document.getElementById("thrval").textContent=bestT.toFixed(2);
+  const r=ratesAt(threshold);
+  document.getElementById("bestout").innerHTML=`<div class="mt-1 text-sky-700 font-semibold">✓ threshold ${bestT.toFixed(2)} → TPR ${r.tpr.toFixed(2)}, FPR ${r.fpr.toFixed(2)}</div><div class="text-slate-500">closest to the top-left corner (max TPR − FPR)</div>`;
+  drawDist(); drawROC(); updateStats();
+};
+// initialize threshold slider position from the default score threshold
+document.getElementById("thrslider").value=((threshold-SMIN)/(SMAX-SMIN)).toFixed(3);
+document.getElementById("thrval").textContent=threshold.toFixed(2);
+genData(); render();
+
+// ===== UNDERSTAND STEP-ENGINE =====
+const STEPS = [
+  { title:"1. Why accuracy alone misleads", why:"Accuracy is just the fraction of predictions you got right, and it sounds like the obvious score to chase — but it lies whenever the classes are imbalanced. If only 1 in 100 emails is spam, a lazy model that labels everything 'not spam' is 99% accurate while catching exactly zero spam. The single accuracy number hides which kind of mistake you're making. To judge a classifier honestly you have to look at how it treats positives and negatives separately, which is exactly what ROC and AUC do.", concept:`<div class="bg-slate-100 p-4 rounded text-sm w-full text-center"><b>99% accurate, 0% useful</b><br><span class="text-xs text-slate-500">predict "not spam" always → 99% right on 1%-spam data, catches no spam</span></div>`, code:`# imbalanced data: accuracy is a trap
+# 99 negatives, 1 positive
+# always-negative model -> 99/100 = 99% accuracy, recall = 0` },
+  { title:"2. A classifier outputs a score, you pick a threshold", why:"Under the hood most classifiers don't hand you a hard yes/no — they output a continuous score, like a predicted probability of being positive. The yes/no only appears once you compare that score to a threshold: score above the line is called positive, below is negative. That threshold is a knob YOU set, not the model. Slide it toward zero and you call almost everything positive; slide it toward one and you call almost nothing positive. Every metric below depends on where you put that knob, which is the whole reason we study the full sweep instead of one setting.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">model gives a <b>score</b> ∈ [0,1]<br>you choose a <b>threshold</b> → score ≥ t means "positive"<br><span class="text-xs text-slate-500">the decision is the threshold's, not the model's</span></div>`, code:`scores = model.predict_proba(X)[:, 1]   # continuous score
+pred = (scores >= 0.5).astype(int)       # threshold turns it into 0/1` },
+  { title:"3. The confusion matrix: TP, FP, TN, FN", why:"Once a threshold turns scores into yes/no, every prediction lands in one of four buckets. A true positive (TP) is a real positive you correctly flagged; a false positive (FP) is a negative you wrongly flagged (a false alarm); a true negative (TN) is a negative you correctly let pass; a false negative (FN) is a real positive you missed. Those four counts are the confusion matrix, and every classification metric — accuracy, precision, recall, TPR, FPR — is just a different ratio of these same four numbers.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>four outcomes</b><br>TP = caught it · FP = false alarm<br>TN = correctly ignored · FN = missed it<br><span class="text-xs text-slate-500">every metric is a ratio of these four</span></div>`, code:`TP = ((pred==1) & (y==1)).sum()   # hit
+FP = ((pred==1) & (y==0)).sum()   # false alarm
+TN = ((pred==0) & (y==0)).sum()   # correct reject
+FN = ((pred==0) & (y==1)).sum()   # miss` },
+  { title:"4. TPR (recall) vs FPR (1 − specificity)", why:"ROC is built from two of those ratios. The true-positive rate, TPR = TP / (TP + FN), is the fraction of actual positives you caught — also called recall or sensitivity. The false-positive rate, FPR = FP / (FP + TN), is the fraction of actual negatives you wrongly flagged, equal to one minus specificity. The key trick is that both are computed within a single true class, so neither depends on how common positives are — that independence from the class mix is what makes ROC robust to imbalance, unlike raw accuracy.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>TPR</b> = TP/(TP+FN) — caught positives (recall)<br><b>FPR</b> = FP/(FP+TN) — false alarms among negatives<br><span class="text-xs text-slate-500">each is within one class → unaffected by class balance</span></div>`, code:`TPR = TP / (TP + FN)   # recall / sensitivity (y-axis)
+FPR = FP / (FP + TN)   # 1 - specificity      (x-axis)` },
+  { title:"5. Sweep the threshold → trace the ROC curve", why:"A single threshold gives just one (FPR, TPR) pair — one dot. The ROC curve appears when you sweep the threshold across every possible value and plot the dot it produces at each setting. At the strictest threshold you call nothing positive, so you sit at the origin (0,0); as you loosen it you catch more positives but also raise more false alarms, walking up and to the right until at the loosest threshold you call everything positive and land at (1,1). Connecting all those dots traces the curve that shows the model's behavior at every operating point at once.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">one threshold = one dot (FPR, TPR)<br><b>sweep all thresholds → the curve</b><br><span class="text-xs text-slate-500">(0,0) at strictest → (1,1) at loosest</span></div>`, code:`# sort by score, walk thresholds high -> low
+pts = [(0,0)]
+for label in labels_sorted_by_score_desc:
+    # a positive raises TPR, a negative raises FPR
+    pts.append((fp/N_neg, tp/N_pos))` },
+  { title:"6. The diagonal is random, the top-left is perfect", why:"The dashed diagonal line from (0,0) to (1,1) is the reference: a classifier with no skill that guesses randomly gains true positives and false positives at the same rate, so its curve is exactly that diagonal. A real model should bow ABOVE the diagonal, toward the top-left corner — that corner means you've caught all the positives (TPR = 1) while raising no false alarms (FPR = 0), the perfect classifier. The closer the curve hugs the top-left, the better the scores separate the two classes; a curve sagging below the diagonal means the model is worse than guessing (and you could just flip its predictions).", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>diagonal = random</b> (no skill)<br><b>top-left corner = perfect</b> (TPR 1, FPR 0)<br><span class="text-xs text-slate-500">the more it bows up-left, the better</span></div>`, code:`# y = x  -> random classifier (the reference diagonal)
+# curve toward (0,1) -> the model separates the classes well
+# curve below the diagonal -> worse than guessing` },
+  { title:"7. AUC = area under the ROC = a single score", why:"Comparing whole curves by eye is awkward, so we squash the ROC into one number: the Area Under the Curve. Geometrically it's literally the area beneath the ROC, easy to compute by adding up the little trapezoids between consecutive points (width times average height). The random diagonal cuts the unit square in half, so a no-skill model scores AUC = 0.5; a perfect model that hugs the top-left fills the whole square for AUC = 1.0. Higher is better, and 0.5 is the floor that means 'no better than a coin flip.'", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>AUC = area under the ROC</b><br>0.5 = random · 1.0 = perfect<br><span class="text-xs text-slate-500">trapezoid sum of the curve, one number for the whole model</span></div>`, code:`auc = 0.0
+for i in range(1, len(pts)):
+    x0,y0 = pts[i-1]; x1,y1 = pts[i]
+    auc += (x1-x0)*(y0+y1)/2   # trapezoid area
+# np.trapz(tprs, fprs) does the same` },
+  { title:"8. AUC = P(score of a positive > score of a negative)", why:"AUC has a wonderfully intuitive meaning beyond 'area': it equals the probability that, if you pick one random positive and one random negative, the model gives the positive the higher score. In other words AUC measures how well the scores RANK the two classes, not whether any particular threshold is right. That's why AUC = 0.5 means the model ranks positives above negatives only half the time (pure chance) and AUC = 1.0 means it always ranks them correctly. You can even compute AUC by just counting correctly-ranked positive/negative pairs.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>AUC = P( score(pos) &gt; score(neg) )</b><br>pick a random +/− pair → chance the + scores higher<br><span class="text-xs text-slate-500">it's a ranking quality, not a threshold quality</span></div>`, code:`wins = ties = 0
+for sp in pos_scores:
+    for sn in neg_scores:
+        if sp > sn: wins += 1
+        elif sp == sn: ties += 1
+auc = (wins + 0.5*ties) / (len(pos)*len(neg))` },
+  { title:"9. AUC is threshold-independent and imbalance-robust", why:"This is why practitioners love AUC as a summary. Because it integrates over every threshold, it judges the model's scores as a whole instead of locking in one arbitrary cutoff — useful early on when you haven't yet decided how aggressive to be. And because both axes (TPR, FPR) are computed inside a single class, AUC barely shifts when you change the ratio of positives to negatives, so it stays meaningful on imbalanced data where accuracy collapses. One caveat: it gives every threshold equal weight, so it won't tell you which operating point is right for your costs — that's the next step.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">AUC averages over <b>all thresholds</b> → no arbitrary cutoff<br>rates are within-class → <b>robust to imbalance</b><br><span class="text-xs text-slate-500">great summary, but it doesn't pick your operating point</span></div>`, code:`from sklearn.metrics import roc_auc_score
+# one number, no threshold needed, stable under class imbalance
+auc = roc_auc_score(y_true, scores)` },
+  { title:"10. Choosing the operating point: cost of FP vs FN", why:"AUC summarizes the model, but in production you still have to choose ONE threshold, and the right one depends on which mistake hurts more. If a false negative is catastrophic — missing a cancer, letting fraud through — you lower the threshold to push TPR up, accepting more false alarms. If false positives are expensive — blocking good customers, needless surgery — you raise it to keep FPR down. A common pick is the point closest to the top-left corner (maximizing TPR − FPR, the Youden J), but the truly correct choice weighs the real-world cost of each error type, not just the geometry of the curve.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">missing positives is worse → <b>lower threshold</b> (TPR ↑)<br>false alarms are worse → <b>raise threshold</b> (FPR ↓)<br><span class="text-xs text-slate-500">the curve shows options; costs pick the point</span></div>`, code:`# Youden J: the point that maximizes TPR - FPR
+j = tpr - fpr
+best_threshold = thresholds[np.argmax(j)]
+# but real choice = weigh cost(FP) vs cost(FN) for your problem` },
+  { title:"11. ROC vs Precision-Recall: when positives are rare", why:"ROC has a blind spot for highly imbalanced problems. FPR has the huge negative count in its denominator, so when negatives massively outnumber positives, even thousands of false positives barely move FPR and the ROC can look reassuringly good while your alerts are mostly junk. The precision-recall curve fixes this: precision = TP / (TP + FP) directly reflects how many of your flagged items are real, ignoring the TN flood entirely. So for rare-positive tasks like fraud, disease screening, or anomaly detection, prefer the PR curve and average precision; for roughly balanced classes, ROC and AUC are the natural choice.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">A classifier scores, a threshold decides; TP/FP/TN/FN give TPR and FPR, sweeping the threshold traces the ROC, and AUC — the area, equal to P(pos outscores neg) — rates the model across every threshold and survives class imbalance. Pick the operating point by the cost of each error, and switch to the precision-recall curve when positives are rare.</p></div>`, code:`from sklearn.metrics import average_precision_score
+# rare positives? ROC looks rosy because TN dwarfs FP.
+# PR curve / average precision ignores TN, tracks the rare class:
+ap = average_precision_score(y_true, scores)` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+function copy(btn) {
+  const pre = btn.parentElement.querySelector("pre");
+  navigator.clipboard.writeText(pre.textContent);
+  const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => btn.textContent = o, 1500);
+}
+</script>
+</body>
+</html>
