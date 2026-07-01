@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>MachineLearningFromZero · Day 21 — AdaBoost</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .copy-btn:hover { background:#1e293b; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  canvas { background:#020617; border:1px solid #1e293b; border-radius:10px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 21</div>
+      <h1 class="text-xl font-bold">🚀 AdaBoost — Turning Weak Stumps Into a Strong Classifier</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Add rounds and watch a pile of dumb one-line rules harden into a real boundary</h2>
+      <p class="text-slate-500 text-center mb-6 max-w-4xl mx-auto">Left: a 2-class scatter — <b>rose</b> is class −1, <b>sky</b> is class +1 — that no single straight cut can separate. AdaBoost's only tool is a <b>decision stump</b>: a depth-1 rule that splits on <b>one axis at one threshold</b> (an alone-standing horizontal or vertical line). One stump is barely better than a coin flip. The trick is to add many, each one focused on the mistakes of the last. Every point carries a <b>sample weight</b> (drawn as its size); we start them equal, then each round we <b>pick the stump with the lowest weighted error</b>, score it with <b>α = ½·ln((1−err)/err)</b>, and <b>multiply up the weight of every point it got wrong</b> so the next stump is forced to look at the hard cases. The final classifier is the <b>weighted vote</b> sign(Σ α·stump). Drag the <b>rounds slider</b> and watch the shaded decision region — built live from the real weighted-error / α loop — go from a single crude slab to a sharp, blocky boundary while <b>train accuracy climbs</b>. Nothing here is faked: every error, α and weight update is computed from your data.</p>
+      <div class="grid md:grid-cols-3 gap-5 items-start">
+        <div class="md:col-span-2 space-y-4">
+          <div class="flex justify-center"><canvas id="board" width="540" height="380"></canvas></div>
+          <p class="text-center text-[11px] text-slate-400">The shaded background is the combined region the strong classifier calls <span class="text-sky-300">+1</span> vs <span class="text-rose-300">−1</span>. The bright white line is the <b>latest round's stump</b>; faint white lines are earlier stumps. <b>Point size = its current sample weight</b> — misclassified points swell so the next stump chases them. A ✕ ring marks points the current ensemble still gets wrong.</p>
+        </div>
+        <div class="space-y-3">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between pt-1"><span class="text-slate-500">boosting rounds (T)</span><span id="Tval" class="font-bold text-sky-600">8</span></div>
+            <input id="Tslider" type="range" min="1" max="30" step="1" value="8" class="w-full accent-sky-600" />
+            <p class="text-[11px] text-slate-400 leading-snug">Each round adds one stump aimed at the previous rounds' mistakes. More rounds = a sharper, blockier boundary — up to a point (see overfitting in the UNDERSTAND tab).</p>
+            <div class="border-t border-slate-100 pt-2 mt-1">
+              <div class="flex justify-between"><span class="text-slate-500">train accuracy</span><span id="accval" class="font-bold text-emerald-500">—</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">stumps in ensemble</span><span id="nstump" class="font-bold text-sky-600">—</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">this round's weighted err</span><span id="errval" class="font-bold text-rose-500">—</span></div>
+              <div class="flex justify-between"><span class="text-slate-500">this round's α (weight)</span><span id="alphaval" class="font-bold text-amber-500">—</span></div>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500 font-semibold">Round-by-round log</span></div>
+            <div id="roundlog" class="text-[11px] text-slate-500 leading-relaxed font-mono max-h-40 overflow-auto">—</div>
+          </div>
+          <button id="reshuffle" class="w-full text-sm border border-slate-200 rounded-xl py-2 hover:bg-slate-50">🎲 regenerate the data</button>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 space-y-2 text-sm">
+            <div class="flex justify-between"><span class="text-slate-500 font-semibold">What am I looking at?</span></div>
+            <p id="verdict" class="text-[12px] font-semibold text-slate-600 leading-snug">—</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How AdaBoost works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Write AdaBoost from scratch with nothing but decision stumps: start with <b>uniform sample weights</b>, then repeat T times — find the <b>stump with the lowest weighted error</b>, turn that error into a voting weight <b>α = ½·ln((1−err)/err)</b>, <b>multiply up the weight</b> of every misclassified point and <b>renormalise</b> so the weights stay a distribution. Predict with the <b>weighted vote</b> sign(Σ α·stump). Then see the one-line scikit-learn call you'd actually use.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">A weak learner: the decision stump</h3></div>
+        <div class="relative">
+<pre># a STUMP is a depth-1 tree: split on ONE feature at ONE threshold.
+# it predicts +1 on one side, -1 on the other (a "polarity" flips which).
+# on its own it's barely better than a coin flip -> a "weak learner".
+import numpy as np
+
+def stump_predict(X, dim, thresh, polarity):
+    pred = np.ones(len(X))
+    if polarity == 1:
+        pred[X[:, dim] <= thresh] = -1
+    else:
+        pred[X[:, dim] >  thresh] = -1
+    return pred                       # array of +1 / -1</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Start with uniform sample weights</h3></div>
+        <div class="relative">
+<pre># every training point begins equally important. the weights form a
+# probability distribution over the data (they sum to 1). as boosting
+# proceeds, points the ensemble keeps getting wrong will grow heavier.
+n = len(X)
+w = np.full(n, 1.0 / n)               # uniform: every point weight 1/n
+# labels y must be encoded as +1 / -1 (NOT 0/1) for the math below.</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Pick the stump with the lowest WEIGHTED error</h3></div>
+        <div class="relative">
+<pre># the best stump this round is the one that misclassifies the least
+# WEIGHT (not the least count). heavy points dominate the search, so
+# the stump is pulled toward whatever the ensemble is failing on.
+def best_stump(X, y, w):
+    best = None; best_err = float("inf")
+    for dim in range(X.shape[1]):
+        for thresh in np.unique(X[:, dim]):
+            for polarity in (1, -1):
+                pred = stump_predict(X, dim, thresh, polarity)
+                err = w[pred != y].sum()      # weighted error
+                if err < best_err:
+                    best_err = err
+                    best = (dim, thresh, polarity)
+    return best, best_err</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Turn the error into a voting weight α</h3></div>
+        <div class="relative">
+<pre># alpha is how much this stump's vote counts in the final ensemble.
+# a stump with tiny error earns a big alpha; one at err = 0.5 (useless)
+# earns alpha = 0; one that's WORSE than chance gets a negative alpha
+# (its vote is flipped). the 1e-10 guards against a divide-by-zero.
+eps = 1e-10
+err = min(max(best_err, eps), 1 - eps)
+alpha = 0.5 * np.log((1 - err) / err)</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Reweight: grow the misclassified points, renormalise</h3></div>
+        <div class="relative">
+<pre># multiply each weight by exp(-alpha * y_i * h(x_i)). when the stump is
+# RIGHT (y_i*h = +1) the weight shrinks; when it's WRONG (y_i*h = -1)
+# the weight grows by exp(alpha). then divide by the total Z so the
+# weights sum back to 1 -> a fresh distribution the next round chases.
+pred = stump_predict(X, dim, thresh, polarity)
+w = w * np.exp(-alpha * y * pred)
+w = w / w.sum()                       # renormalise: sum(w) == 1 again</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">The boosting loop: repeat for T rounds</h3></div>
+        <div class="relative">
+<pre># stitch it together: each round appends one (stump, alpha) to the
+# ensemble. the growing weights force each new stump onto the residual
+# hard cases, so the group covers what any single stump cannot.
+def adaboost(X, y, T):
+    n = len(X); w = np.full(n, 1.0/n); ensemble = []
+    for _ in range(T):
+        (dim, thr, pol), err = best_stump(X, y, w)
+        err = min(max(err, 1e-10), 1 - 1e-10)
+        alpha = 0.5 * np.log((1 - err) / err)
+        pred = stump_predict(X, dim, thr, pol)
+        w = w * np.exp(-alpha * y * pred); w /= w.sum()
+        ensemble.append((alpha, dim, thr, pol))
+    return ensemble</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Predict: the weighted vote sign(Σ α·stump)</h3></div>
+        <div class="relative">
+<pre># the strong classifier is a weighted majority vote. add up each
+# stump's +1/-1 prediction scaled by its alpha; the SIGN of that sum
+# is the final label. confident stumps (big alpha) swing the vote more.
+def predict(ensemble, X):
+    total = np.zeros(len(X))
+    for alpha, dim, thr, pol in ensemble:
+        total += alpha * stump_predict(X, dim, thr, pol)
+    return np.sign(total)             # the additive ensemble decision
+acc = (predict(ensemble, X) == y).mean()
+print("train accuracy:", round(acc, 3))</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">In the real world: scikit-learn</h3></div>
+        <div class="relative">
+<pre>from sklearn.ensemble import AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
+
+# the weak learner is a depth-1 tree = exactly our stump.
+# n_estimators is T (rounds); learning_rate shrinks each alpha to slow
+# boosting down and fight overfitting. use cross-validation to pick both.
+clf = AdaBoostClassifier(
+    estimator=DecisionTreeClassifier(max_depth=1),
+    n_estimators=50,
+    learning_rate=1.0,
+)
+clf.fit(X, y)
+print("score:", clf.score(X_test, y_test))</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 21 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">AdaBoost builds a strong classifier from an army of weak decision stumps. Each round it picks the stump with the lowest weighted error, scores it with α = ½·ln((1−err)/err), then multiplies up the weight of every misclassified point and renormalises — so the next stump is forced onto the hard cases. The final model is the weighted vote sign(Σ α·stump), an additive ensemble that drives down bias round after round. Stop with cross-validation or a small learning rate before it starts fitting the noise. Tomorrow: <b>Gaussian Mixture Models &amp; the EM algorithm</b> — soft, probabilistic clustering where every point belongs a little to every cluster.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== ADABOOST — REAL COMPUTATION =====
+const can=document.getElementById("board"), g=can.getContext("2d");
+const SKY="#38bdf8", ROSE="#fb7185", AMBER="#fbbf24";
+const N=80;                            // training points
+const XMIN=-4, XMAX=4, YMIN=-4, YMAX=4;// feature-space window
+let T=8;                               // number of boosting rounds
+
+// standard-normal sample (Box-Muller)
+function gauss(){ let u=0,v=0; while(u===0)u=Math.random(); while(v===0)v=Math.random(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+// ---- data: two overlapping blobs that no single stump can split ----
+// class +1 sits in two diagonal pockets, class -1 in the other two -> a
+// checker-ish layout, so one axis-threshold is always weak (needs boosting).
+let X=[], y=[];                        // X[i]=[x0,x1], y[i] in {+1,-1}
+function genData(){
+  X=[]; y=[];
+  for(let i=0;i<N;i++){
+    // pick one of four pockets; opposite corners share a label (XOR-like)
+    const cx = Math.random()<0.5 ? -1.7 : 1.7;
+    const cy = Math.random()<0.5 ? -1.7 : 1.7;
+    const label = (cx*cy > 0) ? 1 : -1;             // XOR pattern
+    X.push([cx + gauss()*0.95, cy + gauss()*0.95]);
+    y.push(label);
+  }
+}
+
+// ---- weak learner: an axis-aligned decision stump ----
+// predicts +1 on one side of a threshold on one dim, -1 on the other.
+// polarity flips which side is +1.
+function stumpPredict(s, x){
+  const side = x[s.dim] > s.thresh ? 1 : -1;
+  return s.pol * side;
+}
+
+// ---- pick the stump minimising WEIGHTED error over the sample weights ----
+function bestStump(w){
+  let best={err:Infinity, dim:0, thresh:0, pol:1};
+  for(let dim=0; dim<2; dim++){
+    // candidate thresholds = midpoints between sorted unique values (+ ends)
+    const vals=[...new Set(X.map(p=>p[dim]))].sort((a,b)=>a-b);
+    const cands=[vals[0]-0.5];
+    for(let i=0;i<vals.length-1;i++) cands.push((vals[i]+vals[i+1])/2);
+    cands.push(vals[vals.length-1]+0.5);
+    for(const thresh of cands){
+      for(const pol of [1,-1]){
+        const s={dim,thresh,pol};
+        let err=0;
+        for(let i=0;i<N;i++) if(stumpPredict(s,X[i])!==y[i]) err+=w[i];
+        if(err<best.err) best={err,dim,thresh,pol};
+      }
+    }
+  }
+  return best;
+}
+
+// ---- the real AdaBoost loop, run for the current T ----
+let ensemble=[], rounds=[], trainAcc=0;
+function runAdaBoost(){
+  let w=new Array(N).fill(1/N);        // uniform sample weights (sum = 1)
+  ensemble=[]; rounds=[];
+  let sampleW=w.slice();               // remember weights for drawing
+  for(let r=0;r<T;r++){
+    const s=bestStump(w);
+    let err=s.err;
+    err=Math.min(Math.max(err,1e-10),1-1e-10);          // clamp for safety
+    const alpha=0.5*Math.log((1-err)/err);              // the alpha formula
+    // reweight: w_i *= exp(-alpha * y_i * h(x_i))  (wrong points grow)
+    for(let i=0;i<N;i++){ const h=stumpPredict(s,X[i]); w[i]*=Math.exp(-alpha*y[i]*h); }
+    // renormalise so the weights sum back to 1 (a fresh distribution)
+    const Z=w.reduce((a,b)=>a+b,0);
+    for(let i=0;i<N;i++) w[i]/=Z;
+    ensemble.push({dim:s.dim, thresh:s.thresh, pol:s.pol, alpha});
+    rounds.push({err, alpha});
+    if(r===T-1) sampleW=w.slice();     // final-round weights = point sizes
+  }
+  lastWeights=sampleW;
+  // strong classifier train accuracy
+  let correct=0;
+  for(let i=0;i<N;i++) if(strong(X[i])===y[i]) correct++;
+  trainAcc=correct/N;
+}
+let lastWeights=new Array(N).fill(1/N);
+
+// ---- strong classifier: sign( sum alpha * stump ) ----
+function strongRaw(x){ let s=0; for(const e of ensemble) s+=e.alpha*stumpPredict(e,x); return s; }
+function strong(x){ return strongRaw(x)>=0 ? 1 : -1; }
+
+// ---- drawing ----
+const PAD=8;
+function px(x){ return PAD + ((x-XMIN)/(XMAX-XMIN))*(can.width-2*PAD); }
+function py(x){ return (can.height-PAD) - ((x-YMIN)/(YMAX-YMIN))*(can.height-2*PAD); }
+
+function draw(){
+  g.clearRect(0,0,can.width,can.height);
+  g.fillStyle="#020617"; g.fillRect(0,0,can.width,can.height);
+  // decision region: sample a grid, tint by the strong classifier
+  const STEP=7;
+  for(let sx=PAD; sx<can.width-PAD; sx+=STEP){
+    for(let sy=PAD; sy<can.height-PAD; sy+=STEP){
+      const fx=XMIN + ((sx-PAD)/(can.width-2*PAD))*(XMAX-XMIN);
+      const fy=YMIN + ((can.height-PAD-sy)/(can.height-2*PAD))*(YMAX-YMIN);
+      g.fillStyle = strong([fx,fy])===1 ? "rgba(56,189,248,0.13)" : "rgba(251,113,133,0.13)";
+      g.fillRect(sx,sy,STEP,STEP);
+    }
+  }
+  // earlier stumps faint, latest stump bright
+  ensemble.forEach((e,i)=>{
+    const last = i===ensemble.length-1;
+    g.strokeStyle = last ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.14)";
+    g.lineWidth = last ? 2.5 : 1;
+    g.beginPath();
+    if(e.dim===0){ const x=px(e.thresh); g.moveTo(x,PAD); g.lineTo(x,can.height-PAD); }
+    else { const yv=py(e.thresh); g.moveTo(PAD,yv); g.lineTo(can.width-PAD,yv); }
+    g.stroke();
+  });
+  // points: size = current sample weight, colour = true class, ✕ = still wrong
+  const wmax=Math.max(...lastWeights);
+  for(let i=0;i<N;i++){
+    const cx=px(X[i][0]), cy=py(X[i][1]);
+    const r=3 + 12*(lastWeights[i]/wmax);             // weight -> radius
+    g.fillStyle = y[i]===1 ? "rgba(56,189,248,0.9)" : "rgba(251,113,133,0.9)";
+    g.beginPath(); g.arc(cx,cy,r,0,7); g.fill();
+    g.strokeStyle = y[i]===1 ? SKY : ROSE; g.lineWidth=1; g.stroke();
+    if(strong(X[i])!==y[i]){                           // ring the mistakes
+      g.strokeStyle="#fff"; g.lineWidth=1.5;
+      g.beginPath(); g.arc(cx,cy,r+3,0,7); g.stroke();
+    }
+  }
+  // legend
+  g.font="11px sans-serif"; g.textAlign="left";
+  g.fillStyle=SKY;  g.fillText("● class +1", 12, 18);
+  g.fillStyle=ROSE; g.fillText("● class −1", 92, 18);
+  g.fillStyle="#e2e8f0"; g.fillText("— latest stump", 172, 18);
+  g.fillStyle="#94a3b8"; g.textAlign="right"; g.fillText("size = sample weight · ○ = still wrong", can.width-12, 18);
+}
+
+function updateStats(){
+  document.getElementById("Tval").textContent=T;
+  document.getElementById("accval").textContent=(trainAcc*100).toFixed(1)+"%";
+  document.getElementById("nstump").textContent=ensemble.length;
+  const last=rounds[rounds.length-1];
+  document.getElementById("errval").textContent=last?last.err.toFixed(4):"—";
+  document.getElementById("alphaval").textContent=last?last.alpha.toFixed(4):"—";
+  // round log
+  const log=rounds.map((r,i)=>`r${String(i+1).padStart(2)}  err ${r.err.toFixed(3)}  α ${r.alpha.toFixed(3)}`).join("<br>");
+  document.getElementById("roundlog").innerHTML=log||"—";
+  // verdict
+  let v;
+  if(T<=2) v="🟠 With just a stump or two the boundary is a crude slab — a single weak learner barely beats a coin flip on this XOR-like data.";
+  else if(trainAcc>=0.95) v="🟢 The weighted vote of many stumps has carved out a sharp, blocky boundary that fits the pockets — bias driven right down.";
+  else if(trainAcc>=0.8) v="🟡 The ensemble is getting there: the heavy (big) points are the ones later stumps are still chasing.";
+  else v="🟠 Still crude — add more rounds and watch the misclassified points swell and later stumps hunt them down.";
+  document.getElementById("verdict").textContent=v;
+}
+
+function render(){ runAdaBoost(); draw(); updateStats(); }
+
+// ---- interaction ----
+document.getElementById("Tslider").oninput=function(){
+  T=+this.value;
+  render();
+};
+document.getElementById("reshuffle").onclick=()=>{ genData(); render(); };
+genData(); render();
+
+// ===== UNDERSTAND STEP-ENGINE =====
+const STEPS = [
+  { title:"1. Weak learners vs a strong learner", why:"A strong learner is a model that can get arbitrarily accurate given enough data; a weak learner only has to do slightly better than random guessing — on a two-class problem, an error just under 50%. That sounds useless, and alone it nearly is. AdaBoost's central bet, proved by Schapire and Freund, is that if you can reliably produce weak learners you can COMBINE many of them into a single strong one. Boosting is the recipe for that combination: not one clever model, but a disciplined committee of dumb ones. This is a completely different philosophy from training one big model and hoping it's good.", concept:`<div class="bg-slate-100 p-4 rounded text-sm w-full text-center"><b>weak</b> = a bit better than a coin flip (err &lt; 0.5)<br><b>strong</b> = arbitrarily accurate<br><span class="text-xs text-slate-500">boosting: many weak learners → one strong learner</span></div>`, code:`# a single weak learner: ~45% error, almost a coin flip.
+# AdaBoost's promise: combine hundreds of these into
+# one classifier with near-zero training error.` },
+  { title:"2. The weak learner here: a decision stump", why:"AdaBoost's favourite weak learner is the decision stump — a decision tree of depth one. It looks at a single feature, compares it to a single threshold, and predicts +1 on one side and −1 on the other; a polarity bit chooses which side is which. That's the entire model: one axis, one cut. On data that isn't linearly separable a stump can't possibly be accurate, which is exactly why it qualifies as weak. But it's cheap to fit and easy to reweight, so it's the perfect brick for boosting to stack. In the demo every white line you see is one such stump.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>decision stump = depth-1 tree</b><br>one feature · one threshold · +1 vs −1<br><span class="text-xs text-slate-500">the simplest possible split — deliberately weak</span></div>`, code:`def stump_predict(X, dim, thresh, polarity):
+    pred = np.ones(len(X))
+    if polarity == 1: pred[X[:,dim] <= thresh] = -1
+    else:             pred[X[:,dim] >  thresh] = -1
+    return pred   # +1 / -1 on the two sides of one cut` },
+  { title:"3. Sample weights: a spotlight on the hard points", why:"The engine of AdaBoost is a weight attached to every training point, telling the next weak learner how much that point matters. All weights start equal — a uniform distribution summing to one — so the first stump just sees the raw problem. After each round the weights change: points that were classified correctly get lighter and points that were missed get heavier. Because the next stump is chosen to minimise WEIGHTED error, those heavy points dominate its search, so it's effectively forced to focus on the cases the committee is still getting wrong. The weights are how one round talks to the next.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">every point carries a <b>weight</b> (sums to 1)<br>start uniform → hard points grow heavier<br><span class="text-xs text-slate-500">the next stump is pulled toward the heavy points</span></div>`, code:`n = len(X)
+w = np.full(n, 1.0 / n)   # uniform: each point 1/n
+# these weights are a probability distribution;
+# they will be reshaped every round.` },
+  { title:"4. Weighted error: judging a stump by weight, not count", why:"When we search for the best stump each round, we don't count how many points it gets wrong — we add up the WEIGHT of the points it gets wrong. That single change is what makes boosting adaptive. Early on, with uniform weights, weighted error equals plain error. But once some points are heavy, a stump that nails those heavy points scores a low weighted error even if it flubs several light ones. So the definition of 'best stump' shifts every round toward whatever the ensemble is currently failing on, without us ever telling it which points are hard — the weights say it for us.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>err = Σ w<sub>i</sub> over the misclassified points</b><br>heavy points count more than light ones<br><span class="text-xs text-slate-500">so 'best stump' tracks the current hard cases</span></div>`, code:`def weighted_error(pred, y, w):
+    return w[pred != y].sum()   # weight of the misses
+# search all (dim, thresh, polarity), keep the
+# stump with the SMALLEST weighted error.` },
+  { title:"5. The alpha formula: why ½·ln((1−err)/err)", why:"Once a stump's weighted error is known, its say in the final vote is α = ½·ln((1−err)/err). The shape is the point. When err → 0 the ratio (1−err)/err blows up and α → +∞, so a near-perfect stump dominates the vote. When err = 0.5 the ratio is 1, ln(1) = 0, so a coin-flip stump gets α = 0 — no say at all. And when err > 0.5 the log goes negative, so a worse-than-random stump earns a NEGATIVE α and its vote is simply flipped. The logarithm isn't arbitrary: it's exactly the value that minimises the exponential loss AdaBoost is secretly doing gradient descent on, which is why boosting provably drives training error down.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>α = ½·ln((1 − err) / err)</b><br>err→0 ⇒ α→+∞ · err=0.5 ⇒ α=0 · err&gt;0.5 ⇒ α&lt;0<br><span class="text-xs text-slate-500">the ln is the minimiser of the exponential loss</span></div>`, code:`eps = 1e-10
+err = min(max(err, eps), 1 - eps)   # guard the log
+alpha = 0.5 * np.log((1 - err) / err)
+# err 0.5 -> 0.0 | err 0.1 -> 1.099 | err 0.01 -> 2.298` },
+  { title:"6. Reweighting: grow the misclassified, renormalise", why:"Now we update the weights so the next stump sees a harder problem. Each weight is multiplied by exp(−α·yᵢ·h(xᵢ)). When the stump is right, yᵢ·h(xᵢ) = +1, the exponent is negative and the weight shrinks; when it's wrong, yᵢ·h(xᵢ) = −1, the exponent is positive and the weight grows by exactly exp(α). Bigger α (a confident stump) means a sharper reweighting. Finally we divide every weight by the total Z so they sum back to one — a valid distribution again. In the demo this is why the misclassified points visibly swell round after round: their weight is being multiplied up so the next stump can't ignore them.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>w<sub>i</sub> ← w<sub>i</sub>·exp(−α·y<sub>i</sub>·h(x<sub>i</sub>))</b>, then ÷Z<br>right → shrink · wrong → grow by exp(α)<br><span class="text-xs text-slate-500">renormalise so Σ w = 1 (a fresh distribution)</span></div>`, code:`pred = stump_predict(X, dim, thresh, polarity)
+w = w * np.exp(-alpha * y * pred)   # wrong points grow
+w = w / w.sum()                     # renormalise -> sum 1` },
+  { title:"7. The additive ensemble: sign(Σ α·stump)", why:"The final strong classifier isn't a majority vote where each stump counts equally — it's a WEIGHTED vote. For a new point, ask every stump for its ±1 answer, scale each answer by that stump's α, add them all up, and take the sign of the total. Confident stumps (large α) swing the sum hard; weak or flipped stumps barely nudge it. This is called an additive model because the score is literally a sum of weighted base learners, F(x) = Σ αₜ·hₜ(x). In the demo the blocky shaded region is the sign of exactly this sum evaluated over the whole plane — the committee's combined verdict.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>F(x) = sign( Σ α<sub>t</sub> · h<sub>t</sub>(x) )</b><br>a weighted vote, not a plain majority<br><span class="text-xs text-slate-500">confident stumps swing it more</span></div>`, code:`def predict(ensemble, X):
+    total = np.zeros(len(X))
+    for alpha, dim, thr, pol in ensemble:
+        total += alpha * stump_predict(X, dim, thr, pol)
+    return np.sign(total)   # the additive committee` },
+  { title:"8. Why boosting reduces BIAS (not just variance)", why:"It helps to contrast with bagging / random forests, which train many strong, low-bias trees on bootstrap samples and average them to cut VARIANCE. Boosting does the opposite job: it starts from high-bias weak learners (stumps that underfit badly) and adds them sequentially, each correcting the residual errors of the whole so far. Because every new stump is aimed at what's still wrong, the ensemble's bias falls steadily — the blocky boundary in the demo grows more expressive with each round, capturing structure no single stump could. Boosting turns underfitting models into a flexible one; that's its signature strength.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>bagging</b> averages strong models → cuts variance<br><b>boosting</b> stacks weak models → cuts bias<br><span class="text-xs text-slate-500">each round corrects the residual error</span></div>`, code:`# forest: many DEEP trees, averaged  -> variance down
+# boosting: many SHALLOW stumps, added -> bias down
+# add rounds -> boundary gets more expressive` },
+  { title:"9. Overfitting & when to stop", why:"Boosting can go too far. Every round adds capacity, so with enough rounds AdaBoost can drive TRAINING error to zero — but past some point it starts fitting the noise, and test error creeps back up. Because it weights hard points heavily, AdaBoost is especially sensitive to mislabelled examples and outliers: it keeps doubling down on points it can never get right. The cures are the usual ones: cap the number of rounds T, shrink each α with a learning_rate so progress is gradual, and pick both with cross-validation. In the demo, pushing the rounds slider high makes the boundary contort around individual points — visible overfitting on a small sample.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">more rounds → training error → 0<br>but test error eventually rises (fits noise)<br><span class="text-xs text-slate-500">stop with CV; shrink α with a learning rate</span></div>`, code:`# guard against overfitting:
+#   - limit T (n_estimators)
+#   - learning_rate < 1  (shrinks each alpha)
+#   - choose both with cross-validation
+# noisy / mislabelled points hurt AdaBoost most.` },
+  { title:"10. AdaBoost in practice", why:"AdaBoost with depth-1 stumps was the original, famous for the Viola-Jones face detector that made real-time face detection possible. Today it's often superseded by gradient boosting (XGBoost, LightGBM, and Day 15's gradient boosting), which generalises the same 'add learners that fix the residual' idea with arbitrary differentiable losses and shallow trees. But AdaBoost remains the clearest way to SEE boosting: reweight, refit, revote. In scikit-learn it's one object — AdaBoostClassifier with a depth-1 DecisionTreeClassifier as the base estimator — and the n_estimators and learning_rate knobs map straight onto the T and α-shrinkage you built here by hand.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">AdaBoost stacks weak decision stumps into a strong classifier: pick the lowest-weighted-error stump, weight its vote by α = ½·ln((1−err)/err), grow the weight of every point it missed and renormalise, then decide by the additive vote sign(Σ α·stump). It cuts bias round by round — stop with cross-validation before it fits the noise.</p></div>`, code:`from sklearn.ensemble import AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
+clf = AdaBoostClassifier(
+    estimator=DecisionTreeClassifier(max_depth=1),
+    n_estimators=50, learning_rate=1.0)
+clf.fit(X_train, y_train)` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+function copy(btn) {
+  const pre = btn.parentElement.querySelector("pre");
+  navigator.clipboard.writeText(pre.textContent);
+  const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => btn.textContent = o, 1500);
+}
+</script>
+</body>
+</html>
