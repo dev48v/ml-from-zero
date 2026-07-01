@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 22 — Gaussian Mixtures &amp; EM</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  #cv { background:#fff; border:2px solid #0f172a; border-radius:12px; box-shadow:0 18px 40px rgba(0,0,0,.15); touch-action:none; }
+  .stat { font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 22</div>
+      <h1 class="text-xl font-bold">🫧 Gaussian Mixtures &amp; EM — Soft Clustering</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-4xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1">Watch ellipses grow to fit the data — and points blend colours where clusters overlap.</h2>
+      <p class="text-slate-500 mb-4">K-Means forces every point into exactly one round cluster. A <strong>Gaussian Mixture Model</strong> is softer and smarter: it models the data as a blend of bell-curves (Gaussians) that can be stretched and tilted into ellipses, and it gives every point a <em>probability</em> of belonging to each cluster. It's fit with the <strong>EM algorithm</strong> — alternating an <em>E-step</em> (how responsible is each cluster for each point?) and an <em>M-step</em> (move each Gaussian to fit the points it's responsible for). Press <strong>Run</strong> and watch the log-likelihood climb.</p>
+      <div class="flex justify-center gap-5 mb-3 text-sm font-bold text-slate-600 flex-wrap">
+        <div>Iteration: <span id="iter" class="stat text-sky-600">0</span></div>
+        <div>Log-likelihood: <span id="ll" class="stat text-sky-600">—</span></div>
+        <div>Clusters (K): <span id="kval" class="stat text-sky-600">3</span></div>
+      </div>
+      <canvas id="cv" width="640" height="420"></canvas>
+      <div class="flex justify-center mt-3 gap-2 flex-wrap">
+        <button id="runBtn"  class="bg-sky-600 hover:bg-sky-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Run EM</button>
+        <button id="stepBtn" class="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">⏭ One step</button>
+        <button id="regenBtn" class="bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg font-semibold text-sm">🎲 New data</button>
+        <span class="self-center text-sm font-bold text-slate-500 ml-2">K</span>
+        <input id="kSlider" type="range" min="2" max="4" value="3" class="w-24 accent-sky-600 self-center">
+      </div>
+      <p class="text-xs text-slate-400 mt-3">Each ellipse is a Gaussian's 2σ contour, drawn from its real 2×2 covariance matrix (eigen-decomposed for the axes). A point's colour is a blend weighted by its <em>responsibilities</em> — pure in the cluster cores, mixed where clusters overlap. The log-likelihood is guaranteed to rise (or hold) every iteration — that's the mathematical promise of EM.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How GMM &amp; EM work</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">A 2D Gaussian pdf, an E-step that computes responsibilities, an M-step that updates means/covariances/weights, and a loop that repeats until the log-likelihood stops rising. ~90 lines of vanilla JS.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The 2D Gaussian pdf</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Each cluster is a 2D Gaussian with a mean (centre) and a 2×2 covariance matrix (shape). The pdf needs the covariance's determinant and inverse — cheap closed forms for a 2×2. This value is "how likely is this point under this Gaussian".</p>
+        <div class="relative"><pre>function gauss(p, mean, cov){
+  const [a,b,c,d] = cov;                 // [[a,b],[c,d]]
+  const det = a*d - b*c;
+  const inv = [ d/det, -b/det, -c/det, a/det ];
+  const dx = p.x-mean.x, dy = p.y-mean.y;
+  const m  = dx*(inv[0]*dx+inv[1]*dy) + dy*(inv[2]*dx+inv[3]*dy);
+  return Math.exp(-0.5*m) / (2*Math.PI*Math.sqrt(det));
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">E-step: responsibilities</h3></div>
+        <p class="text-sm text-slate-600 mb-3">For each point, compute weight × pdf for every cluster, then normalise so they sum to 1. Those normalised numbers are the <em>responsibilities</em> — the soft, probabilistic assignment of the point across clusters. This is the "expectation" in Expectation-Maximization.</p>
+        <div class="relative"><pre>function eStep(points, model){
+  return points.map(p =&gt; {
+    const r = model.map(k =&gt; k.weight * gauss(p, k.mean, k.cov));
+    const s = r.reduce((a,b)=&gt;a+b, 0) || 1e-9;
+    return r.map(v =&gt; v/s);          // responsibilities, sum to 1
+  });
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">M-step: update the Gaussians</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Now re-fit each Gaussian using the responsibilities as soft counts. The new mean is a responsibility-weighted average of the points; the new covariance is the weighted spread around that mean; the new weight is the cluster's share of total responsibility. This is the "maximization" — it maximises the likelihood given the current soft assignments.</p>
+        <div class="relative"><pre>function mStep(points, resp, K){
+  return Array.from({length:K}, (_, k) =&gt; {
+    const Nk = resp.reduce((a,r)=&gt;a+r[k], 0) || 1e-9;
+    const mx = resp.reduce((a,r,i)=&gt;a+r[k]*points[i].x,0)/Nk;
+    const my = resp.reduce((a,r,i)=&gt;a+r[k]*points[i].y,0)/Nk;
+    let a=0,b=0,d=0;
+    points.forEach((p,i)=&gt;{ const w=resp[i][k], dx=p.x-mx, dy=p.y-my;
+      a+=w*dx*dx; b+=w*dx*dy; d+=w*dy*dy; });
+    return { mean:{x:mx,y:my}, cov:[a/Nk,b/Nk,b/Nk,d/Nk], weight:Nk/points.length };
+  });
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Loop until log-likelihood converges</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Alternate E and M. After each round, the total log-likelihood (sum of log of the mixture density at every point) never decreases — so stop when its improvement falls below a small threshold. That monotonic climb is EM's guarantee and a great convergence check.</p>
+        <div class="relative"><pre>let prev = -Infinity;
+for (let it = 0; it &lt; 100; it++){
+  const resp  = eStep(points, model);
+  model = mStep(points, resp, K);
+  const ll = logLikelihood(points, model);
+  if (ll - prev &lt; 1e-4) break;   // converged
+  prev = ll;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 22 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You built a Gaussian Mixture Model fit by EM: a 2D Gaussian pdf, an E-step for soft responsibilities, an M-step that re-fits means/covariances/weights, and a loop that rides the log-likelihood up to convergence. GMM generalises K-Means — elliptical instead of round, soft instead of hard. Next: use BIC to choose K, or try t-SNE for visualising high-dimensional clusters. <strong>👉 Tomorrow — Day 23: t-SNE.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== GMM / EM =====
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const W = cv.width, H = cv.height;
+const COLORS = [[14,165,233],[236,72,153],[16,185,129],[245,158,11]]; // sky, pink, emerald, amber
+let points = [], model = [], K = 3, iter = 0, timer = null;
+let seed = 12345;
+function rnd(){ seed = (seed*1103515245 + 12345) & 0x7fffffff; return seed/0x7fffffff; }
+function gaussRand(){ return (rnd()+rnd()+rnd()+rnd()-2)/1.5; }  // ~N(0,1)-ish
+
+function genData(){
+  points = [];
+  const centres = [ {x:180,y:150}, {x:440,y:150}, {x:300,y:320}, {x:150,y:330} ];
+  const nClust = Math.max(K, 3);
+  for (let c=0;c<nClust;c++){
+    const cx = centres[c].x, cy = centres[c].y;
+    const sx = 40+rnd()*40, sy = 30+rnd()*40, rot = rnd()*Math.PI;
+    for (let i=0;i<55;i++){
+      let dx = gaussRand()*sx, dy = gaussRand()*sy;
+      const rx = dx*Math.cos(rot) - dy*Math.sin(rot);
+      const ry = dx*Math.sin(rot) + dy*Math.cos(rot);
+      points.push({ x: cx+rx, y: cy+ry });
+    }
+  }
+  initModel();
+}
+function initModel(){
+  model = Array.from({length:K}, (_,k) => ({
+    mean: { x: 100+rnd()*440, y: 80+rnd()*260 },
+    cov: [3000,0,0,3000],
+    weight: 1/K
+  }));
+  iter = 0; document.getElementById("iter").textContent = 0;
+  document.getElementById("ll").textContent = "—";
+  draw(null);
+}
+function gauss(p, mean, cov){
+  const [a,b,c,d] = cov; let det = a*d - b*c; if (Math.abs(det) < 1e-6) det = 1e-6;
+  const inv = [ d/det, -b/det, -c/det, a/det ];
+  const dx = p.x-mean.x, dy = p.y-mean.y;
+  const m = dx*(inv[0]*dx+inv[1]*dy) + dy*(inv[2]*dx+inv[3]*dy);
+  return Math.exp(-0.5*m) / (2*Math.PI*Math.sqrt(Math.abs(det)));
+}
+function eStep(){
+  return points.map(p => {
+    const r = model.map(k => k.weight * gauss(p, k.mean, k.cov) + 1e-12);
+    const s = r.reduce((a,b)=>a+b,0);
+    return r.map(v => v/s);
+  });
+}
+function mStep(resp){
+  model = Array.from({length:K}, (_,k) => {
+    let Nk=0,mx=0,my=0;
+    resp.forEach((r,i)=>{ Nk+=r[k]; mx+=r[k]*points[i].x; my+=r[k]*points[i].y; });
+    Nk = Nk || 1e-9; mx/=Nk; my/=Nk;
+    let a=0,b=0,d=0;
+    points.forEach((p,i)=>{ const w=resp[i][k], dx=p.x-mx, dy=p.y-my; a+=w*dx*dx; b+=w*dx*dy; d+=w*dy*dy; });
+    a=a/Nk+50; d=d/Nk+50; b=b/Nk;   // +50 regularises tiny covariances
+    return { mean:{x:mx,y:my}, cov:[a,b,b,d], weight:Nk/points.length };
+  });
+}
+function logLik(){
+  let ll=0;
+  for (const p of points){
+    let s=0; for (const k of model) s += k.weight*gauss(p,k.mean,k.cov);
+    ll += Math.log(s + 1e-12);
+  }
+  return ll;
+}
+function ellipse(cov, mean, nsig){
+  // eigen-decompose 2x2 symmetric covariance
+  const [a,b,,d] = cov;
+  const tr=a+d, det=a*d-b*b;
+  const l1 = tr/2 + Math.sqrt(Math.max(0,tr*tr/4-det));
+  const l2 = tr/2 - Math.sqrt(Math.max(0,tr*tr/4-det));
+  const ang = Math.abs(b) < 1e-6 ? (a>=d?0:Math.PI/2) : Math.atan2(l1-a, b);
+  return { rx: nsig*Math.sqrt(Math.max(l1,1)), ry: nsig*Math.sqrt(Math.max(l2,1)), ang, mean };
+}
+function draw(resp){
+  ctx.clearRect(0,0,W,H);
+  points.forEach((p,i) => {
+    let col = [120,120,120];
+    if (resp){ col=[0,0,0]; resp[i].forEach((r,k)=>{ col[0]+=r*COLORS[k][0]; col[1]+=r*COLORS[k][1]; col[2]+=r*COLORS[k][2]; }); }
+    ctx.fillStyle = `rgb(${col.map(Math.round).join(",")})`;
+    ctx.beginPath(); ctx.arc(p.x,p.y,3.2,0,7); ctx.fill();
+  });
+  model.forEach((k,ki) => {
+    const e = ellipse(k.cov, k.mean, 2);
+    ctx.save(); ctx.translate(k.mean.x,k.mean.y); ctx.rotate(e.ang);
+    ctx.strokeStyle = `rgb(${COLORS[ki].join(",")})`; ctx.lineWidth=2.5;
+    ctx.beginPath(); ctx.ellipse(0,0,e.rx,e.ry,0,0,7); ctx.stroke();
+    ctx.restore();
+    ctx.fillStyle = `rgb(${COLORS[ki].join(",")})`;
+    ctx.beginPath(); ctx.arc(k.mean.x,k.mean.y,5,0,7); ctx.fill();
+  });
+}
+function step(){
+  const resp = eStep(); mStep(resp);
+  iter++; document.getElementById("iter").textContent = iter;
+  document.getElementById("ll").textContent = logLik().toFixed(1);
+  draw(resp);
+}
+document.getElementById("stepBtn").onclick = () => { stopRun(); step(); };
+function stopRun(){ if (timer){ clearInterval(timer); timer=null; document.getElementById("runBtn").textContent="▶ Run EM"; } }
+document.getElementById("runBtn").onclick = () => {
+  if (timer){ stopRun(); return; }
+  document.getElementById("runBtn").textContent = "⏸ Pause";
+  let prev=-Infinity;
+  timer = setInterval(() => { step(); const ll=logLik(); if (Math.abs(ll-prev)<0.05 || iter>80){ stopRun(); } prev=ll; }, 250);
+};
+document.getElementById("regenBtn").onclick = () => { stopRun(); seed=(seed*7+101)&0x7fffffff; genData(); };
+document.getElementById("kSlider").oninput = (e) => { stopRun(); K=+e.target.value; document.getElementById("kval").textContent=K; initModel(); };
+genData();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. Why K-Means isn't always enough", why:"K-Means is the go-to clustering method, but it makes two strong assumptions: every point belongs fully to exactly one cluster (a hard assignment), and clusters are round blobs of similar size. Real data often breaks both — clusters overlap, they're stretched into ellipses, and a point on a boundary genuinely belongs partly to two groups. A Gaussian Mixture Model relaxes both assumptions, giving softer, more flexible clustering at the cost of a bit more maths.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">K-Means: hard assignment · round clusters<br>reality: overlap · ellipses · in-between points<br>GMM: soft + elliptical</div>`, code:`// K-Means: point -> nearest single centre (hard).
+// GMM:     point -> probabilities across clusters (soft),
+//          clusters can be stretched ellipses.` },
+ { title:"2. Data as a mixture of Gaussians", why:"A GMM assumes the data was generated by several Gaussian 'bell curves' mixed together. Each component has three things: a mean (where it's centred), a covariance matrix (its shape — how wide, tall, and tilted), and a mixing weight (what fraction of the data it explains). Add them up, weighted, and you get the overall density the model believes produced your points. Fitting a GMM means finding those parameters.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">density(x) = Σ weightₖ · Gaussianₖ(x)<br>each Gaussian: mean + covariance + weight<br>covariance → the ellipse shape</div>`, code:`// Each cluster k:
+//   mean   {x, y}        (centre)
+//   cov    [[a,b],[b,d]] (shape/tilt)
+//   weight  πₖ, Σπ = 1   (mixing proportion)` },
+ { title:"3. The chicken-and-egg problem", why:"To place the Gaussians well you'd need to know which points belong to which cluster — but to assign points you'd need to know the Gaussians. Neither is known up front. This circular dependency is exactly what the Expectation-Maximization (EM) algorithm is built to break: guess the parameters, use them to assign points softly, use those assignments to re-estimate the parameters, and repeat. Each turn of the loop makes both a little better.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">need clusters → to assign points<br>need assignments → to fit clusters<br>EM breaks the loop: guess → refine → repeat</div>`, code:`// EM loop:
+//   E-step: given params, softly assign points
+//   M-step: given assignments, re-fit params
+//   repeat until the fit stops improving` },
+ { title:"4. The E-step: responsibilities", why:"In the Expectation step we compute, for every point and every cluster, a 'responsibility' — the probability that this cluster generated this point. It's each cluster's weight times its Gaussian density at the point, normalised so a point's responsibilities across clusters sum to 1. A point deep in one cluster gets ~[1, 0, 0]; a point between two clusters might get [0.5, 0.5, 0]. These soft numbers are the heart of GMM — no point is forced to pick a side.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">rₙₖ = πₖ·N(xₙ|μₖ,Σₖ) / Σⱼ πⱼ·N(...)<br>core point → [1,0,0]<br>boundary point → [0.5,0.5,0]</div>`, code:`const r = model.map(k => k.weight * gauss(p, k.mean, k.cov));
+const s = r.reduce((a,b)=>a+b,0);
+const responsibilities = r.map(v => v/s);  // sum to 1` },
+ { title:"5. The M-step: re-fit each Gaussian", why:"In the Maximization step we treat the responsibilities as soft membership counts and re-estimate each Gaussian to best fit the points it's responsible for. The new mean is the responsibility-weighted average position; the new covariance is the responsibility-weighted spread around that mean (this is what lets the ellipse stretch and tilt); the new weight is the cluster's total responsibility divided by the number of points. Points that half-belong contribute half to the update — that's the 'soft' EM.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Nₖ = Σ rₙₖ  (soft count)<br>μₖ = Σ rₙₖ xₙ / Nₖ<br>Σₖ = Σ rₙₖ (xₙ−μₖ)(xₙ−μₖ)ᵀ / Nₖ<br>πₖ = Nₖ / N</div>`, code:`const Nk = resp.reduce((a,r)=>a+r[k],0);
+const mean = weightedAverage(points, resp, k, Nk);
+const cov  = weightedCovariance(points, mean, resp, k, Nk);
+const weight = Nk / points.length;` },
+ { title:"6. Why the log-likelihood always climbs", why:"EM has a beautiful guarantee: each full E+M iteration never decreases the data's log-likelihood — the total log of the mixture density summed over all points. It climbs and then plateaus, so watching it is the natural way to detect convergence: stop when the improvement drops below a small threshold. It won't always reach the global best (EM can settle into a local optimum depending on the random start), which is why practitioners run it several times from different initialisations and keep the best log-likelihood.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">log-likelihood ↑ every iteration (never ↓)<br>plateaus → converged<br>local optima → restart a few times, keep best</div>`, code:`let prev=-Infinity;
+const ll = points.reduce((s,p)=>
+  s + Math.log(model.reduce((a,k)=>a+k.weight*gauss(p,k.mean,k.cov),0)), 0);
+if (ll - prev < 1e-4) stop();   // converged` },
+ { title:"7. Covariance → the ellipse you see", why:"The reason GMM clusters look like tilted ovals is the covariance matrix. Eigen-decomposing that 2×2 matrix gives two eigenvectors (the ellipse's axis directions) and two eigenvalues (the squared lengths along them). Drawing an ellipse at, say, 2 standard deviations visualises where ~95% of that Gaussian's mass sits. When you see an ellipse rotate and stretch during the animation, you're literally watching the covariance matrix change as the M-step re-fits it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">covariance 2×2 → eigen-decompose<br>eigenvectors = ellipse axes (tilt)<br>eigenvalues = axis lengths²<br>draw at 2σ ≈ 95% of the mass</div>`, code:`// axes of the ellipse = eigenvectors of Σ
+// lengths = sqrt(eigenvalues) × nσ
+const {rx, ry, angle} = eigenEllipse(cov, 2);` },
+ { title:"8. GMM vs K-Means, and choosing K", why:"K-Means is actually a special case of GMM — force spherical, equal covariances and hard assignments and EM collapses into K-Means. So GMM is strictly more expressive: it handles elliptical, differently-sized, overlapping clusters and reports uncertainty. The cost is more parameters and sensitivity to initialisation. You still must choose K (number of components); rather than guessing, use an information criterion like BIC or AIC that penalises extra clusters, and pick the K that scores best. GMM is widely used for density estimation, anomaly detection, and soft segmentation.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">K-Means = GMM with round, hard clusters<br>GMM = elliptical + soft + uncertainty<br>choose K via BIC / AIC (penalise complexity)</div>`, code:`// sklearn:
+// from sklearn.mixture import GaussianMixture
+// gmm = GaussianMixture(n_components=3).fit(X)
+// probs = gmm.predict_proba(X)   # soft responsibilities
+// bic  = gmm.bic(X)              # compare across K` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
