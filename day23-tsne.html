@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 23 — t-SNE</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  #cv { background:#fff; border:2px solid #0f172a; border-radius:12px; box-shadow:0 18px 40px rgba(0,0,0,.15); touch-action:none; }
+  .stat { font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 23</div>
+      <h1 class="text-xl font-bold">🗺️ t-SNE — Squash High-Dim Data to 2D</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-4xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1">Watch six-dimensional blobs untangle themselves into a 2D map.</h2>
+      <p class="text-slate-500 mb-4">The points below live in <strong>6 dimensions</strong> — four Gaussian blobs you can't see because your screen is flat. <strong>t-SNE</strong> finds a 2D position for every point so that neighbours in 6D stay neighbours on the map. It measures how similar every pair of points is in high-dim (a <em>probability</em>, controlled by <strong>perplexity</strong>), then nudges the 2D points by gradient descent until their similarities match — minimising the <strong>KL divergence</strong>. The dots start as one random blob at the centre; press <strong>Run</strong> and watch the four true clusters (their real colours) pull apart as the KL number falls.</p>
+      <div class="flex justify-center gap-5 mb-3 text-sm font-bold text-slate-600 flex-wrap">
+        <div>Iteration: <span id="iter" class="stat text-sky-600">0</span></div>
+        <div>KL divergence: <span id="kl" class="stat text-sky-600">—</span></div>
+        <div>Perplexity: <span id="perpVal" class="stat text-sky-600">15</span></div>
+      </div>
+      <canvas id="cv" width="640" height="420"></canvas>
+      <div class="flex justify-center mt-3 gap-2 flex-wrap">
+        <button id="runBtn"  class="bg-sky-600 hover:bg-sky-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Run t-SNE</button>
+        <button id="stepBtn" class="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">⏭ One step</button>
+        <button id="resetBtn" class="bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg font-semibold text-sm">↺ Reset</button>
+        <button id="regenBtn" class="bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg font-semibold text-sm">🎲 New data</button>
+        <span class="self-center text-sm font-bold text-slate-500 ml-2">Perplexity</span>
+        <input id="perpSlider" type="range" min="5" max="40" value="15" class="w-28 accent-sky-600 self-center">
+      </div>
+      <p class="text-xs text-slate-400 mt-3">This is a genuine, if small, t-SNE: per-point Gaussian bandwidths are binary-searched to hit the target perplexity, the joint high-dim affinities <em>P</em> are symmetrised, the low-dim affinities <em>Q</em> use the Student-t kernel 1/(1+d²), and the 2D positions descend the true KL(P‖Q) gradient with momentum. Colours mark the <em>true</em> cluster so you can judge the result — but t-SNE never sees them. KL should fall from ~1.6 to ~0.1 and stay down. Try dragging perplexity: small values chase tiny local neighbourhoods; large values smear clusters together.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How t-SNE works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Pairwise distances, a perplexity-tuned Gaussian for the high-dim affinities <em>P</em>, a Student-t kernel for the low-dim <em>Q</em>, the KL gradient, and a momentum descent loop. ~90 lines of vanilla JS — then the two-line real-world version.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">High-dim affinities with perplexity</h3></div>
+        <p class="text-sm text-slate-600 mb-3">For each point, turn distances to every other point into probabilities with a Gaussian. The bandwidth (β = 1/2σ²) is binary-searched so the row's entropy matches log(perplexity) — that pins the effective neighbourhood size. Dense regions get a narrow Gaussian, sparse regions a wide one.</p>
+        <div class="relative"><pre>function pRow(D, i, perplexity){          // D[i][j] = squared dist
+  let beta=1, lo=-Infinity, hi=Infinity, P=[];
+  const logU = Math.log(perplexity);
+  for (let t=0;t&lt;50;t++){
+    let sum=0; P = D[i].map((d,j)=&gt; i===j?0:Math.exp(-d*beta));
+    P.forEach(v=&gt;sum+=v); sum=sum||1e-12;
+    let H=0; P.forEach(v=&gt;{ const p=v/sum; if(p&gt;1e-12) H-=p*Math.log(p); });
+    const diff = H - logU;
+    if (Math.abs(diff)&lt;1e-4) break;
+    if (diff&gt;0){ lo=beta; beta = hi===Infinity?beta*2:(beta+hi)/2; }
+    else       { hi=beta; beta = lo===-Infinity?beta/2:(beta+lo)/2; }
+  }
+  const s = P.reduce((a,b)=&gt;a+b,0)||1e-12;
+  return P.map(v=&gt;v/s);
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Symmetrise into the joint P</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The per-row probabilities are asymmetric (i's view of j ≠ j's view of i). t-SNE symmetrises them into a single joint distribution P over pairs, then normalises so every entry sums to 1. A tiny floor keeps values away from zero so the log in KL never blows up.</p>
+        <div class="relative"><pre>function joint(X, perplexity){
+  const n = X.length, D = dists(X);
+  const rows = X.map((_,i)=&gt;pRow(D,i,perplexity));
+  const P = Array.from({length:n},()=&gt;new Float64Array(n));
+  let tot=0;
+  for (let i=0;i&lt;n;i++) for (let j=0;j&lt;n;j++){
+    P[i][j] = rows[i][j] + rows[j][i]; tot += P[i][j];
+  }
+  for (let i=0;i&lt;n;i++) for (let j=0;j&lt;n;j++)
+    P[i][j] = Math.max(P[i][j]/tot, 1e-12);   // normalise + floor
+  return P;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Low-dim affinities Q (Student-t)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In the 2D map, similarity uses a Student-t kernel with one degree of freedom: 1/(1+d²). Its heavy tail lets far-apart points stay far apart cheaply, which cures the "crowding problem" — the reason a plain Gaussian map jams everything into the middle. Keep the un-normalised numerators around; the gradient reuses them.</p>
+        <div class="relative"><pre>function qLowDim(Y){
+  const n=Y.length, num=Array.from({length:n},()=&gt;new Float64Array(n));
+  let sum=0;
+  for (let i=0;i&lt;n;i++) for (let j=0;j&lt;n;j++){
+    if (i===j) continue;
+    const v = 1/(1 + d2(Y[i],Y[j]));   // Student-t, heavy tail
+    num[i][j]=v; sum+=v;
+  }
+  const Q=Array.from({length:n},()=&gt;new Float64Array(n));
+  for (let i=0;i&lt;n;i++) for (let j=0;j&lt;n;j++)
+    Q[i][j] = Math.max(num[i][j]/(sum||1e-12), 1e-12);
+  return { Q, num };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The KL gradient</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The cost is KL(P‖Q) — how badly the map's similarities disagree with the true ones. Its gradient has a clean form: each point is pulled toward pairs where P&gt;Q (should be closer) and pushed from pairs where Q&gt;P (should be farther), scaled by the Student-t numerator. Springs, essentially — attract true neighbours, repel the rest.</p>
+        <div class="relative"><pre>function grad(P,Q,num,Y){
+  const n=Y.length, g=Y.map(()=&gt;[0,0]);
+  for (let i=0;i&lt;n;i++) for (let j=0;j&lt;n;j++){
+    if (i===j) continue;
+    const m = (P[i][j]-Q[i][j])*num[i][j];   // (p−q)/(1+d²)
+    g[i][0] += 4*m*(Y[i][0]-Y[j][0]);
+    g[i][1] += 4*m*(Y[i][1]-Y[j][1]);
+  }
+  return g;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Descend with momentum</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Start the map as a tiny random blob near the origin, then step downhill. Momentum (blend last step into this one) smooths the ride and escapes shallow traps. Re-centre each iteration so the whole cloud doesn't drift. Watch KL fall and the clusters snap apart.</p>
+        <div class="relative"><pre>let Y = X.map(()=&gt;[randn()*1e-2, randn()*1e-2]);
+let vel = Y.map(()=&gt;[0,0]);
+for (let it=0; it&lt;500; it++){
+  const { Q, num } = qLowDim(Y);
+  const g = grad(P, Q, num, Y);
+  const mom = it&lt;100 ? 0.5 : 0.7;
+  for (let i=0;i&lt;Y.length;i++){
+    vel[i][0] = mom*vel[i][0] - 120*g[i][0];
+    vel[i][1] = mom*vel[i][1] - 120*g[i][1];
+    Y[i][0]+=vel[i][0]; Y[i][1]+=vel[i][1];
+  }
+  recentre(Y);
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">In the real world</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Nobody hand-rolls t-SNE in production. scikit-learn ships an optimised, Barnes-Hut version; <em>openTSNE</em> is faster and supports adding new points. Always standardise or PCA down to ~30–50 dims first (t-SNE is O(N²) and slow on raw high-dim data), then run it. Tune perplexity in the 5–50 range and set a seed for reproducibility.</p>
+        <div class="relative"><pre># pip install scikit-learn        (or:  pip install openTSNE)
+from sklearn.manifold import TSNE
+from sklearn.decomposition import PCA
+
+X50 = PCA(n_components=50).fit_transform(X)      # speed + denoise
+emb = TSNE(n_components=2, perplexity=30,
+           init="pca", random_state=42).fit_transform(X50)
+
+import matplotlib.pyplot as plt
+plt.scatter(emb[:,0], emb[:,1], c=labels, s=6, cmap="tab10")
+plt.show()</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 23 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You built a real t-SNE: perplexity-tuned Gaussian affinities in high-dim, a symmetric joint P, a heavy-tailed Student-t Q in 2D, the KL gradient, and a momentum descent that pulls true neighbours together while pushing everything else apart. Remember what it does <em>not</em> tell you — cluster sizes and the gaps between clusters are not meaningful. <strong>👉 Tomorrow — Day 24: UMAP</strong> — faster, preserves more global structure, and the modern default for embedding plots.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== t-SNE =====
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const W = cv.width, H = cv.height;
+const COLORS = [[14,165,233],[236,72,153],[16,185,129],[245,158,11]]; // sky, pink, emerald, amber
+const DIM = 6, NCLUST = 4, PER_CLUST = 20, N = NCLUST*PER_CLUST;
+const LR = 120;
+
+let seed = 42;
+function rnd(){ seed = (seed*1103515245 + 12345) & 0x7fffffff; return seed/0x7fffffff; }
+function randn(){ return (rnd()+rnd()+rnd()+rnd()+rnd()+rnd()-3); }  // ~N(0,1)
+
+let X = [], labels = [], P = null, Y = [], vel = [], iter = 0, perplexity = 15, timer = null;
+
+function d2(a,b){ let s=0; for (let k=0;k<a.length;k++){ const t=a[k]-b[k]; s+=t*t; } return s; }
+
+function genData(){
+  X = []; labels = [];
+  const centres = [];
+  for (let c=0;c<NCLUST;c++){ const ctr=[]; for (let k=0;k<DIM;k++) ctr.push((rnd()*2-1)*10); centres.push(ctr); }
+  for (let c=0;c<NCLUST;c++) for (let i=0;i<PER_CLUST;i++){
+    const v=[]; for (let k=0;k<DIM;k++) v.push(centres[c][k] + randn()*1.2);
+    X.push(v); labels.push(c);
+  }
+  computeP();
+  reset();
+}
+
+// high-dim affinities P, per-point Gaussian tuned to perplexity, symmetrised + normalised
+function computeP(){
+  const D = Array.from({length:N},()=>new Float64Array(N));
+  for (let i=0;i<N;i++) for (let j=0;j<N;j++) D[i][j]=d2(X[i],X[j]);
+  const rows = Array.from({length:N},()=>new Float64Array(N));
+  const logU = Math.log(perplexity);
+  for (let i=0;i<N;i++){
+    let beta=1, lo=-Infinity, hi=Infinity;
+    const row = new Float64Array(N);
+    for (let t=0;t<50;t++){
+      let sum=0;
+      for (let j=0;j<N;j++){ row[j]= i===j?0:Math.exp(-D[i][j]*beta); sum+=row[j]; }
+      sum = sum||1e-12;
+      let Hh=0;
+      for (let j=0;j<N;j++){ const p=row[j]/sum; if (p>1e-12) Hh -= p*Math.log(p); }
+      const diff = Hh - logU;
+      if (Math.abs(diff)<1e-4) break;
+      if (diff>0){ lo=beta; beta = hi===Infinity?beta*2:(beta+hi)/2; }
+      else       { hi=beta; beta = lo===-Infinity?beta/2:(beta+lo)/2; }
+    }
+    let sum=0; for (let j=0;j<N;j++){ row[j]= i===j?0:Math.exp(-D[i][j]*beta); sum+=row[j]; }
+    sum=sum||1e-12; for (let j=0;j<N;j++) rows[i][j]=row[j]/sum;
+  }
+  P = Array.from({length:N},()=>new Float64Array(N));
+  let tot=0;
+  for (let i=0;i<N;i++) for (let j=0;j<N;j++){ P[i][j]=rows[i][j]+rows[j][i]; tot+=P[i][j]; }
+  tot=tot||1e-12;
+  for (let i=0;i<N;i++) for (let j=0;j<N;j++) P[i][j]=Math.max(P[i][j]/tot,1e-12);
+}
+
+// low-dim Student-t affinities Q + numerators
+function computeQ(){
+  const num = Array.from({length:N},()=>new Float64Array(N));
+  let sum=0;
+  for (let i=0;i<N;i++) for (let j=0;j<N;j++){
+    if (i===j) continue;
+    const v = 1/(1+d2(Y[i],Y[j])); num[i][j]=v; sum+=v;
+  }
+  sum=sum||1e-12;
+  const Q = Array.from({length:N},()=>new Float64Array(N));
+  for (let i=0;i<N;i++) for (let j=0;j<N;j++) Q[i][j]=Math.max(num[i][j]/sum,1e-12);
+  return { Q, num };
+}
+function klDiv(Q){ let kl=0; for (let i=0;i<N;i++) for (let j=0;j<N;j++){ if(i===j)continue; kl += P[i][j]*Math.log(P[i][j]/Q[i][j]); } return kl; }
+
+function reset(){
+  Y = []; vel = [];
+  for (let i=0;i<N;i++){ Y.push([randn()*0.01, randn()*0.01]); vel.push([0,0]); }
+  iter = 0;
+  document.getElementById("iter").textContent = 0;
+  const { Q } = computeQ();
+  document.getElementById("kl").textContent = klDiv(Q).toFixed(3);
+  draw();
+}
+
+function step(){
+  const { Q, num } = computeQ();
+  const g = Y.map(()=>[0,0]);
+  for (let i=0;i<N;i++) for (let j=0;j<N;j++){
+    if (i===j) continue;
+    const m = (P[i][j]-Q[i][j])*num[i][j];
+    g[i][0] += 4*m*(Y[i][0]-Y[j][0]);
+    g[i][1] += 4*m*(Y[i][1]-Y[j][1]);
+  }
+  const mom = iter<100 ? 0.5 : 0.7;
+  for (let i=0;i<N;i++){
+    vel[i][0] = mom*vel[i][0] - LR*g[i][0];
+    vel[i][1] = mom*vel[i][1] - LR*g[i][1];
+    Y[i][0]+=vel[i][0]; Y[i][1]+=vel[i][1];
+  }
+  let mx=0,my=0; for (const p of Y){ mx+=p[0]; my+=p[1]; } mx/=N; my/=N;
+  for (const p of Y){ p[0]-=mx; p[1]-=my; }
+  iter++;
+  document.getElementById("iter").textContent = iter;
+  const q2 = computeQ();
+  document.getElementById("kl").textContent = klDiv(q2.Q).toFixed(3);
+  draw();
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  // auto-fit the cloud into the canvas
+  let minx=Infinity,maxx=-Infinity,miny=Infinity,maxy=-Infinity;
+  for (const p of Y){ minx=Math.min(minx,p[0]); maxx=Math.max(maxx,p[0]); miny=Math.min(miny,p[1]); maxy=Math.max(maxy,p[1]); }
+  const spanx=(maxx-minx)||1, spany=(maxy-miny)||1;
+  const pad=40, sc=Math.min((W-2*pad)/spanx,(H-2*pad)/spany);
+  const cx=(minx+maxx)/2, cy=(miny+maxy)/2;
+  Y.forEach((p,i)=>{
+    const px = W/2 + (p[0]-cx)*sc;
+    const py = H/2 + (p[1]-cy)*sc;
+    ctx.fillStyle = `rgb(${COLORS[labels[i]].join(",")})`;
+    ctx.beginPath(); ctx.arc(px,py,4,0,7); ctx.fill();
+  });
+}
+
+document.getElementById("stepBtn").onclick = () => { stopRun(); step(); };
+function stopRun(){ if (timer){ clearInterval(timer); timer=null; document.getElementById("runBtn").textContent="▶ Run t-SNE"; } }
+document.getElementById("runBtn").onclick = () => {
+  if (timer){ stopRun(); return; }
+  document.getElementById("runBtn").textContent = "⏸ Pause";
+  timer = setInterval(() => { step(); if (iter>=500){ stopRun(); } }, 40);
+};
+document.getElementById("resetBtn").onclick = () => { stopRun(); reset(); };
+document.getElementById("regenBtn").onclick = () => { stopRun(); seed=(seed*7+101)&0x7fffffff; genData(); };
+document.getElementById("perpSlider").oninput = (e) => {
+  stopRun(); perplexity=+e.target.value; document.getElementById("perpVal").textContent=perplexity;
+  computeP(); reset();
+};
+genData();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. The curse of dimensionality", why:"Data with hundreds of features can't be seen — your eyes only do 2D. Worse, in high dimensions almost every pair of points is roughly equidistant, so raw distances become uninformative and clusters that are obvious to an algorithm are invisible to you. Dimensionality reduction squashes the data to 2D or 3D so you can literally look at its structure. t-SNE is the tool built specifically for that look: it trades faithful global geometry for a picture where neighbours stay neighbours.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">784 dims (a digit image) → can't see it<br>in high-D, distances flatten out<br>t-SNE: 784-D → 2-D map you can read</div>`, code:`// You have X: N points, each with D features (D huge).
+// Goal: place each point at (x, y) so the 2-D
+// picture reveals the clusters hiding in D-space.` },
+ { title:"2. Similarity as a probability", why:"t-SNE never works with raw distances directly — it converts them to probabilities. For point i it asks: 'if I picked a neighbour at random, weighted by a Gaussian over distance, how likely would I pick j?' Nearby points get high probability, far ones near zero. This turns the messy geometry of high-dim space into a clean per-point distribution P over its neighbours, which is far more robust than comparing distances head-on.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">p(j | i) ∝ exp(−‖xᵢ−xⱼ‖² / 2σᵢ²)<br>close point → high probability<br>far point → ≈ 0</div>`, code:`// distance -> Gaussian -> probability
+const p_ij = Math.exp(-dist2(x_i, x_j) / (2*sigma_i*sigma_i));
+// normalise over all j so the row sums to 1` },
+ { title:"3. Perplexity ≈ neighbourhood size", why:"Each point gets its own Gaussian width σ, chosen so the entropy of its neighbour distribution matches a target you set: the perplexity. Perplexity is roughly 'how many neighbours each point should pay attention to' — typical values are 5 to 50. Small perplexity focuses on very local micro-structure and can shatter real clusters; large perplexity blends neighbourhoods and can merge distinct groups. It is the single most important knob in t-SNE, so try a few and compare.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">perplexity ≈ effective # of neighbours<br>binary-search σᵢ so entropy = log(perplexity)<br>too small → shattered · too big → merged</div>`, code:`// tune beta = 1/(2σ²) per point by binary search
+// until the row's entropy H matches log(perplexity)
+if (H - Math.log(perplexity) > 0) beta = raise(beta);
+else                              beta = lower(beta);` },
+ { title:"4. Symmetrise into a joint P", why:"Point i's view of j and j's view of i disagree, because they have different Gaussian widths. t-SNE resolves this by averaging the two directed probabilities into one symmetric joint probability for the pair, then normalising the whole matrix so all pairs sum to 1. This symmetric P is the fixed target: the ground-truth 'who is near whom' that the 2D map must try to reproduce. A tiny floor keeps every entry positive so logarithms stay finite.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Pᵢⱼ = (p(j|i) + p(i|j)) / 2N<br>symmetric · sums to 1 over all pairs<br>this is the target the map chases</div>`, code:`// symmetrise the directed rows into a joint matrix
+P[i][j] = (row_i[j] + row_j[i]);
+// then divide everything by the grand total (+ floor)` },
+ { title:"5. Low-dim similarities: the Student-t tail", why:"In the 2D map, similarity uses a Student-t kernel with one degree of freedom, 1/(1+d²), instead of another Gaussian. The reason is the 'crowding problem': the area available in 2D is far smaller than in high-D, so a Gaussian map crushes moderately-distant points into a blob. The Student-t's heavy tail assigns a gentle, slowly-decaying similarity to distant pairs, letting them spread out comfortably and giving t-SNE its characteristic well-separated islands.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Qᵢⱼ ∝ 1 / (1 + ‖yᵢ−yⱼ‖²)<br>heavy tail → far points stay far cheaply<br>fixes the 2-D crowding problem</div>`, code:`// low-dim affinity: Student-t, 1 degree of freedom
+const num = 1 / (1 + dist2(y_i, y_j));
+// normalise over all pairs -> Q` },
+ { title:"6. KL divergence: the objective", why:"t-SNE measures the mismatch between the high-dim target P and the low-dim map Q with the Kullback–Leibler divergence, KL(P‖Q). Because KL is asymmetric, it punishes putting distant map-points where P said 'close' far more than the reverse — so t-SNE fiercely protects local neighbourhoods and is relaxed about global layout. Minimising this single scalar is the entire goal; when KL stops falling, the layout has settled. In the demo the number drops from ~1.6 toward ~0.1.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">cost = KL(P‖Q) = Σ Pᵢⱼ · log(Pᵢⱼ / Qᵢⱼ)<br>asymmetric → guards local structure<br>minimise it → good map</div>`, code:`let kl = 0;
+for (i) for (j) if (i!==j)
+  kl += P[i][j] * Math.log(P[i][j] / Q[i][j]);
+// smaller KL = map matches the high-dim similarities` },
+ { title:"7. Gradient descent on the points", why:"There's no formula for the best layout — t-SNE finds it by moving the 2D points downhill on KL. The gradient has an intuitive spring form: each point is attracted to pairs where P exceeds Q (they should be closer) and repelled from pairs where Q exceeds P (they should be farther). Steps use momentum to smooth the path and escape shallow ruts, and the cloud is re-centred each iteration. Different random starts give different-looking (but equally valid) maps.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">∂KL/∂yᵢ = 4 Σⱼ (Pᵢⱼ−Qᵢⱼ)·numᵢⱼ·(yᵢ−yⱼ)<br>P&gt;Q → attract · Q&gt;P → repel<br>step downhill with momentum</div>`, code:`const m = (P[i][j] - Q[i][j]) * num[i][j];
+grad[i][0] += 4*m*(Y[i][0]-Y[j][0]);
+grad[i][1] += 4*m*(Y[i][1]-Y[j][1]);
+Y[i] -= learningRate * grad[i];   // + momentum` },
+ { title:"8. What t-SNE preserves — and what it doesn't", why:"t-SNE is superb at local structure: points that were neighbours in high-dim end up neighbours on the map, so real clusters show up as tight, distinct islands. But it deliberately sacrifices global geometry. Read that as a hard rule: the distance between two clusters on the plot is not meaningful, and the size or spread of a cluster is not meaningful either — dense and sparse groups can look identically sized. Never infer 'these clusters are close' or 'this cluster is bigger' from a t-SNE picture.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">✅ preserves: who is near whom (local)<br>❌ NOT meaningful: gaps between clusters<br>❌ NOT meaningful: cluster sizes / density</div>`, code:`// t-SNE answers "which points group together?"
+// It does NOT answer "how far apart are the groups?"
+// or "which cluster is bigger?" — don't read those off.` },
+ { title:"9. Common misreadings & good practice", why:"Because the axes have no units and layouts vary with the seed, t-SNE plots are easy to over-interpret. Run it at several perplexities and seeds — trust structure that persists, distrust anything that appears once. Let it converge; a half-run plot shows fake sub-clusters that fuse later. Standardise features and PCA down to ~30–50 dims first for speed (it's O(N²)). And treat it as a visualisation, never as features for a downstream model.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">try several perplexities + seeds<br>let it fully converge (or see fake sub-clusters)<br>PCA to ~50-D first · it's a picture, not features</div>`, code:`// good hygiene
+X = standardize(X);
+X = PCA(n_components=50).fit_transform(X);  // speed + denoise
+// then run t-SNE at perplexity 5..50, fixed seed` },
+ { title:"10. When to reach for it (and alternatives)", why:"t-SNE shines for exploring one dataset: sanity-checking that classes separate, spotting mislabelled points, or presenting embeddings from a neural net. It's slow on huge N and can't naturally place new points, so it isn't a preprocessing step. For those cases UMAP (tomorrow) is faster, keeps more global structure, and supports transforming unseen data; PCA is the go-to when you need a linear, invertible, feature-preserving reduction. Pick the tool by whether you want a picture, features, or speed.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">t-SNE → exploratory pictures, one dataset<br>UMAP → faster + more global + new points<br>PCA → linear, invertible, gives features</div>`, code:`from sklearn.manifold import TSNE
+emb = TSNE(n_components=2, perplexity=30,
+           init="pca", random_state=42).fit_transform(X)
+# for speed + new-point support, try openTSNE / UMAP` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
