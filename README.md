@@ -28,8 +28,8 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 19 — Bias-Variance Tradeoff](https://dev48v.infy.uk/ml/day19-bias-variance.html) — `day19-bias-variance.html`
 - [MachineLearningFromZero · Day 20 — ROC Curve & AUC](https://dev48v.infy.uk/ml/day20-roc-auc.html) — `day20-roc-auc.html`
 - [MachineLearningFromZero · Day 21 — AdaBoost](https://dev48v.infy.uk/ml/day21-adaboost.html) — `day21-adaboost.html`
+- [MachineLearningFromZero · Day 22 — Gaussian Mixtures (EM)](https://dev48v.infy.uk/ml/day22-gmm-em.html) — `day22-gmm-em.html`
+- [MachineLearningFromZero · Day 23 — t-SNE](https://dev48v.infy.uk/ml/day23-tsne.html) — `day23-tsne.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
-- Day 22 — Gaussian Mixtures (EM) → `day22-gmm-em.html`
-- Day 23 — t-SNE → `day23-tsne.html`
