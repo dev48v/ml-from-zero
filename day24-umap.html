@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 24 — UMAP</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  #cv { background:#fff; border:2px solid #0f172a; border-radius:12px; box-shadow:0 18px 40px rgba(0,0,0,.15); touch-action:none; }
+  .stat { font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 24</div>
+      <h1 class="text-xl font-bold">🌐 UMAP — A Faster Map of High-Dim Data</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-4xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1">Build a neighbour graph, then let it relax into a map.</h2>
+      <p class="text-slate-500 mb-4">Yesterday <strong>t-SNE</strong> squashed 6D blobs to 2D by matching pairwise probabilities and descending KL — accurate but slow, and it throws away global layout. <strong>UMAP</strong> takes a graph-first route. It connects every point to its <strong>k nearest neighbours</strong> in 6D, weights each edge by a smooth membership strength (a <em>fuzzy simplicial complex</em>), then lays the graph out in 2D by pulling connected points together and pushing everyone else apart — a force-directed layout that minimises the cross-entropy of the two fuzzy topologies. The dots start as one random blob; press <strong>Run</strong> and watch the four true clusters snap into separate islands, fast.</p>
+      <div class="flex justify-center gap-5 mb-3 text-sm font-bold text-slate-600 flex-wrap">
+        <div>Epoch: <span id="iter" class="stat text-sky-600">0</span></div>
+        <div>Separation: <span id="sep" class="stat text-sky-600">—</span></div>
+        <div>n_neighbors: <span id="nnVal" class="stat text-sky-600">15</span></div>
+        <div>min_dist: <span id="mdVal" class="stat text-sky-600">0.10</span></div>
+      </div>
+      <canvas id="cv" width="640" height="420"></canvas>
+      <div class="flex justify-center mt-3 gap-2 flex-wrap">
+        <button id="runBtn"  class="bg-sky-600 hover:bg-sky-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Run UMAP</button>
+        <button id="stepBtn" class="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">⏭ One epoch</button>
+        <button id="resetBtn" class="bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg font-semibold text-sm">↺ Reset</button>
+        <button id="regenBtn" class="bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg font-semibold text-sm">🎲 New data</button>
+        <span class="self-center text-sm font-bold text-slate-500 ml-2">n_neighbors</span>
+        <input id="nnSlider" type="range" min="3" max="30" value="15" class="w-24 accent-sky-600 self-center">
+        <span class="self-center text-sm font-bold text-slate-500 ml-2">min_dist</span>
+        <input id="mdSlider" type="range" min="1" max="60" value="10" class="w-24 accent-sky-600 self-center">
+      </div>
+      <p class="text-xs text-slate-400 mt-3">This is a genuine, if small, UMAP: a k-nearest-neighbour graph is built in 6D, each point's local connectivity (ρ = distance to its nearest neighbour) is subtracted and a per-point σ is binary-searched so the membership row sums to log₂(n_neighbors), directed edges are fused with the fuzzy union a+b−ab, the low-dim curve 1/(1+a·d²ᵇ) is least-squares fit from <em>min_dist</em>, and the 2D layout descends the cross-entropy by stochastic edge sampling with negative sampling — attract along edges, repel random pairs, learning rate decaying each epoch. Colours mark the <em>true</em> cluster so you can judge the result — UMAP never sees them. Separation (between-cluster ÷ within-cluster spread) should climb from &lt;1 to well past 10. Small <strong>n_neighbors</strong> emphasises local detail; large values preserve more global shape. Larger <strong>min_dist</strong> packs each cluster less tightly.</p>
+      <div class="mt-4 bg-sky-50 border border-sky-200 rounded-xl p-4 text-left text-xs text-sky-900 max-w-3xl mx-auto">
+        <strong>vs. t-SNE (Day 23):</strong> UMAP is typically much faster (it optimises a sparse kNN graph with sampling, not a dense N² matrix), and it tends to preserve more <em>global</em> structure — the relative placement of clusters is more trustworthy than in t-SNE. The <code>n_neighbors</code> knob is the local↔global tradeoff: low means "believe only nearby points," high means "respect the broader manifold." UMAP can also project brand-new points onto an existing map, which t-SNE cannot.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How UMAP works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">A kNN graph, per-point local connectivity, fuzzy-union edge weights, a min_dist-fit low-dim curve, and a sampled attract/repel layout loop. ~90 lines of vanilla JS — then the two-line real-world version.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Find each point's k nearest neighbours</h3></div>
+        <p class="text-sm text-slate-600 mb-3">UMAP is graph-first: it never touches most pairwise distances. For each point it keeps only the <code>n_neighbors</code> closest points in high-dim. Real implementations use approximate nearest-neighbour search (NN-Descent) for near-linear speed; here a small sort is enough. This sparse graph is why UMAP scales where t-SNE's dense N² matrix stalls.</p>
+        <div class="relative"><pre>function knnGraph(X, k){
+  const n = X.length;
+  const knn = [];
+  for (let i=0;i&lt;n;i++){
+    const order = [...Array(n).keys()]
+      .filter(j =&gt; j!==i)
+      .sort((a,b)=&gt; dist(X[i],X[a]) - dist(X[i],X[b]));
+    knn.push(order.slice(0, k));   // k closest points to i
+  }
+  return knn;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Local connectivity: ρ and σ</h3></div>
+        <p class="text-sm text-slate-600 mb-3">For each point, ρ is the distance to its nearest neighbour — subtracting it guarantees every point is connected to at least one other with full weight, so nothing is orphaned. Then σ (a per-point bandwidth) is binary-searched so the smooth membership row sums to log₂(k). This adapts to local density exactly like t-SNE's perplexity, but the target is a graph, not a probability.</p>
+        <div class="relative"><pre>function localSigma(dists, k){       // dists = sorted knn dists
+  const rho = dists[0];              // nearest-neighbour distance
+  const target = Math.log2(k);
+  let lo=0, hi=Infinity, sig=1;
+  for (let t=0;t&lt;64;t++){
+    let s=0;
+    for (const d of dists){
+      const v = Math.max(0, d - rho);
+      s += v&lt;=0 ? 1 : Math.exp(-v/sig);
+    }
+    if (Math.abs(s-target)&lt;1e-5) break;
+    if (s&gt;target){ hi=sig; sig=(lo+hi)/2; }
+    else { lo=sig; sig = hi===Infinity ? sig*2 : (lo+hi)/2; }
+  }
+  return { rho, sig };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Fuzzy edge weights, then symmetrise</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Each directed edge i→j gets a membership strength exp(−(d−ρ)/σ) in (0,1] — a fuzzy "how much do they belong together." Because i's view of j differs from j's view of i, UMAP fuses them with the probabilistic t-conorm a + b − a·b (fuzzy union), giving one symmetric weight per pair. The result is the high-dim fuzzy graph — UMAP's answer to t-SNE's joint P.</p>
+        <div class="relative"><pre>const w = Array.from({length:n},()=&gt;new Float64Array(n));
+for (let i=0;i&lt;n;i++) for (const j of knn[i]){
+  const v = Math.max(0, dist(X[i],X[j]) - rho[i]);
+  w[i][j] = v&lt;=0 ? 1 : Math.exp(-v / sig[i]);
+}
+const edges = [];
+for (let i=0;i&lt;n;i++) for (let j=i+1;j&lt;n;j++){
+  const a=w[i][j], b=w[j][i];
+  const s = a + b - a*b;                 // fuzzy union
+  if (s &gt; 1e-3) edges.push({i, j, w:s});
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Fit the low-dim curve from min_dist</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In 2D, membership uses 1/(1 + a·d²ᵇ). The parameters a, b are least-squares fit so this curve matches a target that stays 1 up to <code>min_dist</code>, then decays. Small min_dist ⇒ a large a ⇒ points allowed to pack very tightly; large min_dist spreads clusters out. This one knob controls cluster tightness, the way t-SNE's Student-t kernel is fixed at a=b=1.</p>
+        <div class="relative"><pre>function fitAB(min_dist){
+  const xs=[], ys=[];
+  for (let d=0; d&lt;=3; d+=0.01){
+    xs.push(d); ys.push(d&lt;=min_dist ? 1 : Math.exp(-(d-min_dist)));
+  }
+  let a=1, b=1;
+  for (let it=0; it&lt;300; it++){                 // gradient descent
+    let ga=0, gb=0;
+    for (let k=0;k&lt;xs.length;k++){
+      const d=xs[k]; if (d===0) continue;
+      const pw=Math.pow(d,2*b), den=1+a*pw, err=1/den - ys[k];
+      ga += 2*err*(-pw/(den*den));
+      gb += 2*err*(-a*pw*2*Math.log(d)/(den*den));
+    }
+    a -= 0.1*ga/xs.length; b -= 0.1*gb/xs.length;
+  }
+  return { a, b };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Lay it out: attract, repel, decay</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Start with random 2D positions, then run stochastic gradient descent on the cross-entropy between the high-dim and low-dim fuzzy graphs. Each epoch: sample edges (a strong edge fires more often), pull its two endpoints together, and for each pull do a few <em>negative samples</em> — random non-neighbours pushed apart. The learning rate decays to zero, freezing the layout. Springs, but on a sparse graph, so it's fast.</p>
+        <div class="relative"><pre>for (let epoch=0; epoch&lt;n_epochs; epoch++){
+  const alpha = 1.0 * (1 - epoch/n_epochs);       // decaying LR
+  for (const e of edges){
+    if (Math.random() &gt; e.w) continue;            // sample by weight
+    const [i,j] = [e.i, e.j];
+    let dx=Y[i][0]-Y[j][0], dy=Y[i][1]-Y[j][1], d=dx*dx+dy*dy;
+    const gc = (-2*a*b*Math.pow(d,b-1)) / (1 + a*Math.pow(d,b));   // attract
+    Y[i][0]+=clip(gc*dx)*alpha; Y[i][1]+=clip(gc*dy)*alpha;
+    Y[j][0]-=clip(gc*dx)*alpha; Y[j][1]-=clip(gc*dy)*alpha;
+    for (let s=0;s&lt;5;s++){                         // negative sampling
+      const k=(Math.random()*n)|0; if (k===i) continue;
+      let rx=Y[i][0]-Y[k][0], ry=Y[i][1]-Y[k][1], rd=rx*rx+ry*ry;
+      const rc = (2*b) / ((1e-3+rd)*(1 + a*Math.pow(rd,b)));       // repel
+      Y[i][0]+=clip(rc*rx)*alpha; Y[i][1]+=clip(rc*ry)*alpha;
+    }
+  }
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">In the real world</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Nobody hand-rolls UMAP in production. The <em>umap-learn</em> library ships a fast, NN-Descent-backed version; RAPIDS cuML runs it on the GPU. Standardise or PCA down first for speed and denoising, tune <code>n_neighbors</code> (local↔global) and <code>min_dist</code> (tightness), and set a seed for reproducibility. Unlike t-SNE, a fitted UMAP has a <code>.transform()</code> that places new points on the same map — so it doubles as a preprocessing step.</p>
+        <div class="relative"><pre># pip install umap-learn
+import umap
+from sklearn.preprocessing import StandardScaler
+
+Xs = StandardScaler().fit_transform(X)
+reducer = umap.UMAP(n_neighbors=15, min_dist=0.1,
+                    n_components=2, random_state=42)
+emb = reducer.fit_transform(Xs)
+
+import matplotlib.pyplot as plt
+plt.scatter(emb[:,0], emb[:,1], c=labels, s=6, cmap="tab10")
+plt.show()
+
+emb_new = reducer.transform(X_new)   # project unseen points — t-SNE can't</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 24 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You built a real UMAP: a kNN graph in high-dim, per-point ρ/σ local connectivity, fuzzy-union edge weights, a min_dist-fit low-dim curve, and a sampled attract/repel layout that minimises cross-entropy — faster than t-SNE and kinder to global structure. Remember it still isn't perfectly metric: absolute cluster sizes and gaps are only roughly meaningful, and results shift with n_neighbors. <strong>👉 Tomorrow — Day 25: Hierarchical clustering</strong> — build a dendrogram by repeatedly merging the closest groups, and read clusters off at any height.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== UMAP =====
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+const W = cv.width, H = cv.height;
+const COLORS = [[14,165,233],[236,72,153],[16,185,129],[245,158,11]]; // sky, pink, emerald, amber
+const DIM = 6, NCLUST = 4, PER_CLUST = 20, N = NCLUST*PER_CLUST;
+const N_EPOCHS = 500, NEG = 5;
+
+let seed = 42;
+function rnd(){ seed = (seed*1103515245 + 12345) & 0x7fffffff; return seed/0x7fffffff; }
+function randn(){ return (rnd()+rnd()+rnd()+rnd()+rnd()+rnd()-3); }  // ~N(0,1)
+
+let X = [], labels = [], edges = [], Y = [], iter = 0;
+let n_neighbors = 15, min_dist = 0.10, A = 1.34, B = 0.96, timer = null;
+
+function dist(a,b){ let s=0; for (let k=0;k<a.length;k++){ const t=a[k]-b[k]; s+=t*t; } return Math.sqrt(s); }
+
+function genData(){
+  X = []; labels = [];
+  const centres = [];
+  for (let c=0;c<NCLUST;c++){ const ctr=[]; for (let k=0;k<DIM;k++) ctr.push((rnd()*2-1)*10); centres.push(ctr); }
+  for (let c=0;c<NCLUST;c++) for (let i=0;i<PER_CLUST;i++){
+    const v=[]; for (let k=0;k<DIM;k++) v.push(centres[c][k] + randn()*1.2);
+    X.push(v); labels.push(c);
+  }
+  buildGraph();
+  fitAB();
+  reset();
+}
+
+// high-dim fuzzy graph: kNN + per-point local connectivity (rho, sigma) + fuzzy union
+function buildGraph(){
+  const D = Array.from({length:N},()=>new Float64Array(N));
+  for (let i=0;i<N;i++) for (let j=0;j<N;j++) D[i][j]=dist(X[i],X[j]);
+  const knn = [];
+  for (let i=0;i<N;i++){
+    const order = [...Array(N).keys()].filter(j=>j!==i).sort((a,b)=>D[i][a]-D[i][b]);
+    knn.push(order.slice(0,n_neighbors));
+  }
+  const rho = new Float64Array(N), sig = new Float64Array(N);
+  const target = Math.log2(n_neighbors);
+  for (let i=0;i<N;i++){
+    const dd = knn[i].map(j=>D[i][j]);
+    rho[i] = dd[0];
+    let lo=0, hi=Infinity, mid=1;
+    for (let t=0;t<64;t++){
+      let s=0; for (const d of dd){ const v=Math.max(0,d-rho[i]); s += v<=0?1:Math.exp(-v/mid); }
+      if (Math.abs(s-target)<1e-5) break;
+      if (s>target){ hi=mid; mid=(lo+hi)/2; } else { lo=mid; mid = hi===Infinity ? mid*2 : (lo+hi)/2; }
+    }
+    sig[i]=mid;
+  }
+  const w = Array.from({length:N},()=>new Float64Array(N));
+  for (let i=0;i<N;i++) for (const j of knn[i]){
+    const v = Math.max(0, D[i][j]-rho[i]);
+    w[i][j] = v<=0 ? 1 : Math.exp(-v/sig[i]);
+  }
+  edges = [];
+  for (let i=0;i<N;i++) for (let j=i+1;j<N;j++){
+    const a=w[i][j], b=w[j][i];
+    const s = a + b - a*b;             // probabilistic t-conorm (fuzzy union)
+    if (s > 1e-3) edges.push({i,j,w:s});
+  }
+}
+
+// low-dim membership curve 1/(1+a*d^(2b)); fit a,b to a min_dist-based target
+function fitAB(){
+  const md = min_dist, xs=[], ys=[];
+  for (let d=0; d<=3; d+=0.01){ xs.push(d); ys.push(d<=md ? 1 : Math.exp(-(d-md))); }
+  let a=1, b=1;
+  for (let it=0; it<300; it++){
+    let ga=0, gb=0;
+    for (let k=0;k<xs.length;k++){
+      const d=xs[k]; if (d===0) continue;
+      const pw=Math.pow(d,2*b), den=1+a*pw, err=1/den - ys[k];
+      ga += 2*err*(-pw/(den*den));
+      gb += 2*err*(-a*pw*2*Math.log(d)/(den*den));
+    }
+    a -= 0.1*ga/xs.length; b -= 0.1*gb/xs.length;
+    if (a<1e-3) a=1e-3; if (b<1e-3) b=1e-3;
+  }
+  A = (isFinite(a)&&a>0) ? a : 1.577;
+  B = (isFinite(b)&&b>0) ? b : 0.895;
+}
+
+function clip(x){ return x>4?4:(x<-4?-4:x); }
+
+function reset(){
+  Y = [];
+  for (let i=0;i<N;i++) Y.push([randn()*0.05, randn()*0.05]);
+  iter = 0;
+  document.getElementById("iter").textContent = 0;
+  document.getElementById("sep").textContent = separation().toFixed(2);
+  draw();
+}
+
+function step(){
+  const alpha = 1.0 * (1 - iter/N_EPOCHS);
+  for (const e of edges){
+    if (rnd() > e.w) continue;                         // sample edge by membership
+    const i=e.i, j=e.j;
+    let dx=Y[i][0]-Y[j][0], dy=Y[i][1]-Y[j][1], d=dx*dx+dy*dy;
+    let gc=0; if (d>0) gc = (-2*A*B*Math.pow(d,B-1)) / (1 + A*Math.pow(d,B));  // attract
+    const gx=clip(gc*dx)*alpha, gy=clip(gc*dy)*alpha;
+    Y[i][0]+=gx; Y[i][1]+=gy; Y[j][0]-=gx; Y[j][1]-=gy;
+    for (let s=0;s<NEG;s++){                            // negative sampling: repel
+      const k=(rnd()*N)|0; if (k===i) continue;
+      let rx=Y[i][0]-Y[k][0], ry=Y[i][1]-Y[k][1], rd=rx*rx+ry*ry;
+      let rc=0; if (rd>0) rc = (2*B) / ((1e-3+rd) * (1 + A*Math.pow(rd,B)));
+      Y[i][0]+=clip(rc*rx)*alpha; Y[i][1]+=clip(rc*ry)*alpha;
+    }
+  }
+  iter++;
+  document.getElementById("iter").textContent = iter;
+  document.getElementById("sep").textContent = separation().toFixed(2);
+  draw();
+}
+
+// between-cluster / within-cluster spread — a live quality readout (uses true labels)
+function separation(){
+  const cen = Array.from({length:NCLUST},()=>[0,0]), cnt = new Array(NCLUST).fill(0);
+  for (let i=0;i<N;i++){ cen[labels[i]][0]+=Y[i][0]; cen[labels[i]][1]+=Y[i][1]; cnt[labels[i]]++; }
+  for (let c=0;c<NCLUST;c++){ cen[c][0]/=(cnt[c]||1); cen[c][1]/=(cnt[c]||1); }
+  let within=0; for (let i=0;i<N;i++){ const c=labels[i]; within+=Math.hypot(Y[i][0]-cen[c][0],Y[i][1]-cen[c][1]); } within/=N;
+  let between=0,nb=0; for (let a=0;a<NCLUST;a++) for (let b=a+1;b<NCLUST;b++){ between+=Math.hypot(cen[a][0]-cen[b][0],cen[a][1]-cen[b][1]); nb++; } between/=(nb||1);
+  return between/(within+1e-9);
+}
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  let minx=Infinity,maxx=-Infinity,miny=Infinity,maxy=-Infinity;
+  for (const p of Y){ minx=Math.min(minx,p[0]); maxx=Math.max(maxx,p[0]); miny=Math.min(miny,p[1]); maxy=Math.max(maxy,p[1]); }
+  const spanx=(maxx-minx)||1, spany=(maxy-miny)||1;
+  const pad=40, sc=Math.min((W-2*pad)/spanx,(H-2*pad)/spany);
+  const cx=(minx+maxx)/2, cy=(miny+maxy)/2;
+  Y.forEach((p,i)=>{
+    const px = W/2 + (p[0]-cx)*sc;
+    const py = H/2 + (p[1]-cy)*sc;
+    ctx.fillStyle = `rgb(${COLORS[labels[i]].join(",")})`;
+    ctx.beginPath(); ctx.arc(px,py,4,0,7); ctx.fill();
+  });
+}
+
+document.getElementById("stepBtn").onclick = () => { stopRun(); step(); };
+function stopRun(){ if (timer){ clearInterval(timer); timer=null; document.getElementById("runBtn").textContent="▶ Run UMAP"; } }
+document.getElementById("runBtn").onclick = () => {
+  if (timer){ stopRun(); return; }
+  document.getElementById("runBtn").textContent = "⏸ Pause";
+  timer = setInterval(() => { step(); if (iter>=N_EPOCHS){ stopRun(); } }, 40);
+};
+document.getElementById("resetBtn").onclick = () => { stopRun(); reset(); };
+document.getElementById("regenBtn").onclick = () => { stopRun(); seed=(seed*7+101)&0x7fffffff; genData(); };
+document.getElementById("nnSlider").oninput = (e) => {
+  stopRun(); n_neighbors=+e.target.value; document.getElementById("nnVal").textContent=n_neighbors;
+  buildGraph(); reset();
+};
+document.getElementById("mdSlider").oninput = (e) => {
+  stopRun(); min_dist=(+e.target.value)/100; document.getElementById("mdVal").textContent=min_dist.toFixed(2);
+  fitAB(); reset();
+};
+genData();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. Recap: t-SNE and its limits", why:"Yesterday's t-SNE built a dense N×N matrix of high-dim similarities, a Student-t matrix in 2D, and descended KL divergence to match them. It makes beautiful local clusters, but it is slow — every iteration touches all N² pairs — and it deliberately discards global structure, so the distances between clusters on a t-SNE plot are meaningless. It also can't place new points without re-running from scratch. UMAP was designed to keep t-SNE's crisp local clusters while fixing exactly these three pains: speed, global structure, and out-of-sample projection.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">t-SNE: dense N² matrix · slow<br>gaps between clusters = meaningless<br>can't add new points<br>UMAP fixes all three</div>`, code:`// t-SNE (Day 23): match dense P (high-D) to dense Q (2-D)
+// via KL divergence + momentum gradient descent.
+// Great locally, but O(N^2) per step and global layout is junk.` },
+ { title:"2. The UMAP idea: a fuzzy graph", why:"UMAP reframes the problem in topology, not probability. It assumes your data lies on a manifold and approximates that manifold with a graph: connect each point to its nearest neighbours, and treat each connection as a fuzzy membership — a number in (0,1] saying how strongly the two points belong together. This collection of weighted edges is a 'fuzzy simplicial complex.' Instead of matching two dense probability matrices, UMAP will match two of these fuzzy graphs — one in high-dim, one in 2D — which is far sparser and cheaper.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">manifold ≈ weighted neighbour graph<br>edge weight ∈ (0,1] = fuzzy membership<br>"fuzzy simplicial complex"<br>match graphs, not dense matrices</div>`, code:`// Build a graph: each point -> its k nearest neighbours.
+// Each edge carries a weight in (0,1]: how strongly
+// those two points "belong together" on the manifold.` },
+ { title:"3. n_neighbors: local vs global", why:"The single most important knob is n_neighbors — how many neighbours each point connects to when building the graph. Small values (say 5) make UMAP believe only its closest points, capturing fine local detail but fragmenting the big picture. Large values (say 50) let each point see far across the manifold, preserving more global structure at the cost of local sharpness. It is the direct analogue of t-SNE's perplexity, and the honest way to use UMAP is to try a few values and see which structure is stable.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">n_neighbors = graph connectivity<br>small → local detail, fragmented<br>large → global shape, less sharp<br>the local ↔ global dial</div>`, code:`# small n_neighbors: tight local view
+umap.UMAP(n_neighbors=5)     # fine detail, less global
+# large n_neighbors: broad view
+umap.UMAP(n_neighbors=50)    # more global structure` },
+ { title:"4. Local connectivity: ρ and σ", why:"Raw kNN distances are unfair: a point in a dense region has close neighbours, one in a sparse region has far ones. UMAP normalises per point. It subtracts ρ, the distance to the very nearest neighbour, so every point is fully connected to at least one other and nothing is left isolated. Then it binary-searches a per-point σ so the smooth membership row sums to log₂(n_neighbors) — adapting the bandwidth to local density exactly the way t-SNE tunes σ to hit a perplexity.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ρ = distance to nearest neighbour<br>subtract ρ → nobody is orphaned<br>σ solved so Σ membership = log₂(k)<br>adapts to local density</div>`, code:`rho = dists[0];                 // nearest-neighbour distance
+// binary-search sigma so the row sums to log2(k):
+membership_ij = Math.exp(-(dist_ij - rho) / sigma);` },
+ { title:"5. Building the high-dim fuzzy graph", why:"With ρ and σ set, each directed edge i→j gets membership exp(−(d−ρ)/σ), which is 1 for the nearest neighbour and decays smoothly outward. But i's opinion of j rarely equals j's opinion of i, so UMAP fuses the two with the fuzzy union (probabilistic t-conorm) a + b − a·b, yielding one symmetric weight per pair. The finished weighted graph is UMAP's high-dim target — the topological counterpart of t-SNE's symmetric joint P, but sparse and interpretable as connection strength.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">directed: exp(−(d−ρ)/σ)<br>fuse i→j and j→i: a + b − a·b<br>= symmetric fuzzy union<br>this is the high-D target graph</div>`, code:`const a = w[i][j], b = w[j][i];       // two directed weights
+const strength = a + b - a*b;         // fuzzy union (t-conorm)
+edges.push({ i, j, w: strength });    // one symmetric edge` },
+ { title:"6. min_dist: how tight the clusters pack", why:"In 2D, UMAP measures similarity with the curve 1/(1 + a·d²ᵇ), and it fits a and b so this curve stays flat at 1 until distance reaches min_dist, then decays. A small min_dist lets points that are neighbours collapse almost on top of each other — dense, clumpy clusters good for finding fine structure. A large min_dist forbids that, spreading each cluster out for a more even, readable plot. Unlike t-SNE's fixed Student-t kernel, this is a tunable aesthetic-and-analysis knob.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">low-D curve: 1 / (1 + a·d^(2b))<br>fit a,b so it's flat up to min_dist<br>small min_dist → tight clumps<br>large min_dist → spread out</div>`, code:`# min_dist controls cluster tightness in the plot
+umap.UMAP(min_dist=0.0)   # points can stack — dense clumps
+umap.UMAP(min_dist=0.5)   # points kept apart — spread out` },
+ { title:"7. The layout: attractive + repulsive forces", why:"UMAP places points in 2D by minimising the cross-entropy between the high-dim fuzzy graph and the low-dim one — but it does so with cheap stochastic gradient descent, not a dense computation. Each epoch it samples edges (a stronger edge fires more often) and pulls their endpoints together; for each pull it also does a few negative samples, picking random points and pushing them apart. Attract along real edges, repel random pairs, decay the learning rate to zero. It is a force-directed layout, and it is why UMAP feels like watching a graph relax.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">minimise cross-entropy(high-D ‖ low-D)<br>sample edges → ATTRACT endpoints<br>negative sample → REPEL random pairs<br>learning rate decays → freeze</div>`, code:`// attract along an edge (i,j):
+gc = -2*a*b*d^(b-1) / (1 + a*d^b);   Y[i]+=gc*(Y[i]-Y[j]);
+// repel a negatively-sampled random point k:
+rc = 2*b / ((1e-3+rd) * (1 + a*rd^b)); Y[i]+=rc*(Y[i]-Y[k]);` },
+ { title:"8. Why UMAP is faster and keeps global structure", why:"Two design choices earn the payoff. First, the graph is sparse — only k edges per point — and the layout uses sampling, so cost scales roughly linearly instead of t-SNE's quadratic per-step blow-up; real implementations add approximate nearest-neighbour search for the graph too. Second, because attraction runs along a connected neighbour graph rather than matching only pairwise probabilities, the broad shape of the manifold survives the projection, so relative cluster placement is more trustworthy than in t-SNE. Faster and more globally faithful — the reason UMAP became the default embedding plot.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">sparse kNN graph + sampling → ~linear<br>(t-SNE was ~quadratic per step)<br>connected graph → global shape survives<br>= faster + more global than t-SNE</div>`, code:`// t-SNE: touch all N^2 pairs every iteration.
+// UMAP: ~k*N edges, sampled, with negative sampling.
+// -> near-linear scaling + relative cluster layout kept.` },
+ { title:"9. What UMAP does and does not preserve", why:"UMAP preserves local neighbourhoods excellently — true neighbours stay neighbours — and it preserves global structure better than t-SNE, so the arrangement of clusters carries some signal. But it is not a metric embedding: absolute distances, exact cluster sizes, and the precise size of gaps are still only approximate, and they shift with n_neighbors and min_dist. Read a UMAP plot as 'which points group together, and roughly how the groups relate,' never as a ruler. As with t-SNE, trust structure that persists across several parameter settings.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">✅ local neighbourhoods (excellent)<br>✅ global layout (better than t-SNE)<br>⚠️ exact sizes / gaps: approximate only<br>trust structure stable across params</div>`, code:`// UMAP answers "who groups together" + "roughly how
+// groups relate" — but it is NOT a metric embedding.
+// Don't measure exact distances or cluster sizes off it.` },
+ { title:"10. When to reach for UMAP", why:"UMAP is the modern default for visualising embeddings — word vectors, image features, single-cell RNA data, any neural-net representation you want to eyeball. Because a fitted reducer exposes .transform(), it also works as a genuine preprocessing step: reduce to a handful of dimensions, then feed a classifier or clusterer, and project new data onto the same map later. Prefer PCA when you need a linear, invertible, feature-preserving reduction; prefer t-SNE only when you want the crispest possible local picture of one fixed dataset and speed doesn't matter.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">UMAP → default embedding viz + preprocessing<br>.transform() → project new points<br>PCA → linear, invertible, features<br>t-SNE → crispest local picture, one dataset</div>`, code:`import umap
+reducer = umap.UMAP(n_neighbors=15, min_dist=0.1, random_state=42)
+emb = reducer.fit_transform(X)      # visualise
+emb_new = reducer.transform(X_new)  # + project unseen data` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
