@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 25 — Hierarchical Clustering</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  #scatter, #dendro { background:#fff; border:2px solid #0f172a; border-radius:12px; box-shadow:0 18px 40px rgba(0,0,0,.15); touch-action:none; }
+  .stat { font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 25</div>
+      <h1 class="text-xl font-bold">🌳 Hierarchical Clustering — Merge Nearest, Read the Dendrogram</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1">Give every point its own cluster, then keep merging the two closest.</h2>
+      <p class="text-slate-500 mb-4">No <em>k</em> up front. <strong>Agglomerative hierarchical clustering</strong> starts with every point alone, then — over and over — finds the two <strong>closest clusters</strong> and fuses them, recording the distance at which they joined. Do that until a single cluster remains and you have a whole <strong>tree of nested groupings</strong>, drawn as a <strong>dendrogram</strong> on the right: the higher a horizontal bar, the more dissimilar the two groups it joins. Drag the <strong>cut line</strong> (or press <strong>Step</strong> / <strong>Run</strong>) to slice the tree at any height — everything below a cut becomes one flat cluster, and the scatter on the left recolours to match. Both views are the same computation, seen two ways.</p>
+      <div class="flex justify-center gap-5 mb-3 text-sm font-bold text-slate-600 flex-wrap">
+        <div>Clusters at cut: <span id="nClust" class="stat text-sky-600">—</span></div>
+        <div>Cut height: <span id="cutVal" class="stat text-sky-600">—</span></div>
+        <div>Linkage: <span id="lnkVal" class="stat text-sky-600">ward</span></div>
+        <div>Points: <span id="nPts" class="stat text-sky-600">24</span></div>
+      </div>
+      <div class="flex justify-center gap-4 flex-wrap items-start">
+        <div>
+          <div class="text-xs font-bold text-slate-500 mb-1">SCATTER — coloured by the flat clusters below the cut</div>
+          <canvas id="scatter" width="380" height="360"></canvas>
+        </div>
+        <div>
+          <div class="text-xs font-bold text-slate-500 mb-1">DENDROGRAM — bar height = distance at which groups merged</div>
+          <canvas id="dendro" width="470" height="360"></canvas>
+        </div>
+      </div>
+      <div class="flex justify-center mt-4 gap-2 flex-wrap items-center">
+        <button id="stepBtn" class="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">⏭ Merge next pair</button>
+        <button id="runBtn"  class="bg-sky-600 hover:bg-sky-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Run merges</button>
+        <button id="resetBtn" class="bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg font-semibold text-sm">↺ Reset (all apart)</button>
+        <button id="regenBtn" class="bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg font-semibold text-sm">🎲 New data</button>
+        <span class="self-center text-sm font-bold text-slate-500 ml-2">Linkage</span>
+        <select id="lnkSel" class="border border-slate-300 rounded-lg px-2 py-2 text-sm font-semibold accent-sky-600">
+          <option value="single">single (min)</option>
+          <option value="complete">complete (max)</option>
+          <option value="average">average</option>
+          <option value="ward" selected>Ward (variance)</option>
+        </select>
+        <span class="self-center text-sm font-bold text-slate-500 ml-2">Cut height</span>
+        <input id="cutSlider" type="range" min="0" max="1000" value="0" class="w-48 accent-sky-600 self-center">
+      </div>
+      <p class="text-xs text-slate-400 mt-3">This is a genuine agglomerative clustering, run live in your browser. Each redraw rebuilds the flat clusters by union-finding every merge whose height is at or below the cut line. The merge tree is computed by the real algorithm: start with 24 singletons, compute the linkage distance between <em>every</em> pair of current clusters, fuse the closest pair, record its height, and repeat 23 times until one cluster remains. <strong>single</strong> uses the minimum distance between members (prone to "chaining" — it can string dumbbell shapes together), <strong>complete</strong> uses the maximum (tight, compact balls), <strong>average</strong> uses the mean of all cross-pair distances, and <strong>Ward</strong> merges the pair that increases the total within-cluster variance the least (usually the cleanest blobs). Because the cut simply reads groups off the finished tree, you pick the number of clusters <em>after</em> seeing the whole structure — the big vertical gaps in the dendrogram are the natural places to cut.</p>
+      <div class="mt-4 bg-sky-50 border border-sky-200 rounded-xl p-4 text-left text-xs text-sky-900 max-w-3xl mx-auto">
+        <strong>vs. K-Means (Day 13):</strong> K-Means makes you commit to <code>k</code> before you look and only finds round, blob-shaped clusters. Hierarchical clustering asks for no <code>k</code> — it builds the entire nesting once, and you cut wherever the structure tells you to. With single linkage it can even trace non-convex shapes (chains, rings) that K-Means can never separate. The price is speed: it is O(n²) memory and up to O(n³) time, so it shines on hundreds-to-thousands of points, not millions.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How hierarchical clustering works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">A distance matrix, a linkage rule, a greedy merge loop that records every join, and a cut that reads flat clusters off the tree. ~70 lines of vanilla JS — then the real-world SciPy version in a handful of lines.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Start: every point is its own cluster</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Agglomerative clustering is bottom-up. With <code>n</code> points you begin with <code>n</code> clusters of size one and a full pairwise distance matrix. Euclidean distance is the usual base metric, but any metric works — cosine for text, correlation for gene expression. Everything downstream is just "which two clusters are closest, and by how much."</p>
+        <div class="relative"><pre>function dist(a, b){                 // base Euclidean metric
+  return Math.hypot(a[0]-b[0], a[1]-b[1]);
+}
+let clusters = points.map((p, i) =&gt; ({ members: [i] }));  // n singletons
+// D[i][j] = pairwise distances between the original points
+const D = points.map(a =&gt; points.map(b =&gt; dist(a, b)));</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Define cluster-to-cluster distance (linkage)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Point distance is obvious; <em>cluster</em> distance is a choice called the linkage. <strong>single</strong> takes the closest pair of members (chaining), <strong>complete</strong> the farthest pair (compact balls), <strong>average</strong> the mean over all cross-pairs, and <strong>Ward</strong> the increase in within-cluster variance if you merged them. The linkage completely changes the shape of the tree and the clusters you get.</p>
+        <div class="relative"><pre>function linkDist(A, B, kind){
+  if (kind === "ward"){                       // variance increase
+    const ca = centroid(A), cb = centroid(B);
+    const na = A.members.length, nb = B.members.length;
+    const d2 = (ca[0]-cb[0])**2 + (ca[1]-cb[1])**2;
+    return Math.sqrt((2*na*nb/(na+nb)) * d2);
+  }
+  const vals = [];
+  for (const i of A.members) for (const j of B.members) vals.push(D[i][j]);
+  if (kind === "single")   return Math.min(...vals);
+  if (kind === "complete") return Math.max(...vals);
+  return vals.reduce((s,v)=&gt;s+v,0) / vals.length;   // average
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The merge loop: fuse the closest pair, record the height</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This is the whole algorithm. While more than one cluster remains, scan every pair of current clusters, find the minimum linkage distance, merge those two into one, and push a record of the join and its height onto the merge list. After <code>n−1</code> merges you have a single cluster and a complete tree. The recorded heights are what make the dendrogram.</p>
+        <div class="relative"><pre>const merges = [];
+while (clusters.length &gt; 1){
+  let best = Infinity, bi = -1, bj = -1;
+  for (let i=0;i&lt;clusters.length;i++)
+    for (let j=i+1;j&lt;clusters.length;j++){
+      const d = linkDist(clusters[i], clusters[j], kind);
+      if (d &lt; best){ best = d; bi = i; bj = j; }
+    }
+  const merged = { members: [...clusters[bi].members, ...clusters[bj].members] };
+  merges.push({ a: bi, b: bj, height: best, size: merged.members.length });
+  clusters = clusters.filter((_,k)=&gt; k!==bi &amp;&amp; k!==bj);
+  clusters.push(merged);                       // n-1 merges total
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Cut the tree at a height → flat clusters</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The tree is the model; a flat clustering is just a horizontal slice of it. Apply every merge whose height is at or below your cut with a union-find, and whatever ends up connected is one cluster. Cut low and you get many tiny clusters; cut high and they collapse into a few big ones. The best cut is usually the tallest vertical gap — the biggest jump in merge height.</p>
+        <div class="relative"><pre>function cutAt(merges, n, h){
+  const parent = [...Array(n).keys()];
+  const find = x =&gt; { while(parent[x]!==x){ parent[x]=parent[parent[x]]; x=parent[x]; } return x; };
+  for (const m of merges)                       // apply merges up to height h
+    if (m.height &lt;= h)
+      for (const p of m.members.slice(1)) parent[find(p)] = find(m.members[0]);
+  const labels = {}; let next = 0, out = [];
+  for (let i=0;i&lt;n;i++){ const r=find(i); if(!(r in labels)) labels[r]=next++; out.push(labels[r]); }
+  return out;                                    // one integer label per point
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Draw the dendrogram</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Lay the leaves left-to-right in the order a depth-first walk of the tree visits them, so branches never cross. Each internal node sits at the average x of its two children and at a y equal to its merge height. Draw a "U": a horizontal bar at the merge height joining the two children, with a vertical drop to each child. A single horizontal line at your cut height turns the picture into the flat clustering.</p>
+        <div class="relative"><pre>// x of a node = mean of its children's x; y = merge height
+function layout(node){
+  if (node.leaf) return node.x;
+  node.x = (layout(node.a) + layout(node.b)) / 2;
+  return node.x;
+}
+function drawU(ctx, a, b, hgt){                 // one merge = one "U"
+  ctx.beginPath();
+  ctx.moveTo(a.x, yPix(a.h)); ctx.lineTo(a.x, yPix(hgt));   // left drop
+  ctx.lineTo(b.x, yPix(hgt));                               // top bar
+  ctx.lineTo(b.x, yPix(b.h)); ctx.stroke();                // right drop
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">In the real world</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Nobody hand-rolls this in production. SciPy's <code>linkage</code> builds the whole merge tree in one fast call, <code>dendrogram</code> plots it, and <code>fcluster</code> cuts it at a height or to a target number of clusters. Scikit-learn's <code>AgglomerativeClustering</code> gives the same thing with a familiar <code>fit_predict</code>. Scale your features first (linkage is distance-based), and remember it is O(n²) memory — for very large data reach for K-Means, DBSCAN, or BIRCH instead.</p>
+        <div class="relative"><pre># pip install scipy scikit-learn
+from scipy.cluster.hierarchy import linkage, dendrogram, fcluster
+from sklearn.preprocessing import StandardScaler
+import matplotlib.pyplot as plt
+
+Xs = StandardScaler().fit_transform(X)
+Z  = linkage(Xs, method="ward")        # the full merge tree (n-1 rows)
+
+dendrogram(Z); plt.axhline(y=cut, c="r", ls="--"); plt.show()
+
+labels = fcluster(Z, t=3, criterion="maxclust")   # cut into 3 clusters
+# or: fcluster(Z, t=cut, criterion="distance")     # cut at a height
+
+# sklearn equivalent:
+from sklearn.cluster import AgglomerativeClustering
+labels = AgglomerativeClustering(n_clusters=3, linkage="ward").fit_predict(Xs)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 25 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You built real agglomerative clustering: n singletons, a linkage rule (single / complete / average / Ward), a greedy merge loop that records every join height, a dendrogram, and a cut that reads flat clusters straight off the tree — no <em>k</em> chosen in advance. Remember it costs O(n²) memory and up to O(n³) time, and single linkage can chain unrelated blobs together, so match the linkage to your data shape. <strong>👉 Tomorrow — Day 26: Isolation Forest</strong> — flip clustering on its head and hunt the odd points out, isolating anomalies by how few random splits it takes to fence them off.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== Hierarchical (agglomerative) clustering =====
+const sc = document.getElementById("scatter"), sctx = sc.getContext("2d");
+const dn = document.getElementById("dendro"),  dctx = dn.getContext("2d");
+const SW = sc.width, SH = sc.height, DW = dn.width, DH = dn.height;
+const GRAY = "#94a3b8", PENDING = "#cbd5e1", CUTCOL = "#e11d48";
+const PALETTE = ["#0ea5e9","#ec4899","#10b981","#f59e0b","#8b5cf6","#ef4444","#14b8a6","#f97316","#6366f1","#84cc16"];
+
+let seed = 7;
+function rnd(){ seed = (seed*1103515245 + 12345) & 0x7fffffff; return seed/0x7fffffff; }
+function randn(){ return (rnd()+rnd()+rnd()+rnd()+rnd()+rnd()-3); }
+
+let pts = [], N = 0, linkage = "ward";
+let merges = [];          // {a,b,height,size,newId}  a,b are node ids
+let members = [];         // members[nodeId] = [leaf indices]
+let nodeH = [];           // nodeH[nodeId] = merge height (0 for leaves)
+let nodeX = [];           // dendrogram x-slot per node (in leaf-slot units)
+let maxH = 1, cutHeight = 0, timer = null;
+
+function ed(a,b){ return Math.hypot(a[0]-b[0], a[1]-b[1]); }
+function centroid(mem){ let x=0,y=0; for(const i of mem){ x+=pts[i][0]; y+=pts[i][1]; } return [x/mem.length, y/mem.length]; }
+
+function clusterDist(mA, mB){
+  if (linkage === "ward"){
+    const ca = centroid(mA), cb = centroid(mB);
+    const na = mA.length, nb = mB.length;
+    const d2 = (ca[0]-cb[0])**2 + (ca[1]-cb[1])**2;
+    return Math.sqrt((2*na*nb/(na+nb)) * d2);
+  }
+  let vals = [];
+  for (const i of mA) for (const j of mB) vals.push(ed(pts[i], pts[j]));
+  if (linkage === "single")   return Math.min(...vals);
+  if (linkage === "complete") return Math.max(...vals);
+  return vals.reduce((s,v)=>s+v,0) / vals.length;   // average
+}
+
+function genData(){
+  pts = [];
+  const centres = [[110,105],[300,120],[195,285]];   // 3 blobs
+  for (let c=0;c<centres.length;c++) for (let i=0;i<8;i++)
+    pts.push([ centres[c][0] + randn()*22, centres[c][1] + randn()*22 ]);
+  N = pts.length;
+  document.getElementById("nPts").textContent = N;
+  buildTree();
+}
+
+// full agglomerative tree: n-1 greedy closest-pair merges (records heights)
+function buildTree(){
+  let clusters = [];
+  members = []; nodeH = [];
+  for (let i=0;i<N;i++){ clusters.push({ mem:[i], id:i }); members[i]=[i]; nodeH[i]=0; }
+  let nextId = N;
+  merges = [];
+  while (clusters.length > 1){
+    let best = Infinity, bi=-1, bj=-1;
+    for (let i=0;i<clusters.length;i++) for (let j=i+1;j<clusters.length;j++){
+      const d = clusterDist(clusters[i].mem, clusters[j].mem);
+      if (d < best){ best=d; bi=i; bj=j; }
+    }
+    const A = clusters[bi], B = clusters[bj];
+    const mem = A.mem.concat(B.mem);
+    merges.push({ a:A.id, b:B.id, height:best, size:mem.length, newId:nextId });
+    members[nextId] = mem; nodeH[nextId] = best;
+    nextId++;
+    clusters = clusters.filter((_,k)=> k!==bi && k!==bj);
+    clusters.push({ mem, id: nextId-1 });
+  }
+  maxH = merges.length ? merges[merges.length-1].height : 1;
+  computeLayout();
+  // default cut: the tall gap that leaves 3 clusters (between the 4->3 and 3->2 merges)
+  const g = merges.length - 2;
+  cutHeight = (g-1>=0) ? (merges[g-1].height + merges[g].height)/2 : maxH*0.6;
+  syncSlider();
+  draw();
+}
+
+// leaf order via DFS of the final tree, then x = mean of children
+function computeLayout(){
+  nodeX = new Array(2*N-1).fill(0);
+  let slot = 0;
+  const root = merges.length ? merges[merges.length-1].newId : 0;
+  (function dfs(node){
+    if (node < N){ nodeX[node] = slot++; return; }
+    const m = merges[node - N];
+    dfs(m.a); dfs(m.b);
+  })(root);
+  for (const m of merges) nodeX[m.newId] = (nodeX[m.a] + nodeX[m.b]) / 2;
+}
+
+// flat clusters at a cut height, via union-find on merges with height <= cut
+function flatLabels(cut){
+  const parent = [...Array(N).keys()];
+  const find = x => { while(parent[x]!==x){ parent[x]=parent[parent[x]]; x=parent[x]; } return x; };
+  for (const m of merges) if (m.height <= cut){
+    const ra = find(members[m.a][0]), rb = find(members[m.b][0]);
+    if (ra !== rb) parent[ra] = rb;
+  }
+  // group -> colour index, ordered by smallest leaf for stability
+  const roots = [];
+  for (let i=0;i<N;i++){ const r=find(i); if(!roots.includes(r)) roots.push(r); }
+  roots.sort((a,b)=>a-b);
+  const size = {}; for (let i=0;i<N;i++){ const r=find(i); size[r]=(size[r]||0)+1; }
+  const colOf = {}; let ci=0;
+  for (const r of roots){ colOf[r] = size[r]===1 ? GRAY : PALETTE[(ci++) % PALETTE.length]; }
+  const pointCol = []; for (let i=0;i<N;i++) pointCol.push(colOf[find(i)]);
+  return { find, colOf, pointCol, nClusters: roots.length };
+}
+
+function draw(){
+  const { find, colOf, pointCol, nClusters } = flatLabels(cutHeight);
+  // ---- scatter ----
+  sctx.clearRect(0,0,SW,SH);
+  let minx=Infinity,maxx=-Infinity,miny=Infinity,maxy=-Infinity;
+  for (const p of pts){ minx=Math.min(minx,p[0]); maxx=Math.max(maxx,p[0]); miny=Math.min(miny,p[1]); maxy=Math.max(maxy,p[1]); }
+  const pad=34, spanx=(maxx-minx)||1, spany=(maxy-miny)||1;
+  const s = Math.min((SW-2*pad)/spanx, (SH-2*pad)/spany);
+  const ox = (SW - spanx*s)/2 - minx*s, oy = (SH - spany*s)/2 - miny*s;
+  pts.forEach((p,i)=>{
+    const px = p[0]*s+ox, py = p[1]*s+oy;
+    sctx.beginPath(); sctx.arc(px,py,6,0,7);
+    sctx.fillStyle = pointCol[i]; sctx.fill();
+    sctx.lineWidth=1.5; sctx.strokeStyle="#0f172a"; sctx.stroke();
+  });
+  // ---- dendrogram ----
+  dctx.clearRect(0,0,DW,DH);
+  const L=14, R=14, T=18, B=24;
+  const plotW = DW-L-R, plotH = DH-T-B, top = maxH*1.06 || 1;
+  const xPix = node => L + (N<=1?0.5:nodeX[node]/(N-1)) * plotW;
+  const yPix = h => T + (1 - h/top) * plotH;
+  // branch colour: cluster colour if merge applied (height<=cut), else pending grey
+  dctx.lineWidth = 2; dctx.lineCap = "round";
+  for (const m of merges){
+    const applied = m.height <= cutHeight;
+    dctx.strokeStyle = applied ? (colOf[find(members[m.newId][0])] || GRAY) : PENDING;
+    const xa=xPix(m.a), xb=xPix(m.b), ym=yPix(m.height);
+    dctx.beginPath();
+    dctx.moveTo(xa, yPix(nodeH[m.a])); dctx.lineTo(xa, ym);   // left drop
+    dctx.lineTo(xb, ym);                                       // top bar
+    dctx.lineTo(xb, yPix(nodeH[m.b]));                         // right drop
+    dctx.stroke();
+  }
+  // leaf ticks coloured by their flat cluster
+  for (let i=0;i<N;i++){
+    dctx.fillStyle = pointCol[i];
+    dctx.beginPath(); dctx.arc(xPix(i), yPix(0), 3, 0, 7); dctx.fill();
+  }
+  // cut line
+  const yc = yPix(cutHeight);
+  dctx.setLineDash([6,4]); dctx.strokeStyle = CUTCOL; dctx.lineWidth = 1.6;
+  dctx.beginPath(); dctx.moveTo(L, yc); dctx.lineTo(DW-R, yc); dctx.stroke();
+  dctx.setLineDash([]);
+  dctx.fillStyle = CUTCOL; dctx.font = "bold 11px sans-serif";
+  dctx.fillText("cut", DW-R-24, yc-4);
+  // readouts
+  document.getElementById("nClust").textContent = nClusters;
+  document.getElementById("cutVal").textContent = cutHeight.toFixed(1);
+  document.getElementById("lnkVal").textContent = linkage;
+}
+
+function appliedCount(){ let c=0; for (const m of merges) if (m.height<=cutHeight) c++; return c; }
+function syncSlider(){
+  const top = maxH*1.06 || 1;
+  document.getElementById("cutSlider").value = Math.round(cutHeight/top*1000);
+}
+
+function stepMerge(){
+  const a = appliedCount();
+  if (a >= merges.length){ stopRun(); return; }
+  cutHeight = merges[a].height + 1e-6;   // include exactly one more merge
+  syncSlider(); draw();
+}
+function stopRun(){ if (timer){ clearInterval(timer); timer=null; document.getElementById("runBtn").textContent="▶ Run merges"; } }
+
+document.getElementById("stepBtn").onclick = () => { stopRun(); stepMerge(); };
+document.getElementById("runBtn").onclick = () => {
+  if (timer){ stopRun(); return; }
+  if (appliedCount() >= merges.length){ cutHeight = 0; syncSlider(); draw(); }  // restart from all-apart
+  document.getElementById("runBtn").textContent = "⏸ Pause";
+  timer = setInterval(() => { stepMerge(); if (appliedCount() >= merges.length){ stopRun(); } }, 320);
+};
+document.getElementById("resetBtn").onclick = () => { stopRun(); cutHeight = 0; syncSlider(); draw(); };
+document.getElementById("regenBtn").onclick = () => { stopRun(); seed = (seed*7 + 101) & 0x7fffffff; genData(); };
+document.getElementById("lnkSel").onchange = (e) => { stopRun(); linkage = e.target.value; buildTree(); };
+document.getElementById("cutSlider").oninput = (e) => {
+  stopRun();
+  const top = maxH*1.06 || 1;
+  cutHeight = (+e.target.value)/1000 * top;
+  draw();
+};
+genData();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. Agglomerative vs divisive", why:"Hierarchical clustering builds a whole tree of nested groupings instead of one flat partition. There are two directions. Agglomerative (bottom-up) starts with every point as its own cluster and repeatedly merges the two closest, which is what almost everyone uses and what this page runs. Divisive (top-down) starts with one giant cluster and recursively splits it, which is conceptually cleaner but far more expensive because each split is itself an optimisation. Either way you end up with a dendrogram you can cut at any level.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">AGGLOMERATIVE (bottom-up): n singletons &rarr; merge &rarr; ... &rarr; 1<br>DIVISIVE (top-down): 1 big cluster &rarr; split &rarr; ... &rarr; n<br>both produce a full tree (dendrogram)<br>agglomerative is the common one</div>`, code:`// Agglomerative: start apart, merge closest pair each round.
+let clusters = points.map((p,i) => ({ members:[i] }));  // n clusters
+// ... repeatedly merge the two nearest until one remains.` },
+ { title:"2. The distance metric", why:"Everything rests on a notion of distance between individual points. Euclidean (straight-line) distance is the default and the only one that makes Ward linkage well-defined, but you can swap in cosine distance for text embeddings, correlation distance for gene expression, or Manhattan for grid-like data. Because the whole method is distance-driven, features on different scales will dominate, so you almost always standardise first. Choose the metric to match what 'similar' means for your problem, then compute the full pairwise matrix once.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">d(a,b) = ||a &minus; b||   (Euclidean, default)<br>cosine &middot; correlation &middot; Manhattan also valid<br>scale features first &mdash; distance is scale-sensitive<br>D[i][j] = pairwise distance matrix</div>`, code:`function dist(a, b){                 // base metric
+  return Math.hypot(a[0]-b[0], a[1]-b[1]);   // Euclidean
+}
+const D = points.map(a => points.map(b => dist(a, b)));` },
+ { title:"3. The merge loop", why:"This is the engine. While more than one cluster remains, look at every pair of current clusters, find the two with the smallest linkage distance, and fuse them into one — recording which two joined and at what distance. Repeat exactly n-1 times and every point ends up in a single cluster. Each recorded (pair, height) becomes one node of the dendrogram. It is a greedy algorithm: it never reconsiders a merge, which is why the choice of linkage matters so much.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">while &gt; 1 cluster:<br>&nbsp;&nbsp;find the two CLOSEST clusters<br>&nbsp;&nbsp;merge them, record (pair, height)<br>n&minus;1 merges &rarr; one cluster + a full tree</div>`, code:`while (clusters.length > 1){
+  const [i,j] = closestPair(clusters, kind);   // min linkage dist
+  const h = linkDist(clusters[i], clusters[j], kind);
+  merges.push({ a:i, b:j, height:h });         // record the join
+  clusters = merge(clusters, i, j);            // fuse into one
+}` },
+ { title:"4. Single linkage (and chaining)", why:"Single linkage defines the distance between two clusters as the distance between their two closest members. It can follow thin, winding shapes — chains, rings, crescents — that centroid methods can never separate, which is its superpower. The flip side is the 'chaining effect': a single bridge of intermediate points can glue two otherwise distinct blobs into one long straggly cluster. Use it when your clusters are genuinely elongated or non-convex, and be wary when they are close together.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">single: d(A,B) = min over members ||a &minus; b||<br>&#9989; traces chains / rings / non-convex shapes<br>&#9888; chaining: one bridge merges separate blobs<br>= the closest-friends rule</div>`, code:`// single linkage: nearest pair of members
+let d = Infinity;
+for (const i of A.members) for (const j of B.members)
+  d = Math.min(d, D[i][j]);` },
+ { title:"5. Complete & average linkage", why:"Complete linkage uses the farthest pair of members, so two clusters only merge when even their most distant points are close — this yields tight, roughly equal, compact clusters and strongly resists chaining, but it can shatter one elongated cluster into pieces. Average linkage (UPGMA) splits the difference: the distance is the mean over all cross-cluster pairs, giving a balanced compromise that is popular in biology. Neither needs coordinates, only a distance matrix, so they work on arbitrary metrics. In practice complete and average are the safe defaults when clusters are blob-like.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">complete: d(A,B) = max over pairs &rarr; tight balls<br>average: d(A,B) = mean over all cross-pairs &rarr; balanced<br>both resist chaining better than single<br>work from a distance matrix alone</div>`, code:`// complete: farthest pair    average: mean of all pairs
+let mx = -Infinity, sum = 0, cnt = 0;
+for (const i of A.members) for (const j of B.members){
+  mx = Math.max(mx, D[i][j]); sum += D[i][j]; cnt++;
+}
+const complete = mx, average = sum / cnt;` },
+ { title:"6. Ward linkage (variance)", why:"Ward's method does not ask how far apart two clusters are — it asks how much merging them would raise the total within-cluster variance (sum of squared distances to centroids), and merges the pair that raises it least. This keeps clusters compact and similarly sized, and it usually produces the cleanest dendrogram for roughly spherical blobs, which is why it is the common default. It implicitly assumes Euclidean geometry and struggles with very elongated or unequal clusters. Think of it as K-Means's objective applied greedily inside the merge loop.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Ward: merge the pair that adds the LEAST variance<br>&Delta; = (n&#7776;n&#7783; / (n&#7776;+n&#7783;)) &middot; ||c&#7776; &minus; c&#7783;||&sup2;<br>compact, balanced, spherical clusters<br>= the "keep it tight" rule (default)</div>`, code:`// Ward: increase in within-cluster variance if merged
+const ca = centroid(A), cb = centroid(B);
+const na = A.members.length, nb = B.members.length;
+const d2 = (ca[0]-cb[0])**2 + (ca[1]-cb[1])**2;
+const ward = Math.sqrt((2*na*nb/(na+nb)) * d2);` },
+ { title:"7. The dendrogram: heights = dissimilarity", why:"The dendrogram is the picture of the merge history. Leaves are the original points along the bottom; each horizontal bar marks a merge, and its height is the linkage distance at which those two groups joined. Low bars mean the groups were very similar; tall bars mean two dissimilar groups were forced together. The vertical distance you have to travel before two points share a bar is exactly their 'cophenetic' distance. Reading a dendrogram is reading the order and the cost of every merge at a glance.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">leaves = points, along the bottom<br>bar HEIGHT = distance groups merged at<br>low bar = similar &middot; tall bar = dissimilar<br>tall vertical gaps = natural cluster boundaries</div>`, code:`// each merge is a "U": a bar at its height joining
+// two children, with a vertical drop to each child.
+// bar height h == linkDist at which they merged.
+merges.forEach(m => drawU(m.a, m.b, m.height));` },
+ { title:"8. Cutting the tree into flat clusters", why:"A dendrogram encodes every possible number of clusters at once; you pick one by slicing it with a horizontal line. Every branch the line crosses becomes one flat cluster, so cutting low gives many small clusters and cutting high gives a few big ones. Mechanically you keep every merge whose height is below the cut and drop the rest, then read off the connected groups. This is the single biggest advantage over K-Means: you commit to the number of clusters after seeing the structure, not before.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">draw a horizontal CUT across the tree<br>branches it crosses = flat clusters<br>cut low &rarr; many clusters &middot; cut high &rarr; few<br>keep merges below the cut, drop the rest</div>`, code:`// keep merges below the cut, union the rest
+function cutAt(merges, h){
+  merges.filter(m => m.height <= h).forEach(union);
+  return connectedComponents();   // flat cluster labels
+}` },
+ { title:"9. Choosing where to cut", why:"There is no single correct cut, but there are principled ways to choose. The classic heuristic is the largest gap: find the tallest vertical jump in merge heights and cut there, because a big jump means you are about to merge two genuinely dissimilar groups. If you already know how many clusters you want, cut to produce exactly that many (SciPy's maxclust). More rigorous options score each candidate cut with the silhouette coefficient or the cophenetic correlation and pick the best. Whatever you choose, look at the dendrogram first — the tall gaps usually make the answer obvious.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">cut at the TALLEST vertical gap (biggest jump)<br>or: cut to a target k (maxclust)<br>or: pick the cut with best silhouette score<br>the big gaps usually make it obvious</div>`, code:`# scipy: cut two common ways
+from scipy.cluster.hierarchy import fcluster
+fcluster(Z, t=3,   criterion="maxclust")   # exactly 3 clusters
+fcluster(Z, t=cut, criterion="distance")   # everything below 'cut'` },
+ { title:"10. vs K-Means, and complexity", why:"Compared with K-Means, hierarchical clustering needs no k in advance, is deterministic (no random restarts), and with single linkage can capture non-convex shapes K-Means never can — plus you get the whole dendrogram as a bonus. The cost is scale: building the tree is O(n^2) memory for the distance matrix and up to O(n^3) time for the naive merge loop (optimised single/complete linkage reach about O(n^2)). That makes it ideal for hundreds to a few thousand points, and impractical for millions. For huge datasets fall back to K-Means, DBSCAN, or BIRCH, or run hierarchical on a representative sample.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">&#9989; no k up front &middot; deterministic &middot; any shape (single)<br>&#9989; full tree, cut anywhere<br>&#9888; O(n&sup2;) memory, up to O(n&sup3;) time<br>best for hundreds&ndash;thousands, not millions</div>`, code:`# small/medium data, want the structure:
+AgglomerativeClustering(n_clusters=k, linkage="ward")
+# millions of points instead:
+# KMeans / DBSCAN / Birch  (near-linear, scalable)` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>

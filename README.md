@@ -31,6 +31,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 22 — Gaussian Mixtures (EM)](https://dev48v.infy.uk/ml/day22-gmm-em.html) — `day22-gmm-em.html`
 - [MachineLearningFromZero · Day 23 — t-SNE](https://dev48v.infy.uk/ml/day23-tsne.html) — `day23-tsne.html`
 - [MachineLearningFromZero · Day 24 — UMAP](https://dev48v.infy.uk/ml/day24-umap.html) — `day24-umap.html`
+- [MachineLearningFromZero · Day 25 — Hierarchical Clustering](https://dev48v.infy.uk/ml/day25-hierarchical-clustering.html) — `day25-hierarchical-clustering.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
