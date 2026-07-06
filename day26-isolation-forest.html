@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 26 — Isolation Forest</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  #scatter, #pathchart { background:#fff; border:2px solid #0f172a; border-radius:12px; box-shadow:0 18px 40px rgba(0,0,0,.15); touch-action:none; }
+  .stat { font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 26</div>
+      <h1 class="text-xl font-bold">🌲 Isolation Forest — Fence Off the Odd Points in a Few Random Splits</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1">Anomalies are easy to isolate. Count how many random cuts it takes.</h2>
+      <p class="text-slate-500 mb-4">Most points sit inside a dense crowd; a few sit off on their own. <strong>Isolation Forest</strong> exploits exactly that. Slice the plane with a <strong>random cut</strong> — pick a feature, pick a split value between its min and max — and repeat, keeping only the side each point falls in, until every point is fenced off alone. A point out in empty space gets isolated in <strong>one or two cuts</strong>; a point buried in the crowd needs <strong>many</strong>. Build a whole <strong>forest</strong> of these random trees, average each point's <strong>path length</strong> (cuts to isolate it), and turn it into an <strong>anomaly score</strong>. The heatmap on the left is that score painted over the plane — cool where points are normal, hot where they are anomalous. Drag the <strong>threshold</strong> to flag the anomalies; the strip on the right shows the punchline: flagged points really do isolate in far fewer splits.</p>
+      <div class="flex justify-center gap-5 mb-3 text-sm font-bold text-slate-600 flex-wrap">
+        <div>Trees: <span id="treesStat" class="stat text-sky-600">—</span></div>
+        <div>Sample ψ: <span id="psiStat" class="stat text-sky-600">—</span></div>
+        <div>Threshold: <span id="thrStat" class="stat text-sky-600">—</span></div>
+        <div>Anomalies flagged: <span id="anomStat" class="stat text-sky-600">—</span></div>
+      </div>
+      <div class="flex justify-center gap-4 flex-wrap items-start">
+        <div>
+          <div class="text-xs font-bold text-slate-500 mb-1">SCATTER — heatmap = anomaly score · ringed = flagged</div>
+          <canvas id="scatter" width="380" height="360"></canvas>
+        </div>
+        <div>
+          <div class="text-xs font-bold text-slate-500 mb-1">PATH LENGTH — cuts needed to isolate each point</div>
+          <canvas id="pathchart" width="470" height="360"></canvas>
+        </div>
+      </div>
+      <p id="contrast" class="text-sm font-bold text-slate-600 mt-3">&nbsp;</p>
+      <div class="flex justify-center mt-3 gap-2 flex-wrap items-center">
+        <button id="stepBtn" class="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">⏭ Grow one tree</button>
+        <button id="runBtn"  class="bg-sky-600 hover:bg-sky-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Grow forest</button>
+        <button id="resetBtn" class="bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg font-semibold text-sm">↺ Reset (1 tree)</button>
+        <button id="regenBtn" class="bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg font-semibold text-sm">🎲 New data</button>
+      </div>
+      <div class="flex justify-center mt-3 gap-6 flex-wrap items-center">
+        <label class="text-sm font-bold text-slate-500 flex items-center gap-2">Trees
+          <input id="treesSlider" type="range" min="1" max="200" value="100" class="w-40 accent-sky-600">
+        </label>
+        <label class="text-sm font-bold text-slate-500 flex items-center gap-2">Sample size ψ
+          <input id="psiSlider" type="range" min="8" max="100" value="48" class="w-40 accent-sky-600">
+        </label>
+        <label class="text-sm font-bold text-slate-500 flex items-center gap-2">Threshold
+          <input id="thrSlider" type="range" min="400" max="750" value="600" class="w-40 accent-sky-600">
+        </label>
+      </div>
+      <p class="text-xs text-slate-400 mt-3">This is a genuine Isolation Forest, run live in your browser. Every tree is built for real: take a small random <em>subsample</em> of ψ points, then recurse — at each node pick one of the two features at random, pick a split value uniformly between that feature's min and max on the points reaching the node, send points left or right, and stop when a point is alone or the tree hits its depth cap of ⌈log₂ψ⌉. A point's <strong>path length</strong> is the number of splits from the root to where it lands (plus a small correction c(size) for any crowd left unsplit at a capped leaf). Average that over the whole forest to get E(h(x)), normalise by the expected path length c(ψ) of a random binary tree, and the <strong>anomaly score</strong> is s(x) = 2<sup>−E(h(x))/c(ψ)</sup>. Scores near 1 isolate almost instantly (anomalies); scores near 0.5 sit deep in the crowd (normal). Grow the forest one tree at a time to watch the scores stabilise as the random cuts average out.</p>
+      <div class="mt-4 bg-sky-50 border border-sky-200 rounded-xl p-4 text-left text-xs text-sky-900 max-w-3xl mx-auto">
+        <strong>vs. density methods (DBSCAN Day 16 / LOF):</strong> DBSCAN and LOF hunt anomalies by measuring <em>local density</em> — how many neighbours sit within a radius — which means computing distances between points and choosing a scale (ε, k) that stops working in high dimensions. Isolation Forest never measures density or distance at all: it just counts random cuts, so it runs in near-linear time, needs almost no tuning, thrives in high dimensions, and stays fast on millions of rows. The trade-off: it assumes anomalies are <em>few and different</em> (easy to isolate), so it can miss anomalies hiding in dense local pockets that a density method would catch.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Isolation Forest works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">A random-cut tree, a path-length reader with the c(n) correction, a forest average, and a score. ~60 lines of vanilla JS — then the real-world scikit-learn version in a handful of lines.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The setup: unlabelled points, no distances</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Isolation Forest is unsupervised — you hand it feature vectors and nothing else. There are no class labels and, unlike DBSCAN or k-NN, no distance matrix. Each tree will only ever look at one feature at a time and cut it at a random value, so the algorithm scales to many features and never has to define what "close" means.</p>
+        <div class="relative"><pre>// X: array of feature vectors, e.g. 2-D points here
+const X = points;              // [[x, y], ...]  — no labels, no distances
+const N = X.length;
+const DIM = X[0].length;       // number of features (2 in this demo)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Build one isolation tree: random feature, random split</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The whole tree is random. At each node pick a feature at random, then a split value uniformly between that feature's min and max <em>over the points that reached this node</em>. Send points left or right and recurse. Stop when a point is alone (isolated), when all remaining points are identical, or when you hit a depth cap of ⌈log₂ψ⌉ — deeper than that only matters for normal points, and we do not care exactly how deep they are.</p>
+        <div class="relative"><pre>function iTree(idx, depth, maxDepth){
+  if (depth >= maxDepth || idx.length <= 1)
+    return { leaf: true, size: idx.length };
+  const q = Math.floor(Math.random() * DIM);          // random feature
+  let mn = Infinity, mx = -Infinity;
+  for (const i of idx){ const v = X[i][q]; if (v<mn) mn=v; if (v>mx) mx=v; }
+  if (mn === mx) return { leaf: true, size: idx.length };
+  const p = mn + Math.random() * (mx - mn);           // random split value
+  const L = [], R = [];
+  for (const i of idx) (X[i][q] < p ? L : R).push(i);
+  return { leaf:false, q, p, l:iTree(L,depth+1,maxDepth), r:iTree(R,depth+1,maxDepth) };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Path length: how many cuts to reach the point</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Drop a point through the tree and count the edges to the leaf it lands in — that is its path length. When a leaf was capped early with more than one point still inside, add c(size): the expected extra depth a full binary tree would have taken to finish isolating that crowd. c(n) uses the harmonic number and is the same formula that later normalises the score.</p>
+        <div class="relative"><pre>function cFactor(n){                       // avg path length in a random BST
+  if (n <= 1) return 0;
+  if (n === 2) return 1;
+  const H = Math.log(n - 1) + 0.5772156649;      // harmonic ≈ ln + Euler-γ
+  return 2 * H - 2 * (n - 1) / n;
+}
+function pathLength(node, x, depth){
+  if (node.leaf) return depth + cFactor(node.size);   // + correction for crowd
+  return x[node.q] < node.p
+    ? pathLength(node.l, x, depth + 1)
+    : pathLength(node.r, x, depth + 1);
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Grow a forest on small subsamples</h3></div>
+        <p class="text-sm text-slate-600 mb-3">One random tree is noisy, so build many and average. Each tree is trained on a small random <em>subsample</em> of ψ points (256 is the classic default) — subsampling is not just for speed, it actively sharpens anomalies by shrinking the crowd that would otherwise mask them ("swamping"). The depth cap is set from ψ, since a random tree on ψ points reaches typical depth ~log₂ψ.</p>
+        <div class="relative"><pre>function buildForest(nTrees, psi){
+  const maxDepth = Math.ceil(Math.log2(Math.max(2, psi)));
+  const trees = [];
+  for (let t = 0; t < nTrees; t++){
+    const sample = subsample(psi);          // ψ random rows, no replacement
+    trees.push(iTree(sample, 0, maxDepth));
+  }
+  return trees;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">The anomaly score s(x) = 2^(−E(h)/c(ψ))</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Average a point's path length over every tree to get E(h(x)), then normalise by c(ψ), the expected path length of a random tree on ψ points, so scores are comparable regardless of sample size. The exponential map squashes it to (0, 1): short paths → E(h) small → score near 1 (anomaly); long paths → score near 0.5 (deep in the crowd). Around 0.5 means "no clear anomaly signal."</p>
+        <div class="relative"><pre>function scoreAll(trees, psi){
+  const cN = cFactor(psi);
+  return X.map(x => {
+    let sum = 0;
+    for (const t of trees) sum += pathLength(t, x, 0);
+    const eh = sum / trees.length;          // E(h(x)) over the forest
+    return Math.pow(2, -eh / cN);            // s(x) in (0, 1)
+  });
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Threshold / contamination → flag anomalies</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A score alone is not a decision — you need a cutoff. Set a score threshold directly, or, more commonly, declare a <em>contamination</em> rate (the fraction you expect to be anomalous) and flag the top scores until you hit it. Contamination is just a threshold expressed as a quantile; pick it from domain knowledge or by inspecting the score histogram for a gap.</p>
+        <div class="relative"><pre>// (a) fixed threshold on the score
+const flagged = scores.map(s => s >= 0.60);
+
+// (b) contamination: flag the top c fraction by score
+function flagByContamination(scores, c){
+  const cut = [...scores].sort((a,b)=>b-a)[Math.floor(c * scores.length)];
+  return scores.map(s => s >= cut);
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">In the real world</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Nobody hand-rolls this in production. Scikit-learn's <code>IsolationForest</code> does everything above in one fast call: <code>fit</code> builds the forest, <code>predict</code> returns +1 (inlier) / −1 (outlier), and <code>score_samples</code> / <code>decision_function</code> give the raw scores for your own threshold. Set <code>contamination</code> to your expected anomaly rate, leave <code>n_estimators=100</code> and <code>max_samples=256</code> as sane defaults, and it scales to millions of rows and hundreds of features.</p>
+        <div class="relative"><pre># pip install scikit-learn
+from sklearn.ensemble import IsolationForest
+
+clf = IsolationForest(
+    n_estimators=100,      # trees in the forest
+    max_samples=256,       # ψ — subsample size per tree
+    contamination=0.05,    # expected fraction of anomalies
+    random_state=0,
+)
+clf.fit(X)
+
+pred   = clf.predict(X)            # +1 normal, -1 anomaly
+scores = -clf.score_samples(X)     # higher = more anomalous
+anoms  = X[pred == -1]</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 26 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You built a real Isolation Forest: random-cut trees on small subsamples, a path length with the c(n) correction, a forest average normalised by c(ψ), the score s(x) = 2<sup>−E(h)/c(ψ)</sup>, and a threshold that flags the odd points out — no labels, no distances, near-linear time. <strong>👉 Tomorrow — Day 27: Recommender Systems / Collaborative Filtering</strong> — t-SNE (Day 23) and AdaBoost (Day 21) are already covered, so we switch tracks: predict what a user will like from what similar users liked, factoring a sparse ratings matrix into user and item tastes.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== Isolation Forest =====
+const sc = document.getElementById("scatter"), sctx = sc.getContext("2d");
+const pc = document.getElementById("pathchart"), pctx = pc.getContext("2d");
+const SW = sc.width, SH = sc.height, PW = pc.width, PH = pc.height;
+const heatCv = document.createElement("canvas"); heatCv.width = SW; heatCv.height = SH;
+const hctx = heatCv.getContext("2d");
+
+// two independent LCG streams: one for data, one (reset each build) for trees
+function makeRng(s){ let x = (s>>>0) || 1; return () => { x = (x*1103515245 + 12345) & 0x7fffffff; return x/0x7fffffff; }; }
+let dataSeed = 20260706, treeSeed = 12345;
+let dataRng = makeRng(dataSeed);
+function dnorm(){ let s=0; for(let i=0;i<6;i++) s+=dataRng(); return s-3; }   // ~N(0,1)
+
+// score -> colour ramp (sky/cool = normal, warm/red = anomalous)
+const HEAT_STOPS = [
+  [0.34, [224,242,254]], [0.46, [56,189,248]], [0.55, [250,204,21]],
+  [0.63, [249,115,22]],  [0.72, [239,68,68]]
+];
+function heatRGB(s){
+  const st = HEAT_STOPS;
+  if (s <= st[0][0]) return st[0][1];
+  if (s >= st[st.length-1][0]) return st[st.length-1][1];
+  for (let i=0;i<st.length-1;i++){
+    if (s >= st[i][0] && s <= st[i+1][0]){
+      const t = (s-st[i][0])/(st[i+1][0]-st[i][0]);
+      return [0,1,2].map(k => Math.round(st[i][1][k] + (st[i+1][1][k]-st[i][1][k])*t));
+    }
+  }
+  return st[st.length-1][1];
+}
+function heatCss(s,a){ const c=heatRGB(s); return `rgba(${c[0]},${c[1]},${c[2]},${a==null?1:a})`; }
+
+let data = [], N = 0, nOut = 0;
+let trees = [], scores = [], avgPath = [];
+let nTrees = 100, treesBuilt = 100, psi = 48, maxDepth = 6;
+let thr = 0.60, timer = null;
+
+// average path length of an ideal random binary tree on n points
+function cFactor(n){ if (n<=1) return 0; if (n===2) return 1; return 2*(Math.log(n-1)+0.5772156649) - 2*(n-1)/n; }
+
+function subsample(m, trng){
+  const a = [...Array(N).keys()];
+  const s = Math.min(m, N);
+  for (let i=0;i<s;i++){ const j = i + Math.floor(trng()*(N-i)); const t=a[i]; a[i]=a[j]; a[j]=t; }
+  return a.slice(0, s);
+}
+
+// one isolation tree: random feature + random split, recurse until isolated/capped
+function iTree(idx, depth, maxD, trng){
+  if (depth >= maxD || idx.length <= 1) return { leaf:true, size: idx.length };
+  const q = trng() < 0.5 ? 0 : 1;
+  let mn=Infinity, mx=-Infinity;
+  for (const i of idx){ const v = data[i][q]; if (v<mn) mn=v; if (v>mx) mx=v; }
+  if (mn === mx) return { leaf:true, size: idx.length };
+  const p = mn + trng()*(mx-mn);
+  const L=[], R=[];
+  for (const i of idx) (data[i][q] < p ? L : R).push(i);
+  return { leaf:false, q, p, l:iTree(L,depth+1,maxD,trng), r:iTree(R,depth+1,maxD,trng) };
+}
+function pathLength(node, pt, depth){
+  if (node.leaf) return depth + cFactor(node.size);
+  return pt[node.q] < node.p ? pathLength(node.l, pt, depth+1) : pathLength(node.r, pt, depth+1);
+}
+
+// reproducible: reset tree RNG each build so first k trees are identical as k grows
+function buildForest(k){
+  const trng = makeRng(treeSeed);
+  maxDepth = Math.ceil(Math.log2(Math.max(2, psi)));
+  trees = [];
+  for (let t=0;t<k;t++) trees.push(iTree(subsample(psi, trng), 0, maxDepth, trng));
+}
+function computeScores(){
+  const cN = cFactor(psi) || 1;
+  scores = new Array(N); avgPath = new Array(N);
+  for (let i=0;i<N;i++){
+    let sum=0; for (const tr of trees) sum += pathLength(tr, data[i], 0);
+    const eh = trees.length ? sum/trees.length : 0;
+    avgPath[i] = eh; scores[i] = Math.pow(2, -eh/cN);
+  }
+}
+function renderHeat(){
+  hctx.clearRect(0,0,SW,SH);
+  const cell = 9, cN = cFactor(psi) || 1;
+  for (let gx=0; gx<SW; gx+=cell) for (let gy=0; gy<SH; gy+=cell){
+    let sum=0; const pt=[gx+cell/2, gy+cell/2];
+    for (const tr of trees) sum += pathLength(tr, pt, 0);
+    const eh = trees.length ? sum/trees.length : 0;
+    hctx.fillStyle = heatCss(Math.pow(2,-eh/cN), 0.5);
+    hctx.fillRect(gx, gy, cell, cell);
+  }
+}
+function rebuild(){ buildForest(treesBuilt); computeScores(); renderHeat(); draw(); }
+
+function genData(){
+  data = [];
+  const cx = 190, cy = 180, nNormal = 110;
+  for (let i=0;i<nNormal;i++) data.push([ cx + dnorm()*28, cy + dnorm()*28 ]);
+  nOut = 6;                                   // planted scattered outliers
+  for (let i=0;i<nOut;i++){
+    const ang = dataRng()*Math.PI*2, r = 108 + dataRng()*58;
+    data.push([ cx + Math.cos(ang)*r, cy + Math.sin(ang)*r ]);
+  }
+  N = data.length;
+  rebuild();
+}
+
+function draw(){
+  // ---- scatter + heatmap ----
+  sctx.clearRect(0,0,SW,SH);
+  sctx.fillStyle = "#fff"; sctx.fillRect(0,0,SW,SH);
+  sctx.drawImage(heatCv, 0, 0);
+  let nAnom = 0;
+  for (let i=0;i<N;i++){
+    const p = data[i], flagged = scores[i] >= thr;
+    if (flagged) nAnom++;
+    sctx.beginPath(); sctx.arc(p[0], p[1], flagged?7:5, 0, 7);
+    sctx.fillStyle = heatCss(scores[i]); sctx.fill();
+    sctx.lineWidth = flagged ? 3 : 1.4;
+    sctx.strokeStyle = flagged ? "#b91c1c" : "#0f172a";
+    sctx.stroke();
+  }
+  // ---- path-length strip ----
+  pctx.clearRect(0,0,PW,PH);
+  const L=48, R=22, T=30, B=40, plotW = PW-L-R, plotH = PH-T-B;
+  let pMin=Infinity, pMax=-Infinity;
+  for (const h of avgPath){ if (h<pMin) pMin=h; if (h>pMax) pMax=h; }
+  if (!(pMax>pMin)){ pMin-=1; pMax+=1; }
+  const span = (pMax-pMin) || 1, lo = pMin - span*0.08, hi = pMax + span*0.08;
+  const xOf = h => L + (h-lo)/(hi-lo) * plotW;
+  // score threshold expressed as a path-length cut (score>=thr  <=>  path<=cut)
+  const cN = cFactor(psi) || 1, pathCut = -cN * Math.log2(thr);
+  const cutX = Math.max(L, Math.min(PW-R, xOf(pathCut)));
+  // anomaly zone shading (left of the cut = short paths)
+  pctx.fillStyle = "rgba(239,68,68,.08)";
+  pctx.fillRect(L, T, cutX-L, plotH);
+  // axis baseline
+  pctx.strokeStyle = "#cbd5e1"; pctx.lineWidth = 1;
+  pctx.beginPath(); pctx.moveTo(L, T+plotH); pctx.lineTo(PW-R, T+plotH); pctx.stroke();
+  // points, deterministic vertical jitter
+  for (let i=0;i<N;i++){
+    const jr = (Math.sin(i*12.9898)*43758.5453); const jit = (jr - Math.floor(jr)) - 0.5;
+    const x = xOf(avgPath[i]), y = T + plotH*0.5 + jit*plotH*0.74;
+    const flagged = scores[i] >= thr;
+    pctx.beginPath(); pctx.arc(x, y, flagged?6:4.5, 0, 7);
+    pctx.fillStyle = heatCss(scores[i]); pctx.fill();
+    pctx.lineWidth = flagged ? 2.4 : 1.2;
+    pctx.strokeStyle = flagged ? "#b91c1c" : "#0f172a"; pctx.stroke();
+  }
+  // threshold line
+  pctx.setLineDash([6,4]); pctx.strokeStyle = "#e11d48"; pctx.lineWidth = 1.8;
+  pctx.beginPath(); pctx.moveTo(cutX, T-6); pctx.lineTo(cutX, T+plotH+4); pctx.stroke();
+  pctx.setLineDash([]);
+  // labels
+  pctx.fillStyle = "#475569"; pctx.font = "bold 11px sans-serif";
+  pctx.textAlign = "center";
+  pctx.fillText("avg path length  (splits to isolate)  →", PW/2, PH-10);
+  pctx.textAlign = "left";
+  pctx.fillStyle = "#b91c1c"; pctx.fillText("◀ isolated fast = anomaly", L+4, T-12);
+  pctx.textAlign = "right";
+  pctx.fillStyle = "#0369a1"; pctx.fillText("deep in the crowd = normal ▶", PW-R, T-12);
+  pctx.textAlign = "left";
+  pctx.fillStyle = "#64748b"; pctx.font = "10px sans-serif";
+  pctx.fillText(lo.toFixed(1), L-2, T+plotH+14);
+  pctx.textAlign = "right"; pctx.fillText(hi.toFixed(1), PW-R, T+plotH+14);
+  pctx.textAlign = "left";
+
+  // ---- readouts ----
+  document.getElementById("treesStat").textContent = treesBuilt;
+  document.getElementById("psiStat").textContent = Math.min(psi, N);
+  document.getElementById("thrStat").textContent = thr.toFixed(2);
+  document.getElementById("anomStat").textContent = nAnom;
+  // path contrast: flagged vs normal
+  let fs=0,fc=0,ns=0,nc=0;
+  for (let i=0;i<N;i++){ if (scores[i]>=thr){ fs+=avgPath[i]; fc++; } else { ns+=avgPath[i]; nc++; } }
+  const el = document.getElementById("contrast");
+  if (fc && nc) el.textContent = `Flagged points isolate in ~${(fs/fc).toFixed(1)} splits; normal points need ~${(ns/nc).toFixed(1)}.`;
+  else el.innerHTML = "&nbsp;";
+}
+
+// ---- controls ----
+function stopRun(){ if (timer){ clearInterval(timer); timer=null; document.getElementById("runBtn").textContent="▶ Grow forest"; } }
+function growOne(){ if (treesBuilt >= nTrees){ stopRun(); return; } treesBuilt++; rebuild(); }
+
+document.getElementById("stepBtn").onclick = () => { stopRun(); growOne(); };
+document.getElementById("runBtn").onclick = () => {
+  if (timer){ stopRun(); return; }
+  if (treesBuilt >= nTrees){ treesBuilt = 1; rebuild(); }   // restart from one tree
+  document.getElementById("runBtn").textContent = "⏸ Pause";
+  timer = setInterval(() => { growOne(); if (treesBuilt >= nTrees) stopRun(); }, 240);
+};
+document.getElementById("resetBtn").onclick = () => { stopRun(); treesBuilt = 1; rebuild(); };
+document.getElementById("regenBtn").onclick = () => {
+  stopRun();
+  dataSeed = (dataSeed*7 + 101) & 0x7fffffff; treeSeed = (treeSeed*7 + 13) & 0x7fffffff;
+  dataRng = makeRng(dataSeed);
+  treesBuilt = nTrees; genData();
+};
+document.getElementById("treesSlider").oninput = (e) => { stopRun(); nTrees = +e.target.value; treesBuilt = nTrees; rebuild(); };
+document.getElementById("psiSlider").oninput   = (e) => { stopRun(); psi = +e.target.value; rebuild(); };
+document.getElementById("thrSlider").oninput   = (e) => { thr = (+e.target.value)/1000; draw(); };
+genData();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. Anomaly detection, unsupervised", why:"Anomaly detection asks a different question from classification: not 'which class is this?' but 'is this point unlike the rest?' Usually you have no labels — fraud, faults and intrusions are rare and change constantly, so you cannot train on examples of them. The working assumption is that anomalies are few and different: a small minority that sits apart from the bulk of the data. Isolation Forest builds that assumption directly into its mechanics instead of first modelling what 'normal' looks like.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">GOAL: score how ODD each point is — no labels<br>assume anomalies are FEW and DIFFERENT<br>normal = the dense majority<br>anomaly = sits apart, easy to separate</div>`, code:`// unsupervised: feature vectors only, no y
+const X = points;   // [[x, y], ...]
+// output: an anomaly score per point, higher = odder` },
+ { title:"2. The isolation idea", why:"Here is the key inversion. Older methods first build a profile of normal data (a density, a distance, a cluster) and then measure how far a point deviates. Isolation Forest flips it: instead of describing normality, it directly tries to isolate each point with random cuts and asks how hard that was. A point out in empty space is fenced off after one or two cuts; a point buried in the crowd survives many. Ease of isolation is the anomaly signal — no density or distance ever computed.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">others: model NORMAL, measure deviation<br>iForest: try to ISOLATE each point<br>few cuts to isolate &rarr; anomaly<br>many cuts to isolate &rarr; normal</div>`, code:`// isolate a point with random cuts;
+// count the cuts. Fewer cuts = more anomalous.
+// no density, no distance — just partitions.` },
+ { title:"3. Random split trees", why:"Isolation happens with a binary tree of random cuts. At each node pick a feature at random, then a split value chosen uniformly between that feature's current min and max, and send points to the two sides. Recurse until a point is alone. Because splits are random and unsupervised, building a tree is cheap and needs no target — and a point in a sparse region falls on the small side of early cuts, so it reaches its own leaf near the top of the tree.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">at each node:<br>&nbsp;&nbsp;pick a random FEATURE<br>&nbsp;&nbsp;pick a random SPLIT between its min &amp; max<br>&nbsp;&nbsp;send points left / right, recurse<br>stop when a point is alone</div>`, code:`function iTree(idx, depth, maxDepth){
+  if (depth>=maxDepth || idx.length<=1) return {leaf:true, size:idx.length};
+  const q = Math.floor(Math.random()*DIM);        // random feature
+  const [mn,mx] = minMax(idx, q);
+  const p = mn + Math.random()*(mx-mn);           // random split
+  const [L,R] = partition(idx, q, p);
+  return { q, p, l:iTree(L,depth+1,maxDepth), r:iTree(R,depth+1,maxDepth) };
+}` },
+ { title:"4. Path length ∝ normality", why:"A point's path length is the number of edges from the root to the leaf where it is finally isolated — its depth in the tree. This single number is the whole signal. Anomalies land at shallow leaves (short paths) because random cuts carve them off early; normal points sit deep (long paths) because you must keep slicing the crowd around them. So short path ⇒ anomalous, long path ⇒ normal. The strip chart in LOOK is exactly this: flagged points pile up on the short-path side.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">path length h(x) = depth of x's leaf<br>SHORT path &rarr; isolated fast &rarr; anomaly<br>LONG path &rarr; buried in crowd &rarr; normal<br>the depth IS the anomaly signal</div>`, code:`function pathLength(node, x, depth){
+  if (node.leaf) return depth + cFactor(node.size);
+  return x[node.q] < node.p
+    ? pathLength(node.l, x, depth+1)
+    : pathLength(node.r, x, depth+1);
+}` },
+ { title:"5. Averaging over a forest", why:"One random tree is far too noisy — a lucky first cut could isolate a normal point early, or miss an anomaly. So build many trees and average each point's path length. The randomness cancels out and a stable ranking emerges: genuine anomalies are short across almost every tree, normal points are long across almost every tree. Grow the forest tree by tree in LOOP and you can watch the scores settle as the average converges. 100 trees is the usual default.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">one tree = noisy &middot; forest = stable<br>E(h(x)) = mean path length over all trees<br>random cuts average out<br>~100 trees is the common default</div>`, code:`function buildForest(nTrees, psi){
+  const trees = [];
+  for (let t=0;t<nTrees;t++) trees.push(iTree(subsample(psi), 0, maxDepth));
+  return trees;
+}
+const eh = mean(trees.map(t => pathLength(t, x, 0)));   // E(h(x))` },
+ { title:"6. The score s(x) and c(n) normalisation", why:"Raw path length depends on sample size, so it is normalised by c(n): the expected path length of a random binary search tree on n points, c(n)=2H(n−1)−2(n−1)/n where H is the harmonic number. The score is s(x)=2^(−E(h(x))/c(n)). It maps to (0,1): s→1 as paths get very short (clear anomaly), s→0.5 as E(h)≈c(n) (average, i.e. normal), and s below 0.5 means no anomaly at all. c(n) also patches capped leaves — add c(size) for any crowd left unsplit at the depth limit.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">c(n) = 2H(n&minus;1) &minus; 2(n&minus;1)/n  (avg BST depth)<br>s(x) = 2^( &minus;E(h(x)) / c(&psi;) )<br>s &rarr; 1 : short path = anomaly<br>s &asymp; 0.5 : average = normal</div>`, code:`function cFactor(n){
+  if (n<=1) return 0; if (n===2) return 1;
+  const H = Math.log(n-1) + 0.5772156649;   // harmonic ≈ ln + Euler-γ
+  return 2*H - 2*(n-1)/n;
+}
+const score = Math.pow(2, -eh / cFactor(psi));   // in (0, 1)` },
+ { title:"7. Threshold & contamination", why:"The score ranks points; a threshold turns the ranking into a decision. Set a score cutoff directly, or specify contamination — the fraction of the data you believe is anomalous — and flag the top-scoring points until you reach it. Contamination is just a threshold expressed as a quantile. If you have no prior, look at the score histogram: a natural gap between the crowd near 0.5 and a tail near 1 is a good place to cut. Move the threshold slider in LOOK to trade off false alarms against misses.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">score = a ranking, not a verdict<br>threshold: flag s &ge; cutoff<br>contamination c: flag the top c fraction<br>higher cutoff &rarr; fewer, surer alarms</div>`, code:`// fixed cutoff
+const flagged = scores.map(s => s >= 0.60);
+// or contamination c: flag the top c fraction
+const cut = quantile(scores, 1 - c);
+const flags = scores.map(s => s >= cut);` },
+ { title:"8. Subsampling (why small ψ helps)", why:"Each tree is trained on a small random subsample of ψ points (256 is the classic default), not the full dataset. This is not only a speed trick — it actively improves detection. On the full data, dense clusters of near-duplicate points ('swamping') and clumps of anomalies masking each other ('masking') blur the signal; a small subsample thins both out so anomalies stand alone and isolate even faster. Small ψ also caps tree depth at ~log₂ψ, keeping the forest fast and memory-light regardless of dataset size.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">train each tree on &psi; random rows (&psi;&asymp;256)<br>&#9989; kills swamping (dense crowds)<br>&#9989; kills masking (anomaly clumps)<br>&#9989; near-linear time, tiny memory</div>`, code:`function subsample(psi){
+  return shuffle([...Array(N).keys()]).slice(0, psi);  // ψ rows, no replace
+}
+const maxDepth = Math.ceil(Math.log2(psi));            // depth cap ~ log2 ψ` },
+ { title:"9. vs density methods (DBSCAN / LOF)", why:"DBSCAN (Day 16) and LOF find anomalies by local density — counting neighbours within a radius — which forces you to pick a distance scale (ε or k) and to compute pairwise distances, both of which break down as dimensions grow (the curse of dimensionality). Isolation Forest measures no distance and no density; it only counts random cuts, so it is near-linear in time, needs almost no tuning, and stays strong in high dimensions. The catch: it assumes anomalies are globally sparse, so a tight anomaly cluster hiding in a low-density pocket can slip past it where LOF would catch it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">DBSCAN / LOF: local DENSITY, needs &epsilon;/k + distances<br>iForest: random CUTS, no distance, no scale<br>&#9989; fast, high-dim, low tuning<br>&#9888; assumes anomalies are globally sparse</div>`, code:`# density vs isolation
+from sklearn.neighbors import LocalOutlierFactor   # local density
+from sklearn.ensemble import IsolationForest       # random cuts
+# iForest scales to high dims; LOF captures local pockets` },
+ { title:"10. Where it is used", why:"Isolation Forest is a workhorse for real-time and large-scale anomaly detection because it is fast, unsupervised, and needs little tuning. Fraud and payments teams score transactions on the fly; SRE and observability stacks flag anomalous metrics, logs and latency spikes; security tools surface unusual network or login behaviour; manufacturing and IoT catch faulty sensor readings; and data pipelines use it for automated data-quality checks. Whenever you have lots of unlabelled records and 'rare and weird' is what you want to catch, it is a strong first thing to reach for.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">fraud &amp; payments &middot; intrusion detection<br>metrics / logs / latency monitoring (SRE)<br>sensor &amp; IoT fault detection<br>data-quality checks on big unlabelled data</div>`, code:`from sklearn.ensemble import IsolationForest
+clf = IsolationForest(contamination=0.02, random_state=0).fit(X)
+alerts = X[clf.predict(X) == -1]   # -1 = anomaly` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
