@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 27 — Collaborative Filtering</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  #losschart { background:#fff; border:1px solid #e2e8f0; border-radius:8px; }
+  .stat { font-variant-numeric:tabular-nums; }
+  /* ratings grid */
+  .cf-grid { border-collapse:separate; border-spacing:5px; margin:0 auto; }
+  .cf-grid th.corner { width:52px; }
+  .cf-grid th.mv { font-size:11px; font-weight:800; color:#334155; padding-bottom:2px; }
+  .cf-grid th.mv .gn { display:block; font-size:9px; font-weight:600; color:#94a3b8; }
+  .cf-grid th.uname { text-align:right; padding-right:8px; font-size:12px; font-weight:700; color:#334155; white-space:nowrap; }
+  .cf-cell { width:56px; height:46px; border-radius:9px; font-weight:800; font-size:15px; text-align:center; vertical-align:middle;
+             position:relative; cursor:pointer; user-select:none; transition:transform .08s; }
+  .cf-cell:hover { transform:scale(1.06); }
+  .cf-cell.blank { background:#f1f5f9; color:#cbd5e1; cursor:default; }
+  .cf-cell.blank:hover { transform:none; }
+  .cf-cell.pred  { border:2px dashed #38bdf8; color:#0369a1; font-style:italic; font-size:13px; cursor:default; }
+  .cf-cell.pred:hover { transform:none; }
+  .cf-cell.driver  { box-shadow:0 0 0 3px #10b981; }
+  .cf-cell.toppick { box-shadow:0 0 0 3px #f59e0b; }
+  .row-active th.uname { color:#0369a1; font-weight:900; }
+  .row-active th.uname::before { content:"▶ "; color:#0ea5e9; }
+  .mbtn.on { background:#0f172a; color:#fff; }
+  .ubtn.on { background:#0ea5e9; color:#fff; border-color:#0ea5e9; }
+  .simbar { height:12px; border-radius:6px; }
+  .ftbar { height:11px; border-radius:5px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 27</div>
+      <h1 class="text-xl font-bold">🎬 Collaborative Filtering — Recommend What People Like You Already Loved</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1">You never told it what a movie is about. It recommends anyway.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Below is a tiny <strong>ratings matrix</strong>: 6 users × 6 movies, scored 1–5, with blanks where nobody watched. <strong>Collaborative filtering</strong> fills those blanks using one idea — <em>people who agreed in the past will agree again</em>. Pick a user; the demo finds their <strong>nearest neighbours</strong> by <strong>cosine similarity</strong> on the movies they both rated (mean-centred, so it captures <em>taste</em>, not just generosity), then predicts each blank as a <strong>similarity-weighted average</strong> and surfaces the <strong>top recommendation</strong>. Flip to <strong>item–item</strong> (compare movie columns instead — more stable) or to <strong>matrix factorization</strong>, which learns 2 hidden <em>taste factors</em> per user and per movie by SGD and reconstructs the whole grid. No genres, no descriptions — the taste structure falls out of the ratings alone. Click a filled cell to change a rating and watch the recommendations move.</p>
+
+      <div class="flex justify-center gap-5 mb-4 text-sm font-bold text-slate-600 flex-wrap">
+        <div>Method: <span id="mMethod" class="stat text-sky-600">—</span></div>
+        <div>Recommending for: <span id="mUser" class="stat text-sky-600">—</span></div>
+        <div><span id="mKlabel">Neighbours k</span>: <span id="mK" class="stat text-sky-600">—</span></div>
+        <div>Top pick: <span id="mTop" class="stat text-sky-600">—</span></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start">
+        <div>
+          <div class="text-xs font-bold text-slate-500 mb-2">RATINGS MATRIX — colour = rating (1 pale → 5 deep sky) · dashed = predicted · 🏆 top pick · ring = drivers</div>
+          <div id="matrix" class="inline-block bg-white rounded-2xl border-2 border-slate-200 p-4 shadow-lg"></div>
+        </div>
+        <div id="panel" class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:350px;min-height:320px;"></div>
+      </div>
+
+      <!-- method + controls -->
+      <div class="flex justify-center mt-5 gap-2 flex-wrap items-center">
+        <button data-mode="user" class="mbtn on bg-slate-100 px-4 py-2 rounded-lg font-semibold text-sm">👥 User–User CF</button>
+        <button data-mode="item" class="mbtn bg-slate-100 px-4 py-2 rounded-lg font-semibold text-sm">🎞️ Item–Item CF</button>
+        <button data-mode="mf"   class="mbtn bg-slate-100 px-4 py-2 rounded-lg font-semibold text-sm">🧮 Matrix Factorization</button>
+      </div>
+
+      <div class="flex justify-center mt-3 gap-2 flex-wrap items-center">
+        <span class="text-xs font-bold text-slate-500 mr-1">Recommend for:</span>
+        <span id="userBtns"></span>
+      </div>
+
+      <div id="cfCtrl" class="flex justify-center mt-3 gap-6 flex-wrap items-center">
+        <label class="text-sm font-bold text-slate-500 flex items-center gap-2">k neighbours
+          <input id="kSlider" type="range" min="1" max="5" value="3" class="w-40 accent-sky-600">
+        </label>
+        <button id="resetRatings" class="bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg font-semibold text-sm">↺ Reset ratings</button>
+      </div>
+
+      <div id="mfCtrl" class="hidden flex justify-center mt-3 gap-2 flex-wrap items-center">
+        <button id="mfStepBtn" class="bg-sky-500 hover:bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">⏭ Train 15 epochs</button>
+        <button id="mfRunBtn"  class="bg-sky-600 hover:bg-sky-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Train</button>
+        <button id="mfResetBtn" class="bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg font-semibold text-sm">↺ Reset factors</button>
+      </div>
+
+      <div class="mt-5 bg-sky-50 border border-sky-200 rounded-xl p-4 text-left text-xs text-sky-900 max-w-4xl mx-auto">
+        <strong>Collaborative vs content-based filtering:</strong> a <em>content-based</em> recommender needs features about each item (genre, cast, keywords) and recommends more of what you already liked — it can never surprise you outside your known tastes, and it needs someone to tag every item. <strong>Collaborative filtering uses no item features at all</strong>: it learns purely from the pattern of <em>who rated what</em>, so it can recommend a film in a genre you have never touched simply because people with your taste loved it. The price is the <strong>cold-start problem</strong> — a brand-new user or a brand-new movie has no ratings to lean on, so real systems blend CF with content-based and popularity fallbacks.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How collaborative filtering works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">A sparse ratings matrix, a mean-centred cosine, a similarity-weighted prediction, an item–item variant, a matrix factorizer trained by SGD, and an honest hold-out test — all in vanilla JS. Then the real library version in a handful of lines.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The sparse ratings matrix</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Everything starts from one array: rows are users, columns are items, cells are explicit ratings, and <code>null</code> marks the vast majority you have never observed. A real matrix is 95–99% empty — the whole job of collaborative filtering is to fill those <code>null</code>s.</p>
+        <div class="relative"><pre>// rows = users, cols = movies, null = not rated yet
+const R = [
+  [5, null, 2, null, 3, 3],   // Ava
+  [5, 5,    1, 2,    null, 4], // Ben
+  // ...
+];
+const N = R.length, M = R[0].length;
+const clamp = x => Math.max(1, Math.min(5, x));   // keep on the 1..5 scale</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Similarity: mean-centred cosine</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Compare two users only on the items they <em>both</em> rated. Subtract each user's own mean first: this removes the "everything's a 4" easy raters from the "everything's a 2" harsh raters so the cosine measures the <em>shape</em> of taste. Mean-centred cosine on co-rated items is exactly the Pearson correlation, and it can go negative — opposite tastes.</p>
+        <div class="relative"><pre>function simUsers(a, b){                       // Pearson over co-rated items
+  let dot=0, na=0, nb=0, cnt=0;
+  for (let i=0;i&lt;M;i++){
+    const x=R[a][i], y=R[b][i];
+    if (x!=null &amp;&amp; y!=null){
+      const dx=x-uMean[a], dy=y-uMean[b];       // mean-centre both users
+      dot+=dx*dy; na+=dx*dx; nb+=dy*dy; cnt++;
+    }
+  }
+  if (cnt&lt;2 || na===0 || nb===0) return 0;      // too little overlap
+  return dot / Math.sqrt(na*nb);                // in [-1, 1]
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">User–user prediction: similarity-weighted average</h3></div>
+        <p class="text-sm text-slate-600 mb-3">To predict user <em>u</em>'s rating of item <em>i</em>, take the top-<em>k</em> neighbours who actually rated <em>i</em>, and average <em>their</em> deviations from their own means, weighted by similarity. Add back <em>u</em>'s mean. Weighting by similarity means close neighbours dominate; centring by each neighbour's mean keeps a harsh rater's 4 from drowning a generous rater's 4.</p>
+        <div class="relative"><pre>function predUser(u, i, k){
+  const cand = [];
+  for (let v=0; v&lt;N; v++)
+    if (v!==u &amp;&amp; R[v][i]!=null){ const s=simUsers(u,v); if (s) cand.push({v,s}); }
+  cand.sort((a,b)=&gt;Math.abs(b.s)-Math.abs(a.s));       // strongest ties first
+  const nb = cand.slice(0, k);                          // top-k neighbours
+  let num=0, den=0;
+  for (const {v,s} of nb){ num += s*(R[v][i]-uMean[v]); den += Math.abs(s); }
+  return den===0 ? uMean[u] : clamp(uMean[u] + num/den);
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Item–item CF (the stable variant)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Flip the matrix: compare <em>columns</em>. Two movies are similar if the same people rated them alike — using <em>adjusted cosine</em>, which centres each rating by that user's mean. Item–item is what Amazon shipped ("customers who bought this…"): item-to-item tastes change far more slowly than user tastes, so you can precompute the item–item similarities offline and serve recommendations instantly.</p>
+        <div class="relative"><pre>function simItems(i, j){                        // adjusted cosine over users
+  let dot=0, ni=0, nj=0, cnt=0;
+  for (let u=0;u&lt;N;u++){
+    const x=R[u][i], y=R[u][j];
+    if (x!=null &amp;&amp; y!=null){
+      const dx=x-uMean[u], dy=y-uMean[u];        // centre by the USER's mean
+      dot+=dx*dy; ni+=dx*dx; nj+=dy*dy; cnt++;
+    }
+  }
+  return (cnt&lt;2||ni===0||nj===0) ? 0 : dot/Math.sqrt(ni*nj);
+}
+function predItem(u, i, k){                      // weighted over items u rated
+  const cand=[];
+  for (let j=0;j&lt;M;j++)
+    if (j!==i &amp;&amp; R[u][j]!=null){ const s=simItems(i,j); if (s) cand.push({j,s}); }
+  cand.sort((a,b)=&gt;Math.abs(b.s)-Math.abs(a.s));
+  let num=0, den=0;
+  for (const {j,s} of cand.slice(0,k)){ num+=s*(R[u][j]-iMean[j]); den+=Math.abs(s); }
+  return den===0 ? iMean[i] : clamp(iMean[i] + num/den);
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Matrix factorization by SGD (latent factors)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Instead of comparing rows or columns, <em>learn</em> a small vector of hidden factors for every user and every movie so that their dot product reproduces the known ratings: R ≈ μ + P·Qᵀ. Stochastic gradient descent walks each known rating, computes the error, and nudges both factor vectors toward it (with a little L2 regularization). This is the family that won the Netflix Prize; the factors end up meaning things like "sci-fi ↔ romance."</p>
+        <div class="relative"><pre>const K=2, lr=0.03, reg=0.05;                   // 2 latent factors
+let P = randMatrix(N, K), Q = randMatrix(M, K); // small random init
+const predMF = (u,i) =&gt; gMean + dot(P[u], Q[i]);
+
+for (let epoch=0; epoch&lt;300; epoch++)
+  for (let u=0;u&lt;N;u++) for (let i=0;i&lt;M;i++){
+    if (R[u][i]==null) continue;
+    const err = R[u][i] - predMF(u,i);
+    for (let f=0; f&lt;K; f++){
+      const pf=P[u][f], qf=Q[i][f];
+      P[u][f] = pf + lr*(err*qf - reg*pf);       // gradient step on user factor
+      Q[i][f] = qf + lr*(err*pf - reg*qf);       // and on item factor
+    }
+  }</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Evaluate: hold out ratings, beat the baseline</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A recommender is only good if it beats the dumb baseline of "predict the global average for everyone." Hide a slice of the <em>known</em> ratings, predict them, and score RMSE against the truth. If your CF or MF RMSE is not clearly below the global-average RMSE, something is wrong — this is the sanity check every recommender needs before it ships.</p>
+        <div class="relative"><pre>function rmse(pred){
+  let se=0, n=0;
+  for (const [u,i,truth] of testSet){ const e = truth - pred(u,i); se += e*e; n++; }
+  return Math.sqrt(se/n);
+}
+const baseline = rmse((u,i) =&gt; gMean);           // predict the global average
+const cf       = rmse((u,i) =&gt; predUser(u,i,3)); // must be clearly lower
+console.log(baseline, cf, cf &lt; baseline);        // true = the model earns its keep</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">In the real world</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Nobody hand-rolls this at scale. For explicit ratings, <code>scikit-surprise</code> gives you tuned KNN and SVD in a few lines. For <em>implicit</em> feedback (clicks, plays, buys — no stars), reach for <code>implicit</code> (weighted-ALS, BPR) or <code>LightFM</code> (hybrid CF + content, which softens cold-start). These handle sparse matrices, negative sampling, and evaluation for you.</p>
+        <div class="relative"><pre># pip install scikit-surprise implicit lightfm
+
+# --- explicit ratings: matrix factorization with Surprise ---
+from surprise import SVD, Dataset, Reader
+from surprise.model_selection import cross_validate
+data = Dataset.load_from_df(ratings[['user','item','rating']], Reader(rating_scale=(1,5)))
+cross_validate(SVD(n_factors=50), data, measures=['RMSE'], cv=5, verbose=True)
+
+# --- implicit feedback (plays/clicks): weighted-ALS ---
+from implicit.als import AlternatingLeastSquares
+model = AlternatingLeastSquares(factors=64, regularization=0.05)
+model.fit(user_item_confidence)          # sparse matrix of confidences
+recs = model.recommend(user_id, user_item_confidence[user_id], N=10)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 27 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You built a real recommender: a sparse ratings matrix, mean-centred cosine similarity, similarity-weighted user–user and item–item prediction, a 2-factor matrix factorization trained by SGD, and a hold-out RMSE test that beats the global-average baseline — all from ratings alone, no item features. <strong>👉 Tomorrow — Day 28: PCA is already covered</strong> in the dimensionality-reduction track (t-SNE on Day 23 and UMAP on Day 24 both lean on it), so we switch tracks to <strong>Association Rule Mining — Apriori</strong>: mine "people who bought X also bought Y" itemsets and rules from transaction baskets.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= Collaborative Filtering demo =================
+const USERS  = ["Ava","Ben","Cy","Dee","Eli","Fay"];
+const MOVIES = ["Matrix","Inception","Titanic","Notebook","Die Hard","John Wick"];
+const GENRE  = ["Sci-Fi","Sci-Fi","Romance","Romance","Action","Action"];
+const N = USERS.length, M = MOVIES.length;
+
+// seed matrix (null = unrated). Verified in Node: CF & MF beat the global-avg baseline.
+const R0 = [
+ [5,    null, 2,    null, 3,    3   ], // Ava  — sci-fi lover
+ [5,    5,    1,    2,    null, 4   ], // Ben  — sci-fi lover
+ [null, 1,    5,    null, 2,    2   ], // Cy   — romance lover
+ [null, 2,    5,    5,    1,    2   ], // Dee  — romance lover
+ [3,    3,    null, 1,    5,    null], // Eli  — action lover
+ [2,    null, 1,    2,    5,    5   ], // Fay  — action lover
+];
+let R = R0.map(r => r.slice());
+
+let mode = "user";        // "user" | "item" | "mf"
+let kNbr = 3;
+let curUser = 0;
+let uMean = [], iMean = [], gMean = 3;
+
+// derived per render
+let predMap = {}, driverSet = new Set(), topKey = null, topInfo = null;
+
+const clamp = x => Math.max(1, Math.min(5, x));
+function makeRng(s){ let x=(s>>>0)||1; return ()=>{ x=(x*1103515245+12345)&0x7fffffff; return x/0x7fffffff; }; }
+
+function computeMeans(){
+  uMean=[]; iMean=[]; let gs=0, gc=0;
+  for (let u=0;u<N;u++){ let s=0,c=0; for (let i=0;i<M;i++) if (R[u][i]!=null){s+=R[u][i];c++;} uMean[u]=c?s/c:3; }
+  for (let i=0;i<M;i++){ let s=0,c=0; for (let u=0;u<N;u++) if (R[u][i]!=null){s+=R[u][i];c++;} iMean[i]=c?s/c:3; }
+  for (let u=0;u<N;u++) for (let i=0;i<M;i++) if (R[u][i]!=null){gs+=R[u][i];gc++;}
+  gMean = gc?gs/gc:3;
+}
+
+// mean-centred cosine (Pearson) between users on co-rated items
+function simUsers(a,b){
+  let dot=0,na=0,nb=0,cnt=0;
+  for (let i=0;i<M;i++){ const x=R[a][i], y=R[b][i];
+    if (x!=null&&y!=null){ const dx=x-uMean[a], dy=y-uMean[b]; dot+=dx*dy; na+=dx*dx; nb+=dy*dy; cnt++; } }
+  if (cnt<2||na===0||nb===0) return 0;
+  return dot/Math.sqrt(na*nb);
+}
+// adjusted cosine between items (centre by user mean) on co-rating users
+function simItems(i,j){
+  let dot=0,ni=0,nj=0,cnt=0;
+  for (let u=0;u<N;u++){ const x=R[u][i], y=R[u][j];
+    if (x!=null&&y!=null){ const dx=x-uMean[u], dy=y-uMean[u]; dot+=dx*dy; ni+=dx*dx; nj+=dy*dy; cnt++; } }
+  if (cnt<2||ni===0||nj===0) return 0;
+  return dot/Math.sqrt(ni*nj);
+}
+function predUser(u,i,k){
+  const cand=[];
+  for (let v=0;v<N;v++){ if (v!==u && R[v][i]!=null){ const s=simUsers(u,v); if (s!==0) cand.push({v,s}); } }
+  cand.sort((a,b)=>Math.abs(b.s)-Math.abs(a.s));
+  const nb=cand.slice(0,k);
+  let num=0,den=0;
+  for (const {v,s} of nb){ num+=s*(R[v][i]-uMean[v]); den+=Math.abs(s); }
+  return { val: den===0 ? uMean[u] : clamp(uMean[u]+num/den), nb };
+}
+function predItem(u,i,k){
+  const cand=[];
+  for (let j=0;j<M;j++){ if (j!==i && R[u][j]!=null){ const s=simItems(i,j); if (s!==0) cand.push({j,s}); } }
+  cand.sort((a,b)=>Math.abs(b.s)-Math.abs(a.s));
+  const nb=cand.slice(0,k);
+  let num=0,den=0;
+  for (const {j,s} of nb){ num+=s*(R[u][j]-iMean[j]); den+=Math.abs(s); }
+  return { val: den===0 ? iMean[i] : clamp(iMean[i]+num/den), nb };
+}
+
+// ---- Matrix factorization (SGD, K=2) ----
+const K=2, LR=0.03, REG=0.05, MAXEP=400;
+let P=[], Q=[], mfEpoch=0, lossHist=[];
+function mfInit(){
+  const rng=makeRng(7);
+  P=Array.from({length:N},()=>Array.from({length:K},()=>(rng()-0.5)*0.2));
+  Q=Array.from({length:M},()=>Array.from({length:K},()=>(rng()-0.5)*0.2));
+  mfEpoch=0; lossHist=[mfRMSE()];
+}
+function mfPred(u,i){ let s=gMean; for (let f=0;f<K;f++) s+=P[u][f]*Q[i][f]; return s; }
+function mfRMSE(){ let s=0,c=0; for (let u=0;u<N;u++) for (let i=0;i<M;i++) if (R[u][i]!=null){ const e=R[u][i]-mfPred(u,i); s+=e*e; c++; } return c?Math.sqrt(s/c):0; }
+function mfTrain(epochs){
+  for (let e=0;e<epochs && mfEpoch<MAXEP;e++){
+    for (let u=0;u<N;u++) for (let i=0;i<M;i++){ if (R[u][i]==null) continue;
+      const err=R[u][i]-mfPred(u,i);
+      for (let f=0;f<K;f++){ const pf=P[u][f], qf=Q[i][f];
+        P[u][f]=pf+LR*(err*qf-REG*pf); Q[i][f]=qf+LR*(err*pf-REG*qf); } }
+    mfEpoch++; lossHist.push(mfRMSE());
+  }
+}
+
+// ---- rating heat colour (sky ramp: 1 pale -> 5 deep) ----
+const RSTOPS=[[1,[224,242,254]],[2,[125,211,252]],[3,[56,189,248]],[4,[14,165,233]],[5,[3,105,161]]];
+function rColor(v){
+  v=Math.max(1,Math.min(5,v));
+  for (let i=0;i<RSTOPS.length-1;i++){ if (v>=RSTOPS[i][0]&&v<=RSTOPS[i+1][0]){
+    const t=(v-RSTOPS[i][0])/(RSTOPS[i+1][0]-RSTOPS[i][0]);
+    return [0,1,2].map(k=>Math.round(RSTOPS[i][1][k]+(RSTOPS[i+1][1][k]-RSTOPS[i][1][k])*t)); } }
+  return RSTOPS[RSTOPS.length-1][1];
+}
+const rgb=(c,a)=>`rgba(${c[0]},${c[1]},${c[2]},${a==null?1:a})`;
+
+// ---- compute predictions + drivers for the current state ----
+function recompute(){
+  computeMeans();
+  predMap={}; driverSet=new Set(); topKey=null; topInfo=null;
+  const u=curUser;
+  const blanks=[]; for (let i=0;i<M;i++) if (R[u][i]==null) blanks.push(i);
+
+  if (mode==="mf"){
+    for (let a=0;a<N;a++) for (let i=0;i<M;i++) if (R[a][i]==null) predMap[a+"-"+i]=clamp(mfPred(a,i));
+    let best=null; for (const i of blanks){ const val=clamp(mfPred(u,i)); if (!best||val>best.val) best={i,val,nb:[]}; }
+    if (best){ topKey=u+"-"+best.i; topInfo=best; }
+  } else {
+    let best=null;
+    for (const i of blanks){
+      const p = mode==="user" ? predUser(u,i,kNbr) : predItem(u,i,kNbr);
+      predMap[u+"-"+i]=p.val;
+      if (!best || p.val>best.val) best={i,val:p.val,nb:p.nb};
+    }
+    if (best){
+      topKey=u+"-"+best.i; topInfo=best;
+      for (const nb of best.nb){
+        if (mode==="user") driverSet.add(nb.v+"-"+best.i);
+        else driverSet.add(u+"-"+nb.j);
+      }
+    }
+  }
+}
+
+// ---- render the matrix grid ----
+function cellHTML(u,i){
+  const key=u+"-"+i, raw=R[u][i];
+  const ring = driverSet.has(key) ? " driver" : "";
+  if (raw!=null){
+    const c=rColor(raw), txt = raw>=3.2 ? "#fff" : "#0f172a";
+    return `<td class="cf-cell${ring}" data-u="${u}" data-i="${i}" title="${USERS[u]} rated ${MOVIES[i]} = ${raw} (click to change)" style="background:${rgb(c)};color:${txt}">${raw}</td>`;
+  }
+  const pr=predMap[key];
+  if (pr!=null){
+    const isTop = key===topKey;
+    const c=rColor(pr);
+    return `<td class="cf-cell pred${ring}${isTop?" toppick":""}" data-u="${u}" data-i="${i}" title="predicted ${pr.toFixed(2)}" style="background:${rgb(c,0.32)}">${isTop?"🏆":""}${pr.toFixed(1)}</td>`;
+  }
+  return `<td class="cf-cell blank${ring}" data-u="${u}" data-i="${i}" title="not rated">?</td>`;
+}
+function renderMatrix(){
+  let h='<table class="cf-grid"><thead><tr><th class="corner"></th>';
+  for (let i=0;i<M;i++) h+=`<th class="mv">${MOVIES[i]}<span class="gn">${GENRE[i]}</span></th>`;
+  h+='</tr></thead><tbody>';
+  for (let u=0;u<N;u++){
+    h+=`<tr class="${u===curUser?"row-active":""}"><th class="uname">${USERS[u]}</th>`;
+    for (let i=0;i<M;i++) h+=cellHTML(u,i);
+    h+='</tr>';
+  }
+  h+='</tbody></table>';
+  document.getElementById("matrix").innerHTML=h;
+}
+
+// ---- side panel ----
+function simRow(name, s){
+  const w=Math.round(Math.abs(s)*100), col = s>=0 ? "#10b981" : "#ef4444";
+  return `<div class="flex items-center gap-2 mb-1 text-xs">
+    <div class="w-16 truncate font-semibold text-slate-700">${name}</div>
+    <div class="flex-1 bg-slate-100 rounded"><div class="simbar" style="width:${w}%;background:${col}"></div></div>
+    <div class="w-10 text-right stat font-bold" style="color:${col}">${s.toFixed(2)}</div></div>`;
+}
+function factorTable(title, labels, Mtx){
+  let h=`<div class="text-xs font-bold text-slate-500 mt-3 mb-1">${title}</div>`;
+  for (let r=0;r<labels.length;r++){
+    h+=`<div class="flex items-center gap-2 mb-1 text-xs"><div class="w-16 truncate font-semibold text-slate-700">${labels[r]}</div>`;
+    for (let f=0;f<K;f++){
+      const v=Mtx[r][f], w=Math.min(100,Math.abs(v)*55), col=v>=0?"#0ea5e9":"#f43f5e";
+      h+=`<div class="flex-1"><div class="bg-slate-100 rounded"><div class="ftbar" style="width:${w}%;background:${col}"></div></div></div>
+          <div class="w-9 text-right stat" style="color:${col}">${v.toFixed(2)}</div>`;
+    }
+    h+=`</div>`;
+  }
+  return h;
+}
+function buildPanel(){
+  const el=document.getElementById("panel");
+  const u=curUser;
+  if (mode==="mf"){
+    const rmse = lossHist.length ? lossHist[lossHist.length-1].toFixed(3) : "—";
+    let h=`<div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-1">Matrix Factorization · SGD</div>
+      <div class="text-sm text-slate-600 mb-2">Learn <b>K=2</b> latent factors per user &amp; movie so <b>R ≈ μ + P·Qᵀ</b>. <b>Epoch ${mfEpoch}</b> · train RMSE <b class="text-sky-700">${rmse}</b></div>
+      <canvas id="losschart" width="318" height="96"></canvas>`;
+    if (topInfo) h+=`<div class="bg-amber-50 border border-amber-300 rounded-xl p-3 my-3"><div class="text-[10px] font-bold text-amber-700 tracking-wider">🏆 TOP PICK FOR ${USERS[u].toUpperCase()}</div><div class="text-lg font-bold">${MOVIES[topInfo.i]} <span class="text-xs text-slate-400">${GENRE[topInfo.i]}</span></div><div class="text-sm">reconstructed rating <b class="text-amber-700">${topInfo.val.toFixed(2)}</b> / 5</div></div>`;
+    h+=factorTable("P — user factors  (f1 · f2)", USERS, P);
+    h+=factorTable("Q — movie factors  (f1 · f2)", MOVIES, Q);
+    h+=`<div class="text-[11px] text-slate-400 mt-2">Blanks in the grid are filled by P·Qᵀ. Train more to watch RMSE fall and the factors separate the tastes.</div>`;
+    el.innerHTML=h;
+    drawLoss();
+    return;
+  }
+  const name = mode==="user" ? "User–User CF" : "Item–Item CF";
+  const basis = mode==="user" ? "co-rated movies" : "co-rating users";
+  let h=`<div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-1">${name}</div>
+    <div class="text-sm text-slate-600 mb-3">Similarity = mean-centred cosine on ${basis}; prediction = top-${kNbr} similarity-weighted average.</div>`;
+  if (topInfo){
+    h+=`<div class="bg-amber-50 border border-amber-300 rounded-xl p-3 mb-3"><div class="text-[10px] font-bold text-amber-700 tracking-wider">🏆 TOP PICK FOR ${USERS[u].toUpperCase()}</div><div class="text-lg font-bold">${MOVIES[topInfo.i]} <span class="text-xs text-slate-400">${GENRE[topInfo.i]}</span></div><div class="text-sm">predicted <b class="text-amber-700">${topInfo.val.toFixed(2)}</b> / 5</div></div>`;
+    h+=`<div class="text-xs font-bold text-slate-500 mb-1">Driven by ${mode==="user"?"similar users":"movies "+USERS[u]+" rated"} (similarity):</div>`;
+    if (topInfo.nb.length){
+      for (const nb of topInfo.nb){
+        const label = mode==="user" ? USERS[nb.v] : MOVIES[nb.j];
+        h+=simRow(label, nb.s);
+      }
+    } else h+=`<div class="text-xs text-slate-400">No neighbours with overlap.</div>`;
+    h+=`<div class="text-[11px] text-slate-400 mt-3">Green = agrees with ${USERS[u]}, red = opposite taste. ${mode==="item"?"A negative-similarity movie still helps: rating it low predicts the target high.":"Neighbours are ranked by |similarity| and centred by their own average."}</div>`;
+  } else {
+    h+=`<div class="text-slate-400 text-sm">${USERS[u]} has rated every movie — no blanks to predict. Pick another user.</div>`;
+  }
+  el.innerHTML=h;
+}
+function drawLoss(){
+  const cv=document.getElementById("losschart"); if (!cv) return;
+  const ctx=cv.getContext("2d"), W=cv.width, H=cv.height, pad=6;
+  ctx.clearRect(0,0,W,H);
+  const n=lossHist.length; if (n<1) return;
+  const mx=Math.max.apply(null,lossHist), mn=0;
+  const xOf=k=> pad + (n<=1?0:k/(n-1))*(W-2*pad);
+  const yOf=v=> H-pad - (mx===mn?0:(v-mn)/(mx-mn))*(H-2*pad);
+  // baseline-ish gridline at final value
+  ctx.strokeStyle="#e2e8f0"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad,yOf(lossHist[n-1])); ctx.lineTo(W-pad,yOf(lossHist[n-1])); ctx.stroke();
+  // curve
+  ctx.strokeStyle="#0ea5e9"; ctx.lineWidth=2; ctx.beginPath();
+  for (let k=0;k<n;k++){ const x=xOf(k), y=yOf(lossHist[k]); k?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+  ctx.stroke();
+  ctx.fillStyle="#0369a1"; ctx.beginPath(); ctx.arc(xOf(n-1),yOf(lossHist[n-1]),3,0,7); ctx.fill();
+  ctx.fillStyle="#94a3b8"; ctx.font="9px sans-serif"; ctx.fillText("train RMSE vs epoch",pad+2,10);
+}
+
+function render(){
+  recompute();
+  renderMatrix();
+  buildPanel();
+  document.getElementById("mMethod").textContent = mode==="user"?"User–User CF":mode==="item"?"Item–Item CF":"Matrix Factorization";
+  document.getElementById("mUser").textContent = USERS[curUser];
+  if (mode==="mf"){ document.getElementById("mKlabel").textContent="Epoch"; document.getElementById("mK").textContent=mfEpoch; }
+  else { document.getElementById("mKlabel").textContent="Neighbours k"; document.getElementById("mK").textContent=kNbr; }
+  document.getElementById("mTop").textContent = topInfo ? `${MOVIES[topInfo.i]} (${topInfo.val.toFixed(1)})` : "—";
+}
+
+// ---- controls ----
+function renderUserBtns(){
+  const c=document.getElementById("userBtns");
+  c.innerHTML=USERS.map((u,i)=>`<button data-u="${i}" class="ubtn ${i===curUser?"on":""} border border-slate-300 bg-white px-3 py-1.5 rounded-lg font-semibold text-sm mr-1">${u}</button>`).join("");
+  c.querySelectorAll("button").forEach(b=>b.onclick=()=>{ stopMF(); curUser=+b.dataset.u; renderUserBtns(); render(); });
+}
+document.querySelectorAll(".mbtn").forEach(b=>b.onclick=()=>{
+  stopMF();
+  mode=b.dataset.mode;
+  document.querySelectorAll(".mbtn").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on");
+  document.getElementById("cfCtrl").classList.toggle("hidden", mode==="mf");
+  document.getElementById("mfCtrl").classList.toggle("hidden", mode!=="mf");
+  render();
+});
+document.getElementById("kSlider").oninput=e=>{ kNbr=+e.target.value; render(); };
+document.getElementById("resetRatings").onclick=()=>{ stopMF(); R=R0.map(r=>r.slice()); mfInit(); render(); };
+
+let mfTimer=null;
+function stopMF(){ if (mfTimer){ clearInterval(mfTimer); mfTimer=null; document.getElementById("mfRunBtn").textContent="▶ Train"; } }
+document.getElementById("mfStepBtn").onclick=()=>{ stopMF(); mfTrain(15); render(); };
+document.getElementById("mfRunBtn").onclick=()=>{
+  if (mfTimer){ stopMF(); return; }
+  if (mfEpoch>=MAXEP) mfInit();
+  document.getElementById("mfRunBtn").textContent="⏸ Pause";
+  mfTimer=setInterval(()=>{ mfTrain(5); render(); if (mfEpoch>=MAXEP) stopMF(); }, 90);
+};
+document.getElementById("mfResetBtn").onclick=()=>{ stopMF(); mfInit(); render(); };
+
+// click a filled cell to cycle its rating 1..5 (live-updates recommendations)
+document.getElementById("matrix").addEventListener("click", e=>{
+  const td=e.target.closest("td"); if (!td) return;
+  const u=+td.dataset.u, i=+td.dataset.i;
+  if (R[u][i]==null) return;                 // blanks are prediction targets
+  R[u][i] = R[u][i]>=5 ? 1 : R[u][i]+1;
+  if (mode==="mf") mfInit();                  // ratings changed -> refit from scratch on next train
+  render();
+});
+
+computeMeans(); mfInit();
+renderUserBtns();
+render();
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. The recommendation problem", why:"Every store, stream and feed has far more items than any person can browse, so the value is in surfacing the few things this particular user will love. Framed mathematically, it is matrix completion: build a giant table of users × items where a handful of cells hold observed ratings (or clicks) and almost everything is blank, then predict the blanks. Rank each user's predicted blanks and the top few become their recommendations. That is the entire game — fill in the missing cells well.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">users &times; items table, mostly BLANK<br>observed = a few ratings / clicks<br>GOAL: predict the blanks<br>recommend = top predicted blanks per user</div>`, code:`// a recommender is matrix completion
+// R[u][i] = rating, or null if unseen
+// predict the nulls, then sort each user's
+// predicted items and show the highest.` },
+ { title:"2. The ratings matrix & sparsity", why:"Collaborative filtering works from explicit feedback: users hand you numbers (1–5 stars). Stack them into a matrix and the defining feature is how empty it is — Netflix-scale matrices are 99%+ blank because no one rates more than a sliver of the catalogue. Sparsity is the central difficulty: two users may have almost no movies in common, so any similarity has to be estimated from a tiny overlap. Everything downstream is built to squeeze signal out of that overlap.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">explicit ratings: 1..5 stars<br>matrix is 95&ndash;99% EMPTY<br>users overlap on very few items<br>&rarr; estimate taste from thin overlap</div>`, code:`const R = [
+  [5, null, 2, null, 3, 3],  // most cells
+  [5, 5,    1, 2,    null,4], // are null:
+  // ...                      // that IS the problem
+];` },
+ { title:"3. User–user CF + cosine", why:"The oldest idea: to recommend for you, find users whose past ratings look like yours, then borrow what they liked. 'Look like yours' is measured with cosine similarity on the items you both rated. Crucially you mean-centre each user first — subtract their average — so a harsh 2-star rater and a generous 4-star rater who feel the same way come out similar. Mean-centred cosine on co-rated items is precisely the Pearson correlation, and it ranges from +1 (twins) through 0 to −1 (opposite taste).", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">find users who agree with you<br>sim = cosine on CO-RATED items<br>mean-centre each user first (= Pearson)<br>+1 twin &middot; 0 unrelated &middot; &minus;1 opposite</div>`, code:`function simUsers(a,b){
+  let dot=0,na=0,nb=0,cnt=0;
+  for (const i of items){
+    const x=R[a][i], y=R[b][i];
+    if (x!=null && y!=null){
+      const dx=x-uMean[a], dy=y-uMean[b];   // centre
+      dot+=dx*dy; na+=dx*dx; nb+=dy*dy; cnt++;
+    }
+  }
+  return cnt<2 ? 0 : dot/Math.sqrt(na*nb);
+}` },
+ { title:"4. Item–item CF (why it's more stable)", why:"Amazon flipped the problem: instead of finding users like you, find items like the ones you already rated, using how the same people scored each pair (adjusted cosine, centred by user mean). Item–item wins in practice for two reasons. First, there are usually fewer items than users, and item-to-item relationships barely change week to week — so you can precompute the whole item-similarity table offline and serve recommendations with a fast lookup. Second, each item typically has many more ratings than each user, so its similarities are estimated from more data and are less noisy.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">compare ITEM columns, not user rows<br>&quot;people who liked X also liked Y&quot;<br>item&ndash;item ties change slowly &rarr; precompute<br>more ratings/item &rarr; steadier, less noisy</div>`, code:`function simItems(i,j){                 // adjusted cosine
+  let dot=0,ni=0,nj=0,cnt=0;
+  for (const u of users){
+    const x=R[u][i], y=R[u][j];
+    if (x!=null && y!=null){
+      const dx=x-uMean[u], dy=y-uMean[u]; // centre by USER
+      dot+=dx*dy; ni+=dx*dx; nj+=dy*dy; cnt++;
+    }
+  }
+  return cnt<2 ? 0 : dot/Math.sqrt(ni*nj);
+}` },
+ { title:"5. Similarity-weighted prediction", why:"A similarity is only useful if it turns into a number. To predict user u's rating of item i, gather the neighbours who rated i and take a weighted average of their opinions: weight each neighbour by its similarity and, again, work in deviations from each neighbour's own mean before adding u's mean back. Closer neighbours pull harder; a negative-similarity neighbour who disliked the item actually pushes the prediction up. Normalising by the sum of |similarities| keeps the answer on the rating scale.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">r&#770;(u,i) = &mu;<sub>u</sub> + &Sigma; sim&middot;(r<sub>v,i</sub>&minus;&mu;<sub>v</sub>) / &Sigma;|sim|<br>closer neighbour &rarr; bigger vote<br>centre by each neighbour's mean<br>divide by &Sigma;|sim| to stay in 1..5</div>`, code:`function predUser(u,i,k){
+  const nb = neighborsRating(i)          // rated i
+    .sort(byAbsSim).slice(0,k);          // top-k
+  let num=0, den=0;
+  for (const {v,s} of nb){
+    num += s*(R[v][i]-uMean[v]);
+    den += Math.abs(s);
+  }
+  return den ? clamp(uMean[u]+num/den) : uMean[u];
+}` },
+ { title:"6. k nearest neighbours", why:"You do not average over everyone — only the k most similar neighbours. Using the whole crowd drags every prediction toward the global mean and drowns the real signal in weakly-related users; too small a k makes predictions jumpy and hostage to one quirky neighbour. k trades bias against variance. In the demo, slide k and watch: at k=1 the top pick just copies the single closest taste; raise it and the estimate smooths out as more (progressively less similar) voices join in.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">keep only the top-k neighbours<br>large k &rarr; smooth, biased toward average<br>small k &rarr; sharp but noisy<br>k tunes the bias&ndash;variance trade-off</div>`, code:`cand.sort((a,b)=>Math.abs(b.s)-Math.abs(a.s));
+const nb = cand.slice(0, k);   // only the k strongest ties vote
+// small k: personal but jumpy
+// large k: stable but bland` },
+ { title:"7. Matrix factorization (latent factors, SGD)", why:"Neighbourhood methods look local; matrix factorization goes global. Assume every user and every item can be described by a short vector of hidden factors — learned, not given — and that a rating is their dot product. Fit those vectors by stochastic gradient descent: walk each known rating, measure the error, and nudge both vectors to reduce it, with L2 regularization to prevent overfitting. This is what won the Netflix Prize. The factors self-organise into meaningful axes (e.g. sci-fi ↔ romance), it handles sparsity gracefully, and predicting is one dot product.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">R &asymp; &mu; + P&middot;Q&#7488;  (K hidden factors each)<br>learn P, Q by SGD on known cells<br>err = r &minus; p&middot;q ; step p,q down the gradient<br>Netflix-Prize family &middot; factors = latent taste</div>`, code:`for (const [u,i,r] of knownRatings){
+  const err = r - (gMean + dot(P[u],Q[i]));
+  for (let f=0; f<K; f++){
+    const pf=P[u][f], qf=Q[i][f];
+    P[u][f] += lr*(err*qf - reg*pf);
+    Q[i][f] += lr*(err*pf - reg*qf);
+  }
+}  // repeat for many epochs; watch RMSE fall` },
+ { title:"8. The cold-start problem", why:"Collaborative filtering has one fatal blind spot: it knows nothing about a user or item with no ratings. A brand-new signup has no neighbours; a freshly-added product has no one who rated it, so it can never be recommended, so it never gets rated — a chicken-and-egg trap. Real systems paper over cold-start by falling back to popularity ('trending now') for new users, by asking a few onboarding questions, and by blending in content-based signals (genre, text, embeddings) so a new item can be matched by its features until ratings arrive.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">new user: no neighbours yet<br>new item: no ratings &rarr; never shown<br>fixes: popularity fallback, onboarding<br>+ content features (hybrid) to bootstrap</div>`, code:`function recommend(user){
+  if (ratingsOf(user).length < MIN)
+    return popularItems();          // cold-start fallback
+  return collaborativeFilter(user); // once we know them
+}` },
+ { title:"9. Implicit feedback", why:"Most real data has no stars at all — only implicit signals: clicks, plays, watch-time, purchases, add-to-cart. These are trickier because they are one-class: a play is weak evidence of 'like', but a non-play is not evidence of 'dislike' (you simply may not have seen it). So you cannot treat blanks as zeros naively. The standard trick is to model a preference (0/1) plus a confidence that scales with how often the action happened, and optimise a ranking objective — weighted-ALS or BPR. Libraries like implicit and LightFM do exactly this at scale.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">no stars &mdash; clicks / plays / buys<br>action = weak &quot;like&quot;; blank &ne; &quot;dislike&quot;<br>model preference + CONFIDENCE weight<br>optimise ranking: weighted-ALS, BPR</div>`, code:`# implicit feedback: confidence-weighted ALS
+from implicit.als import AlternatingLeastSquares
+model = AlternatingLeastSquares(factors=64)
+model.fit(confidence_matrix)   # 1 + alpha*count
+recs = model.recommend(u, confidence_matrix[u], N=10)` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
