@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 28 — Apriori &amp; Association Rules</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  /* transaction basket matrix */
+  .tx-grid { border-collapse:separate; border-spacing:5px; margin:0 auto; }
+  .tx-grid th.corner { width:44px; }
+  .tx-grid th.it { font-size:11px; font-weight:800; color:#334155; padding-bottom:2px; text-align:center; }
+  .tx-grid th.it .em { display:block; font-size:16px; }
+  .tx-grid th.tname { text-align:right; padding-right:8px; font-size:12px; font-weight:700; color:#334155; white-space:nowrap; }
+  .tx-cell { width:40px; height:34px; border-radius:8px; text-align:center; vertical-align:middle;
+             cursor:pointer; font-size:15px; user-select:none; transition:transform .08s; }
+  .tx-cell:hover { transform:scale(1.1); }
+  .tx-cell.on  { background:#0ea5e9; color:#fff; box-shadow:inset 0 0 0 1px #0284c7; }
+  .tx-cell.off { background:#f1f5f9; color:#cbd5e1; }
+  .tx-del { color:#cbd5e1; cursor:pointer; font-weight:800; padding-left:6px; }
+  .tx-del:hover { color:#ef4444; }
+  /* candidate chips */
+  .cand { display:inline-flex; align-items:center; gap:6px; padding:4px 9px; border-radius:8px; font-size:12px; font-weight:700; margin:3px; border:1px solid; }
+  .cand.keep    { background:#ecfdf5; border-color:#6ee7b7; color:#047857; }
+  .cand.supcull { background:#f8fafc; border-color:#e2e8f0; color:#94a3b8; text-decoration:line-through; }
+  .cand.prune   { background:#fff7ed; border-color:#fdba74; color:#c2410c; }
+  .cand .sup { font-weight:800; font-variant-numeric:tabular-nums; }
+  .lvl-arrow { color:#38bdf8; font-weight:800; }
+  .rule-tr td { padding:7px 10px; border-bottom:1px solid #f1f5f9; font-size:13px; }
+  .rule-tr.classic { background:#f0f9ff; }
+  .liftbar { height:9px; border-radius:5px; }
+  .run-pulse { animation: runPulse .5s ease-out; }
+  @keyframes runPulse { 0% { box-shadow:0 0 0 0 rgba(14,165,233,.55);} 100% { box-shadow:0 0 0 14px rgba(14,165,233,0);} }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 28</div>
+      <h1 class="text-xl font-bold">🛒 Apriori &amp; Association Rules — Mine "People Who Bought X Also Bought Y"</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1">Nobody told it diapers go with beer. It found out from the receipts.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Below is a tiny stack of shopping <strong>baskets</strong> — each row is one checkout, each blue cell an item that was in it. <strong>Apriori</strong> reads nothing but co-occurrence and answers two questions: which <em>sets</em> of items show up together often enough to matter (<strong>frequent itemsets</strong>), and which of those become trustworthy <strong>if-then rules</strong> (<em>X → Y</em>). It works in levels — first single items, then pairs, then triples — and its one clever trick is the <strong>Apriori principle</strong>: if a set is rare, every superset of it must be rare too, so whole branches of candidates get <strong>pruned before they are ever counted</strong>. Slide <strong>min-support</strong> and <strong>min-confidence</strong>, toggle items in the baskets, and watch the frequent itemsets grow level-by-level, the pruned candidates get culled, and the rules re-sort by <strong>lift</strong>. The classic <span class="font-bold text-sky-700">{diapers} → {beer}</span> rule is highlighted when it survives.</p>
+
+      <div class="flex justify-center gap-5 mb-4 text-sm font-bold text-slate-600 flex-wrap">
+        <div>Baskets: <span id="aN" class="stat text-sky-600">—</span></div>
+        <div>Min-support: <span id="aSup" class="stat text-sky-600">—</span></div>
+        <div>Min-confidence: <span id="aConf" class="stat text-sky-600">—</span></div>
+        <div>Frequent itemsets: <span id="aFreq" class="stat text-sky-600">—</span></div>
+        <div>Rules: <span id="aRules" class="stat text-sky-600">—</span></div>
+        <div>Top rule by lift: <span id="aTop" class="stat text-sky-600">—</span></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start">
+        <div>
+          <div class="text-xs font-bold text-slate-500 mb-2">BASKETS — click a cell to toggle an item · ✕ removes a basket</div>
+          <div id="baskets" class="inline-block bg-white rounded-2xl border-2 border-slate-200 p-4 shadow-lg"></div>
+          <div class="mt-3 flex justify-center gap-2 flex-wrap">
+            <button id="addTx"   class="bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg font-semibold text-sm">＋ Add basket</button>
+            <button id="resetTx" class="bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg font-semibold text-sm">↺ Reset baskets</button>
+          </div>
+        </div>
+        <div id="levels" class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:430px;min-height:340px;"></div>
+      </div>
+
+      <!-- controls -->
+      <div class="flex justify-center mt-5 gap-8 flex-wrap items-center">
+        <label class="text-sm font-bold text-slate-500 flex items-center gap-2">min-support
+          <input id="supSlider" type="range" min="0.1" max="0.7" step="0.05" value="0.3" class="w-44 accent-sky-600">
+          <span id="supVal" class="stat text-sky-600 w-24">0.30 (≥3)</span>
+        </label>
+        <label class="text-sm font-bold text-slate-500 flex items-center gap-2">min-confidence
+          <input id="confSlider" type="range" min="0.3" max="1" step="0.05" value="0.6" class="w-44 accent-sky-600">
+          <span id="confVal" class="stat text-sky-600 w-12">0.60</span>
+        </label>
+        <button id="runBtn" class="bg-sky-600 hover:bg-sky-700 text-white px-6 py-2 rounded-lg font-semibold text-sm">▶ Run Apriori</button>
+      </div>
+
+      <!-- rules -->
+      <div class="mt-6 bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left max-w-4xl mx-auto">
+        <div class="text-xs font-bold text-slate-500 mb-2">ASSOCIATION RULES — sorted by lift · <span style="color:#047857">lift&gt;1 positive</span> · <span style="color:#64748b">≈1 independent</span> · <span style="color:#dc2626">&lt;1 negative</span></div>
+        <div id="rules" class="overflow-x-auto"></div>
+      </div>
+
+      <div class="mt-5 bg-sky-50 border border-sky-200 rounded-xl p-4 text-left text-xs text-sky-900 max-w-4xl mx-auto">
+        <strong>Support, confidence, lift — the three numbers:</strong> <em>support(X)</em> is how often X appears (popularity); <em>confidence(X→Y)</em> = support(X∪Y)/support(X) is how often Y shows up <em>given</em> X (reliability); <em>lift</em> = confidence / support(Y) asks whether X actually makes Y <strong>more likely than chance</strong>. Confidence alone lies: {anything}→{bread} looks strong simply because almost every basket has bread — that is the <strong>base-rate trap</strong>. Lift corrects for it: <strong>lift&gt;1</strong> means a genuine positive association, <strong>=1</strong> means independent, <strong>&lt;1</strong> means buying X actually makes Y <em>less</em> likely. That is why the rules table is ranked by lift, not confidence.
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Apriori mines rules</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">One-hot the baskets, count support, keep the frequent singletons, then grow candidates level-by-level with the <em>join + downward-closure prune</em> that is the whole point of Apriori — and finally read out the rules with confidence and lift. All in vanilla JS, then the real library version in a handful of lines.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The baskets &amp; support</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Everything starts from a list of transactions — each a set of item names. <strong>Support</strong> of an itemset is just the fraction of baskets that contain <em>all</em> of its items. It is the one primitive the whole algorithm counts.</p>
+        <div class="relative"><pre>const TX = [
+  ["milk","bread","butter"],
+  ["beer","diapers","chips"],
+  ["milk","bread","beer","diapers","chips"],
+  // ... one array per checkout
+];
+const N = TX.length;
+const sets = TX.map(t =&gt; new Set(t));
+const support = items =&gt;                 // fraction of baskets containing ALL items
+  sets.filter(s =&gt; items.every(it =&gt; s.has(it))).length / N;</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Level 1: frequent single items</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Score every individual item and drop the ones below <code>minSup</code>. This first cull is what makes everything after it cheap — a rare item can never be part of a frequent pair, so it is gone for good.</p>
+        <div class="relative"><pre>const items = [...new Set(TX.flat())];              // the item universe
+function frequentSingletons(minSup){
+  return items
+    .map(it =&gt; ({ set:[it], sup:support([it]) }))
+    .filter(c =&gt; c.sup &gt;= minSup);                   // min-support prune
+}
+let L = frequentSingletons(minSup);                 // L1
+</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Candidate generation: join</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Keep items in a fixed canonical order. To build (k+1)-candidates, join two frequent k-itemsets that share their first k−1 items and differ only in the last — that produces each candidate exactly once, no duplicates.</p>
+        <div class="relative"><pre>function join(Lk, k){                               // Lk = frequent k-itemsets (sorted)
+  const out = [];
+  for (let i=0;i&lt;Lk.length;i++)
+    for (let j=i+1;j&lt;Lk.length;j++){
+      const a=Lk[i].set, b=Lk[j].set;
+      let share=true;
+      for (let x=0;x&lt;k-1;x++) if (a[x]!==b[x]) share=false;   // first k-1 match
+      if (share &amp;&amp; rank(a[k-1]) &lt; rank(b[k-1]))                // keep last ordered
+        out.push([...a.slice(0,k-1), a[k-1], b[k-1]]);
+    }
+  return out;                                       // C(k+1)
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The Apriori prune (downward closure)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Before spending a single scan counting a candidate, check that <em>every</em> one of its k-subsets was frequent. If even one wasn't, the candidate cannot possibly be frequent — kill it now. This is the Apriori principle, and it is what turns an exponential search into a tractable one.</p>
+        <div class="relative"><pre>function prune(cands, prevKeys){                     // prevKeys = Set of frequent k-itemset keys
+  return cands.filter(c =&gt;
+    c.every((_, drop) =&gt;                             // every (k)-subset...
+      prevKeys.has(key(c.filter((_, ix) =&gt; ix !== drop)))   // ...must be frequent
+    ));                                             // else: never even counted
+}
+function apriori(minSup){
+  let L = frequentSingletons(minSup), all = [...L], k = 1;
+  while (L.length){
+    const prevKeys = new Set(L.map(x =&gt; key(x.set)));
+    const cands = prune(join(L, k), prevKeys);       // JOIN then PRUNE
+    L = cands.map(set =&gt; ({set, sup:support(set)}))
+             .filter(c =&gt; c.sup &gt;= minSup);          // then count + min-support
+    all.push(...L); k++;
+  }
+  return all;                                        // every frequent itemset
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Rules: confidence &amp; lift</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Frequent itemsets are only the raw material. For every itemset of size ≥2, split it into an antecedent X and consequent Y in every way, then score the rule. Keep the ones above <code>minConf</code> and rank by <strong>lift</strong>, which is the honest measure of association.</p>
+        <div class="relative"><pre>function rules(freq, minConf){
+  const out = [];
+  for (const {set, sup} of freq){
+    if (set.length &lt; 2) continue;
+    for (const [X, Y] of properSplits(set)){         // every non-empty X | Y
+      const conf = sup / support(X);                 // P(Y | X)
+      const lift = conf / support(Y);                // vs P(Y): >1 = positive
+      if (conf &gt;= minConf) out.push({X, Y, sup, conf, lift});
+    }
+  }
+  return out.sort((a,b) =&gt; b.lift - a.lift);          // best associations first
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">In the real world — mlxtend</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Nobody hand-rolls this at scale. <code>mlxtend</code> gives you Apriori and rule generation in a few lines over a one-hot DataFrame; for big, dense data swap in <code>fpgrowth</code> (same API, no candidate generation) which is Apriori's faster successor.</p>
+        <div class="relative"><pre># pip install mlxtend
+import pandas as pd
+from mlxtend.preprocessing import TransactionEncoder
+from mlxtend.frequent_patterns import apriori, association_rules
+
+te = TransactionEncoder()
+onehot = pd.DataFrame(te.fit_transform(TX), columns=te.columns_)   # one-hot baskets
+
+freq  = apriori(onehot, min_support=0.3, use_colnames=True)        # frequent itemsets
+rules = association_rules(freq, metric="confidence", min_threshold=0.6)
+print(rules.sort_values("lift", ascending=False)
+           [["antecedents","consequents","support","confidence","lift"]])
+
+# same call, faster engine on dense data:
+# from mlxtend.frequent_patterns import fpgrowth
+# freq = fpgrowth(onehot, min_support=0.3, use_colnames=True)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 28 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You built a real market-basket miner: support counting, level-by-level frequent itemsets, the join + downward-closure prune that is Apriori's core idea, and rule generation ranked by lift — the same pipeline behind "customers who bought this also bought". <strong>👉 Tomorrow — Day 29: SHAP</strong> — open the black box and attribute a single prediction to each feature with Shapley values from game theory.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= Apriori demo =================
+const ITEMS = ["milk","bread","butter","eggs","beer","diapers","chips"];
+const EMOJI = {milk:"🥛",bread:"🍞",butter:"🧈",eggs:"🥚",beer:"🍺",diapers:"🧷",chips:"🍟"};
+const IDX = Object.fromEntries(ITEMS.map((n,i)=>[n,i]));
+const CLASSIC = new Set(["beer","diapers"]);   // the rule we highlight
+
+// seed baskets — verified in Node against a brute-force itemset scan
+const TX0 = [
+  ["milk","bread","butter"],
+  ["beer","diapers","chips"],
+  ["milk","bread","beer","diapers","chips"],
+  ["bread","butter","beer","diapers"],
+  ["milk","bread","butter","eggs"],
+  ["beer","diapers","chips"],
+  ["milk","chips"],
+  ["beer","diapers"],
+  ["milk","bread","eggs"],
+  ["milk","beer","diapers","chips"],
+];
+let TX = TX0.map(t => t.slice());
+let minSup = 0.3, minConf = 0.6;
+
+const skey = arr => arr.slice().sort((a,b)=>IDX[a]-IDX[b]).join(",");
+function support(items){
+  let c=0;
+  for (const t of TX){ let all=true; for (const it of items){ if(!t.includes(it)){all=false;break;} } if(all)c++; }
+  return TX.length ? c/TX.length : 0;
+}
+const countOf = items => Math.round(support(items)*TX.length);
+
+// ---- Apriori with a full generation trace so pruning is visible ----
+function apriori(){
+  const levels=[], trace=[];
+  // L1
+  const c1 = ITEMS.map(it=>({items:[it], sup:support([it])}));
+  let L = c1.filter(c=>c.sup>=minSup-1e-9);
+  levels.push(L);
+  trace.push({k:1, cands:c1.map(c=>({items:c.items, sup:c.sup, kept:c.sup>=minSup-1e-9, prune:null}))});
+
+  let k=2;
+  while (L.length){
+    const prev = L.map(x=>x.items.slice().sort((a,b)=>IDX[a]-IDX[b]));
+    const prevKeys = new Set(prev.map(skey));
+    // JOIN
+    const cands=[];
+    for (let i=0;i<prev.length;i++) for (let j=i+1;j<prev.length;j++){
+      const a=prev[i], b=prev[j]; let share=true;
+      for (let x=0;x<k-2;x++) if (a[x]!==b[x]){share=false;break;}
+      if (!share) continue;
+      if (IDX[a[k-2]]>=IDX[b[k-2]]) continue;
+      cands.push([...a.slice(0,k-2), a[k-2], b[k-2]]);
+    }
+    // PRUNE (downward closure) then count
+    const ct=[], survivors=[];
+    for (const c of cands){
+      let bad=null;
+      if (k>=3){
+        for (let d=0; d<c.length; d++){
+          const sub=c.filter((_,ix)=>ix!==d);
+          if (!prevKeys.has(skey(sub))){ bad=sub; break; }
+        }
+      }
+      if (bad){ ct.push({items:c, sup:null, kept:false, prune:bad}); }
+      else {
+        const sup=support(c), kept=sup>=minSup-1e-9;
+        ct.push({items:c, sup, kept, prune:null});
+        if (kept) survivors.push({items:c, sup});
+      }
+    }
+    trace.push({k, cands:ct});
+    if (!survivors.length) break;
+    levels.push(survivors); L=survivors; k++;
+  }
+  return {levels, trace};
+}
+function mineRules(levels){
+  const freq=[]; levels.forEach(L=>L.forEach(x=>{ if(x.items.length>=2) freq.push(x); }));
+  const out=[];
+  for (const {items,sup} of freq){
+    const n=items.length;
+    for (let mask=1; mask<(1<<n)-1; mask++){
+      const X=[],Y=[]; for(let b=0;b<n;b++){ (mask&(1<<b))?X.push(items[b]):Y.push(items[b]); }
+      const conf=sup/support(X), lift=conf/support(Y);
+      if (conf>=minConf-1e-9) out.push({X,Y,sup,conf,lift});
+    }
+  }
+  out.sort((a,b)=> b.lift-a.lift || b.conf-a.conf);
+  return out;
+}
+
+// ---- render baskets matrix ----
+function renderBaskets(){
+  let h='<table class="tx-grid"><thead><tr><th class="corner"></th>';
+  for (const it of ITEMS) h+=`<th class="it"><span class="em">${EMOJI[it]}</span>${it}</th>`;
+  h+='<th></th></tr></thead><tbody>';
+  TX.forEach((t,r)=>{
+    h+=`<tr><th class="tname">T${r+1}</th>`;
+    for (const it of ITEMS){
+      const on=t.includes(it);
+      h+=`<td class="tx-cell ${on?"on":"off"}" data-r="${r}" data-it="${it}" title="${on?"remove":"add"} ${it}">${on?EMOJI[it]:""}</td>`;
+    }
+    h+=`<td class="tx-del" data-del="${r}" title="remove basket T${r+1}">✕</td>`;
+    h+='</tr>';
+  });
+  h+='</tbody></table>';
+  document.getElementById("baskets").innerHTML=h;
+}
+
+// ---- render frequent-itemset levels + pruning ----
+function fmtSet(items){ return "{"+items.map(i=>EMOJI[i]).join("")+"}"; }
+function renderLevels(trace){
+  let h='<div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-1">Frequent itemsets, level by level</div>';
+  h+=`<div class="text-[11px] text-slate-500 mb-3">Each level joins the survivors into candidates, prunes by the Apriori principle, then keeps those with support ≥ ${minSup.toFixed(2)} (≥ ${Math.ceil(minSup*TX.length)} of ${TX.length}).</div>`;
+  trace.forEach(t=>{
+    const kept=t.cands.filter(c=>c.kept).length;
+    h+=`<div class="mb-3"><div class="text-xs font-bold text-slate-600 mb-1">C${t.k} → L${t.k} <span class="text-slate-400 font-normal">(${kept} frequent ${t.k}-itemset${kept===1?"":"s"})</span></div><div>`;
+    t.cands.forEach(c=>{
+      if (c.prune){
+        h+=`<span class="cand prune" title="pruned by downward closure: its subset {${c.prune.join(",")}} is not frequent, so this cannot be either — never counted">✂ ${fmtSet(c.items)} <span class="text-[10px]">sub {${c.prune.map(i=>EMOJI[i]).join("")}} rare</span></span>`;
+      } else if (c.kept){
+        h+=`<span class="cand keep" title="support ${(c.sup*100).toFixed(0)}%">${fmtSet(c.items)} <span class="sup">${countOf(c.items)}/${TX.length}</span></span>`;
+      } else {
+        h+=`<span class="cand supcull" title="support ${(c.sup*100).toFixed(0)}% below min">${fmtSet(c.items)} <span class="sup">${countOf(c.items)}/${TX.length}</span></span>`;
+      }
+    });
+    if (!t.cands.length) h+=`<span class="text-xs text-slate-400">no candidates — done.</span>`;
+    h+='</div></div>';
+  });
+  h+=`<div class="mt-2 text-[11px] text-slate-500"><span class="cand keep" style="padding:1px 6px">kept</span> frequent &nbsp; <span class="cand supcull" style="padding:1px 6px">culled</span> support&lt;min &nbsp; <span class="cand prune" style="padding:1px 6px">✂ pruned</span> subset infrequent (downward closure — never counted)</div>`;
+  document.getElementById("levels").innerHTML=h;
+}
+
+// ---- render rules ----
+function renderRules(rules){
+  if (!rules.length){ document.getElementById("rules").innerHTML='<div class="text-sm text-slate-400 py-4 text-center">No rules meet these thresholds. Lower min-confidence or min-support.</div>'; return; }
+  const maxLift=Math.max.apply(null, rules.map(r=>r.lift));
+  let h='<table class="w-full" style="border-collapse:collapse"><thead><tr class="text-[11px] uppercase text-slate-400 font-bold"><th class="text-left px-2.5 py-1">Rule</th><th class="text-right px-2.5">support</th><th class="text-right px-2.5">confidence</th><th class="text-right px-2.5">lift</th><th class="px-2.5" style="width:120px"></th></tr></thead><tbody>';
+  rules.forEach(r=>{
+    const union=new Set([...r.X,...r.Y]);
+    const isClassic = union.size===2 && [...union].every(i=>CLASSIC.has(i));
+    const liftCol = r.lift>1.001 ? "#047857" : r.lift<0.999 ? "#dc2626" : "#64748b";
+    const w=Math.round(Math.min(1,r.lift/Math.max(maxLift,1))*100);
+    h+=`<tr class="rule-tr ${isClassic?"classic":""}">
+      <td><span class="font-bold text-slate-700">${r.X.map(i=>EMOJI[i]+" "+i).join(", ")}</span> <span class="lvl-arrow">→</span> <span class="font-bold text-slate-700">${r.Y.map(i=>EMOJI[i]+" "+i).join(", ")}</span>${isClassic?' <span class="text-[10px] font-bold text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded">🍺 classic</span>':""}</td>
+      <td class="text-right stat text-slate-500">${r.sup.toFixed(2)}</td>
+      <td class="text-right stat font-semibold text-slate-700">${r.conf.toFixed(2)}</td>
+      <td class="text-right stat font-extrabold" style="color:${liftCol}">${r.lift.toFixed(2)}</td>
+      <td><div class="bg-slate-100 rounded"><div class="liftbar" style="width:${w}%;background:${liftCol}"></div></div></td>
+    </tr>`;
+  });
+  h+='</tbody></table>';
+  document.getElementById("rules").innerHTML=h;
+}
+
+function run(){
+  const {levels, trace}=apriori();
+  const rules=mineRules(levels);
+  renderBaskets();
+  renderLevels(trace);
+  renderRules(rules);
+  const nFreq=levels.reduce((s,L)=>s+L.length,0);
+  document.getElementById("aN").textContent=TX.length;
+  document.getElementById("aSup").textContent=`${minSup.toFixed(2)} (≥${Math.ceil(minSup*TX.length)})`;
+  document.getElementById("aConf").textContent=minConf.toFixed(2);
+  document.getElementById("aFreq").textContent=nFreq;
+  document.getElementById("aRules").textContent=rules.length;
+  document.getElementById("aTop").textContent = rules.length
+    ? `${fmtSet(rules[0].X)}→${fmtSet(rules[0].Y)} (${rules[0].lift.toFixed(2)})` : "—";
+}
+
+// ---- controls ----
+document.getElementById("baskets").addEventListener("click", e=>{
+  const cell=e.target.closest(".tx-cell"), del=e.target.closest(".tx-del");
+  if (del){ const r=+del.dataset.del; if (TX.length>1){ TX.splice(r,1); run(); } return; }
+  if (!cell) return;
+  const r=+cell.dataset.r, it=cell.dataset.it, i=TX[r].indexOf(it);
+  if (i>=0) TX[r].splice(i,1); else TX[r].push(it);
+  run();
+});
+document.getElementById("addTx").onclick=()=>{ TX.push(["bread"]); run(); };
+document.getElementById("resetTx").onclick=()=>{ TX=TX0.map(t=>t.slice()); run(); };
+const supS=document.getElementById("supSlider"), confS=document.getElementById("confSlider");
+supS.oninput=()=>{ minSup=+supS.value; document.getElementById("supVal").textContent=`${minSup.toFixed(2)} (≥${Math.ceil(minSup*TX.length)})`; run(); };
+confS.oninput=()=>{ minConf=+confS.value; document.getElementById("confVal").textContent=minConf.toFixed(2); run(); };
+document.getElementById("runBtn").onclick=e=>{ e.currentTarget.classList.remove("run-pulse"); void e.currentTarget.offsetWidth; e.currentTarget.classList.add("run-pulse"); run(); };
+
+run();
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. The market-basket problem", why:"Every retailer sits on a mountain of receipts: each transaction is just a set of items bought together. Buried in that pile is which products travel together — knowledge worth real money for store layout, bundling, cross-sell and coupons. Association rule mining is the unsupervised task of surfacing those co-occurrence patterns automatically, with no labels and no target variable. The canonical (possibly apocryphal) find is {diapers} → {beer}: late-evening shoppers grabbing diapers also grabbed beer. The goal is to find such patterns and, crucially, to know which are real signal and which are coincidence.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">each basket = a SET of items<br>{milk, bread, butter}<br>{beer, diapers, chips}<br>GOAL: which items travel together?</div>`, code:`// transactions: one set of items per checkout
+const TX = [
+  ["milk","bread","butter"],
+  ["beer","diapers","chips"],
+  // ... thousands more
+];
+// no labels, no target — just co-occurrence.` },
+ { title:"2. Support, confidence, lift", why:"Three numbers govern everything. SUPPORT(X) is the fraction of baskets containing itemset X — its raw popularity. CONFIDENCE(X→Y) = support(X∪Y)/support(X) is the conditional probability of Y given X — how reliable the rule is. LIFT = confidence/support(Y) compares that reliability against Y's own base rate: lift>1 means X and Y appear together more than chance would predict (positive association), lift=1 means independent, lift<1 means negative. Support finds what's common, confidence finds what's reliable, lift finds what's genuinely related.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">support(X) = #baskets with X / N<br>conf(X&rarr;Y) = support(X&cup;Y) / support(X)<br>lift(X&rarr;Y) = conf / support(Y)<br>lift &gt;1 positive &middot; =1 independent &middot; &lt;1 negative</div>`, code:`const support = items =>
+  sets.filter(s => items.every(it => s.has(it))).length / N;
+
+const conf = (X,Y) => support([...X,...Y]) / support(X);
+const lift = (X,Y) => conf(X,Y) / support(Y);` },
+ { title:"3. Frequent itemsets", why:"A rule is only worth stating if the combination behind it actually happens often — a rule backed by two baskets out of a million is noise. So the first half of the whole task is to find every FREQUENT ITEMSET: every set of items whose support clears a minimum threshold you choose. Set the threshold high and you get a handful of blockbuster combos; set it low and you drown in rare, flaky patterns. Frequent itemsets are the raw material; rules are distilled from them in a second pass.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">frequent itemset: support &ge; minSup<br>{beer, diapers} &nbsp;6/10 &nbsp;&check;<br>{milk, beer} &nbsp;&nbsp;2/10 &nbsp;&cross;<br>threshold is YOUR knob</div>`, code:`// keep only itemsets that are common enough
+const frequent = itemsets.filter(s => support(s) >= minSup);
+// high minSup -> few, strong sets
+// low  minSup -> many, flaky sets` },
+ { title:"4. The combinatorial blowup", why:"Why not just count the support of every possible itemset? Because there are 2^d of them. With only 100 distinct products that is more subsets than atoms in your body; a real supermarket has tens of thousands of SKUs. You cannot enumerate, let alone scan the database for, every combination. This exponential explosion is the entire reason a naive approach fails and why a smart pruning strategy — not brute force — is required to make itemset mining feasible at all.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">d items &rarr; 2<sup>d</sup> possible itemsets<br>d=10 &rarr; 1,023<br>d=100 &rarr; 1.3 &times; 10<sup>30</sup><br>brute force is hopeless &rarr; must PRUNE</div>`, code:`// naive: score every subset -> 2^d of them
+for (let mask=1; mask<(1<<d); mask++){ /* ... */ }
+// d=40 => a trillion subsets. Impossible.
+// we need to avoid generating most of them.` },
+ { title:"5. The Apriori principle (downward closure)", why:"Here is the insight that makes it tractable, and it is beautifully simple: if an itemset is infrequent, then EVERY superset of it is also infrequent. Adding more items to a basket-requirement can only ever match fewer baskets, never more, so support is monotonically non-increasing as sets grow. The contrapositive is what we use: all subsets of a frequent itemset must themselves be frequent. So the moment {bread,chips} proves rare, we know {bread,chips,anything} is rare too — an entire subtree of candidates can be discarded without ever counting it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">if support(X) &lt; minSup<br>then support(X &cup; anything) &lt; minSup<br>&rArr; every superset of a rare set is rare<br>&rArr; all subsets of a frequent set are frequent</div>`, code:`// downward closure = monotonicity of support
+// support(superset) <= support(subset)   ALWAYS
+//
+// so once {bread,chips} is infrequent,
+// {bread,chips,milk}, {bread,chips,beer}, ...
+// are ALL infrequent — skip them entirely.` },
+ { title:"6. Candidate generation: join + prune", why:"Apriori walks up one level at a time. From the frequent k-itemsets it GENERATES the (k+1)-candidates by joining pairs that share their first k−1 items (canonical ordering guarantees each candidate is built once). Then, before counting anything, it PRUNES: any candidate with even one infrequent k-subset is dropped immediately — that is downward closure doing the work. Only the survivors get a database scan to measure their true support. Join to propose, prune to discard cheaply, scan to confirm — that three-step loop is the whole algorithm.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">L<sub>k</sub> &mdash;JOIN&rarr; C<sub>k+1</sub> &mdash;PRUNE&rarr; scan &rarr; L<sub>k+1</sub><br>join: share first k&minus;1 items<br>prune: drop if any k-subset infrequent<br>scan: count only the survivors</div>`, code:`const prevKeys = new Set(Lk.map(x => key(x.set)));
+const cands = join(Lk, k).filter(c =>
+  c.every((_, drop) =>                       // PRUNE
+    prevKeys.has(key(c.filter((_,i)=>i!==drop)))));
+const Lnext = cands.map(set => ({set, sup:support(set)}))
+                   .filter(c => c.sup >= minSup);   // SCAN` },
+ { title:"7. Generating the rules", why:"Frequent itemsets tell you what co-occurs; rules tell you what implies what. For each frequent itemset of size ≥2, split it into an antecedent X and consequent Y in every non-empty way and compute the confidence. Keep the splits that clear minConf. Note the asymmetry: {diapers}→{beer} and {beer}→{diapers} share the same support but can have very different confidence, because they divide by different denominators. There is a second downward-closure trick here too — if a rule fails confidence, rules that move more items to the consequent will fail as well.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">for each frequent itemset (size &ge; 2):<br>split into X &rarr; Y every way<br>keep if conf(X&rarr;Y) &ge; minConf<br>{d,b} &rarr; d&rarr;b AND b&rarr;d (diff. confidence)</div>`, code:`for (const {set, sup} of frequentSets){
+  if (set.length < 2) continue;
+  for (const [X, Y] of properSplits(set)){
+    const conf = sup / support(X);
+    if (conf >= minConf) emit({X, Y, conf, lift: conf/support(Y)});
+  }
+}` },
+ { title:"8. Lift vs the confidence trap", why:"High confidence can be a mirage. If bread is in 80% of baskets, then {anything}→{bread} scores ~0.8 confidence automatically — not because your antecedent predicts bread, but because bread is everywhere. That is the base-rate trap. LIFT fixes it by dividing confidence by support(Y): it asks whether X makes Y more likely than Y already is. Lift>1 is a real positive association, lift=1 means X tells you nothing about Y, lift<1 means X actually suppresses Y. Always rank rules by lift (or a cousin like leverage/conviction), never by confidence alone.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">bread in 80% of baskets<br>{x}&rarr;{bread} conf&asymp;0.8 for ANY x &mdash; fake<br>lift = conf / support(bread) &asymp; 1 &rarr; no signal<br>rank by LIFT, not confidence</div>`, code:`// confidence alone rewards popular consequents
+rules.sort((a,b) => b.confidence - a.confidence); // MISLEADING
+// lift corrects for the base rate of Y
+rules.sort((a,b) => b.lift - a.lift);             // honest ranking` },
+ { title:"9. FP-Growth, the faster successor", why:"Apriori is the clearest way to understand itemset mining, but it has a cost: it rescans the database at every level and can generate huge candidate sets on dense data. FP-Growth removes both problems. It compresses the transactions into an FP-tree (a prefix tree of items) in two passes, then mines frequent patterns recursively straight from the tree with NO candidate generation at all — often an order of magnitude faster. Same inputs, same frequent itemsets, same rules afterward; just a smarter engine. In practice you reach for fpgrowth on large data and keep Apriori as the mental model.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Apriori: many DB scans + big candidate sets<br>FP-Growth: build FP-tree, mine recursively<br>NO candidate generation &rarr; much faster<br>same frequent itemsets out the other end</div>`, code:`# mlxtend: drop-in faster engine, identical API
+from mlxtend.frequent_patterns import fpgrowth, association_rules
+freq  = fpgrowth(onehot, min_support=0.3, use_colnames=True)
+rules = association_rules(freq, metric="lift", min_threshold=1.0)` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
