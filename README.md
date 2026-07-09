@@ -35,6 +35,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 26 — Isolation Forest](https://dev48v.infy.uk/ml/day26-isolation-forest.html) — `day26-isolation-forest.html`
 - [MachineLearningFromZero · Day 27 — Collaborative Filtering](https://dev48v.infy.uk/ml/day27-recommender.html) — `day27-recommender.html`
 - [MachineLearningFromZero · Day 28 — Apriori & Association Rules](https://dev48v.infy.uk/ml/day28-apriori.html) — `day28-apriori.html`
+- [MachineLearningFromZero · Day 29 — SHAP (Shapley values)](https://dev48v.infy.uk/ml/day29-shap.html) — `day29-shap.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

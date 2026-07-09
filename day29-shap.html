@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 29 — SHAP (Shapley Values)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .run-pulse { animation: runPulse .5s ease-out; }
+  @keyframes runPulse { 0% { box-shadow:0 0 0 0 rgba(14,165,233,.55);} 100% { box-shadow:0 0 0 14px rgba(14,165,233,0);} }
+  /* feature editor */
+  .feat-row { display:grid; grid-template-columns:150px 1fr 96px; align-items:center; gap:10px; padding:5px 0; }
+  .feat-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .feat-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  /* waterfall */
+  .wf-row { display:grid; grid-template-columns:176px 1fr 76px; align-items:center; gap:8px; height:32px; }
+  .wf-label { font-size:12px; font-weight:700; color:#334155; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .wf-track { position:relative; height:20px; background:#f8fafc; border-radius:5px; }
+  .wf-bar { position:absolute; top:0; height:20px; border-radius:4px; transition:all .35s ease; }
+  .wf-up   { background:#ef4444; }   /* pushes the prediction UP */
+  .wf-down { background:#0ea5e9; }   /* pushes the prediction DOWN */
+  .wf-phi  { font-size:12px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .gridline { position:absolute; top:-3px; bottom:-3px; width:0; border-left:2px dashed #94a3b8; }
+  .gridline.pred { border-left:2px solid #0f172a; }
+  /* force plot */
+  .force-track { position:relative; height:48px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; }
+  .force-seg { position:absolute; top:0; height:48px; display:flex; align-items:center; justify-content:center;
+               font-size:10px; font-weight:800; color:#fff; overflow:hidden; white-space:nowrap; transition:all .35s ease; box-shadow:inset 0 0 0 1px rgba(255,255,255,.25); }
+  /* global bars */
+  .gbar-row { display:grid; grid-template-columns:150px 1fr 62px; align-items:center; gap:10px; height:32px; }
+  .gbar-track { background:#f1f5f9; border-radius:5px; height:18px; position:relative; }
+  .gbar-fill { height:18px; border-radius:5px; background:linear-gradient(90deg,#0ea5e9,#38bdf8); transition:width .35s ease; }
+  .preset-btn { border:1px solid #e2e8f0; }
+  .preset-btn:hover { border-color:#38bdf8; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 29</div>
+      <h1 class="text-xl font-bold">🔍 SHAP &amp; Feature Importance — Attribute a Prediction to Each Feature</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1">The model approved the loan. SHAP tells you which facts earned the yes — and by exactly how much.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Below is a small, transparent loan-approval model over five features. Pick an applicant and it returns an approval <strong>probability</strong> — but the interesting question is <em>why</em>. <strong>SHAP</strong> borrows the <strong>Shapley value</strong> from cooperative game theory: treat the features as <strong>players</strong> cooperating to produce the prediction, and hand each one a <strong>fair share</strong> of the payout — the amount the prediction sits away from the model's average output. Each feature's share is its <strong>average marginal contribution</strong> across <em>every</em> coalition of the other features, and here it is computed <strong>exactly</strong> — all 2<sup>5</sup> = 32 subsets enumerated, no approximation. The <strong>waterfall</strong> starts at the <strong>base value</strong> (an average applicant) and each feature pushes the probability <span class="font-bold" style="color:#ef4444">up (red)</span> or <span class="font-bold" style="color:#0ea5e9">down (blue)</span> until it lands on <em>this</em> applicant's number. Because the shares are fair, they add up <strong>exactly</strong> to prediction − base. Drag any feature and re-explain; the bar chart on the right ranks features by their <strong>global</strong> impact across many applicants.</p>
+
+      <div class="flex justify-center gap-5 mb-4 text-sm font-bold text-slate-600 flex-wrap">
+        <div>Features: <span id="sN" class="stat text-sky-600">—</span></div>
+        <div>Coalitions / feature: <span id="sC" class="stat text-sky-600">—</span></div>
+        <div>Base value E[f(x)]: <span id="sBase" class="stat text-sky-600">—</span></div>
+        <div>Prediction f(x): <span id="sPred" class="stat text-sky-600">—</span></div>
+        <div>Σφ = f(x) − base: <span id="sSum" class="stat text-sky-600">—</span></div>
+        <div>Top driver: <span id="sTop" class="stat text-sky-600">—</span></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:430px;">
+          <div class="text-xs font-bold text-slate-500 mb-2">APPLICANT — drag a feature, then re-explain</div>
+          <div id="feats"></div>
+          <div class="mt-3 flex flex-wrap gap-2 items-center">
+            <span class="text-[11px] font-bold text-slate-400 uppercase">presets</span>
+            <button data-preset="sample"  class="preset-btn bg-slate-50 hover:bg-slate-100 px-2.5 py-1 rounded-lg font-semibold text-xs">This applicant</button>
+            <button data-preset="strong"  class="preset-btn bg-slate-50 hover:bg-slate-100 px-2.5 py-1 rounded-lg font-semibold text-xs">Strong</button>
+            <button data-preset="risky"   class="preset-btn bg-slate-50 hover:bg-slate-100 px-2.5 py-1 rounded-lg font-semibold text-xs">Risky</button>
+            <button data-preset="average" class="preset-btn bg-slate-50 hover:bg-slate-100 px-2.5 py-1 rounded-lg font-semibold text-xs">Average (=base)</button>
+          </div>
+          <button id="reexplain" class="mt-3 w-full bg-sky-600 hover:bg-sky-700 text-white px-6 py-2 rounded-lg font-semibold text-sm">🔍 Re-explain this prediction</button>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:560px;">
+          <div class="text-xs font-bold text-slate-500 mb-4">WATERFALL — base value → each feature's SHAP push → f(x) · <span style="color:#ef4444">red up</span> · <span style="color:#0ea5e9">blue down</span></div>
+          <div id="waterfall" class="mt-2"></div>
+        </div>
+      </div>
+
+      <div class="mt-6 bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left max-w-4xl mx-auto">
+        <div class="text-xs font-bold text-slate-500 mb-3">FORCE PLOT — the same SHAP values as opposing forces meeting at the prediction</div>
+        <div id="force" class="force-track"></div>
+        <div id="forceCap" class="mt-2 text-xs text-slate-500 text-center"></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:430px;">
+          <div class="text-xs font-bold text-slate-500 mb-3">GLOBAL IMPORTANCE — mean |SHAP| across the applicant pool</div>
+          <div id="global"></div>
+          <div class="mt-2 text-[11px] text-slate-400">Local (the waterfall) explains <em>one</em> row; global averages the magnitude of each feature's SHAP over many rows to rank what the model relies on overall.</div>
+        </div>
+        <div class="bg-sky-50 border border-sky-200 rounded-2xl p-4 text-left text-xs text-sky-900 shadow-lg" style="width:560px;">
+          <strong>Why the shares always reconcile:</strong> the Shapley value obeys an <strong>efficiency</strong> axiom — for any way of defining a "missing" feature, the exact shares sum to <em>v(all) − v(∅)</em>, i.e. <strong>prediction − base value</strong>. So the waterfall is a closed accounting, not a heuristic: every point of the gap between the average applicant and this one is handed to some feature. The catch is cost — the exact sum runs over <strong>2<sup>n</sup></strong> coalitions, fine for 5 features (32) but hopeless for 100. That is why production libraries approximate: <strong>KernelSHAP</strong> samples coalitions and fits a weighted regression, while <strong>TreeSHAP</strong> exploits tree structure to get the <em>exact</em> values in polynomial time — the reason SHAP pairs so naturally with XGBoost and LightGBM.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How SHAP explains a prediction</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Define a small transparent model and a background, spell out the value function <code>v(S)</code> that marginalises the "absent" features, then compute <strong>exact</strong> Shapley values by enumerating every coalition. Check that they sum to prediction − base (the efficiency axiom), aggregate them into global importance — and finally reach for the real <code>shap</code> library with <code>TreeExplainer</code>.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The model &amp; the background</h3></div>
+        <p class="text-sm text-slate-600 mb-3">SHAP explains predictions <em>relative to a baseline</em>. That baseline is a <strong>background</strong> distribution — here just the population means. The <strong>base value</strong> is the model's output on that background: the prediction for a featureless "average" applicant.</p>
+        <div class="relative"><pre>// a small, transparent logistic model: loan-approval probability
+const W = { income:0.02, credit:0.01, debt:-0.05, age:0.01, emp:0.05 };
+const B = -7.4;
+const MEAN = { income:60, credit:650, debt:20, age:40, emp:6 };   // background
+const sigmoid = z =&gt; 1/(1+Math.exp(-z));
+const FEATS = ["income","credit","debt","age","emp"];
+const model = x =&gt; sigmoid(B + FEATS.reduce((z,f) =&gt; z + W[f]*x[f], 0));
+
+const base = model(MEAN);   // v(&empty;): average applicant &rarr; 0.500</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The value function v(S)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A game needs a payout for every <strong>coalition</strong> — every subset of features acting together. But the model needs all its inputs, so we define "present" features (in S) at the applicant's values and marginalise the rest to the background. That is what a "missing" feature means.</p>
+        <div class="relative"><pre>function blend(x, S){                    // S = Set of "present" feature names
+  const o = {};
+  for (const f of FEATS) o[f] = S.has(f) ? x[f] : MEAN[f];
+  return o;                              // known features kept, rest &rarr; background
+}
+const v = (x, S) =&gt; model(blend(x, S));   // expected output knowing only S
+// v(x, &empty;) === base   ·   v(x, all features) === model(x)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Exact Shapley by enumeration</h3></div>
+        <p class="text-sm text-slate-600 mb-3">For each feature, sum its <strong>marginal contribution</strong> v(S∪{i})−v(S) over <em>every</em> subset S of the other features, weighted so the sum equals the average over all n! orderings. With n=5 that is 2<sup>4</sup>=16 coalitions per feature — exact, no sampling.</p>
+        <div class="relative"><pre>const fact = k =&gt; { let r=1; for (let i=2;i&lt;=k;i++) r*=i; return r; };
+const n = FEATS.length;
+
+function shap(x){
+  const phi = {};
+  for (let i=0;i&lt;n;i++){
+    const fi = FEATS[i], others = FEATS.filter((_,j) =&gt; j!==i);
+    let acc = 0;
+    for (let m=0; m&lt;(1&lt;&lt;others.length); m++){          // every subset S of the others
+      const S = new Set(others.filter((_,b) =&gt; m &amp; (1&lt;&lt;b)));
+      const w = fact(S.size)*fact(n-S.size-1)/fact(n);  // |S|!(n-|S|-1)!/n!
+      acc += w * (v(x, new Set([...S, fi])) - v(x, S)); // marginal contribution
+    }
+    phi[fi] = acc;                                      // Shapley value of feature fi
+  }
+  return phi;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Efficiency check &amp; the waterfall</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The defining property: the SHAP values sum <strong>exactly</strong> to prediction − base. Nothing is created or lost. The waterfall starts at the base and adds each φ (biggest first) until it lands on f(x) — red when it pushes up, blue when it pushes down.</p>
+        <div class="relative"><pre>const x = { income:90, credit:720, debt:35, age:33, emp:4 };
+const phi = shap(x);
+const sum = FEATS.reduce((s,f) =&gt; s + phi[f], 0);
+
+console.assert(Math.abs(sum - (model(x) - base)) &lt; 1e-9, "efficiency"); // always
+
+let run = base;                                     // build the waterfall
+FEATS.slice().sort((a,b) =&gt; Math.abs(phi[b]) - Math.abs(phi[a]))
+     .forEach(f =&gt; { const from = run; run += phi[f]; /* red if phi>0 else blue */ });
+// run === model(x)  — the bars close the gap exactly</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Local → global importance</h3></div>
+        <p class="text-sm text-slate-600 mb-3">One explanation is <em>local</em>. Average the <strong>absolute</strong> SHAP value of each feature over many rows and you get <em>global</em> importance — how much the feature swings predictions overall. Absolute, so up-pushes and down-pushes don't cancel.</p>
+        <div class="relative"><pre>const globalImp = {};
+FEATS.forEach(f =&gt; globalImp[f] = 0);
+for (const r of DATA){                    // your dataset of applicants
+  const p = shap(r);
+  FEATS.forEach(f =&gt; globalImp[f] += Math.abs(p[f]));
+}
+FEATS.forEach(f =&gt; globalImp[f] /= DATA.length);   // mean |SHAP| per feature
+// rank features by globalImp -&gt; the summary bar chart</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">In the real world — the shap library</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Enumerating 2<sup>n</sup> coalitions dies past a handful of features. <code>shap</code> gives you <code>TreeExplainer</code> — <em>exact</em> SHAP for tree ensembles in polynomial time — plus the waterfall, force and beeswarm plots, and a model-agnostic <code>KernelExplainer</code> fallback.</p>
+        <div class="relative"><pre># pip install shap
+import shap, xgboost
+
+model = xgboost.XGBClassifier().fit(X, y)      # any tree model
+explainer = shap.TreeExplainer(model)          # EXACT SHAP for trees, fast
+sv = explainer(X)                              # SHAP values for every row
+
+shap.plots.waterfall(sv[0])                    # explain ONE prediction (local)
+shap.plots.force(sv[0])                        # same numbers, force layout
+shap.plots.bar(sv)                             # mean |SHAP| -&gt; global importance
+shap.plots.beeswarm(sv)                        # per-feature spread across all rows
+
+# model-agnostic fallback (any model, sampled coalitions):
+# explainer = shap.KernelExplainer(model.predict_proba, background)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 29 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You computed <strong>exact</strong> Shapley values by enumerating every coalition of features, proved they sum to prediction − base (the efficiency axiom), and read them off both a waterfall and a force plot — the same attribution that powers <code>shap.TreeExplainer</code>. <strong>👉 Tomorrow — Day 30: Learning Curves</strong> — plot train vs validation error against training-set size to tell whether more data, or a different model, will actually help.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= SHAP demo =================
+const FEATS = ["income","credit","debt","age","emp"];
+const META = {
+  income:{ label:"Income",       unit:"k$/yr", emoji:"💰", min:20,  max:200, step:1 },
+  credit:{ label:"Credit score", unit:"",      emoji:"🏦", min:300, max:850, step:5 },
+  debt:  { label:"Debt",         unit:"k$",    emoji:"💳", min:0,   max:100, step:1 },
+  age:   { label:"Age",          unit:"yr",    emoji:"🎂", min:18,  max:75,  step:1 },
+  emp:   { label:"Employment",   unit:"yr",    emoji:"💼", min:0,   max:40,  step:1 },
+};
+const W    = { income:0.02, credit:0.01, debt:-0.05, age:0.01, emp:0.05 };
+const B    = -7.4;
+const MEAN = { income:60, credit:650, debt:20, age:40, emp:6 };
+const n = FEATS.length;
+const POS = "#ef4444", NEG = "#0ea5e9";
+
+const sigmoid = z => 1/(1+Math.exp(-z));
+function model(x){ let z=B; for (const f of FEATS) z += W[f]*x[f]; return sigmoid(z); }
+const fact = k => { let r=1; for (let i=2;i<=k;i++) r*=i; return r; };
+function blend(x, S){ const o={}; for (const f of FEATS) o[f]=S.has(f)?x[f]:MEAN[f]; return o; }
+
+// exact Shapley values — enumerate ALL 2^(n-1) coalitions per feature
+function shapley(x){
+  const phi = {};
+  for (let ii=0; ii<n; ii++){
+    const fi = FEATS[ii], others = FEATS.filter((_,j)=>j!==ii);
+    let acc = 0;
+    for (let m=0; m<(1<<others.length); m++){
+      const S = new Set();
+      for (let b=0;b<others.length;b++) if (m&(1<<b)) S.add(others[b]);
+      const s = S.size;
+      const w = fact(s)*fact(n-s-1)/fact(n);
+      acc += w * (model(blend(x, new Set([...S, fi]))) - model(blend(x, S)));
+    }
+    phi[fi] = acc;
+  }
+  return phi;
+}
+
+const PRESETS = {
+  sample:  { income:90,  credit:720, debt:35, age:33, emp:4  },
+  strong:  { income:150, credit:800, debt:5,  age:45, emp:15 },
+  risky:   { income:30,  credit:520, debt:60, age:24, emp:1  },
+  average: { income:60,  credit:650, debt:20, age:40, emp:6  },
+};
+const DATA = [
+  { income:90,  credit:720, debt:35, age:33, emp:4  },
+  { income:150, credit:800, debt:5,  age:45, emp:15 },
+  { income:30,  credit:520, debt:60, age:24, emp:1  },
+  { income:45,  credit:610, debt:25, age:52, emp:20 },
+  { income:120, credit:680, debt:40, age:38, emp:8  },
+  { income:70,  credit:750, debt:10, age:29, emp:3  },
+  { income:25,  credit:600, debt:15, age:60, emp:30 },
+  { income:100, credit:640, debt:55, age:41, emp:6  },
+];
+let X = { ...PRESETS.sample };
+
+function renderFeats(){
+  let h="";
+  for (const f of FEATS){
+    const m = META[f];
+    h += `<div class="feat-row">
+      <div class="feat-name">${m.emoji} ${m.label}</div>
+      <input type="range" data-f="${f}" min="${m.min}" max="${m.max}" step="${m.step}" value="${X[f]}">
+      <div class="feat-val">${X[f]}${m.unit?(" "+m.unit):""}</div>
+    </div>`;
+  }
+  document.getElementById("feats").innerHTML = h;
+}
+
+function renderWaterfall(phi){
+  const base = model(MEAN), pred = model(X);
+  const order = FEATS.slice().sort((a,b)=>Math.abs(phi[b])-Math.abs(phi[a]));
+  let run = base; const rows = [];
+  for (const f of order){ const before=run; run+=phi[f]; rows.push({f, before, after:run, phi:phi[f]}); }
+  const vals=[base,pred]; rows.forEach(r=>{ vals.push(r.before, r.after); });
+  let lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals);
+  const pad=Math.max((hi-lo)*0.14, 0.02); lo-=pad; hi+=pad;
+  const pct=v=>((v-lo)/(hi-lo))*100;
+  let h="";
+  h += `<div class="wf-row"><div class="wf-label text-slate-400">base &nbsp;E[f(x)]</div>
+    <div class="wf-track"><div class="gridline" style="left:${pct(base)}%"></div></div>
+    <div class="wf-phi text-slate-400 text-right">${base.toFixed(3)}</div></div>`;
+  for (const r of rows){
+    const up = r.phi >= 0;
+    const a = pct(Math.min(r.before,r.after)), b = pct(Math.max(r.before,r.after));
+    h += `<div class="wf-row">
+      <div class="wf-label" title="${META[r.f].label} = ${X[r.f]}">${META[r.f].emoji} ${META[r.f].label} = ${X[r.f]}</div>
+      <div class="wf-track">
+        <div class="gridline" style="left:${pct(base)}%;opacity:.30"></div>
+        <div class="wf-bar ${up?"wf-up":"wf-down"}" style="left:${a}%;width:${Math.max(b-a,0.7)}%"></div>
+      </div>
+      <div class="wf-phi text-right" style="color:${up?POS:NEG}">${up?"+":""}${r.phi.toFixed(3)}</div>
+    </div>`;
+  }
+  h += `<div class="wf-row"><div class="wf-label font-extrabold text-slate-800">f(x) = prediction</div>
+    <div class="wf-track"><div class="gridline pred" style="left:${pct(pred)}%"></div></div>
+    <div class="wf-phi text-right font-extrabold text-slate-800">${pred.toFixed(3)}</div></div>`;
+  document.getElementById("waterfall").innerHTML = h;
+}
+
+function renderForce(phi){
+  const base = model(MEAN), pred = model(X);
+  const pos = FEATS.filter(f=>phi[f]>0).sort((a,b)=>phi[b]-phi[a]);
+  const neg = FEATS.filter(f=>phi[f]<0).sort((a,b)=>phi[a]-phi[b]);
+  const sumPos = pos.reduce((s,f)=>s+phi[f],0), sumNeg = neg.reduce((s,f)=>s+phi[f],0);
+  const peak = base + sumPos;
+  let lo=Math.min(base,pred,peak), hi=Math.max(base,pred,peak);
+  const pad=Math.max((hi-lo)*0.18, 0.02); lo-=pad; hi+=pad;
+  const pct=v=>((v-lo)/(hi-lo))*100;
+  let h="", c=base;
+  for (const f of pos){ const a=pct(c), b=pct(c+phi[f]); h+=`<div class="force-seg" style="left:${a}%;width:${b-a}%;background:${POS}" title="${META[f].label}: +${phi[f].toFixed(3)}">${(b-a)>8?META[f].label:""}</div>`; c+=phi[f]; }
+  for (const f of neg){ const a=pct(c+phi[f]), b=pct(c); h+=`<div class="force-seg" style="left:${a}%;width:${b-a}%;background:${NEG}" title="${META[f].label}: ${phi[f].toFixed(3)}">${(b-a)>8?META[f].label:""}</div>`; c+=phi[f]; }
+  h += `<div style="position:absolute;left:${pct(base)}%;top:0;bottom:0;border-left:2px dashed #475569"></div>`;
+  h += `<div style="position:absolute;left:${pct(pred)}%;top:0;bottom:0;border-left:2px solid #0f172a"></div>`;
+  document.getElementById("force").innerHTML = h;
+  document.getElementById("forceCap").innerHTML =
+    `base <b>${base.toFixed(3)}</b> &nbsp;→&nbsp; <span style="color:${POS};font-weight:700">red pushes up (+${sumPos.toFixed(3)})</span> &nbsp;·&nbsp; <span style="color:${NEG};font-weight:700">blue pushes down (${sumNeg.toFixed(3)})</span> &nbsp;→&nbsp; f(x) <b>${pred.toFixed(3)}</b>`;
+}
+
+function renderGlobal(){
+  const mean={}; FEATS.forEach(f=>mean[f]=0);
+  for (const r of DATA){ const p=shapley(r); FEATS.forEach(f=>mean[f]+=Math.abs(p[f])); }
+  FEATS.forEach(f=>mean[f]/=DATA.length);
+  const order = FEATS.slice().sort((a,b)=>mean[b]-mean[a]);
+  const mx = Math.max.apply(null, FEATS.map(f=>mean[f]));
+  let h="";
+  for (const f of order){
+    h += `<div class="gbar-row"><div class="feat-name text-right">${META[f].emoji} ${META[f].label}</div>
+      <div class="gbar-track"><div class="gbar-fill" style="width:${(mean[f]/mx)*100}%"></div></div>
+      <div class="wf-phi text-slate-500 text-right">${mean[f].toFixed(3)}</div></div>`;
+  }
+  document.getElementById("global").innerHTML = h;
+}
+
+function run(){
+  const phi = shapley(X);
+  const base = model(MEAN), pred = model(X);
+  const sum = FEATS.reduce((s,f)=>s+phi[f],0);
+  const top = FEATS.slice().sort((a,b)=>Math.abs(phi[b])-Math.abs(phi[a]))[0];
+  renderFeats(); renderWaterfall(phi); renderForce(phi);
+  document.getElementById("sN").textContent = n;
+  document.getElementById("sC").textContent = (1<<(n-1)) + " (" + (1<<n) + " total)";
+  document.getElementById("sBase").textContent = base.toFixed(3);
+  document.getElementById("sPred").textContent = pred.toFixed(3);
+  document.getElementById("sSum").textContent = (sum>=0?"+":"") + sum.toFixed(3) + " ✓";
+  document.getElementById("sTop").textContent = `${META[top].emoji} ${META[top].label} (${phi[top]>=0?"+":""}${phi[top].toFixed(3)})`;
+}
+
+document.getElementById("feats").addEventListener("input", e=>{
+  const inp = e.target.closest("input[type=range]"); if (!inp) return;
+  X[inp.dataset.f] = +inp.value; run();
+});
+document.querySelectorAll("[data-preset]").forEach(b=> b.onclick=()=>{ X={...PRESETS[b.dataset.preset]}; run(); });
+document.getElementById("reexplain").onclick = e=>{ e.currentTarget.classList.remove("run-pulse"); void e.currentTarget.offsetWidth; e.currentTarget.classList.add("run-pulse"); run(); };
+
+renderGlobal();
+run();
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. The black-box problem", why:"Modern models — gradient-boosted trees, random forests, neural nets — are accurate precisely because they learn thousands of nonlinear interactions no human wrote down. That accuracy comes at a price: you can no longer point at the model and say WHY it approved this loan, flagged this transaction, or ranked this résumé. Explainability is the discipline of answering that question after the fact. Regulators demand it (adverse-action notices, GDPR's right to an explanation), debugging needs it, and trust depends on it. SHAP gives the sharpest answer available: for one specific prediction, exactly how many points did each feature add or subtract?", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">inputs &rarr; [ black box ] &rarr; f(x) = 0.59 &nbsp;&check; approved<br>WHY 0.59? &nbsp;which features? &nbsp;by how much?<br>explainability = attribute the output to the inputs</div>`, code:`// accurate but opaque:
+const p = model(applicant);   // 0.59 -> approved
+// the model can't tell you WHY.
+// SHAP answers: how much did each feature move p?` },
+ { title:"2. Borrow from game theory: Shapley values", why:"Lloyd Shapley (1953) solved a fairness problem: N players cooperate in a game and jointly produce some payout — how do you split it fairly among them? He proved there is exactly ONE division satisfying four reasonable axioms (efficiency, symmetry, dummy, additivity): the Shapley value. SHAP's leap (Lundberg & Lee, 2017) is to cast a single prediction as that game — the PLAYERS are the features, and the PAYOUT is how far the prediction sits from the model's average output. Each feature's Shapley value is its fair share of that gap. Because it inherits Shapley's axioms, it is the only attribution that is simultaneously fair, consistent, and locally accurate.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">cooperative game &rarr; ML prediction<br>players &nbsp;= &nbsp;features<br>payout &nbsp;= &nbsp;f(x) &minus; E[f(x)]<br>Shapley value = each feature's FAIR share</div>`, code:`// Shapley (1953): the UNIQUE fair payout split
+// satisfying efficiency, symmetry, dummy, additivity.
+// SHAP: features are the players,
+//       the prediction gap is the payout to divide.` },
+ { title:"3. The value function v(S)", why:"A game needs a payout for every COALITION S — every subset of players acting together. But a model needs ALL its inputs; what does it output when only the features in S are 'present'? SHAP defines v(S) as the model's expected output when the features in S are fixed to this instance's values and the rest are averaged over a background dataset (marginalised out). Intuitively: 'if I only knew these features and stayed ignorant of the others, what would I expect the model to say?' v(the empty set) is the average prediction — know nothing, get the base value — and v(all) is the actual prediction. Everything downstream is built on this one definition.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">v(S) = E[ f(x) | features in S fixed,<br>rest ~ background ]<br>v(&empty;) = base value &nbsp;&middot;&nbsp; v(all) = f(x)<br>a "missing" feature = averaged away</div>`, code:`function blend(x, S){                 // S = present features
+  const o = {};
+  for (const f of FEATS) o[f] = S.has(f) ? x[f] : MEAN[f];
+  return o;
+}
+const v = (x, S) => model(blend(x, S));  // know only S` },
+ { title:"4. Marginal contribution over coalitions", why:"A feature's contribution is not a single number — it depends on who else is already 'in the room'. Credit-score may matter enormously on its own, but add little once income is known. So SHAP measures the MARGINAL contribution of feature i — v(S with i) minus v(S) — for every coalition S of the other features, equivalently for every order in which features could be revealed. Averaging over all of them cancels the arbitrariness of any single ordering. That average IS the Shapley value: the feature's expected added value across every way the game could unfold.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">marginal contribution of i given S:<br>v(S &cup; {i}) &minus; v(S)<br>average over ALL coalitions S / orderings<br>&rArr; the Shapley value &phi;<sub>i</sub></div>`, code:`// how much does feature i add, given the others in S?
+const marginal = v(x, new Set([...S, i])) - v(x, S);
+// average this over every subset S of the other features
+// (equivalently, over every ordering) -> phi_i` },
+ { title:"5. The exact formula", why:"Putting it together: phi_i equals the sum over subsets S of N without i, of the weight |S|!(n-|S|-1)!/n! times [ v(S with i) minus v(S) ]. The odd-looking factorial weight is just the fraction of the n! orderings in which exactly the players of S come before i — so summing over subsets is identical to averaging over all orderings, only cheaper. For our five features that is a sum over 2^4 = 16 coalitions per feature, evaluated exactly with no sampling. This is what the LOOK tab computes live.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">&phi;<sub>i</sub> = &sum;<sub>S &sube; N&bsol;{i}</sub> [ |S|!(n&minus;|S|&minus;1)! / n! ]<br>&times; ( v(S&cup;{i}) &minus; v(S) )<br>weight = share of orderings with S before i</div>`, code:`const fact = k => { let r=1; for(let i=2;i<=k;i++) r*=i; return r; };
+for (let m=0; m<(1<<others.length); m++){    // every subset S
+  const S = new Set(others.filter((_,b)=> m&(1<<b)));
+  const w = fact(S.size)*fact(n-S.size-1)/fact(n);
+  acc += w * (v(x, new Set([...S, fi])) - v(x, S));
+}` },
+ { title:"6. The 2^n blowup, KernelSHAP & TreeSHAP", why:"The formula is exact but its cost is exponential: 2^n coalitions, each needing a model evaluation (itself an average over the background). Five features is trivial (32 subsets); twenty features is a million; a hundred is hopeless. So real libraries approximate. KernelSHAP samples coalitions and solves a specially-weighted linear regression whose coefficients ARE the Shapley values. TreeSHAP exploits the structure of decision trees to compute EXACT SHAP for tree ensembles in polynomial time — which is why SHAP is most popular with XGBoost and LightGBM. Same values, tractable cost.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">cost = 2<sup>n</sup> coalitions<br>n=5 &rarr; 32 &nbsp; n=20 &rarr; 1,048,576 &nbsp; n=100 &rarr; &infin;<br>KernelSHAP: sample + weighted regression<br>TreeSHAP: EXACT &amp; fast for tree models</div>`, code:`# exact enumeration dies past ~15 features -> approximate:
+import shap
+explainer = shap.TreeExplainer(tree_model)   # EXACT for trees, poly-time
+# explainer = shap.KernelExplainer(f, background)  # any model, sampled
+sv = explainer(X)` },
+ { title:"7. Additivity (efficiency)", why:"The defining property, and the one we verify in Node: the SHAP values sum EXACTLY to the prediction minus the base value. phi_1 + ... + phi_n = f(x) minus E[f(x)]. Nothing is created or lost in the attribution — every point of the gap between the average applicant and this one is assigned to some feature. This 'local accuracy' is what makes the waterfall a closed accounting rather than a vibe. It is the efficiency axiom, and it holds for ANY value function, which is precisely why exact Shapley values always reconcile to the prediction.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">&phi;<sub>1</sub> + &phi;<sub>2</sub> + &hellip; + &phi;<sub>n</sub> = f(x) &minus; base<br>(exact, for ANY value function)<br>every point of the gap is attributed<br>&rArr; the waterfall closes perfectly</div>`, code:`const phi = shap(x);
+const sum = FEATS.reduce((s,f) => s + phi[f], 0);
+console.assert(Math.abs(sum - (model(x) - base)) < 1e-9);
+// efficiency axiom: attribution is a closed accounting` },
+ { title:"8. Local vs global importance", why:"A single SHAP explanation is LOCAL — it explains this one applicant. To understand the model as a whole, aggregate: the GLOBAL importance of a feature is the mean of |SHAP| over many instances. High mean-|SHAP| means the feature swings predictions a lot on average; near zero means the model barely uses it. Note it's the mean of the ABSOLUTE value — a feature that pushes up for some rows and down for others would cancel to zero if you averaged the signed values. Local answers 'why this one?'; global answers 'what does the model rely on?'. Both come from the exact same phi.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">local &nbsp;= &nbsp;one row's &phi; &nbsp;(the waterfall)<br>global = mean<sub>rows</sub> |&phi;<sub>i</sub>|<br>|&middot;| so up- and down-pushes don't cancel<br>rank features by mean |SHAP|</div>`, code:`const imp = {}; FEATS.forEach(f => imp[f]=0);
+for (const r of DATA){
+  const p = shap(r);
+  FEATS.forEach(f => imp[f] += Math.abs(p[f]));  // ABSOLUTE
+}
+FEATS.forEach(f => imp[f] /= DATA.length);        // global bar chart` },
+ { title:"9. Reading force & waterfall plots", why:"Two standard plots, identical numbers. The WATERFALL starts at the base value and stacks features one per row: each red bar pushes the running total right (up) and each blue bar pushes it left (down), until it lands on f(x); features are ordered by impact so you read the story top-down. The FORCE plot collapses that into a single bar — red forces coming from the left and blue forces from the right, meeting exactly at the prediction. Both make additivity visible to the eye: the arrows literally add up to the gap between base and prediction. If a plot's bars don't close on f(x), something is wrong.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">waterfall: base &rarr; +red / &minus;blue rows &rarr; f(x)<br>force: &nbsp;red &rarr;| |&larr; blue &nbsp; meet at f(x)<br>ordered by |&phi;| &middot; both close on the prediction</div>`, code:`# same SHAP values, two views:
+shap.plots.waterfall(sv[0])   # stacked rows, base -> f(x)
+shap.plots.force(sv[0])       # opposing forces meet at f(x)` },
+ { title:"10. SHAP vs feature_importances_ (caveats)", why:"Don't confuse SHAP with a tree's impurity-based feature_importances_. That gives one global, always-positive, UNSIGNED number per feature and is biased toward high-cardinality features. SHAP is per-prediction and SIGNED: it tells you not just that income mattered, but that HERE it pushed approval up by 0.14 while debt pulled it down by 0.17. Three caveats: (1) SHAP attributes to the MODEL, not to reality — explain a biased model and you get a faithful explanation of the bias. (2) It is association, not CAUSATION — a large SHAP value doesn't mean changing the feature will change the outcome. (3) With correlated features, credit can be split arbitrarily between them (interventional vs conditional SHAP handle this differently). Read it as 'what drove the model here', never as 'what causes the outcome'.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">feature_importances_: 1 global, unsigned, biased #<br>SHAP: per-row, SIGNED, sums to the prediction<br>caveats: explains the MODEL, not reality<br>attribution &ne; causation &middot; watch correlations</div>`, code:`# tree impurity importance: global, unsigned, one number
+model.feature_importances_        # e.g. [0.31, 0.44, ...]
+# SHAP: signed, per-prediction, additive
+shap.plots.bar(sv)                # global = mean|SHAP|, still signed per row
+# NOTE: attribution to the MODEL, not causation.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3200); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
