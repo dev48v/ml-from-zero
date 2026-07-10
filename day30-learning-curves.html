@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 30 — Learning Curves</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .run-pulse { animation: runPulse .5s ease-out; }
+  @keyframes runPulse { 0% { box-shadow:0 0 0 0 rgba(14,165,233,.55);} 100% { box-shadow:0 0 0 14px rgba(14,165,233,0);} }
+  /* controls */
+  .ctl-row { display:grid; grid-template-columns:118px 1fr 62px; align-items:center; gap:10px; padding:6px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .preset-btn { border:1px solid #e2e8f0; }
+  .preset-btn:hover { border-color:#38bdf8; }
+  .swatch { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:-2px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-bias { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-var  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 30</div>
+      <h1 class="text-xl font-bold">📉 Learning Curves — Will More Data Help, or Do You Need a Better Model?</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1">Your model scores 0.64 on held-out data. Do you collect more rows, or reach for a different model? The learning curve tells you which — before you waste a week.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">A <strong>learning curve</strong> plots two scores as a function of the <strong>training-set size</strong>: the <span class="font-bold" style="color:#f59e0b">training score</span> (how well the model fits the very data it learned from) and the <span class="font-bold" style="color:#0ea5e9">validation score</span> (how well it does on a held-out set it never saw). Everything below is computed <strong>for real, live in your browser</strong> — no pre-baked images. We draw samples from a hidden target function <code>sin(1.5x)</code> plus noise, fit a <strong>polynomial by least squares</strong> at each training size, and score both sets (R², floored at 0). The shape of the two curves is a diagnosis: if they meet at a <strong>low</strong> value the model is too simple (<strong>high bias / underfit</strong> — more data is useless); if a wide <strong>gap</strong> persists the model memorises its sample (<strong>high variance / overfit</strong> — more data helps). Drag the complexity, noise and regularisation knobs and watch the diagnosis change.</p>
+
+      <div class="flex justify-center gap-5 mb-4 text-sm font-bold text-slate-600 flex-wrap">
+        <div>Degree: <span id="sDeg" class="stat text-sky-600">—</span></div>
+        <div>Noise σ: <span id="sNoise" class="stat text-sky-600">—</span></div>
+        <div>Ridge λ: <span id="sLam" class="stat text-sky-600">—</span></div>
+        <div>Train R²: <span id="sTrain" class="stat" style="color:#f59e0b">—</span></div>
+        <div>Val R²: <span id="sVal" class="stat text-sky-600">—</span></div>
+        <div>Gap: <span id="sGap" class="stat text-slate-800">—</span></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:360px;">
+          <div class="text-xs font-bold text-slate-500 mb-2">CONTROLS — set the model, then read the curve</div>
+          <div class="ctl-row">
+            <div class="ctl-name">🎚 Complexity</div>
+            <input type="range" id="cDeg" min="1" max="15" step="1" value="6">
+            <div class="ctl-val" id="vDeg">deg 6</div>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-name">🌫 Noise σ</div>
+            <input type="range" id="cNoise" min="0.05" max="0.7" step="0.05" value="0.35">
+            <div class="ctl-val" id="vNoise">0.35</div>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-name">🪢 Ridge λ</div>
+            <input type="range" id="cLam" min="0" max="0.6" step="0.01" value="0">
+            <div class="ctl-val" id="vLam">0.00</div>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2 items-center">
+            <span class="text-[11px] font-bold text-slate-400 uppercase">regimes</span>
+            <button data-preset="bias" class="preset-btn bg-orange-50 hover:bg-orange-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🔵 High bias</button>
+            <button data-preset="good" class="preset-btn bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg font-semibold text-xs">✅ Good fit</button>
+            <button data-preset="var"  class="preset-btn bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🔴 High variance</button>
+            <button data-preset="reg"  class="preset-btn bg-sky-50 hover:bg-sky-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🪢 Variance + L2</button>
+          </div>
+          <div class="mt-3 text-[11px] text-slate-400 leading-relaxed">Complexity = degree of the fitted polynomial. Low degree can only draw gentle shapes (bias); high degree can wiggle through every point (variance). Ridge λ penalises big coefficients — it trades a little bias for a lot less variance.</div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:620px;">
+          <div class="text-xs font-bold text-slate-500 mb-2 flex justify-between">
+            <span>LEARNING CURVE — R² vs training-set size</span>
+            <span><span class="swatch" style="background:#f59e0b"></span> train &nbsp; <span class="swatch" style="background:#0ea5e9"></span> validation</span>
+          </div>
+          <div id="chart"></div>
+          <div class="text-[11px] text-slate-400 mt-1 text-center">The shaded band is the <strong>gap</strong> = train − validation = the model's <strong>variance</strong>. Where the validation line plateaus is the <strong>bias floor</strong> (irreducible noise + how much the model is missing).</div>
+        </div>
+      </div>
+
+      <div id="diagBox" class="diag mt-6 max-w-4xl mx-auto text-left">—</div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:460px;">
+          <div class="text-xs font-bold text-slate-500 mb-2">THE FIT — the model (sky) over the sample, vs the hidden target (grey dashed)</div>
+          <div id="fit"></div>
+          <div class="text-[11px] text-slate-400 mt-1 text-center">Underfit = a stiff line that ignores the wiggles. Overfit = a curve that chases every noisy dot.</div>
+        </div>
+        <div class="bg-sky-50 border border-sky-200 rounded-2xl p-4 text-left text-xs text-sky-900 shadow-lg" style="width:520px;">
+          <strong>How to read "will more data help?"</strong> Look only at the <span style="color:#0ea5e9;font-weight:700">validation</span> line at the right-hand edge. If it is still <em>rising</em> and sits well below the training line, you are on the steep part of the curve — <strong>more data will keep pushing it up</strong> (classic high variance). If it has gone <em>flat</em> and the two lines already <strong>touch</strong>, you have hit a wall that more rows cannot break — the ceiling is set by model bias, not by data volume, so you must change the <em>model</em> (more features, higher complexity, less regularisation), not the dataset. This single picture routinely saves teams from labelling thousands of rows that could never have moved the metric.
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">Reading a learning curve</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Write the learning-curve loop from scratch — fit at growing training sizes, score train and validation each time — then reach for <code>sklearn.model_selection.learning_curve</code>, which does exactly this over cross-validation folds, and its sibling <code>validation_curve</code> for sweeping a single hyperparameter. The whole point is to turn "my model scores 0.64" into an <em>action</em>: more data, or a better model?</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The loop from scratch</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A learning curve is just a loop over training-set sizes. Hold out a fixed validation set, then for each size <code>m</code> fit on <code>m</code> rows and score both the training slice and the held-out set. Average several random subsets per size so the curve is smooth.</p>
+        <div class="relative"><pre>const sizes = [4,6,9,12,16,20,26,32,40,50];
+function learningCurve(deg, lam, noise){
+  const pool = makePool(50, noise);     // training pool
+  const val  = makePool(40, noise);     // fixed held-out set
+  return sizes.map(m =&gt; {
+    let tr=0, va=0, K=10;
+    for (let k=0;k&lt;K;k++){
+      const s  = sample(pool, m);        // random m rows
+      const w  = fitPoly(s.x, s.y, deg, lam);
+      tr += clamp01(r2(s.y,  s.x.map(x=&gt;predict(w,x))));   // TRAIN score
+      va += clamp01(r2(val.y, val.x.map(x=&gt;predict(w,x)))); // VALIDATION score
+    }
+    return { m, train: tr/K, val: va/K };
+  });
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Fit &amp; score — the pieces</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The fit is ridge polynomial least-squares — solve <code>(ΦᵀΦ + λI)w = Φᵀy</code>. The score is R² = 1 − SS<sub>res</sub>/SS<sub>tot</sub>, floored at 0 so a wild overfit reads as a readable "0" instead of a huge negative. Note: the training score is scored on the <em>same</em> rows the model just fit, which is why it starts near 1 and can only fall.</p>
+        <div class="relative"><pre>function r2(y, yhat){
+  const m = y.reduce((s,v)=&gt;s+v,0)/y.length;
+  let ssr=0, sst=0;
+  for (let i=0;i&lt;y.length;i++){ ssr+=(y[i]-yhat[i])**2; sst+=(y[i]-m)**2; }
+  return sst&lt;1e-9 ? 0 : 1 - ssr/sst;         // fraction of variance explained
+}
+const clamp01 = v =&gt; v&lt;0 ? 0 : (v&gt;1 ? 1 : v);
+
+// train score is optimistic (scored on data it fit) -&gt; train &gt;= val, always.
+// the two curves are the whole diagnosis.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">scikit-learn: learning_curve</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In practice you never write the loop — <code>learning_curve</code> does it over cross-validation folds and returns train/test scores at each size. Pass any estimator and any scorer.</p>
+        <div class="relative"><pre>import numpy as np
+from sklearn.model_selection import learning_curve
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import PolynomialFeatures
+from sklearn.linear_model import Ridge
+
+model = make_pipeline(PolynomialFeatures(6), Ridge(alpha=0.0))
+
+sizes, train_scores, val_scores = learning_curve(
+    model, X, y,
+    train_sizes=np.linspace(0.1, 1.0, 10),   # 10 growing subsets
+    cv=5,                                     # 5-fold CV at each size
+    scoring="r2")                             # any metric works
+
+train_mean = train_scores.mean(axis=1)        # average over folds
+val_mean   = val_scores.mean(axis=1)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Plot &amp; read the diagnosis</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Plot both means against size. Then read it mechanically: converged + low = bias; wide persistent gap = variance; converged + high = done.</p>
+        <div class="relative"><pre>import matplotlib.pyplot as plt
+plt.plot(sizes, train_mean, "o-", label="train")
+plt.plot(sizes, val_mean,   "o-", label="validation")
+plt.fill_between(sizes, val_mean, train_mean, alpha=.15)  # the gap = variance
+plt.xlabel("training-set size"); plt.ylabel("R²"); plt.legend()
+
+gap  = train_mean[-1] - val_mean[-1]
+if   gap &gt; 0.15:            print("HIGH VARIANCE -> more data / regularise / simpler")
+elif val_mean[-1] &lt; 0.6:   print("HIGH BIAS -> add features / complexity (NOT data)")
+else:                      print("GOOD FIT")</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">validation_curve — the other axis</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A learning curve varies the <em>data size</em>; a <strong>validation curve</strong> fixes the data and varies one <strong>hyperparameter</strong>. Same two-curve reading, but now the x-axis is complexity — you literally watch bias turn into variance as the knob turns, and pick the sweet spot where the validation score peaks.</p>
+        <div class="relative"><pre>from sklearn.model_selection import validation_curve
+
+degrees = range(1, 16)
+train_s, val_s = validation_curve(
+    make_pipeline(PolynomialFeatures(), Ridge(alpha=0)),
+    X, y,
+    param_name="polynomialfeatures__degree",
+    param_range=degrees, cv=5, scoring="r2")
+
+# left side (low degree): both low  -> bias
+# right side (high degree): train high, val drops -> variance
+best_degree = degrees[val_s.mean(axis=1).argmax()]   # peak of the val curve</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Act on the diagnosis</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The curve is only useful if it changes what you do next. Match the signature to the fix — and notice the two fixes point in opposite directions, which is exactly why guessing is so costly.</p>
+        <div class="relative"><pre># HIGH BIAS  (curves meet LOW, gap already closed)
+#   -> add features, raise model complexity, reduce regularisation
+#   -> DO NOT collect more data: the curves have already converged.
+#
+# HIGH VARIANCE (wide gap, validation still climbing)
+#   -> collect more data   (the val curve is still rising)
+#   -> or add regularisation / simplify the model / fewer features
+#
+# GOOD FIT (curves meet HIGH)
+#   -> ship it; spend effort elsewhere.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 30 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You plotted <strong>training vs validation score against training-set size</strong>, read the two shapes — converged-and-low (<strong>high bias</strong>, more data won't help) versus wide-and-persistent-gap (<strong>high variance</strong>, more data will) — and turned a lone metric into a decision, the same job <code>sklearn.learning_curve</code> does over CV folds. <strong>👉 Tomorrow — Day 31: Precision-Recall Curve</strong> — score a classifier on the metric that actually matters when the positive class is rare.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= Learning-curve engine (verified in Node) =================
+const XMIN = -3, XMAX = 3;
+const SKY = "#0ea5e9", AMBER = "#f59e0b";
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function gauss(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+const trueF = x => Math.sin(1.5*x);                    // hidden target
+const norm  = x => 2*(x-XMIN)/(XMAX-XMIN) - 1;         // map x -> [-1,1] for stability
+function phi(x, deg){ const xn=norm(x), r=[]; let p=1; for(let k=0;k<=deg;k++){ r.push(p); p*=xn; } return r; }
+
+function solve(A, b){                                   // Gaussian elimination, partial pivot
+  const n=b.length, M=A.map((row,i)=>row.concat(b[i]));
+  for(let c=0;c<n;c++){
+    let piv=c; for(let r=c+1;r<n;r++) if(Math.abs(M[r][c])>Math.abs(M[piv][c])) piv=r;
+    [M[c],M[piv]]=[M[piv],M[c]];
+    const d=M[c][c]||1e-12;
+    for(let r=0;r<n;r++){ if(r===c) continue; const f=M[r][c]/d; for(let k=c;k<=n;k++) M[r][k]-=f*M[c][k]; }
+  }
+  return M.map((row,i)=>row[n]/(row[i]||1e-12));
+}
+function fitPoly(xs, ys, deg, lam){                     // ridge poly least-squares
+  const p=deg+1, X=xs.map(x=>phi(x,deg));
+  const A=Array.from({length:p},()=>Array(p).fill(0)), b=Array(p).fill(0);
+  for(let i=0;i<xs.length;i++){ const row=X[i];
+    for(let a=0;a<p;a++){ b[a]+=row[a]*ys[i]; for(let c=0;c<p;c++) A[a][c]+=row[a]*row[c]; } }
+  for(let a=0;a<p;a++) A[a][a]+= (a===0?0:lam) + 1e-8;
+  return solve(A,b);
+}
+const predict = (w, x, deg) => phi(x,deg).reduce((s,v,i)=>s+v*w[i],0);
+const clamp01 = v => v<0?0:(v>1?1:v);
+function r2(ys, preds){
+  const m=ys.reduce((s,v)=>s+v,0)/ys.length;
+  let ssr=0, sst=0; for(let i=0;i<ys.length;i++){ ssr+=(ys[i]-preds[i])**2; sst+=(ys[i]-m)**2; }
+  return sst<1e-9 ? 0 : 1 - ssr/sst;
+}
+function makePool(n, noise, rng){ const xs=[],ys=[];
+  for(let i=0;i<n;i++){ const x=XMIN+(XMAX-XMIN)*rng(); xs.push(x); ys.push(trueF(x)+noise*gauss(rng)); }
+  return {xs,ys};
+}
+const SIZES=[4,6,9,12,16,20,26,32,40,50];
+function learningCurve(deg, lam, noise, seed=42){
+  const rng=mulberry32(seed);
+  const pool=makePool(50, noise, rng);
+  const val =makePool(40, noise, rng);
+  const out=[];
+  for(const m of SIZES){
+    let trS=0, vaS=0; const K=10;
+    for(let k=0;k<K;k++){
+      const idx=[...pool.xs.keys()].sort(()=>rng()-0.5).slice(0,m);
+      const xs=idx.map(i=>pool.xs[i]), ys=idx.map(i=>pool.ys[i]);
+      const w=fitPoly(xs,ys,deg,lam);
+      trS+=clamp01(r2(ys, xs.map(x=>predict(w,x,deg))));
+      vaS+=clamp01(r2(val.ys, val.xs.map(x=>predict(w,x,deg))));
+    }
+    out.push({m, train:trS/K, val:vaS/K});
+  }
+  return {curve:out, pool, val};
+}
+
+// ---------------- state + presets ----------------
+const state = { deg:6, noise:0.35, lam:0 };
+const PRESETS = {
+  bias: { deg:1,  noise:0.35, lam:0    },
+  good: { deg:6,  noise:0.35, lam:0    },
+  var:  { deg:14, noise:0.35, lam:0    },
+  reg:  { deg:14, noise:0.35, lam:0.03 },
+};
+
+// ---------------- SVG learning-curve chart ----------------
+function renderChart(curve){
+  const W=588, H=340, ml=48, mr=14, mt=14, mb=42;
+  const pw=W-ml-mr, ph=H-mt-mb;
+  const sMin=SIZES[0], sMax=SIZES[SIZES.length-1];
+  const px = s => ml + (s-sMin)/(sMax-sMin)*pw;
+  const py = v => mt + (1-v)*ph;
+  let g="";
+  // y gridlines + labels
+  for(let v=0; v<=1.0001; v+=0.25){
+    g+=`<line x1="${ml}" y1="${py(v)}" x2="${ml+pw}" y2="${py(v)}" stroke="#e2e8f0" stroke-width="1"/>`;
+    g+=`<text x="${ml-8}" y="${py(v)+4}" text-anchor="end" font-size="11" fill="#94a3b8">${v.toFixed(2)}</text>`;
+  }
+  // x ticks
+  for(const s of [4,12,20,32,50]){
+    g+=`<line x1="${px(s)}" y1="${mt+ph}" x2="${px(s)}" y2="${mt+ph+4}" stroke="#94a3b8"/>`;
+    g+=`<text x="${px(s)}" y="${mt+ph+18}" text-anchor="middle" font-size="11" fill="#94a3b8">${s}</text>`;
+  }
+  g+=`<text x="${ml+pw/2}" y="${H-4}" text-anchor="middle" font-size="12" font-weight="700" fill="#64748b">training-set size (rows)</text>`;
+  g+=`<text transform="translate(13,${mt+ph/2}) rotate(-90)" text-anchor="middle" font-size="12" font-weight="700" fill="#64748b">R² score</text>`;
+  // gap band
+  const top = curve.map(p=>`${px(p.m)},${py(p.train)}`).join(" ");
+  const bot = curve.slice().reverse().map(p=>`${px(p.m)},${py(p.val)}`).join(" ");
+  g+=`<polygon points="${top} ${bot}" fill="#f59e0b" fill-opacity="0.12"/>`;
+  // val line (sky)
+  g+=`<polyline points="${curve.map(p=>`${px(p.m)},${py(p.val)}`).join(" ")}" fill="none" stroke="${SKY}" stroke-width="2.5"/>`;
+  // train line (amber)
+  g+=`<polyline points="${curve.map(p=>`${px(p.m)},${py(p.train)}`).join(" ")}" fill="none" stroke="${AMBER}" stroke-width="2.5"/>`;
+  for(const p of curve){
+    g+=`<circle cx="${px(p.m)}" cy="${py(p.train)}" r="3" fill="${AMBER}"/>`;
+    g+=`<circle cx="${px(p.m)}" cy="${py(p.val)}" r="3" fill="${SKY}"/>`;
+  }
+  document.getElementById("chart").innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${g}</svg>`;
+}
+
+// ---------------- SVG fit panel ----------------
+function renderFit(pool, deg, lam){
+  const W=428, H=210, ml=34, mr=10, mt=12, mb=26;
+  const pw=W-ml-mr, ph=H-mt-mb;
+  const yLo=-2.4, yHi=2.4;
+  const px = x => ml + (x-XMIN)/(XMAX-XMIN)*pw;
+  const py = y => mt + (1-(y-yLo)/(yHi-yLo))*ph;
+  const w = fitPoly(pool.xs, pool.ys, deg, lam);
+  let g="";
+  g+=`<line x1="${ml}" y1="${py(0)}" x2="${ml+pw}" y2="${py(0)}" stroke="#e2e8f0"/>`;
+  // hidden target
+  let tp=""; for(let i=0;i<=120;i++){ const x=XMIN+(XMAX-XMIN)*i/120; tp+=`${px(x)},${py(trueF(x))} `; }
+  g+=`<polyline points="${tp}" fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4"/>`;
+  // sample points (show up to 32)
+  for(let i=0;i<pool.xs.length && i<32;i++){
+    g+=`<circle cx="${px(pool.xs[i])}" cy="${py(Math.max(yLo,Math.min(yHi,pool.ys[i])))}" r="2.6" fill="#cbd5e1"/>`;
+  }
+  // fitted curve (clipped to panel)
+  let fp=""; for(let i=0;i<=160;i++){ const x=XMIN+(XMAX-XMIN)*i/160; const y=Math.max(yLo,Math.min(yHi,predict(w,x,deg))); fp+=`${px(x)},${py(y)} `; }
+  g+=`<polyline points="${fp}" fill="none" stroke="${SKY}" stroke-width="2.5"/>`;
+  document.getElementById("fit").innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${g}</svg>`;
+}
+
+// ---------------- diagnosis ----------------
+function diagnose(curve){
+  const f=curve[curve.length-1];
+  const gap=f.train-f.val;
+  if(gap>0.15) return { cls:"diag-var", title:"🔴 HIGH VARIANCE — overfitting",
+    body:`The training score is high (${f.train.toFixed(2)}) but validation trails by a wide gap (${gap.toFixed(2)}). The model is memorising its sample. The validation line is still climbing to the right, so <strong>more data will help</strong> — as will <strong>regularisation</strong> (raise λ), a <strong>simpler model</strong> (lower the degree), or fewer features.` };
+  if(f.val<0.6) return { cls:"diag-bias", title:"🔵 HIGH BIAS — underfitting",
+    body:`Both curves have converged to a <strong>low</strong> score (val ${f.val.toFixed(2)}) with only a ${gap.toFixed(2)} gap — the lines already touch. The model is too simple to capture the signal. <strong>More data will NOT help</strong> (the curves have met). Fix the model instead: <strong>add complexity/features</strong> (raise the degree) and <strong>reduce regularisation</strong>.` };
+  return { cls:"diag-good", title:"✅ GOOD FIT",
+    body:`Training and validation have converged to a <strong>high</strong> score (val ${f.val.toFixed(2)}) with a small ${gap.toFixed(2)} gap. Complexity matches the signal — neither underfit nor overfit. Ship it; more data would give only marginal gains.` };
+}
+
+// ---------------- render all ----------------
+function run(){
+  const { curve, pool } = learningCurve(state.deg, state.lam, state.noise);
+  const f=curve[curve.length-1];
+  renderChart(curve); renderFit(pool, state.deg, state.lam);
+  document.getElementById("sDeg").textContent   = state.deg;
+  document.getElementById("sNoise").textContent = state.noise.toFixed(2);
+  document.getElementById("sLam").textContent   = state.lam.toFixed(2);
+  document.getElementById("sTrain").textContent = f.train.toFixed(3);
+  document.getElementById("sVal").textContent   = f.val.toFixed(3);
+  document.getElementById("sGap").textContent   = (f.train-f.val).toFixed(3);
+  const d=diagnose(curve);
+  const box=document.getElementById("diagBox");
+  box.className = "diag mt-6 max-w-4xl mx-auto text-left "+d.cls;
+  box.innerHTML = `<div class="text-base font-extrabold mb-1">${d.title}</div><div class="text-sm font-medium leading-relaxed">${d.body}</div>`;
+}
+function syncControls(){
+  document.getElementById("cDeg").value=state.deg;
+  document.getElementById("cNoise").value=state.noise;
+  document.getElementById("cLam").value=state.lam;
+  document.getElementById("vDeg").textContent="deg "+state.deg;
+  document.getElementById("vNoise").textContent=state.noise.toFixed(2);
+  document.getElementById("vLam").textContent=state.lam.toFixed(2);
+}
+document.getElementById("cDeg").addEventListener("input", e=>{ state.deg=+e.target.value; syncControls(); run(); });
+document.getElementById("cNoise").addEventListener("input", e=>{ state.noise=+e.target.value; syncControls(); run(); });
+document.getElementById("cLam").addEventListener("input", e=>{ state.lam=+e.target.value; syncControls(); run(); });
+document.querySelectorAll("[data-preset]").forEach(b=> b.onclick=()=>{
+  Object.assign(state, PRESETS[b.dataset.preset]);
+  b.classList.remove("run-pulse"); void b.offsetWidth; b.classList.add("run-pulse");
+  syncControls(); run();
+});
+syncControls(); run();
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. What a learning curve is", why:"A learning curve answers a question a single score cannot: is my model limited by the MODEL, or by the amount of DATA? You get it by training the same model on growing slices of your data — 10% of the rows, then 20%, up to 100% — and recording a score at each size. Crucially you record TWO scores at every size: the training score (measured on the very rows the model just learned from) and the validation score (on a held-out set it never saw). Plot both against training-set size and their shapes, and the gap between them, form a diagnosis you can act on. The x-axis is number of rows; the y-axis is any score (R², accuracy, F1).", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">for m in [10%, 20%, ... , 100%] of the data:<br>&nbsp; fit model on m rows<br>&nbsp; record TRAIN score &amp; VALIDATION score<br>plot both vs m &rarr; read the shape</div>`, code:`// two scores at every training size
+for (const m of sizes){
+  const model = fit(trainData.slice(0, m));
+  trainScore[m] = score(model, trainData.slice(0, m)); // on data it saw
+  valScore[m]   = score(model, heldOutSet);            // on data it didn't
+}` },
+ { title:"2. Train vs validation curves", why:"The two curves start far apart and move toward each other as data grows. With very few rows the model fits them almost perfectly, so the TRAIN score starts high (near the top) — but it has learned nothing general, so the VALIDATION score starts low. As you add rows, the training set gets harder to fit perfectly (train score drifts DOWN) while the model generalises better (validation score climbs UP). The training score is always the optimistic one — it is measured on data the model already saw — so the train curve sits at or above the validation curve throughout. What matters is where they end up and how far apart they stay.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono"><span style="color:#f59e0b">train</span>: starts HIGH &darr; drifts down as data grows<br><span style="color:#0ea5e9">validation</span>: starts LOW &uarr; climbs as data grows<br>train &ge; validation, always<br>they converge toward a common ceiling</div>`, code:`// small data: train easy to fit, val poor  -> big gap
+// more data: train harder,   val better     -> gap shrinks
+// train curve sits ABOVE val curve (optimistic)
+// -> what matters: the LEVEL they meet at, and the GAP` },
+ { title:"3. High-bias signature (underfit)", why:"HIGH BIAS looks like this: both curves quickly flatten out and MEET at a LOW score, with only a tiny gap between them. The model is too simple to represent the underlying pattern — a straight line trying to trace a sine wave — so it does about equally badly on training and validation data. The tell is the combination: LOW level AND small gap AND already converged. Once the two curves have met and gone flat, you are done learning from data — every extra row lands on a curve that has already plateaued. This is the case where teams waste weeks collecting data that mathematically cannot help.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">HIGH BIAS (underfit)<br>train &amp; val both LOW &middot; small gap &middot; converged<br>____ &nbsp;the two lines meet near the bottom<br>&rArr; more data won't help &mdash; the model is too simple</div>`, code:`const f = curve.at(-1);
+const gap = f.train - f.val;
+if (gap < 0.15 && f.val < 0.6)
+  console.log("HIGH BIAS: both low + converged -> underfit");
+// remedy: a BIGGER model, not a bigger dataset` },
+ { title:"4. High-variance signature (overfit)", why:"HIGH VARIANCE looks the opposite: the training score stays HIGH (the flexible model nails the rows it saw) but the validation score sits well below it, leaving a WIDE gap. The model has memorised the noise in its particular sample rather than the signal. The good news is written in the shape: the validation curve is still RISING at the right-hand edge and has not caught the training curve yet. That rising, un-converged gap is the signature that more data would push validation higher — you are on the steep part of the curve. This is the one case where 'get more data' is the right instinct.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">HIGH VARIANCE (overfit)<br><span style="color:#f59e0b">train HIGH</span> &nbsp;&mdash;&mdash;&nbsp; <span style="color:#0ea5e9">val well below, still rising</span><br>wide persistent GAP<br>&rArr; more data / regularise / simpler model</div>`, code:`const f = curve.at(-1);
+if (f.train - f.val > 0.15)
+  console.log("HIGH VARIANCE: wide gap, val still climbing -> overfit");
+// remedy: more data, OR regularisation, OR a simpler model` },
+ { title:"5. The gap is variance, the plateau is bias", why:"Read the picture as two separate quantities. The GAP between the training and validation curves is the model's VARIANCE — how much its performance depends on which particular rows it happened to train on. A big gap means the model is sensitive to its sample (overfitting). Separately, the LEVEL at which the validation curve plateaus is the BIAS FLOOR — the best this model family can do, set by two things you cannot fix with more data: the irreducible noise in the labels, plus how much the model's simplicity forces it to miss. Lowering the plateau requires a better model; closing the gap requires more data or regularisation. Two problems, two different levers.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">GAP (train &minus; val) &nbsp;= &nbsp;VARIANCE<br>PLATEAU level of val &nbsp;= &nbsp;BIAS FLOOR<br>= irreducible noise + model's blind spot<br>close the gap: data/λ &middot; raise the floor: better model</div>`, code:`const gap     = train.at(-1) - val.at(-1);   // VARIANCE
+const plateau = val.at(-1);                  // BIAS-limited ceiling
+// gap  big  -> variance problem (data / regularise)
+// plateau low -> bias problem   (better model / features)` },
+ { title:"6. Will more data help?", why:"This is the whole reason the curve exists, and you read it off ONE line: the validation curve at its right-hand edge. If that line is still visibly RISING and sits below the training line, you are on the slope — extrapolate it and more rows will keep lifting the score, so collecting data is worth it. If the validation line has gone FLAT and (especially) has already met the training line, you have hit the plateau — more rows land on a curve that no longer moves, and the money should go into a better model instead. A cheap trick: fit a curve to the last few validation points and see whether its slope is still meaningfully positive.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">look ONLY at the <span style="color:#0ea5e9">validation</span> line's right edge<br>still RISING &amp; below train &rarr; more data helps<br>FLAT &amp; touching train &rarr; more data won't<br>the slope is your answer</div>`, code:`const tail = val.slice(-3);
+const slope = (tail.at(-1).val - tail[0].val) /
+              (tail.at(-1).m   - tail[0].m);
+console.log(slope > 0.01 ? "still rising -> get more data"
+                         : "flat -> improve the model");` },
+ { title:"7. Two signatures, opposite fixes", why:"The practical payoff is that bias and variance demand OPPOSITE actions, so misdiagnosing is expensive. For HIGH BIAS you must make the model MORE powerful: add features, engineer interactions, raise the polynomial degree or tree depth, reduce regularisation — and do NOT bother collecting data. For HIGH VARIANCE you do the reverse: collect more data, or if that is impossible, rein the model in with regularisation, a simpler architecture, fewer features, or ensembling. Note that 'add regularisation' fixes variance while 'remove regularisation' fixes bias — the same knob, turned opposite ways. The learning curve tells you which way to turn it before you spend the effort.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">HIGH BIAS &rarr; add features/complexity, LESS λ &middot; NOT data<br>HIGH VARIANCE &rarr; more data, MORE λ, simpler model<br>same levers, opposite directions<br>diagnosis picks the direction</div>`, code:`if (biasSignature)     // curves meet LOW
+  addComplexity(); reduceRegularisation();   // NOT more data
+if (varianceSignature) // wide gap, val rising
+  getMoreData(); increaseRegularisation(); simplify();` },
+ { title:"8. Learning curve vs validation curve", why:"Do not confuse the two diagnostic plots. A LEARNING curve fixes the model and varies the TRAINING-SET SIZE (x-axis = number of rows) — it answers 'do I need more data?'. A VALIDATION curve fixes the data and varies a single HYPERPARAMETER, e.g. polynomial degree or tree depth or regularisation strength (x-axis = the knob) — it answers 'how complex should the model be?'. On a validation curve you literally watch bias turn into variance as the knob increases: the left end is underfit (both scores low), the right end is overfit (train high, validation falling), and the best setting is the degree where the validation score peaks. They are complementary: one chooses data, the other chooses complexity.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">LEARNING curve: &nbsp;x = #rows &nbsp;&rarr; "need more data?"<br>VALIDATION curve: x = a hyperparameter<br>&rarr; "how complex?" &middot; pick the val-score peak<br>left=bias &middot; right=variance &middot; peak=sweet spot</div>`, code:`from sklearn.model_selection import validation_curve
+tr, va = validation_curve(model, X, y,
+           param_name="polynomialfeatures__degree",
+           param_range=range(1,16), cv=5, scoring="r2")
+best_degree = range(1,16)[va.mean(1).argmax()]  # peak of val` },
+ { title:"9. How it's computed (and pitfalls)", why:"At each training size the score is not from one fit but an AVERAGE over several — sklearn's learning_curve uses cross-validation folds; our demo averages several random subsets — because a single small sample is noisy and would give a jagged curve. Three pitfalls to respect. (1) Always score validation on data drawn the SAME way as production; a leak here makes the val curve lie. (2) For classification, keep classes balanced across sizes (stratify) or small-sample scores swing wildly. (3) With time-series or grouped data, subsets must respect the ordering/groups, or the validation score is optimistic. The curve is only as trustworthy as the split behind it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">each size = AVERAGE of K fits (CV folds / subsets)<br>&rArr; smooth, low-variance curve<br>watch: leakage &middot; stratify small samples<br>&middot; respect time/group structure</div>`, code:`for (const m of sizes){
+  let tr=0, va=0;
+  for (let k=0;k<K;k++){                 // average K folds/subsets
+    const w = fit(sample(pool,m));
+    tr += score(w, thatSample);
+    va += score(w, heldOut);
+  }
+  curve.push({m, train:tr/K, val:va/K}); // smoothed point
+}` },
+ { title:"10. In practice — scikit-learn", why:"You will not hand-roll the loop in production. sklearn.model_selection.learning_curve takes an estimator, X, y, a list of train_sizes and a cv scheme, and returns the sizes plus train and test score arrays (rows = sizes, columns = folds); you average across folds and plot. Its sibling validation_curve does the same for a swept hyperparameter. The routine is model-agnostic — pass a pipeline, a random forest, a neural net wrapper — and metric-agnostic via the scoring argument. Reach for a learning curve whenever a model underperforms and you must decide, with evidence rather than a hunch, between 'label more data' and 'change the model'. It is one of the highest-leverage plots in applied ML.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">sklearn.model_selection.learning_curve(<br>&nbsp; estimator, X, y,<br>&nbsp; train_sizes=np.linspace(.1,1,10), cv=5,<br>&nbsp; scoring="r2") &rarr; sizes, train_scores, val_scores</div>`, code:`import numpy as np
+from sklearn.model_selection import learning_curve
+sizes, tr, va = learning_curve(
+    model, X, y,
+    train_sizes=np.linspace(0.1, 1.0, 10),
+    cv=5, scoring="r2")
+train_mean, val_mean = tr.mean(1), va.mean(1)   # plot these two` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3200); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
