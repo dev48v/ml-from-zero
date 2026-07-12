@@ -37,6 +37,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 28 — Apriori & Association Rules](https://dev48v.infy.uk/ml/day28-apriori.html) — `day28-apriori.html`
 - [MachineLearningFromZero · Day 29 — SHAP (Shapley values)](https://dev48v.infy.uk/ml/day29-shap.html) — `day29-shap.html`
 - [MachineLearningFromZero · Day 30 — Learning Curves](https://dev48v.infy.uk/ml/day30-learning-curves.html) — `day30-learning-curves.html`
+- [MachineLearningFromZero · Day 31 — Precision-Recall Curve](https://dev48v.infy.uk/ml/day31-precision-recall-curve.html) — `day31-precision-recall-curve.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

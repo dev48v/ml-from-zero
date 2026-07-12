@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 31 — Precision-Recall Curve</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .run-pulse { animation: runPulse .5s ease-out; }
+  @keyframes runPulse { 0% { box-shadow:0 0 0 0 rgba(14,165,233,.55);} 100% { box-shadow:0 0 0 14px rgba(14,165,233,0);} }
+  /* controls */
+  .ctl-row { display:grid; grid-template-columns:126px 1fr 66px; align-items:center; gap:10px; padding:6px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .preset-btn { border:1px solid #e2e8f0; }
+  .preset-btn:hover { border-color:#38bdf8; }
+  .swatch { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:-2px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .cm { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+  .cm-cell { border-radius:10px; padding:10px 8px; text-align:center; }
+  .cm-tp { background:#ecfdf5; border:1px solid #6ee7b7; }
+  .cm-fp { background:#fef2f2; border:1px solid #fca5a5; }
+  .cm-fn { background:#fff7ed; border:1px solid #fdba74; }
+  .cm-tn { background:#f1f5f9; border:1px solid #cbd5e1; }
+  .cm-lab { font-size:10px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#64748b; }
+  .cm-num { font-size:22px; font-weight:900; font-variant-numeric:tabular-nums; color:#0f172a; }
+  .metric-pill { border-radius:12px; padding:8px 10px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:20px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 31</div>
+      <h1 class="text-xl font-bold">🎯 Precision-Recall Curve — The Metric That Survives a Rare Positive Class</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1">Your fraud model reports 0.98 ROC-AUC. Then you deploy it and 95% of its alerts are false alarms. The precision-recall curve is the plot that would have warned you.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">A classifier does not output a class — it outputs a <strong>score</strong> (a probability). To turn scores into decisions you pick a <strong>threshold</strong>. Slide the threshold and every count in the confusion matrix moves, so <strong>precision</strong> and <strong>recall</strong> move too. A <strong>precision-recall curve</strong> traces that trade-off across every threshold: <strong>recall on the x-axis, precision on the y-axis</strong>. Everything below is computed <strong>for real, live in your browser</strong> — no pre-baked images. We draw <span class="font-bold" style="color:#0ea5e9">positive</span> and <span class="font-bold text-slate-500">negative</span> examples from two overlapping score distributions, sweep the threshold from 1&rarr;0, and plot the curve, the moving operating point, the live confusion matrix, and the <strong>Average Precision</strong> (area under the PR curve). Beside it we plot the <strong>same data's ROC curve</strong>. Now crank the <strong>class-imbalance</strong> slider and watch the lesson land: ROC stays rosy while PR collapses toward the prevalence floor.</p>
+
+      <div class="flex justify-center gap-4 mb-4 text-sm font-bold text-slate-600 flex-wrap">
+        <div>Imbalance: <span id="sImb" class="stat text-sky-600">—</span></div>
+        <div>Prevalence: <span id="sPrev" class="stat text-slate-800">—</span></div>
+        <div>Threshold: <span id="sThr" class="stat" style="color:#f59e0b">—</span></div>
+        <div>Precision: <span id="sPrec" class="stat text-sky-600">—</span></div>
+        <div>Recall: <span id="sRec" class="stat text-sky-600">—</span></div>
+        <div>F1: <span id="sF1" class="stat text-slate-800">—</span></div>
+        <div>AP: <span id="sAP" class="stat" style="color:#0ea5e9">—</span></div>
+        <div>ROC-AUC: <span id="sAUC" class="stat text-slate-800">—</span></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:360px;">
+          <div class="text-xs font-bold text-slate-500 mb-2">CONTROLS — set the data, then slide the threshold</div>
+          <div class="ctl-row">
+            <div class="ctl-name">🪙 Class imbalance</div>
+            <input type="range" id="cImb" min="1" max="100" step="1" value="1">
+            <div class="ctl-val" id="vImb">1:1</div>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-name">🔬 Separability</div>
+            <input type="range" id="cSep" min="0.15" max="1" step="0.05" value="0.6">
+            <div class="ctl-val" id="vSep">0.60</div>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-name">🎚 Threshold</div>
+            <input type="range" id="cThr" min="0" max="1" step="0.01" value="0.5">
+            <div class="ctl-val" id="vThr">0.50</div>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2 items-center">
+            <span class="text-[11px] font-bold text-slate-400 uppercase">presets</span>
+            <button data-preset="bal"  class="preset-btn bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg font-semibold text-xs">⚖️ Balanced</button>
+            <button data-preset="mild" class="preset-btn bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-semibold text-xs">1:10 imbalance</button>
+            <button data-preset="sev"  class="preset-btn bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🔴 1:100 rare</button>
+            <button data-preset="weak" class="preset-btn bg-sky-50 hover:bg-sky-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🌫 Weak scores</button>
+          </div>
+          <div class="mt-3 text-[11px] text-slate-400 leading-relaxed">There are always <strong>60 positives</strong>; imbalance adds negatives (up to <strong>6000</strong> at 1:100). Separability is how far apart the two score distributions sit — a better classifier. <strong>Recall depends only on the 60 positives</strong>, so it barely moves; <strong>precision drowns</strong> as negatives flood in. That gap is the whole story.</div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:560px;">
+          <div class="text-xs font-bold text-slate-500 mb-2 flex justify-between">
+            <span>PRECISION-RECALL CURVE — precision vs recall over all thresholds</span>
+            <span><span class="swatch" style="background:#0ea5e9"></span> PR &nbsp; <span class="swatch" style="background:#f59e0b"></span> your threshold</span>
+          </div>
+          <div id="prChart"></div>
+          <div class="text-[11px] text-slate-400 mt-1 text-center">Grey dashed line = the <strong>no-skill baseline</strong> = positive prevalence. A useless classifier scores there; the further the curve sits <strong>above</strong> it, the more skill. <strong>AP</strong> = area under this curve.</div>
+        </div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:360px;">
+          <div class="text-xs font-bold text-slate-500 mb-2">CONFUSION MATRIX @ your threshold</div>
+          <div class="cm">
+            <div class="cm-cell cm-tp"><div class="cm-lab">True Positive</div><div class="cm-num" id="cmTP">—</div></div>
+            <div class="cm-cell cm-fp"><div class="cm-lab">False Positive</div><div class="cm-num" id="cmFP">—</div></div>
+            <div class="cm-cell cm-fn"><div class="cm-lab">False Negative</div><div class="cm-num" id="cmFN">—</div></div>
+            <div class="cm-cell cm-tn"><div class="cm-lab">True Negative</div><div class="cm-num" id="cmTN">—</div></div>
+          </div>
+          <div class="grid grid-cols-3 gap-2 mt-3">
+            <div class="metric-pill"><div class="v text-sky-600" id="mPrec">—</div><div class="k">Precision</div></div>
+            <div class="metric-pill"><div class="v text-sky-600" id="mRec">—</div><div class="k">Recall</div></div>
+            <div class="metric-pill"><div class="v text-slate-800" id="mF1">—</div><div class="k">F1</div></div>
+          </div>
+          <div class="mt-3 text-[11px] text-slate-400 leading-relaxed">Precision = TP / (TP+FP): of everything you <em>flagged</em>, how much was right. Recall = TP / (TP+FN): of everything that <em>was</em> positive, how much you caught. Lower the threshold &rarr; catch more (recall &uarr;) but flag more junk (precision &darr;).</div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:560px;">
+          <div class="text-xs font-bold text-slate-500 mb-2 flex justify-between">
+            <span>SAME DATA — ROC CURVE (for contrast)</span>
+            <span><span class="swatch" style="background:#94a3b8"></span> ROC &nbsp; <span class="swatch" style="background:#f59e0b"></span> your threshold</span>
+          </div>
+          <div id="rocChart"></div>
+          <div class="text-[11px] text-slate-400 mt-1 text-center">ROC plots <strong>TPR vs FPR</strong>. FPR = FP / <strong>all negatives</strong> — so a fixed number of false positives looks tiny once negatives are huge. That is why ROC stays optimistic under imbalance while PR does not.</div>
+        </div>
+      </div>
+
+      <div id="diagBox" class="diag mt-6 max-w-4xl mx-auto text-left">—</div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">Reading a precision-recall curve</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Write the threshold sweep from scratch — sort by score, walk down, accumulate TP and FP — then reach for <code>sklearn.metrics.precision_recall_curve</code> and <code>average_precision_score</code>, which do exactly this. The point is to stop trusting a single accuracy or ROC number when the positive class is rare, and read the curve that actually predicts how the model behaves in production.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The threshold sweep from scratch</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Sort examples by score, high to low. Walk down the list: each new example you "include" is a prediction of positive. Keep running <code>tp</code> and <code>fp</code> counts — that is enough to read precision and recall at every threshold without ever re-scanning the data.</p>
+        <div class="relative"><pre>// data: [{score, y}], y in {0,1}
+function prCurve(data, nPos){
+  const sorted = [...data].sort((a,b)=&gt;b.score-a.score);
+  let tp=0, fp=0;
+  const pts=[{recall:0, precision:1}];   // threshold above every score
+  for (const e of sorted){
+    if (e.y===1) tp++; else fp++;
+    pts.push({
+      recall:    tp/nPos,                // = TP/(TP+FN)
+      precision: tp/(tp+fp)              // = TP/(TP+FP)
+    });
+  }
+  return pts;                            // recall runs 0 -&gt; 1
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Precision, recall, F1 at one threshold</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A single operating point is just the confusion matrix at a fixed threshold <code>t</code>. Note recall's denominator is the positive count only — it never sees a true negative — which is the seed of the whole PR-vs-ROC story.</p>
+        <div class="relative"><pre>function metricsAt(data, t){
+  let tp=0, fp=0, fn=0, tn=0;
+  for (const e of data){
+    const pred = e.score &gt;= t ? 1 : 0;
+    if (e.y===1 &amp;&amp; pred===1) tp++;
+    else if (e.y===0 &amp;&amp; pred===1) fp++;
+    else if (e.y===1 &amp;&amp; pred===0) fn++;
+    else tn++;
+  }
+  const precision = tp+fp ? tp/(tp+fp) : 1;   // guarded /0
+  const recall    = tp+fn ? tp/(tp+fn) : 0;
+  const f1 = precision+recall
+    ? 2*precision*recall/(precision+recall) : 0;
+  return {tp,fp,fn,tn, precision, recall, f1};
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Average Precision — area under the PR curve</h3></div>
+        <p class="text-sm text-slate-600 mb-3">AP is a weighted sum: at each threshold, weight the precision by the <em>jump</em> in recall since the previous point. Equivalently — because recall only jumps when you hit a true positive — AP is the mean precision measured at every positive. That is exactly what scikit-learn's <code>average_precision_score</code> computes (no interpolation).</p>
+        <div class="relative"><pre>function averagePrecision(pts){          // pts from prCurve()
+  let ap=0;
+  for (let i=1;i&lt;pts.length;i++){
+    ap += (pts[i].recall - pts[i-1].recall) * pts[i].precision;
+  }
+  return ap;                             // in [0,1]
+}
+// identical to: mean( precision at each positive ),
+// which is why AP rewards ranking positives near the top.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">scikit-learn: the two functions you actually call</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In practice you never hand-roll the sweep. Feed <em>scores</em> (not hard labels) to <code>precision_recall_curve</code> and <code>average_precision_score</code>. The curve returns one extra point (precision=1, recall=0) and <code>thresholds</code> is one shorter than the arrays.</p>
+        <div class="relative"><pre>import numpy as np
+from sklearn.metrics import precision_recall_curve, average_precision_score
+
+y_score = model.predict_proba(X_test)[:, 1]   # scores, NOT .predict()
+
+precision, recall, thresholds = precision_recall_curve(y_test, y_score)
+ap = average_precision_score(y_test, y_score)  # area under PR
+
+baseline = y_test.mean()          # no-skill line = positive prevalence
+print(f"AP={ap:.3f}   baseline={baseline:.3f}")</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Plot it — with the baseline and both curves</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Always draw the no-skill baseline at the prevalence, and plot ROC beside PR so the imbalance gap is visible. <code>PrecisionRecallDisplay</code> does the plotting; add the baseline yourself.</p>
+        <div class="relative"><pre>import matplotlib.pyplot as plt
+from sklearn.metrics import PrecisionRecallDisplay, RocCurveDisplay
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11,4))
+PrecisionRecallDisplay.from_predictions(y_test, y_score, ax=ax1)
+ax1.axhline(y_test.mean(), ls="--", c="grey", label="no-skill")  # prevalence
+ax1.legend()
+
+RocCurveDisplay.from_predictions(y_test, y_score, ax=ax2)         # contrast
+# On imbalanced data ROC-AUC barely moves while AP collapses.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Pick an operating point by cost</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The curve summarises the model; deployment needs one threshold. Choose it from the business cost, not 0.5. Two common recipes: maximise F1 (balanced), or take the highest recall that still clears a precision floor (e.g. "alerts must be right &gt;=80% of the time").</p>
+        <div class="relative"><pre>import numpy as np
+from sklearn.metrics import precision_recall_curve
+
+precision, recall, thr = precision_recall_curve(y_test, y_score)
+
+# recipe A: best F1
+f1 = 2*precision*recall / (precision+recall + 1e-12)
+t_f1 = thr[np.nanargmax(f1[:-1])]           # last point has no threshold
+
+# recipe B: highest recall with precision &gt;= 0.80
+ok = precision[:-1] &gt;= 0.80
+t_floor = thr[ok][np.argmax(recall[:-1][ok])] if ok.any() else 1.0
+
+deploy = (y_score &gt;= t_f1).astype(int)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 31 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You swept the <strong>threshold</strong> to trace <strong>precision against recall</strong>, read <strong>Average Precision</strong> as the area under it, balanced the two with <strong>F1</strong>, and saw why on a rare positive class the <strong>PR curve tells the truth</strong> while ROC flatters — because ROC's FPR hides in a sea of true negatives that PR never touches. The no-skill line is the <strong>prevalence</strong>, not 0.5. <strong>👉 Tomorrow — Day 32: SMOTE</strong> — instead of just measuring the imbalance, fight it by synthesising new minority examples.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= PR / ROC engine (verified in Node) =================
+const SKY = "#0ea5e9", AMBER = "#f59e0b", GREY = "#94a3b8";
+const NPOS = 60;
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function gauss(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+const clip01 = x => x<0.001 ? 0.001 : (x>0.999 ? 0.999 : x);
+
+// Positives fixed (60); negatives scale with imbalance and are drawn from the
+// SAME distribution -> ROC-AUC stays ~constant while precision (AP) collapses.
+function genData(imb, sep, seed=7){
+  const rng = mulberry32(seed);
+  const nNeg = Math.round(NPOS * imb);
+  const muPos = 0.5 + sep*0.28, muNeg = 0.5 - sep*0.28, sd = 0.16;
+  const ex = [];
+  for(let i=0;i<NPOS;i++) ex.push({ y:1, s:clip01(muPos + sd*gauss(rng)) });
+  for(let i=0;i<nNeg;i++) ex.push({ y:0, s:clip01(muNeg + sd*gauss(rng)) });
+  ex.sort((a,b)=>b.s-a.s);
+  return { ex, nPos:NPOS, nNeg };
+}
+function prCurve(ex, nPos){
+  let tp=0, fp=0, ap=0; const pts=[{r:0,p:1}];
+  for(const e of ex){
+    if(e.y===1) tp++; else fp++;
+    const p = tp/(tp+fp), r = tp/nPos;
+    pts.push({r,p});
+    if(e.y===1) ap += p;          // recall jumps by 1/nPos only at positives
+  }
+  return { pts, ap: ap/nPos };
+}
+function rocCurve(ex, nPos, nNeg){
+  let tp=0, fp=0; const pts=[{x:0,y:0}];
+  for(const e of ex){
+    if(e.y===1) tp++; else fp++;
+    pts.push({ x: fp/nNeg, y: tp/nPos });
+  }
+  let auc=0;
+  for(let i=1;i<pts.length;i++) auc += (pts[i].x-pts[i-1].x)*(pts[i].y+pts[i-1].y)/2;
+  return { pts, auc };
+}
+function confusion(ex, nPos, nNeg, t){
+  let tp=0, fp=0;
+  for(const e of ex){ if(e.s>=t){ if(e.y===1) tp++; else fp++; } }
+  const fn=nPos-tp, tn=nNeg-fp;
+  const prec = (tp+fp)>0 ? tp/(tp+fp) : 1;
+  const rec  = nPos>0 ? tp/nPos : 0;
+  const f1 = (prec+rec)>0 ? 2*prec*rec/(prec+rec) : 0;
+  return { tp,fp,fn,tn,prec,rec,f1, fpr: nNeg>0 ? fp/nNeg : 0 };
+}
+
+// ---------------- state + presets ----------------
+const state = { imb:1, sep:0.6, t:0.5 };
+const PRESETS = {
+  bal:  { imb:1,   sep:0.6,  t:0.5 },
+  mild: { imb:10,  sep:0.6,  t:0.5 },
+  sev:  { imb:100, sep:0.6,  t:0.5 },
+  weak: { imb:10,  sep:0.3,  t:0.5 },
+};
+
+// cache curves so threshold drags don't regenerate data
+let cache = { key:null };
+function ensure(){
+  const key = state.imb+"|"+state.sep;
+  if(cache.key!==key){
+    const d = genData(state.imb, state.sep);
+    cache = { key, d, pr:prCurve(d.ex,d.nPos), roc:rocCurve(d.ex,d.nPos,d.nNeg) };
+  }
+  return cache;
+}
+
+// ---------------- SVG PR chart ----------------
+function renderPR(pts, baseline, mv){
+  const W=528, H=330, ml=48, mr=16, mt=16, mb=42;
+  const pw=W-ml-mr, ph=H-mt-mb;
+  const px = r => ml + r*pw, py = p => mt + (1-p)*ph;
+  let g="";
+  for(let v=0; v<=1.0001; v+=0.25){
+    g+=`<line x1="${ml}" y1="${py(v)}" x2="${ml+pw}" y2="${py(v)}" stroke="#e2e8f0"/>`;
+    g+=`<text x="${ml-8}" y="${py(v)+4}" text-anchor="end" font-size="11" fill="#94a3b8">${v.toFixed(2)}</text>`;
+    g+=`<line x1="${px(v)}" y1="${mt}" x2="${px(v)}" y2="${mt+ph}" stroke="#f1f5f9"/>`;
+    g+=`<text x="${px(v)}" y="${mt+ph+18}" text-anchor="middle" font-size="11" fill="#94a3b8">${v.toFixed(2)}</text>`;
+  }
+  g+=`<text x="${ml+pw/2}" y="${H-4}" text-anchor="middle" font-size="12" font-weight="700" fill="#64748b">recall</text>`;
+  g+=`<text transform="translate(13,${mt+ph/2}) rotate(-90)" text-anchor="middle" font-size="12" font-weight="700" fill="#64748b">precision</text>`;
+  // area under PR
+  const area = pts.map(p=>`${px(p.r)},${py(p.p)}`).join(" ");
+  g+=`<polygon points="${px(0)},${py(0)} ${area} ${px(pts[pts.length-1].r)},${py(0)}" fill="${SKY}" fill-opacity="0.10"/>`;
+  // no-skill baseline
+  g+=`<line x1="${px(0)}" y1="${py(baseline)}" x2="${px(1)}" y2="${py(baseline)}" stroke="${GREY}" stroke-width="1.5" stroke-dasharray="6 4"/>`;
+  g+=`<text x="${px(1)-4}" y="${py(baseline)-5}" text-anchor="end" font-size="10" fill="#64748b">no-skill = ${baseline.toFixed(3)}</text>`;
+  // PR curve
+  g+=`<polyline points="${area}" fill="none" stroke="${SKY}" stroke-width="2.5"/>`;
+  // moving operating point
+  g+=`<line x1="${px(mv.r)}" y1="${mt+ph}" x2="${px(mv.r)}" y2="${py(mv.p)}" stroke="${AMBER}" stroke-width="1" stroke-dasharray="3 3"/>`;
+  g+=`<line x1="${ml}" y1="${py(mv.p)}" x2="${px(mv.r)}" y2="${py(mv.p)}" stroke="${AMBER}" stroke-width="1" stroke-dasharray="3 3"/>`;
+  g+=`<circle cx="${px(mv.r)}" cy="${py(mv.p)}" r="5.5" fill="${AMBER}" stroke="#fff" stroke-width="1.5"/>`;
+  document.getElementById("prChart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${g}</svg>`;
+}
+
+// ---------------- SVG ROC chart ----------------
+function renderROC(pts, mv){
+  const W=528, H=330, ml=48, mr=16, mt=16, mb=42;
+  const pw=W-ml-mr, ph=H-mt-mb;
+  const px = x => ml + x*pw, py = y => mt + (1-y)*ph;
+  let g="";
+  for(let v=0; v<=1.0001; v+=0.25){
+    g+=`<line x1="${ml}" y1="${py(v)}" x2="${ml+pw}" y2="${py(v)}" stroke="#e2e8f0"/>`;
+    g+=`<text x="${ml-8}" y="${py(v)+4}" text-anchor="end" font-size="11" fill="#94a3b8">${v.toFixed(2)}</text>`;
+    g+=`<line x1="${px(v)}" y1="${mt}" x2="${px(v)}" y2="${mt+ph}" stroke="#f1f5f9"/>`;
+    g+=`<text x="${px(v)}" y="${mt+ph+18}" text-anchor="middle" font-size="11" fill="#94a3b8">${v.toFixed(2)}</text>`;
+  }
+  g+=`<text x="${ml+pw/2}" y="${H-4}" text-anchor="middle" font-size="12" font-weight="700" fill="#64748b">false-positive rate</text>`;
+  g+=`<text transform="translate(13,${mt+ph/2}) rotate(-90)" text-anchor="middle" font-size="12" font-weight="700" fill="#64748b">true-positive rate</text>`;
+  // diagonal no-skill
+  g+=`<line x1="${px(0)}" y1="${py(0)}" x2="${px(1)}" y2="${py(1)}" stroke="${GREY}" stroke-width="1.5" stroke-dasharray="6 4"/>`;
+  // ROC curve
+  g+=`<polyline points="${pts.map(p=>`${px(p.x)},${py(p.y)}`).join(" ")}" fill="none" stroke="#64748b" stroke-width="2.5"/>`;
+  // moving point
+  g+=`<circle cx="${px(mv.fpr)}" cy="${py(mv.rec)}" r="5.5" fill="${AMBER}" stroke="#fff" stroke-width="1.5"/>`;
+  document.getElementById("rocChart").innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${g}</svg>`;
+}
+
+// ---------------- lesson box ----------------
+function lesson(prev, ap, auc){
+  const lift = ap/prev;   // how far AP sits above the no-skill floor
+  if(state.imb<=2){
+    return { cls:"diag-good", title:"⚖️ Balanced classes — both metrics agree",
+      body:`With prevalence ${(prev*100).toFixed(1)}% the no-skill floor is near 0.5, so AP (${ap.toFixed(3)}) and ROC-AUC (${auc.toFixed(3)}) tell a similar story. The disagreement only appears once positives get rare — drag the imbalance slider up and watch the two numbers diverge.` };
+  }
+  if(lift>2.2){
+    return { cls:"diag-warn", title:"🎯 Rare positives — read AP, not just ROC-AUC",
+      body:`Positives are now ${(prev*100).toFixed(1)}% of the data. ROC-AUC is still a flattering ${auc.toFixed(3)} because its false-positive rate divides by ${ensure().d.nNeg.toLocaleString()} negatives — a flood of true negatives that hides the false alarms. Average Precision is ${ap.toFixed(3)} against a no-skill floor of ${prev.toFixed(3)} (a ${lift.toFixed(1)}× lift): still real skill, but the honest, sobering number.` };
+  }
+  return { cls:"diag-bad", title:"🔴 PR has collapsed toward the prevalence floor",
+    body:`At ${(prev*100).toFixed(2)}% prevalence ROC-AUC clings to ${auc.toFixed(3)} — it looks like a great model. But AP is just ${ap.toFixed(3)} against a no-skill baseline of ${prev.toFixed(3)}: barely a ${lift.toFixed(1)}× lift. Most alerts at a moderate threshold are false positives. This gap — ROC rosy, PR grim — is exactly why you report the precision-recall curve on imbalanced problems.` };
+}
+
+// ---------------- render all ----------------
+function run(){
+  const c = ensure();
+  const { pr, roc, d } = c;
+  const prev = d.nPos/(d.nPos+d.nNeg);
+  const cm = confusion(d.ex, d.nPos, d.nNeg, state.t);
+  renderPR(pr.pts, prev, { r:cm.rec, p:cm.prec });
+  renderROC(roc.pts, cm);
+  document.getElementById("sImb").textContent  = "1:"+state.imb;
+  document.getElementById("sPrev").textContent = prev.toFixed(3);
+  document.getElementById("sThr").textContent  = state.t.toFixed(2);
+  document.getElementById("sPrec").textContent = cm.prec.toFixed(3);
+  document.getElementById("sRec").textContent  = cm.rec.toFixed(3);
+  document.getElementById("sF1").textContent   = cm.f1.toFixed(3);
+  document.getElementById("sAP").textContent   = pr.ap.toFixed(3);
+  document.getElementById("sAUC").textContent  = roc.auc.toFixed(3);
+  document.getElementById("cmTP").textContent  = cm.tp.toLocaleString();
+  document.getElementById("cmFP").textContent  = cm.fp.toLocaleString();
+  document.getElementById("cmFN").textContent  = cm.fn.toLocaleString();
+  document.getElementById("cmTN").textContent  = cm.tn.toLocaleString();
+  document.getElementById("mPrec").textContent = cm.prec.toFixed(2);
+  document.getElementById("mRec").textContent  = cm.rec.toFixed(2);
+  document.getElementById("mF1").textContent   = cm.f1.toFixed(2);
+  const L = lesson(prev, pr.ap, roc.auc);
+  const box = document.getElementById("diagBox");
+  box.className = "diag mt-6 max-w-4xl mx-auto text-left "+L.cls;
+  box.innerHTML = `<div class="text-base font-extrabold mb-1">${L.title}</div><div class="text-sm font-medium leading-relaxed">${L.body}</div>`;
+}
+function syncControls(){
+  document.getElementById("cImb").value = state.imb;
+  document.getElementById("cSep").value = state.sep;
+  document.getElementById("cThr").value = state.t;
+  document.getElementById("vImb").textContent = "1:"+state.imb;
+  document.getElementById("vSep").textContent = state.sep.toFixed(2);
+  document.getElementById("vThr").textContent = state.t.toFixed(2);
+}
+document.getElementById("cImb").addEventListener("input", e=>{ state.imb=+e.target.value; syncControls(); run(); });
+document.getElementById("cSep").addEventListener("input", e=>{ state.sep=+e.target.value; syncControls(); run(); });
+document.getElementById("cThr").addEventListener("input", e=>{ state.t=+e.target.value; syncControls(); run(); });
+document.querySelectorAll("[data-preset]").forEach(b=> b.onclick=()=>{
+  Object.assign(state, PRESETS[b.dataset.preset]);
+  b.classList.remove("run-pulse"); void b.offsetWidth; b.classList.add("run-pulse");
+  syncControls(); run();
+});
+syncControls(); run();
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. Precision vs recall", why:"Both come from the confusion matrix, and each answers a different question. PRECISION = TP / (TP + FP): of all the cases you flagged positive, what fraction really were? It is the cost of a false alarm — spam that wasn't spam, a healthy patient told they are sick. RECALL (a.k.a. sensitivity, true-positive rate) = TP / (TP + FN): of all the cases that truly were positive, what fraction did you catch? It is the cost of a miss — the fraud you let through, the tumour you overlooked. The two pull in opposite directions, and which one matters more is a business decision, not a maths one.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">PRECISION = TP / (TP + FP)<br>&nbsp;&nbsp;"of what I flagged, how much was right?"<br><br>RECALL &nbsp;&nbsp;&nbsp;= TP / (TP + FN)<br>&nbsp;&nbsp;"of what was positive, how much did I catch?"</div>`, code:`precision = TP / (TP + FP)   // FP = false alarms
+recall    = TP / (TP + FN)   // FN = misses
+// note: NEITHER uses TN. Remember that for step 7.` },
+ { title:"2. The threshold trade-off", why:"A classifier outputs a score, not a class. You get a class by comparing the score to a THRESHOLD. Push the threshold DOWN toward 0 and you predict positive more freely: you catch more real positives (recall rises) but you also sweep in more junk (precision falls). Push it UP toward 1 and you become stingy: precision rises because you only flag the surest cases, but recall falls because you miss the borderline ones. There is no free lunch — every threshold is a point on the trade-off, and the PR curve is the set of ALL those points at once.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">threshold &darr; (0) &nbsp; flag everything &nbsp; recall&uarr; precision&darr;<br>threshold &uarr; (1) &nbsp; flag nothing &nbsp;&nbsp;&nbsp; precision&uarr; recall&darr;<br><br>one threshold = one (recall, precision) point</div>`, code:`for (const t of thresholds){        // slide 1 -> 0
+  const pred = scores.map(s => s >= t ? 1 : 0);
+  // recall goes UP, precision tends to go DOWN
+}` },
+ { title:"3. Building the curve by sweeping", why:"You do not test hundreds of arbitrary thresholds — the only thresholds that change anything are the scores themselves. So sort the examples by score, high to low, and walk down the list. Each step lowers the threshold just past one more example, i.e. you now predict it positive. Keep a running tally of true positives and false positives; precision and recall fall straight out of those two counters. Plot recall on x and precision on y as you go and the PR curve draws itself in one linear pass — no re-scanning, no re-fitting.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">sort by score &darr;<br>walk down, one example at a time:<br>&nbsp; hit a POSITIVE &rarr; recall &uarr; , precision &uarr;<br>&nbsp; hit a NEGATIVE &rarr; precision &darr;<br>&rarr; the zig-zag is the PR curve</div>`, code:`let tp=0, fp=0; const pts=[{r:0,p:1}];
+for (const e of sortedByScoreDesc){
+  if (e.y===1) tp++; else fp++;
+  pts.push({ r: tp/nPos, p: tp/(tp+fp) });
+}   // recall sweeps 0 -> 1` },
+ { title:"4. Average Precision (AUPRC)", why:"To compare models you want ONE number, not a whole curve — that number is Average Precision, the area under the PR curve. Formally AP = Σ (Rₙ − Rₙ₋₁)·Pₙ: at each step, weight the precision by how much recall just increased. Because recall only jumps when you correctly rank a positive, AP works out to the mean precision measured at every positive — so it rewards a model that pushes real positives to the very top of its ranking. This is scikit-learn's average_precision_score, and it is the honest summary of an imbalanced classifier. (AUPRC via trapezoid interpolation is a close cousin; AP avoids the optimistic interpolation.)", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">AP = &Sigma; (R&#8345; &minus; R&#8345;&#8331;&#8321;) &middot; P&#8345;<br>&nbsp;&nbsp;&nbsp;= mean( precision at each true positive )<br><br>area under PR curve &middot; in [0,1] &middot; higher = better ranking</div>`, code:`let ap=0;
+for (let i=1;i<pts.length;i++)
+  ap += (pts[i].r - pts[i-1].r) * pts[i].p;
+// == mean precision over the positives == average_precision_score` },
+ { title:"5. F1 — a single-number balance", why:"If you must collapse precision and recall at ONE threshold into a single score, use the F1 score: the HARMONIC mean, F1 = 2·P·R / (P + R). Why harmonic and not a plain average? Because the harmonic mean punishes imbalance between the two. A model with precision 0.95 and recall 0.05 has an arithmetic mean of 0.50 but an F1 of only 0.095 — it correctly refuses to reward a model that aces one metric by tanking the other. F1 peaks when precision and recall are close and both high. (The Fβ generalisation lets you weight recall β times more than precision when misses cost more than false alarms.)", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">F1 = 2 &middot; P &middot; R / (P + R) &nbsp;(harmonic mean)<br><br>P=0.95, R=0.05 &rarr; arithmetic 0.50, F1 0.095<br>harmonic mean &rarr; both must be high</div>`, code:`const f1 = 2*p*r / (p + r);          // 0 when either is 0
+// F-beta: weight recall beta-times more than precision
+const fb = (1+b*b)*p*r / (b*b*p + r);` },
+ { title:"6. The no-skill baseline = prevalence", why:"On a ROC curve the no-skill line is always the 0.5 diagonal. On a PR curve it is NOT 0.5 — it is a horizontal line at the positive PREVALENCE (the fraction of examples that are positive). A classifier that guesses randomly, or one that assigns the same score to everyone, lands on that line: its precision equals the prevalence at every recall. So if positives are 1% of the data, a useless model already scores 0.01 precision, and 'AP = 0.10' is a 10× lift over chance — genuinely good — whereas at balanced 50% prevalence the same 0.10 would be terrible. You cannot judge an AP without knowing the baseline it sits above.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">PR no-skill line = prevalence = #pos / #total<br>(NOT 0.5 &mdash; that's ROC)<br><br>AP 0.10 @ 1% prevalence &rarr; 10&times; lift (good)<br>AP 0.10 @ 50% prevalence &rarr; useless</div>`, code:`baseline = y_true.mean();   // positive prevalence
+// judge AP RELATIVE to this, never in absolute terms
+lift = ap / baseline;       // >1 means real skill` },
+ { title:"7. Why PR beats ROC on imbalance", why:"Here is the crux. ROC plots recall against the FALSE-POSITIVE RATE, FPR = FP / (FP + TN). That denominator contains TN — the true negatives. When negatives massively outnumber positives (fraud, disease, click-through), TN is enormous, so even thousands of false positives produce a tiny FPR, and the ROC curve hugs the top-left corner: it looks fantastic. Precision, by contrast, is FP / (TP + FP) — it NEVER touches TN. Those same thousands of false positives sit right next to your handful of true positives and crush precision. ROC hides the false alarms inside a sea of true negatives; PR puts them front and centre. That is why PR is the honest picture when the positive class is rare.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">FPR = FP / (FP + <b>TN</b>) &nbsp; &larr; huge TN hides FP<br>&nbsp;&nbsp;&rarr; ROC stays optimistic under imbalance<br><br>precision = TP / (TP + FP) &nbsp; &larr; NO TN<br>&nbsp;&nbsp;&rarr; PR feels every false alarm</div>`, code:`// same FP=500 false positives:
+// negatives = 200 -> FPR huge, ROC dips (honest)
+// negatives = 200000 -> FPR tiny, ROC looks great (misleading)
+// precision = TP/(TP+500) collapses either way -> PR is honest` },
+ { title:"8. Picking an operating point by cost", why:"The curve describes the model; a deployed system needs ONE threshold, and it should come from the cost of the two errors, not from 0.5. If a miss is catastrophic (cancer screening, fraud), buy recall: accept lower precision, more false alarms to be reviewed. If a false alarm is expensive or annoying (auto-blocking accounts, spam filtering good mail), buy precision: set a floor like 'precision must stay above 0.9' and take the highest recall on the curve that still clears it. Two standard recipes: pick the threshold that maximises F1, or pick the highest-recall point above a required precision. The PR curve literally shows you the menu of achievable (precision, recall) pairs.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">miss is costly &rarr; buy RECALL (lower threshold)<br>false alarm costly &rarr; buy PRECISION (raise it)<br><br>recipe A: argmax F1<br>recipe B: max recall s.t. precision &ge; floor</div>`, code:`// highest recall that still keeps precision >= 0.80
+const ok = pts.filter(p => p.p >= 0.80);
+const op = ok.reduce((a,b)=> b.r>a.r ? b : a);
+// -> map op back to its score to get the deploy threshold` },
+ { title:"9. Macro vs micro averaging", why:"With more than two classes there is no single 'positive', so you compute precision/recall/AP per class (one-vs-rest) and then AVERAGE. MACRO-average takes the unweighted mean across classes — every class counts equally, so a tiny rare class can tank the macro score, which is what you want when the rare classes matter. MICRO-average pools all the TP/FP/FN across classes before dividing — big classes dominate, so it reflects overall example-level performance. WEIGHTED-average sits between, weighting each class by its support. Rule of thumb: report macro when you care about rare classes equally, micro when you care about aggregate accuracy. Same choice applies to averaging AP into mAP (mean average precision), the standard metric in retrieval and object detection.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">MACRO: mean over classes &mdash; every class equal<br>MICRO: pool all TP/FP/FN &mdash; big classes win<br>WEIGHTED: by class support<br><br>mAP = mean AP across classes (retrieval/detection)</div>`, code:`from sklearn.metrics import f1_score, average_precision_score
+f1_score(y, pred, average="macro")    # rare classes count equally
+f1_score(y, pred, average="micro")    # example-level aggregate
+average_precision_score(Y, S, average="macro")  # -> mAP` },
+ { title:"10. In practice — scikit-learn", why:"You will not hand-roll the sweep in production. sklearn.metrics.precision_recall_curve(y_true, y_score) returns precision, recall and thresholds arrays (feed it the SCORE, from predict_proba or decision_function, never the hard 0/1 label). average_precision_score(y_true, y_score) gives the single AP number. PrecisionRecallDisplay draws it. Always add the prevalence baseline by hand, and plot ROC beside PR so a reviewer sees the imbalance gap immediately. The habit to build: on any classification problem where the positive class is rare, lead with the PR curve and AP, and treat a high ROC-AUC with healthy suspicion until you have seen precision at the recall you actually need.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">precision_recall_curve(y_true, y_score)<br>&nbsp;&rarr; precision, recall, thresholds<br>average_precision_score(y_true, y_score) &rarr; AP<br>PrecisionRecallDisplay + axhline(prevalence)</div>`, code:`from sklearn.metrics import precision_recall_curve, average_precision_score
+y_score = clf.predict_proba(X_test)[:, 1]   # scores, not labels
+p, r, thr = precision_recall_curve(y_test, y_score)
+ap = average_precision_score(y_test, y_score)
+baseline = y_test.mean()   # <- report AP relative to this` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3200); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
