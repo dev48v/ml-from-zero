@@ -38,6 +38,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 29 — SHAP (Shapley values)](https://dev48v.infy.uk/ml/day29-shap.html) — `day29-shap.html`
 - [MachineLearningFromZero · Day 30 — Learning Curves](https://dev48v.infy.uk/ml/day30-learning-curves.html) — `day30-learning-curves.html`
 - [MachineLearningFromZero · Day 31 — Precision-Recall Curve](https://dev48v.infy.uk/ml/day31-precision-recall-curve.html) — `day31-precision-recall-curve.html`
+- [MachineLearningFromZero · Day 32 — SMOTE](https://dev48v.infy.uk/ml/day32-smote.html) — `day32-smote.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

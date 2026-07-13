@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 32 — SMOTE</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .run-pulse { animation: runPulse .5s ease-out; }
+  @keyframes runPulse { 0% { box-shadow:0 0 0 0 rgba(14,165,233,.55);} 100% { box-shadow:0 0 0 14px rgba(14,165,233,0);} }
+  /* controls */
+  .ctl-row { display:grid; grid-template-columns:150px 1fr 60px; align-items:center; gap:10px; padding:6px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .preset-btn { border:1px solid #e2e8f0; }
+  .preset-btn:hover { border-color:#38bdf8; }
+  .mode-btn { border:1px solid #e2e8f0; background:#f8fafc; }
+  .mode-btn:hover { border-color:#38bdf8; }
+  .mode-btn.active { background:#0ea5e9; color:#fff; border-color:#0ea5e9; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-sq { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:-2px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .metric-pill { border-radius:12px; padding:10px 10px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .cbar { height:22px; border-radius:6px; overflow:hidden; display:flex; background:#f1f5f9; }
+  .cbar .min { background:#0ea5e9; }
+  .cbar .maj { background:#94a3b8; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 32</div>
+      <h1 class="text-xl font-bold">⚖️ SMOTE — Fight Class Imbalance by Synthesising New Minority Examples</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1">A fraud dataset is 99% legitimate. A model that screams "legit!" at everything scores 99% accuracy and catches zero fraud. SMOTE fixes the data instead of the metric — it grows the rare class synthetic example by synthetic example.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">The naive fix is to <strong>duplicate</strong> the rare class until the counts match — but exact copies teach a model to memorise a few points and overfit. <strong>SMOTE</strong> (Synthetic Minority Over-sampling TEchnique) does something smarter: for each minority point it finds its <strong>k nearest minority neighbours</strong>, picks one at random, and drops a <strong>brand-new</strong> point at a random spot <strong>on the straight line between them</strong> — <code>new = x + t·(neighbour − x)</code>, <code>t ∈ [0,1]</code>. The synthetic points <strong>fill the minority region</strong> instead of stacking on old ones. Everything below is computed <strong>live in your browser</strong>: real k-nearest-neighbours, real interpolation, and two <strong>logistic-regression decision boundaries fit from scratch</strong> — one on the raw imbalanced data (<span class="font-bold text-slate-500">naive</span>), one on the resampled data (<span class="font-bold" style="color:#0ea5e9">balanced</span>). Watch the boundary swing back over the minority region once the class is no longer a rounding error.</p>
+
+      <div class="flex justify-center gap-4 mb-4 text-sm font-bold text-slate-600 flex-wrap">
+        <div>Mode: <span id="sMode" class="stat text-sky-600">—</span></div>
+        <div>Minority: <span id="sMin" class="stat text-sky-600">—</span></div>
+        <div>Majority: <span id="sMaj" class="stat text-slate-800">—</span></div>
+        <div>Δ: <span id="sDelta" class="stat" style="color:#f59e0b">—</span></div>
+        <div>Recall (naive): <span id="sRn" class="stat text-slate-800">—</span></div>
+        <div>Recall (resampled): <span id="sRr" class="stat" style="color:#0ea5e9">—</span></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:360px;">
+          <div class="text-xs font-bold text-slate-500 mb-2">CONTROLS — set the imbalance, pick a strategy, then ▶ Run</div>
+          <div class="ctl-row">
+            <div class="ctl-name">🪙 Imbalance (maj : min)</div>
+            <input type="range" id="cImb" min="2" max="25" step="1" value="10">
+            <div class="ctl-val" id="vImb">10:1</div>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-name">👥 k neighbours</div>
+            <input type="range" id="cK" min="1" max="8" step="1" value="5">
+            <div class="ctl-val" id="vK">5</div>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-name">📈 Oversample to&nbsp;(% of maj)</div>
+            <input type="range" id="cOver" min="20" max="100" step="10" value="100">
+            <div class="ctl-val" id="vOver">100%</div>
+          </div>
+          <div class="mt-3">
+            <div class="text-[11px] font-bold text-slate-400 uppercase mb-1">resampling strategy</div>
+            <div class="grid grid-cols-3 gap-2">
+              <button data-mode="smote" class="mode-btn active px-2 py-1.5 rounded-lg font-semibold text-xs">✨ SMOTE</button>
+              <button data-mode="over"  class="mode-btn px-2 py-1.5 rounded-lg font-semibold text-xs">🔁 Duplicate</button>
+              <button data-mode="under" class="mode-btn px-2 py-1.5 rounded-lg font-semibold text-xs">✂️ Undersample</button>
+            </div>
+          </div>
+          <div class="mt-3 flex gap-2">
+            <button id="runBtn" class="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg font-bold text-sm flex-1">▶ Run resampling</button>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2 items-center">
+            <span class="text-[11px] font-bold text-slate-400 uppercase">presets</span>
+            <button data-preset="mild" class="preset-btn bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-semibold text-xs">1:10</button>
+            <button data-preset="sev"  class="preset-btn bg-red-50 hover:bg-red-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🔴 1:25 rare</button>
+            <button data-preset="k1"   class="preset-btn bg-slate-50 hover:bg-slate-100 px-2.5 py-1 rounded-lg font-semibold text-xs">k=1 (jagged)</button>
+          </div>
+          <div class="mt-3 text-[11px] text-slate-400 leading-relaxed">There are always <strong>16 minority</strong> points; imbalance adds majority points. <strong>SMOTE</strong> spreads new points along neighbour lines; <strong>Duplicate</strong> stacks exact copies (darker dots = overlaps); <strong>Undersample</strong> throws majority away instead. Only <strong>SMOTE</strong> and <strong>Duplicate</strong> use the oversample-target slider.</div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:560px;">
+          <div class="text-xs font-bold text-slate-500 mb-2 flex justify-between flex-wrap gap-1">
+            <span>FEATURE SPACE — minority region, synthetic points & the decision boundary</span>
+          </div>
+          <div id="scatter"></div>
+          <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1 justify-center">
+            <span><span class="swatch" style="background:#0ea5e9"></span> minority (real)</span>
+            <span><span class="swatch" style="background:#7dd3fc"></span> synthetic / duplicate</span>
+            <span><span class="swatch" style="background:#94a3b8"></span> majority</span>
+            <span><span class="swatch-sq" style="background:#94a3b8;border-radius:1px;height:3px;width:16px"></span> naive boundary</span>
+            <span><span class="swatch-sq" style="background:#0ea5e9;border-radius:1px;height:3px;width:16px"></span> resampled boundary</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:360px;">
+          <div class="text-xs font-bold text-slate-500 mb-3">CLASS COUNTS — before vs after</div>
+          <div class="mb-3">
+            <div class="flex justify-between text-[11px] font-bold text-slate-500 mb-1"><span>BEFORE</span><span id="cbBeforeLbl">—</span></div>
+            <div class="cbar"><div class="min" id="cbBeforeMin"></div><div class="maj" id="cbBeforeMaj"></div></div>
+          </div>
+          <div>
+            <div class="flex justify-between text-[11px] font-bold text-slate-500 mb-1"><span>AFTER</span><span id="cbAfterLbl">—</span></div>
+            <div class="cbar"><div class="min" id="cbAfterMin"></div><div class="maj" id="cbAfterMaj"></div></div>
+          </div>
+          <div class="mt-3 text-[11px] text-slate-400 leading-relaxed"><span class="swatch" style="background:#0ea5e9"></span> minority &nbsp; <span class="swatch" style="background:#94a3b8"></span> majority. A balanced classifier sees roughly equal blue and grey — resampling is how you get there without touching the model.</div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:560px;">
+          <div class="text-xs font-bold text-slate-500 mb-2">MINORITY RECALL — did the boundary learn to catch the rare class?</div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="metric-pill"><div class="v text-slate-800" id="mRn">—</div><div class="k">Naive boundary</div></div>
+            <div class="metric-pill"><div class="v text-sky-600" id="mRr">—</div><div class="k">Resampled boundary</div></div>
+          </div>
+          <div class="mt-3 text-[11px] text-slate-400 leading-relaxed">Both boundaries are a real <strong>logistic regression</strong> fit by gradient descent, in your browser. The <strong>naive</strong> one is trained on the raw imbalanced data: to maximise overall accuracy it happily writes off the rare class, so it catches few real minority points. The <strong>resampled</strong> one is trained after SMOTE/duplication/undersampling rebalances the classes, so the boundary moves to cover the minority region and <strong>recall on the real minority points climbs</strong>. Recall is measured on the <em>original</em> 16 minority points, never on synthetic ones.</div>
+        </div>
+      </div>
+
+      <div id="diagBox" class="diag mt-6 max-w-4xl mx-auto text-left">—</div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How SMOTE rebalances a dataset</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">The <code>imbalanced-learn</code> library (<code>imblearn</code>) ships SMOTE and its cousins with a scikit-learn-compatible API. The whole discipline is one rule: <strong>resample only the training fold, never the test fold</strong>. Do it inside a pipeline and cross-validation keeps you honest for free.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">See the problem first (baseline)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Install <code>imbalanced-learn</code>, then train a plain model on the imbalanced data and look at recall for the rare class — not accuracy. Accuracy will look great and mean nothing.</p>
+        <div class="relative"><pre># pip install imbalanced-learn
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+
+# X, y with y=1 the rare class (~1% of rows)
+X_tr, X_te, y_tr, y_te = train_test_split(
+    X, y, test_size=0.25, stratify=y, random_state=0)
+
+base = LogisticRegression(max_iter=1000).fit(X_tr, y_tr)
+print(classification_report(y_te, base.predict(X_te)))
+# accuracy ~0.99, but recall for class 1 is often near 0.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Split BEFORE you resample</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This is the mistake that fakes great scores: if you SMOTE the whole dataset and then split, synthetic points built from a test-row's neighbours leak into training. Always split first; the test set must stay 100% real and untouched.</p>
+        <div class="relative"><pre># CORRECT order: split → resample train only
+X_tr, X_te, y_tr, y_te = train_test_split(
+    X, y, test_size=0.25, stratify=y, random_state=0)
+
+# X_te / y_te are REAL and stay imbalanced — that is the point.
+# Never call fit_resample on X (the whole set) before splitting.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">SMOTE the training fold</h3></div>
+        <p class="text-sm text-slate-600 mb-3"><code>fit_resample</code> returns a new, balanced training set with synthetic minority rows. <code>k_neighbors</code> is the k you saw in the demo; <code>sampling_strategy</code> is the oversample target (1.0 = fully balanced, 0.5 = minority becomes half of majority).</p>
+        <div class="relative"><pre>from imblearn.over_sampling import SMOTE
+
+sm = SMOTE(k_neighbors=5, sampling_strategy=1.0, random_state=0)
+X_res, y_res = sm.fit_resample(X_tr, y_tr)
+
+print(np.bincount(y_tr))   # e.g. [3000   30]  (imbalanced)
+print(np.bincount(y_res))  # e.g. [3000 3000]  (balanced, synthetic added)
+
+clf = LogisticRegression(max_iter=1000).fit(X_res, y_res)
+# evaluate on the UNTOUCHED real test set</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Use an imblearn Pipeline so CV stays honest</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Doing the resample by hand breaks cross-validation (the resampler would touch every fold's validation slice). <code>imblearn.pipeline.Pipeline</code> knows to resample <em>only</em> each training fold. This is the production-safe pattern.</p>
+        <div class="relative"><pre>from imblearn.pipeline import Pipeline
+from imblearn.over_sampling import SMOTE
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import cross_val_score, StratifiedKFold
+
+pipe = Pipeline([
+    ("smote", SMOTE(k_neighbors=5, random_state=0)),
+    ("clf",   LogisticRegression(max_iter=1000)),
+])
+
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
+scores = cross_val_score(pipe, X, y, cv=cv, scoring="average_precision")
+print(scores.mean())   # SMOTE applied per-fold, never to the val slice</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Reach for the variants when plain SMOTE struggles</h3></div>
+        <p class="text-sm text-slate-600 mb-3">When classes overlap, plain SMOTE can synthesise points inside majority territory. Borderline-SMOTE focuses on hard points near the boundary; ADASYN makes more where the minority is sparsest; SMOTETomek / SMOTEENN clean up noisy overlaps after oversampling.</p>
+        <div class="relative"><pre>from imblearn.over_sampling import BorderlineSMOTE, ADASYN
+from imblearn.combine  import SMOTETomek, SMOTEENN
+
+BorderlineSMOTE(random_state=0)   # only synthesise near the boundary
+ADASYN(random_state=0)            # more synthetic where minority is sparse
+SMOTETomek(random_state=0)        # SMOTE, then drop Tomek-link overlaps
+SMOTEENN(random_state=0)          # SMOTE, then edited-NN cleanup
+
+# All share fit_resample(X_tr, y_tr) — swap one line, re-evaluate.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Judge it on recall / PR — and compare to class weights</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Never grade an imbalanced model on accuracy. Use recall, PR-AUC (average precision), or F1 on the rare class. And always sanity-check against the zero-cost alternative — <code>class_weight="balanced"</code> — which reweights the loss instead of touching the data. Sometimes it wins.</p>
+        <div class="relative"><pre>from sklearn.metrics import average_precision_score, recall_score
+
+# SMOTE model vs a plain class-weight model on the SAME real test set
+clf_w = LogisticRegression(class_weight="balanced", max_iter=1000).fit(X_tr, y_tr)
+
+for name, m in [("smote", clf), ("class_weight", clf_w)]:
+    proba = m.predict_proba(X_te)[:, 1]
+    print(name,
+          "AP=",     round(average_precision_score(y_te, proba), 3),
+          "recall=", round(recall_score(y_te, m.predict(X_te)), 3))</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 32 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You saw why imbalance makes a model <strong>predict the majority and quit</strong>, why <strong>duplicating</strong> the rare class just overfits a few points, and how <strong>SMOTE</strong> instead synthesises new minority examples by <strong>interpolating between k nearest neighbours</strong> — <code>x + t·(neighbour − x)</code>. You watched the decision boundary swing back over the minority region, learned to <strong>resample the train split only</strong> (or your scores lie), when to reach for <strong>Borderline-SMOTE / ADASYN / SMOTETomek</strong>, and to grade everything on <strong>recall and PR-AUC</strong>, not accuracy. <strong>👉 Tomorrow — Day 33: Stacking</strong> — combine several different models with a meta-learner that learns how to trust each one.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= SMOTE engine (pure — verified in Node) =================
+// <<<ENGINE_START>>>
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function gauss(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+const clip = (x,lo,hi)=> x<lo?lo:(x>hi?hi:x);
+const NMIN = 16;
+
+// Minority: an elongated cluster (lower-left). Majority: a broad cloud (upper-right)
+// with deliberate overlap, so a linear boundary genuinely trades minority recall
+// for overall accuracy under imbalance.
+function genData(imb, seed){
+  const rng = mulberry32(seed);
+  const nMaj = Math.round(NMIN*imb);
+  const min=[], maj=[];
+  for(let i=0;i<NMIN;i++){
+    const a = gauss(rng), b = gauss(rng);
+    min.push({ x: clip(0.34 + 0.12*a + 0.05*b, 0.03, 0.97),
+               y: clip(0.40 + 0.05*a + 0.11*b, 0.03, 0.97), c:1 });
+  }
+  for(let i=0;i<nMaj;i++){
+    maj.push({ x: clip(0.60 + 0.17*gauss(rng), 0.03, 0.97),
+               y: clip(0.60 + 0.17*gauss(rng), 0.03, 0.97), c:0 });
+  }
+  return { min, maj, nMin:NMIN, nMaj };
+}
+
+function dist2(a,b){ const dx=a.x-b.x, dy=a.y-b.y; return dx*dx+dy*dy; }
+
+// k nearest MINORITY neighbours (indices) for each minority point, self excluded
+function knnMinority(min, k){
+  const nn=[];
+  for(let i=0;i<min.length;i++){
+    const order = min.map((p,j)=>({j, d:dist2(min[i],p)}))
+                     .filter(o=>o.j!==i)
+                     .sort((a,b)=>a.d-b.d)
+                     .slice(0, Math.min(k, min.length-1))
+                     .map(o=>o.j);
+    nn.push(order);
+  }
+  return nn;
+}
+
+// SMOTE: synthesise `target` new minority points by interpolation.
+// For minority point x, pick a random one of its k minority neighbours q,
+// draw gap t in [0,1], and place the new point at x + t*(q - x).
+function smote(min, k, target, seed){
+  const rng = mulberry32(seed);
+  const nn = knnMinority(min, k);
+  const out=[];
+  let i=0;
+  while(out.length < target){
+    const base = i % min.length;              // round-robin over minority
+    const neigh = nn[base];
+    if(neigh.length===0){ i++; continue; }
+    const nb = neigh[Math.floor(rng()*neigh.length)];
+    const t = rng();                           // gap coefficient in [0,1)
+    const p = min[base], q = min[nb];
+    out.push({ x: p.x + t*(q.x - p.x),
+               y: p.y + t*(q.y - p.y),
+               c:1, base, nb, t, synth:true });
+    i++;
+  }
+  return out;
+}
+
+// Random over-sampling: EXACT duplicates of random minority points (they overlap).
+function randomOversample(min, target, seed){
+  const rng = mulberry32(seed); const out=[];
+  while(out.length < target){
+    const j = Math.floor(rng()*min.length);
+    out.push({ x:min[j].x, y:min[j].y, c:1, base:j, dup:true });
+  }
+  return out;
+}
+
+// Random under-sampling: keep `keep` random majority points, discard the rest.
+function randomUndersample(maj, keep, seed){
+  const rng = mulberry32(seed);
+  const idx = maj.map((_,j)=>j);
+  for(let i=idx.length-1;i>0;i--){ const r=Math.floor(rng()*(i+1)); const tmp=idx[i]; idx[i]=idx[r]; idx[r]=tmp; }
+  const keptIdx = idx.slice(0, keep);
+  return { keptIdx, kept: keptIdx.map(j=>maj[j]) };
+}
+
+// Logistic regression by gradient descent (features standardised). Boundary: decision=0.
+function sigmoid(z){ return 1/(1+Math.exp(-z)); }
+function fitLR(pts, iters){
+  let mx=0,my=0; for(const p of pts){mx+=p.x;my+=p.y;} mx/=pts.length; my/=pts.length;
+  let vx=0,vy=0; for(const p of pts){vx+=(p.x-mx)*(p.x-mx);vy+=(p.y-my)*(p.y-my);}
+  const sx=Math.sqrt(vx/pts.length)||1, sy=Math.sqrt(vy/pts.length)||1;
+  let w0=0,w1=0,w2=0; const lr=0.6; const N=pts.length; const IT=iters||400;
+  for(let it=0;it<IT;it++){
+    let g0=0,g1=0,g2=0;
+    for(const p of pts){
+      const zx=(p.x-mx)/sx, zy=(p.y-my)/sy;
+      const e = sigmoid(w0+w1*zx+w2*zy) - p.c;
+      g0+=e; g1+=e*zx; g2+=e*zy;
+    }
+    w0-=lr*g0/N; w1-=lr*g1/N; w2-=lr*g2/N;
+  }
+  return {w0,w1,w2,mx,my,sx,sy};
+}
+function decision(m,x,y){ return m.w0 + m.w1*(x-m.mx)/m.sx + m.w2*(y-m.my)/m.sy; }
+function recallMinority(m, min){ let hit=0; for(const p of min){ if(decision(m,p.x,p.y)>0) hit++; } return hit/min.length; }
+// where the infinite boundary line crosses the unit box [0,1]^2 (for drawing)
+function lineBox(m){
+  const a=m.w1/m.sx, b=m.w2/m.sy, c=m.w0 - m.w1*m.mx/m.sx - m.w2*m.my/m.sy;
+  const pts=[];
+  if(Math.abs(b)>1e-9){ let y=-c/b;       if(y>=0&&y<=1) pts.push({x:0,y}); }
+  if(Math.abs(b)>1e-9){ let y=-(a+c)/b;   if(y>=0&&y<=1) pts.push({x:1,y}); }
+  if(Math.abs(a)>1e-9){ let x=-c/a;       if(x>=0&&x<=1) pts.push({x,y:0}); }
+  if(Math.abs(a)>1e-9){ let x=-(b+c)/a;   if(x>=0&&x<=1) pts.push({x,y:1}); }
+  const uniq=[]; for(const p of pts){ if(!uniq.some(q=>Math.abs(q.x-p.x)<1e-6&&Math.abs(q.y-p.y)<1e-6)) uniq.push(p); }
+  return uniq.slice(0,2);
+}
+// <<<ENGINE_END>>>
+
+// ---------------- colours + state ----------------
+const SKY="#0ea5e9", SKY_L="#7dd3fc", SLATE="#94a3b8", AMBER="#f59e0b", GREY="#cbd5e1";
+const SEED=7, SEED2=13;
+const state = { imb:10, k:5, over:100, mode:"smote" };
+const PRESETS = {
+  mild: { imb:10, k:5, over:100, mode:"smote" },
+  sev:  { imb:25, k:5, over:100, mode:"smote" },
+  k1:   { imb:15, k:1, over:100, mode:"smote" },
+};
+
+// cache heavy computation (data, resample, both boundaries) by state key
+let cache = { key:null };
+function computeAll(){
+  const key = [state.imb,state.k,state.over,state.mode].join("|");
+  if(cache.key===key) return cache.v;
+  const d = genData(state.imb, SEED);
+  const naive = fitLR([...d.min, ...d.maj]);
+  const targetMin = Math.round(state.over/100 * d.nMaj);   // desired minority count
+  let extra=[], keptMaj=d.maj, keptIdx=null, removedIdx=[];
+  if(state.mode==="smote"){
+    extra = smote(d.min, state.k, Math.max(0, targetMin - d.nMin), SEED2);
+  } else if(state.mode==="over"){
+    extra = randomOversample(d.min, Math.max(0, targetMin - d.nMin), SEED2);
+  } else { // under: thin majority down to the minority count
+    const u = randomUndersample(d.maj, d.nMin, SEED2);
+    keptMaj = u.kept; keptIdx = new Set(u.keptIdx);
+    removedIdx = d.maj.map((_,j)=>j).filter(j=>!keptIdx.has(j));
+  }
+  const resampled = state.mode==="under" ? [...d.min, ...keptMaj] : [...d.min, ...extra, ...keptMaj];
+  const resB = fitLR(resampled);
+  const v = {
+    d, naive, resB, extra, keptMaj, removedIdx,
+    recallNaive: recallMinority(naive, d.min),
+    recallRes:   recallMinority(resB,  d.min),
+    afterMin: state.mode==="under" ? d.nMin : d.nMin + extra.length,
+    afterMaj: keptMaj.length,
+  };
+  cache = { key, v };
+  return v;
+}
+
+// ---------------- scatter render ----------------
+const W=528, H=430, ml=38, mr=14, mt=14, mb=30;
+const pw=W-ml-mr, ph=H-mt-mb;
+const PX = x => ml + x*pw, PY = y => mt + (1-y)*ph;
+
+function boundarySVG(m, color, dashed){
+  const seg = lineBox(m);
+  if(seg.length<2) return "";
+  return `<line x1="${PX(seg[0].x).toFixed(1)}" y1="${PY(seg[0].y).toFixed(1)}" x2="${PX(seg[1].x).toFixed(1)}" y2="${PY(seg[1].y).toFixed(1)}" stroke="${color}" stroke-width="${dashed?2:3}" ${dashed?'stroke-dasharray="7 5"':''} stroke-linecap="round"/>`;
+}
+
+function renderScatter(v, f){
+  let g="";
+  // frame + grid
+  g+=`<rect x="${ml}" y="${mt}" width="${pw}" height="${ph}" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  for(let t=0.25;t<1;t+=0.25){
+    g+=`<line x1="${PX(t)}" y1="${mt}" x2="${PX(t)}" y2="${mt+ph}" stroke="#f1f5f9"/>`;
+    g+=`<line x1="${ml}" y1="${PY(t)}" x2="${ml+pw}" y2="${PY(t)}" stroke="#f1f5f9"/>`;
+  }
+  g+=`<text x="${ml+pw/2}" y="${H-4}" text-anchor="middle" font-size="12" font-weight="700" fill="#64748b">feature 1</text>`;
+  g+=`<text transform="translate(12,${mt+ph/2}) rotate(-90)" text-anchor="middle" font-size="12" font-weight="700" fill="#64748b">feature 2</text>`;
+
+  // majority (thinned during undersample animation)
+  let majShow = v.keptMaj;
+  if(state.mode==="under"){
+    const hide = Math.floor(f * v.removedIdx.length);
+    const stillRemoved = v.removedIdx.slice(hide).map(j=>v.d.maj[j]);
+    majShow = [...v.keptMaj, ...stillRemoved];
+  }
+  for(const p of majShow) g+=`<circle cx="${PX(p.x).toFixed(1)}" cy="${PY(p.y).toFixed(1)}" r="3.1" fill="${SLATE}" fill-opacity="0.7"/>`;
+
+  // extra (synthetic / duplicate), revealed up to fraction f
+  const nShow = Math.floor(f * v.extra.length);
+  if(state.mode==="smote"){
+    // faint spokes when the synthetic set is small enough to read
+    if(v.extra.length<=40){
+      for(let i=0;i<nShow;i++){ const s=v.extra[i]; const b=v.d.min[s.base];
+        g+=`<line x1="${PX(b.x).toFixed(1)}" y1="${PY(b.y).toFixed(1)}" x2="${PX(s.x).toFixed(1)}" y2="${PY(s.y).toFixed(1)}" stroke="${SKY_L}" stroke-width="1" stroke-opacity="0.45"/>`;
+      }
+    }
+    for(let i=0;i<nShow;i++){ const s=v.extra[i];
+      g+=`<circle cx="${PX(s.x).toFixed(1)}" cy="${PY(s.y).toFixed(1)}" r="3.4" fill="${SKY_L}" stroke="${SKY}" stroke-width="0.8"/>`;
+    }
+    // active point: highlight its base + chosen neighbour + connecting segment
+    const act=nShow-1;
+    if(act>=0 && f<1){ const s=v.extra[act]; const b=v.d.min[s.base], q=v.d.min[s.nb];
+      g+=`<line x1="${PX(b.x).toFixed(1)}" y1="${PY(b.y).toFixed(1)}" x2="${PX(q.x).toFixed(1)}" y2="${PY(q.y).toFixed(1)}" stroke="${AMBER}" stroke-width="1.6" stroke-dasharray="3 3"/>`;
+      g+=`<circle cx="${PX(q.x).toFixed(1)}" cy="${PY(q.y).toFixed(1)}" r="5" fill="none" stroke="${AMBER}" stroke-width="2"/>`;
+      g+=`<circle cx="${PX(s.x).toFixed(1)}" cy="${PY(s.y).toFixed(1)}" r="4.6" fill="${AMBER}"/>`;
+    }
+  } else if(state.mode==="over"){
+    // exact duplicates: low opacity so stacked copies read darker
+    for(let i=0;i<nShow;i++){ const s=v.extra[i];
+      g+=`<circle cx="${PX(s.x).toFixed(1)}" cy="${PY(s.y).toFixed(1)}" r="4.2" fill="${SKY_L}" fill-opacity="0.34"/>`;
+    }
+  }
+
+  // decision boundaries on top
+  g+=boundarySVG(v.naive, SLATE, true);
+  g+=boundarySVG(v.resB,  SKY,   false);
+
+  // original minority points last, on top
+  for(const p of v.d.min) g+=`<circle cx="${PX(p.x).toFixed(1)}" cy="${PY(p.y).toFixed(1)}" r="4.4" fill="${SKY}" stroke="#fff" stroke-width="1.3"/>`;
+
+  document.getElementById("scatter").innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${g}</svg>`;
+}
+
+// ---------------- counts + metrics + lesson ----------------
+function renderCounts(v){
+  const beforeMax = v.d.nMin + v.d.nMaj;
+  const afterMax  = v.afterMin + v.afterMaj;
+  const M = Math.max(beforeMax, afterMax);
+  document.getElementById("cbBeforeMin").style.width = (100*v.d.nMin/M)+"%";
+  document.getElementById("cbBeforeMaj").style.width = (100*v.d.nMaj/M)+"%";
+  document.getElementById("cbAfterMin").style.width  = (100*v.afterMin/M)+"%";
+  document.getElementById("cbAfterMaj").style.width  = (100*v.afterMaj/M)+"%";
+  document.getElementById("cbBeforeLbl").textContent = `${v.d.nMin} min · ${v.d.nMaj} maj`;
+  document.getElementById("cbAfterLbl").textContent  = `${v.afterMin} min · ${v.afterMaj} maj`;
+}
+
+function lesson(v){
+  const gain = v.recallRes - v.recallNaive;
+  const modeName = state.mode==="smote" ? "SMOTE" : state.mode==="over" ? "random duplication" : "random undersampling";
+  if(state.mode==="over"){
+    return { cls:"diag-warn", title:"🔁 Duplication balances the count — but not the information",
+      body:`Random over-sampling stacked <strong>${v.extra.length}</strong> exact copies of the ${v.d.nMin} minority points on top of themselves (the darker blobs are many dots in one spot). The class counts now match, and the boundary does move — recall goes ${v.recallNaive.toFixed(2)} → <strong>${v.recallRes.toFixed(2)}</strong> — but no new information entered the training set. A flexible model will happily memorise those repeated coordinates and overfit. SMOTE spreads new points across the region instead; switch to it and compare.` };
+  }
+  if(state.mode==="under"){
+    return { cls:"diag-warn", title:"✂️ Undersampling balances by throwing data away",
+      body:`Majority was cut from <strong>${v.d.nMaj}</strong> down to <strong>${v.afterMaj}</strong> to match the minority. Recall on the rare class rises (${v.recallNaive.toFixed(2)} → <strong>${v.recallRes.toFixed(2)}</strong>) because the classes are now even — but you deleted most of your majority examples and the boundary is fit on far less data. Fine when you have millions of rows to spare; risky when you do not. SMOTE keeps every majority point and grows the minority instead.` };
+  }
+  // SMOTE
+  if(gain>0.12){
+    return { cls:"diag-good", title:"✨ SMOTE moved the boundary back over the minority",
+      body:`For each of the ${v.d.nMin} minority points, SMOTE found its ${state.k} nearest minority neighbours and dropped new points on the lines between them — <strong>${v.extra.length}</strong> synthetic examples that <em>fill</em> the minority region instead of piling onto old ones. The naive boundary (grey) wrote the rare class off and caught only <strong>${(v.recallNaive*100).toFixed(0)}%</strong> of it; after balancing, the resampled boundary (blue) catches <strong>${(v.recallRes*100).toFixed(0)}%</strong>. That swing — with no change to the model, only the data — is the whole idea.` };
+  }
+  return { cls:"diag-good", title:"✨ SMOTE synthesised a balanced minority region",
+    body:`SMOTE added <strong>${v.extra.length}</strong> synthetic minority points by interpolating between each point and one of its ${state.k} nearest minority neighbours (coefficient t ∈ [0,1] along the line). Minority recall went ${v.recallNaive.toFixed(2)} → <strong>${v.recallRes.toFixed(2)}</strong>. With little overlap the two boundaries can sit close — crank the imbalance up or lower k to see the naive boundary abandon the rare class more dramatically.` };
+}
+
+// ---------------- orchestration ----------------
+let cur = { v:null };
+function draw(f){
+  const v = cur.v; renderScatter(v, f);
+  // metrics update at the end of animation
+  document.getElementById("sMode").textContent = state.mode==="smote"?"SMOTE":state.mode==="over"?"Duplicate":"Undersample";
+  document.getElementById("sMin").textContent  = v.afterMin.toLocaleString();
+  document.getElementById("sMaj").textContent  = v.afterMaj.toLocaleString();
+  const delta = state.mode==="under" ? -(v.d.nMaj - v.afterMaj) : v.extra.length;
+  document.getElementById("sDelta").textContent = (delta>=0?"+":"")+delta+(state.mode==="under"?" maj":" min");
+  document.getElementById("sRn").textContent = v.recallNaive.toFixed(2);
+  document.getElementById("sRr").textContent = v.recallRes.toFixed(2);
+  document.getElementById("mRn").textContent = v.recallNaive.toFixed(2);
+  document.getElementById("mRr").textContent = v.recallRes.toFixed(2);
+}
+function fullRender(){
+  const v = computeAll(); cur.v = v;
+  renderCounts(v);
+  const L = lesson(v);
+  const box = document.getElementById("diagBox");
+  box.className = "diag mt-6 max-w-4xl mx-auto text-left "+L.cls;
+  box.innerHTML = `<div class="text-base font-extrabold mb-1">${L.title}</div><div class="text-sm font-medium leading-relaxed">${L.body}</div>`;
+  draw(1);
+}
+let animId=null;
+function runAnim(){
+  if(animId) cancelAnimationFrame(animId);
+  const v = computeAll(); cur.v = v; renderCounts(v);
+  const L = lesson(v); const box=document.getElementById("diagBox");
+  box.className="diag mt-6 max-w-4xl mx-auto text-left "+L.cls;
+  box.innerHTML=`<div class="text-base font-extrabold mb-1">${L.title}</div><div class="text-sm font-medium leading-relaxed">${L.body}</div>`;
+  const dur=1400, t0=performance.now();
+  (function step(now){
+    const f=Math.min(1,(now-t0)/dur);
+    draw(f);
+    if(f<1) animId=requestAnimationFrame(step); else animId=null;
+  })(t0);
+}
+
+function syncControls(){
+  document.getElementById("cImb").value=state.imb;
+  document.getElementById("cK").value=state.k;
+  document.getElementById("cOver").value=state.over;
+  document.getElementById("vImb").textContent = state.imb+":1";
+  document.getElementById("vK").textContent = state.k;
+  document.getElementById("vOver").textContent = state.over+"%";
+  document.querySelectorAll("[data-mode]").forEach(b=> b.classList.toggle("active", b.dataset.mode===state.mode));
+  const overDisabled = state.mode==="under";
+  document.getElementById("cOver").disabled = overDisabled;
+  document.getElementById("cOver").style.opacity = overDisabled?0.4:1;
+}
+document.getElementById("cImb").addEventListener("input", e=>{ state.imb=+e.target.value; syncControls(); fullRender(); });
+document.getElementById("cK").addEventListener("input", e=>{ state.k=+e.target.value; syncControls(); fullRender(); });
+document.getElementById("cOver").addEventListener("input", e=>{ state.over=+e.target.value; syncControls(); fullRender(); });
+document.querySelectorAll("[data-mode]").forEach(b=> b.onclick=()=>{ state.mode=b.dataset.mode; syncControls(); runAnim(); });
+document.getElementById("runBtn").addEventListener("click", ()=>{
+  const rb=document.getElementById("runBtn"); rb.classList.remove("run-pulse"); void rb.offsetWidth; rb.classList.add("run-pulse");
+  runAnim();
+});
+document.querySelectorAll("[data-preset]").forEach(b=> b.onclick=()=>{ Object.assign(state, PRESETS[b.dataset.preset]); syncControls(); runAnim(); });
+syncControls(); fullRender();
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. Why imbalance breaks a model", why:"A classifier minimises average error. If 99% of rows are the majority class, the laziest possible model — 'always predict majority' — is already 99% accurate, so gradient descent has almost no incentive to learn the rare class. The decision boundary drifts until it covers the majority cloud and writes the minority off as acceptable losses. Accuracy looks fantastic while recall on the class you actually care about (the fraud, the disease, the churn) sits near zero. The metric is not lying; it is measuring the wrong thing. The fix is either to change what the model optimises (class weights) or to change the data it sees (resampling) — SMOTE is the second route.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">99% majority · 1% minority<br>"always predict majority" &rarr; 99% accuracy<br><br>boundary abandons the rare class<br>accuracy 0.99 &nbsp;·&nbsp; minority recall &asymp; 0.00</div>`, code:`# accuracy is a trap under imbalance
+acc = (y_pred == y_true).mean()      # 0.99 by predicting all-majority
+recall_pos = (y_pred[y_true==1]==1).mean()   # ~0.0  <- the real story` },
+ { title:"2. Resampling vs class weights", why:"There are two families of fixes. COST-based methods leave the data alone and reweight the loss so a minority mistake hurts more — in scikit-learn that is class_weight='balanced', and it is free and leak-proof. DATA-based methods rebalance the training set itself: over-sample the minority (add rows), under-sample the majority (drop rows), or both. SMOTE is a data-based over-sampler. Neither family is universally better, so treat class_weight as the zero-cost baseline you must beat: if reweighting the loss already fixes recall, you may not need to touch the data at all. When it does not — often with very few minority rows or a model that ignores weights — resampling earns its keep.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">COST: reweight the loss (class_weight)<br>&nbsp;&nbsp;&mdash; free, no leakage, always try first<br><br>DATA: change the training rows<br>&nbsp;&nbsp;&mdash; over-sample / under-sample / SMOTE</div>`, code:`# the baseline SMOTE must beat:
+LogisticRegression(class_weight="balanced")
+# reweights loss so a minority miss costs ~ (n_maj / n_min) times more` },
+ { title:"3. Random over-sampling = duplication (and its trap)", why:"The simplest way to grow the minority is to copy existing minority rows at random until the counts match. It balances the data and it does move the boundary — but every 'new' row is an EXACT duplicate sitting on top of an old one. You have added weight, not information. A high-capacity model can memorise those few repeated coordinates and overfit hard: it becomes confident about the exact points it has seen many times and brittle everywhere else. In the demo, Duplicate mode stacks copies so densely the dots darken but never spread. SMOTE exists precisely to break this — to add minority mass that occupies NEW locations in feature space.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">random over-sample: copy rows at random<br>&nbsp;&nbsp;new point == an old point (exact)<br><br>counts balance &#10004; &nbsp; information added &rarr; 0<br>overfits the repeated coordinates</div>`, code:`from imblearn.over_sampling import RandomOverSampler
+X_res, y_res = RandomOverSampler().fit_resample(X, y)
+# X_res contains literal duplicates of minority rows -> overfitting risk` },
+ { title:"4. The SMOTE idea — interpolate, don't copy", why:"SMOTE's insight: instead of copying a minority point, create a NEW one somewhere plausible near it — specifically, on the straight line to one of its neighbours from the same class. Because real minority points already trace out the region where the rare class lives, any point on a segment between two of them is a believable member of that class. Do this many times and you fill the minority region with fresh, non-identical examples. The synthetic points are convex combinations of real ones, so they never wander outside the local neighbourhood, yet no two are the same. That is how SMOTE adds information, not just weight.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">two real minority points  x  ---- q<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;new &#8226;&nbsp; (somewhere on the line)<br><br>new = x + t&middot;(q &minus; x), &nbsp; t &isin; [0,1]<br>believable, novel, inside the minority region</div>`, code:`# new synthetic point between a minority point x and a neighbour q
+t = random()                 # gap in [0,1]
+x_new = x + t * (q - x)      # convex combination -> stays local, never a copy` },
+ { title:"5. The algorithm, step by step", why:"For each minority sample x (or a random draw of them until you hit the target count): (1) find x's k nearest neighbours AMONG THE MINORITY CLASS ONLY — never look at majority points; (2) pick one of those k neighbours q at random; (3) draw a random gap t in [0,1]; (4) emit the synthetic point x + t·(q − x). Repeat until the minority reaches the desired size (e.g. equal to the majority, sampling_strategy=1.0). Everything is vectorised in practice, but this loop is the entire method — no model, no training, just k-NN and linear interpolation on the rare class.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">for each minority x, until target reached:<br>&nbsp; 1. k nearest MINORITY neighbours of x<br>&nbsp; 2. pick one neighbour q at random<br>&nbsp; 3. t = random() in [0,1]<br>&nbsp; 4. emit x + t&middot;(q &minus; x)</div>`, code:`nn = kNN_within_minority(minority, k)      # neighbours are minority-only
+while len(synth) < target:
+    x  = minority[i % len(minority)]
+    q  = minority[ random.choice(nn[i]) ]  # a random one of the k
+    t  = random()                          # in [0,1]
+    synth.append(x + t*(q - x))            # on the segment x--q` },
+ { title:"6. Choosing k", why:"k is how many minority neighbours are eligible as interpolation partners (imblearn's default is 5). Small k (k=1) always interpolates toward the single closest point, so synthetic points hug tight local lines — you preserve fine structure but a couple of noisy minority points can spawn odd offshoots, and the region looks jagged. Large k lets a point interpolate toward farther neighbours, producing smoother, broader coverage but risking synthetic points in sparse gaps between sub-clusters. k must also be at most (minority_count − 1); with very few minority rows you are forced small. Try the k=1 preset to see the difference, then compare against the default 5.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">k = 1 &rarr; hug nearest point, jagged, noise-sensitive<br>k = 5 &rarr; smoother, broader fill (default)<br>k too big &rarr; bridges across sub-clusters<br><br>constraint: k &le; (#minority &minus; 1)</div>`, code:`SMOTE(k_neighbors=5)     # default; must be < n_minority
+# small k: local & jagged   |   large k: smooth but can bridge gaps` },
+ { title:"7. Under-sampling and hybrids", why:"Over-sampling is not the only lever. Random under-sampling balances by DELETING majority rows — cheap and effective when you have data to spare, but you throw away information and the boundary is fit on less of it. The strongest recipes often COMBINE the two: oversample the minority with SMOTE, then clean the result by removing borderline/overlapping points. SMOTETomek removes Tomek links (nearest opposite-class pairs) after SMOTE; SMOTEENN applies an edited-nearest-neighbours pass. The combos undo SMOTE's habit of spraying points into contested territory, sharpening the class boundary. Reach for them when plain SMOTE leaves a muddy overlap.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">under-sample: drop majority rows (loses data)<br><br>hybrids = SMOTE + cleanup:<br>&nbsp; SMOTETomek &rarr; remove Tomek-link pairs<br>&nbsp; SMOTEENN &nbsp;&rarr; edited-NN cleanup</div>`, code:`from imblearn.under_sampling import RandomUnderSampler
+from imblearn.combine import SMOTETomek, SMOTEENN
+SMOTETomek()   # oversample, then drop overlapping opposite-class pairs
+SMOTEENN()     # oversample, then edited-nearest-neighbours cleanup` },
+ { title:"8. Resample the TRAIN split only", why:"This is the rule that separates real gains from fake ones. Split into train and test FIRST, then apply SMOTE to the training fold ONLY. If you resample the whole dataset before splitting, synthetic points built by interpolating a test row's neighbours end up in training — the model has effectively seen the test data, and your reported scores are inflated fantasy. The test set must stay real and imbalanced, because production will be imbalanced. In cross-validation the same trap hides in every fold, which is why you wrap the resampler in an imblearn Pipeline: it resamples each training fold and leaves every validation slice untouched.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">split FIRST &rarr; SMOTE the train fold ONLY<br><br>SMOTE before split = leakage = fake scores<br>test set stays REAL & imbalanced<br>in CV: use imblearn Pipeline (per-fold resample)</div>`, code:`# RIGHT
+X_tr, X_te, y_tr, y_te = train_test_split(X, y, stratify=y)
+X_res, y_res = SMOTE().fit_resample(X_tr, y_tr)   # train only
+# WRONG: SMOTE().fit_resample(X, y) then split  -> leakage` },
+ { title:"9. When SMOTE hurts", why:"SMOTE is not free magic. It assumes the space between two minority neighbours is still minority — which fails when the classes OVERLAP: interpolate across a region where majority points also live and you manufacture synthetic minority points sitting squarely in enemy territory, blurring the boundary and hurting precision. It also amplifies noise: a mislabelled or outlier minority point becomes the seed for a whole line of bad synthetic points. High-dimensional data makes 'nearest neighbour' less meaningful, so the interpolation partners are less trustworthy. The variants address this: Borderline-SMOTE only synthesises near the decision boundary where it helps; ADASYN makes more points where the minority is hardest to learn.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">overlap &rarr; synthetic points land in majority zone<br>noise &rarr; one bad point seeds a bad line<br>high-dim &rarr; 'nearest' is unreliable<br><br>fixes: BorderlineSMOTE · ADASYN</div>`, code:`from imblearn.over_sampling import BorderlineSMOTE, ADASYN
+BorderlineSMOTE()   # only synthesise near the boundary (where it matters)
+ADASYN()            # more synthetic points where minority is sparse/hard` },
+ { title:"10. Evaluate on recall / PR, never accuracy", why:"Resampling changes the training distribution, so the model's predicted probabilities are no longer calibrated to the real prevalence — accuracy on the balanced training data is meaningless, and accuracy on the real test set was always misleading under imbalance (see Day 31). Grade on metrics that ignore the flood of true negatives: recall on the rare class, the precision-recall curve, and average precision (PR-AUC). Compare the SMOTE model against the class_weight baseline on the SAME untouched test set. If SMOTE lifts PR-AUC and recall at an acceptable precision, keep it; if it just trades a mountain of false positives for a few more catches, it did not actually help.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">judge on: recall · PR-AUC (average precision) · F1<br>NOT accuracy (Day 31)<br><br>always compare vs class_weight="balanced"<br>on the SAME real, imbalanced test set</div>`, code:`from sklearn.metrics import average_precision_score, recall_score
+proba = clf.predict_proba(X_te)[:,1]
+print("PR-AUC", average_precision_score(y_te, proba))
+print("recall", recall_score(y_te, clf.predict(X_te)))  # rare class` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3200); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
