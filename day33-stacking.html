@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 33 — Stacking</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .run-pulse { animation: runPulse .5s ease-out; }
+  @keyframes runPulse { 0% { box-shadow:0 0 0 0 rgba(14,165,233,.55);} 100% { box-shadow:0 0 0 14px rgba(14,165,233,0);} }
+  .ctl-row { display:grid; grid-template-columns:150px 1fr 54px; align-items:center; gap:10px; padding:6px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .preset-btn { border:1px solid #e2e8f0; }
+  .preset-btn:hover { border-color:#38bdf8; }
+  .base-toggle { border:1px solid #e2e8f0; background:#f8fafc; transition:all .15s ease; }
+  .base-toggle:hover { border-color:#38bdf8; }
+  .base-toggle.on { background:#0ea5e9; color:#fff; border-color:#0ea5e9; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:10px; transition:all .2s ease; }
+  .panel.off { opacity:.4; filter:grayscale(.6); }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .acc-badge { font-variant-numeric:tabular-nums; font-weight:900; }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:22px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 33</div>
+      <h1 class="text-xl font-bold">🏗️ Stacking — Let a Meta-Model Learn How to Combine Diverse Base Models</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1">A linear model, a k-NN, and a shallow tree each get this boundary partly wrong — but they get <em>different parts</em> wrong. Stacking trains a meta-model to learn who to trust where, and it beats every single one of them.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Three <strong>diverse base learners</strong> are fit on the same two-moons data below — a <span class="font-bold text-slate-600">logistic regression</span> (only draws a line), a <span class="font-bold text-slate-600">k-NN</span> (local, noisy near the seam), and a <span class="font-bold text-slate-600">depth-2 tree</span> (only axis-aligned boxes). Because their <strong>mistakes differ</strong>, a fourth model can do better than any of them — but only if you feed it the bases' predictions the right way. The trick is <strong>out-of-fold prediction</strong>: split the training rows into k folds, and for each fold let the bases predict it after training on the <em>other</em> folds. Every row's meta-features then come from a base that <strong>never saw that row</strong> — no leakage. A logistic-regression <strong>meta-model</strong> learns weights over those held-out predictions and produces the blended boundary. Everything here — the three base fits, the k-fold cross-val predictions, and the meta fit — runs <strong>live in your browser</strong>, no libraries.</p>
+
+      <div class="flex justify-center gap-4 mb-4 text-sm font-bold text-slate-600 flex-wrap">
+        <div>Folds: <span id="sFolds" class="stat text-sky-600">—</span></div>
+        <div>Linear: <span id="sLin" class="stat text-slate-800">—</span></div>
+        <div>k-NN: <span id="sKnn" class="stat text-slate-800">—</span></div>
+        <div>Tree: <span id="sTree" class="stat text-slate-800">—</span></div>
+        <div>🏗️ Stacked: <span id="sStack" class="stat text-sky-600">—</span></div>
+        <div>Margin vs best: <span id="sMargin" class="stat" style="color:#f59e0b">—</span></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start">
+        <!-- controls -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:330px;">
+          <div class="text-xs font-bold text-slate-500 mb-2">CONTROLS — choose the base learners &amp; the k for out-of-fold, then ▶ Run</div>
+          <div class="text-[11px] font-bold text-slate-400 uppercase mb-1">base learners in the ensemble</div>
+          <div class="grid grid-cols-3 gap-2 mb-2">
+            <button data-base="linear" class="base-toggle on px-2 py-1.5 rounded-lg font-semibold text-xs">📏 Linear</button>
+            <button data-base="knn"    class="base-toggle on px-2 py-1.5 rounded-lg font-semibold text-xs">👥 k-NN</button>
+            <button data-base="tree"   class="base-toggle on px-2 py-1.5 rounded-lg font-semibold text-xs">🌳 Tree</button>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-name">🔀 k-fold (OOF)</div>
+            <input type="range" id="cFolds" min="2" max="8" step="1" value="5">
+            <div class="ctl-val" id="vFolds">5</div>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-name">👥 k-NN neighbours</div>
+            <input type="range" id="cKnn" min="3" max="15" step="2" value="7">
+            <div class="ctl-val" id="vKnn">7</div>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-name">🌳 tree depth</div>
+            <input type="range" id="cDepth" min="1" max="3" step="1" value="2">
+            <div class="ctl-val" id="vDepth">2</div>
+          </div>
+          <div class="mt-3 flex gap-2">
+            <button id="runBtn" class="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg font-bold text-sm flex-1">▶ Run stacking</button>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2 items-center">
+            <span class="text-[11px] font-bold text-slate-400 uppercase">presets</span>
+            <button data-preset="all" class="preset-btn bg-sky-50 hover:bg-sky-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🏗️ all three</button>
+            <button data-preset="pair" class="preset-btn bg-slate-50 hover:bg-slate-100 px-2.5 py-1 rounded-lg font-semibold text-xs">tree + linear only</button>
+            <button data-preset="fine" class="preset-btn bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-semibold text-xs">8 folds</button>
+          </div>
+          <div class="mt-3 text-[11px] text-slate-400 leading-relaxed">Accuracy in every panel is measured on a held-out <strong>test set</strong> (never used to fit anything). The <strong>meta-model is a logistic regression</strong> on the bases' out-of-fold probabilities. Toggle a base off to see the stack lose (or keep) accuracy — combining <strong>diverse</strong> learners is what pays. Drop to <strong>1 base</strong> and the stack just copies it.</div>
+        </div>
+
+        <!-- boundary panels -->
+        <div style="width:720px; max-width:100%;">
+          <div class="grid grid-cols-2 gap-4">
+            <div class="panel" id="pLinear">
+              <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-slate-600">📏 Base 1 — Linear (logistic)</span><span class="acc-badge text-sm text-slate-700" id="accLinear">—</span></div>
+              <div id="svgLinear"></div>
+              <div class="text-[10px] text-slate-400 mt-1">One straight cut — can't bend around a moon.</div>
+            </div>
+            <div class="panel" id="pKnn">
+              <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-slate-600">👥 Base 2 — k-NN</span><span class="acc-badge text-sm text-slate-700" id="accKnn">—</span></div>
+              <div id="svgKnn"></div>
+              <div class="text-[10px] text-slate-400 mt-1">Local &amp; wiggly — trips on the noisy seam.</div>
+            </div>
+            <div class="panel" id="pTree">
+              <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-slate-600">🌳 Base 3 — Shallow tree</span><span class="acc-badge text-sm text-slate-700" id="accTree">—</span></div>
+              <div id="svgTree"></div>
+              <div class="text-[10px] text-slate-400 mt-1">Axis-aligned boxes only — blocky boundary.</div>
+            </div>
+            <div class="panel hero" id="pStack">
+              <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-sky-700">🏗️ Stacked (meta-model)</span><span class="acc-badge text-sm text-sky-600" id="accStack">—</span></div>
+              <div id="svgStack"></div>
+              <div class="text-[10px] text-sky-600 font-semibold mt-1">Learns who to trust where → the winning boundary.</div>
+            </div>
+          </div>
+          <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1 justify-center">
+            <span><span class="swatch" style="background:#0ea5e9"></span> class A point</span>
+            <span><span class="swatch" style="background:#475569"></span> class B point</span>
+            <span><span class="swatch" style="background:#fff;border:2px solid #ef4444"></span> misclassified (test)</span>
+            <span>tinted regions = each model's predicted class</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- second row: OOF mechanics + comparison -->
+      <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:520px; max-width:100%;">
+          <div class="text-xs font-bold text-slate-500 mb-2">THE OUT-OF-FOLD TRICK — how the meta-features are built without leakage</div>
+          <div class="flex gap-4 items-start">
+            <div style="width:230px;">
+              <div id="svgFolds"></div>
+              <div class="text-[10px] text-slate-400 mt-1 text-center">training rows coloured by fold</div>
+            </div>
+            <div class="text-[12px] text-slate-600 leading-relaxed flex-1">
+              <p class="mb-2">Split the training set into <strong id="foldTxt">5</strong> folds. Hold one fold out; fit every base on the rest; let them <strong>predict the held-out fold</strong>. Rotate through all folds → every training row gets base predictions from models that <strong>never trained on it</strong>. Those held-out probabilities become the meta-model's features.</p>
+              <div class="rounded-lg bg-amber-50 border border-amber-200 p-2 text-[11px] text-amber-900">
+                <strong>⚠️ Why not just predict the training rows directly?</strong> A base scoring its own training data is a mirage. The leaky meta below <em>looks</em> like <strong id="leakTrain">—</strong> on the data it was fit on, but held out it is only <strong id="leakTest">—</strong>. Out-of-fold predictions report the honest number <em>before</em> you deploy.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:520px; max-width:100%;">
+          <div class="text-xs font-bold text-slate-500 mb-2">TEST ACCURACY — bases vs the stack</div>
+          <div id="svgBars"></div>
+          <div class="text-xs font-bold text-slate-500 mt-3 mb-1">HOW MUCH THE META-MODEL TRUSTS EACH BASE <span class="font-normal text-slate-400">(learned weights)</span></div>
+          <div id="svgWeights"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-2">The meta-model is free to learn any weighting — including a <span style="color:#f59e0b;font-weight:700">negative</span> weight, meaning it uses a weak base as a <em>corrector</em> rather than trusting it directly. That flexibility is what separates stacking from a plain average vote.</div>
+        </div>
+      </div>
+
+      <div id="diagBox" class="diag diag-good mt-6 max-w-4xl mx-auto text-left">—</div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">Stacked generalization, step by step</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">scikit-learn ships stacking as <code>StackingClassifier</code> (and <code>StackingRegressor</code>). It does the out-of-fold plumbing for you: its <code>cv</code> argument is exactly the k you set in the demo, and the held-out predictions become the <code>final_estimator</code>'s training features. Below is the whole workflow — diverse bases, a simple meta, honest evaluation.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Pick DIVERSE base estimators</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Diversity is the fuel. Choose models that make <em>different</em> mistakes — a linear model, a distance model, a tree/forest, a boosting model. Near-identical learners give the meta-model nothing to arbitrate.</p>
+        <div class="relative"><pre>from sklearn.linear_model  import LogisticRegression
+from sklearn.neighbors     import KNeighborsClassifier
+from sklearn.tree          import DecisionTreeClassifier
+from sklearn.ensemble      import RandomForestClassifier
+
+estimators = [
+    ("lr",   LogisticRegression(max_iter=1000)),  # linear, global
+    ("knn",  KNeighborsClassifier(n_neighbors=7)), # local
+    ("tree", DecisionTreeClassifier(max_depth=3)), # axis-aligned
+    ("rf",   RandomForestClassifier(n_estimators=200)),
+]</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Wire up StackingClassifier — cv IS the out-of-fold</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The <code>final_estimator</code> is your level-1 meta-model — keep it simple (a logistic regression). <code>cv=5</code> tells sklearn to build the meta features by 5-fold out-of-fold prediction, so there is no leakage and you do not have to code the fold loop yourself.</p>
+        <div class="relative"><pre>from sklearn.ensemble import StackingClassifier
+from sklearn.linear_model import LogisticRegression
+
+stack = StackingClassifier(
+    estimators      = estimators,
+    final_estimator = LogisticRegression(),   # the meta / level-1 model
+    cv              = 5,                       # <- out-of-fold folds
+    stack_method    = "predict_proba",        # feed probabilities, not hard labels
+    passthrough     = False,                   # True = also give meta the raw X
+    n_jobs          = -1,
+)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Fit, and compare to the bases AND a plain vote</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Stacking only earns its complexity if it beats (a) every base alone and (b) a simple <code>VotingClassifier</code> average. Always run that comparison on the same untouched test set.</p>
+        <div class="relative"><pre>from sklearn.model_selection import train_test_split
+from sklearn.ensemble import VotingClassifier
+
+X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.3,
+                                          stratify=y, random_state=0)
+stack.fit(X_tr, y_tr)
+vote = VotingClassifier(estimators, voting="soft").fit(X_tr, y_tr)
+
+print("stack :", stack.score(X_te, y_te))
+print("vote  :", vote.score(X_te, y_te))
+for name, est in stack.named_estimators_.items():
+    print(name, ":", est.score(X_te, y_te))   # each base alone</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Inspect what the meta-model learned</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The fitted <code>final_estimator_</code> holds the weights over the base outputs — read them to see which base the meta trusts, and which it down-weights or uses as a corrector (a negative coefficient, exactly like the demo).</p>
+        <div class="relative"><pre>meta = stack.final_estimator_
+print("meta coefficients:", meta.coef_)     # weight per base (per class)
+print("meta intercept   :", meta.intercept_)
+# large + weight  -> trusted base
+# near-zero / negative -> down-weighted or used to correct another base</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Cross-validate the whole stack honestly</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The stack has an internal <code>cv</code> for its meta features; wrap the <em>entire</em> stack in an <em>outer</em> cross-validation to estimate real performance. Nesting like this keeps the outer test folds untouched by any part of training.</p>
+        <div class="relative"><pre>from sklearn.model_selection import cross_val_score, StratifiedKFold
+
+outer = StratifiedKFold(n_splits=5, shuffle=True, random_state=0)
+scores = cross_val_score(stack, X, y, cv=outer, scoring="accuracy")
+print(scores.mean(), "+/-", scores.std())
+# inner cv builds meta features; outer cv scores the finished stack</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Know when NOT to stack</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Stacking multiplies training cost (every base is refit k+1 times) and adds a model to maintain. If a single tuned gradient-booster already wins, or your bases are correlated, skip it. Reach for it when you have several genuinely different strong models and the last fraction of a percent matters.</p>
+        <div class="relative"><pre># quick sanity checks before committing to a stack
+# 1) are the bases actually diverse?
+import numpy as np
+P = np.column_stack([e.predict(X_te) for _, e in stack.named_estimators_.items()])
+print("base prediction correlation:\n", np.corrcoef(P.T))  # want LOW off-diagonal
+
+# 2) does stacking beat the best base by more than the noise?
+#    if not, ship the single model — it is cheaper and simpler.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 33 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You saw three <strong>diverse</strong> base learners make <strong>different mistakes</strong>, and a logistic-regression <strong>meta-model</strong> learn to combine them into a boundary that beat all three. You learned the <strong>out-of-fold trick</strong> — k-fold predictions so every meta-feature comes from a base that never saw that row — and why skipping it (in-sample predictions) fakes a great score that collapses on held-out data. Bagging cuts variance, boosting cuts bias, voting averages blindly; <strong>stacking learns the combination</strong>, which is why it tops so many Kaggle leaderboards — at the cost of extra compute and a model to maintain. <strong>👉 Tomorrow — Day 34: Elastic-Net</strong> — blend L1 and L2 penalties to get sparse, stable coefficients when features are many and correlated.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ============ STACKING ENGINE (pure JS — verified in Node) ============
+// <<<ENGINE_START>>>
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function gauss(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+const clip=(x,lo,hi)=> x<lo?lo:(x>hi?hi:x);
+const sigmoid=z=> 1/(1+Math.exp(-z));
+
+// Two interleaving moons — a boundary no single simple learner nails:
+// a line (logistic) can't curve it, an axis-aligned shallow tree can only box it,
+// kNN is local and stumbles in the thin overlap. Their MISTAKES differ -> stacking helps.
+function genData(seed, n, noise){
+  const rng=mulberry32(seed);
+  const raw=[];
+  for(let i=0;i<n;i++){
+    const t=Math.PI*rng();
+    let x,y,c;
+    if(rng()<0.5){ x=Math.cos(t);            y=Math.sin(t);            c=0; }
+    else        { x=1-Math.cos(t);           y=1-Math.sin(t)-0.5;      c=1; }
+    x+=gauss(rng)*noise; y+=gauss(rng)*noise;
+    raw.push({x,y,c});
+  }
+  // normalise to [0.06,0.94]^2 for drawing
+  let minx=1e9,maxx=-1e9,miny=1e9,maxy=-1e9;
+  for(const p of raw){ if(p.x<minx)minx=p.x; if(p.x>maxx)maxx=p.x; if(p.y<miny)miny=p.y; if(p.y>maxy)maxy=p.y; }
+  const sc=(v,lo,hi)=> 0.06+0.88*(v-lo)/(hi-lo);
+  const pts=raw.map(p=>({ x:clip(sc(p.x,minx,maxx),0,1), y:clip(sc(p.y,miny,maxy),0,1), c:p.c }));
+  // deterministic train/test split
+  const idx=[...pts.keys()];
+  for(let i=idx.length-1;i>0;i--){ const r=Math.floor(rng()*(i+1)); const t=idx[i]; idx[i]=idx[r]; idx[r]=t; }
+  const nTr=Math.round(pts.length*0.55);
+  const train=idx.slice(0,nTr).map(i=>pts[i]);
+  const test =idx.slice(nTr).map(i=>pts[i]);
+  return { pts, train, test };
+}
+
+// ---- base learner 1: logistic regression (linear boundary) ----
+function fitLogReg(rows, dim, iters, lr){
+  const N=rows.length, mean=new Array(dim).fill(0), std=new Array(dim).fill(0);
+  for(const r of rows) for(let d=0;d<dim;d++) mean[d]+=r.f[d]; for(let d=0;d<dim;d++) mean[d]/=N;
+  for(const r of rows) for(let d=0;d<dim;d++) std[d]+=(r.f[d]-mean[d])**2;
+  for(let d=0;d<dim;d++){ std[d]=Math.sqrt(std[d]/N)||1; }
+  const w=new Array(dim).fill(0); let b=0; const IT=iters||500, L=lr||0.5;
+  for(let it=0;it<IT;it++){
+    const gw=new Array(dim).fill(0); let gb=0;
+    for(const r of rows){
+      let z=b; for(let d=0;d<dim;d++) z+=w[d]*(r.f[d]-mean[d])/std[d];
+      const e=sigmoid(z)-r.c; gb+=e; for(let d=0;d<dim;d++) gw[d]+=e*(r.f[d]-mean[d])/std[d];
+    }
+    b-=L*gb/N; for(let d=0;d<dim;d++) w[d]-=L*gw[d]/N;
+  }
+  return { w, b, mean, std, dim };
+}
+function logRegProb(m, f){ let z=m.b; for(let d=0;d<m.dim;d++) z+=m.w[d]*(f[d]-m.mean[d])/m.std[d]; return sigmoid(z); }
+function fitLinear(tr){ return fitLogReg(tr.map(p=>({f:[p.x,p.y],c:p.c})), 2, 600, 0.6); }
+function probLinear(m,x,y){ return logRegProb(m,[x,y]); }
+
+// ---- base learner 2: k-nearest-neighbours ----
+function fitKNN(tr,k){ return { tr, k }; }
+function probKNN(m,x,y){
+  const ds=m.tr.map(p=>({c:p.c, d:(p.x-x)**2+(p.y-y)**2})).sort((a,b)=>a.d-b.d).slice(0,m.k);
+  let s=0; for(const o of ds) s+=o.c; return s/m.k;
+}
+
+// ---- base learner 3: shallow CART (axis-aligned, Gini) ----
+function gini(pts){ if(!pts.length) return 0; let p=0; for(const q of pts) p+=q.c; p/=pts.length; return 1-p*p-(1-p)*(1-p); }
+function meanC(pts){ if(!pts.length) return 0.5; let s=0; for(const q of pts) s+=q.c; return s/pts.length; }
+function buildTree(pts, depth, maxDepth){
+  const p=meanC(pts);
+  if(depth>=maxDepth || pts.length<4 || p===0 || p===1) return { leaf:true, p };
+  let best=null; const parent=gini(pts);
+  for(let feat=0;feat<2;feat++){
+    const vals=pts.map(q=> feat===0?q.x:q.y).slice().sort((a,b)=>a-b);
+    for(let i=1;i<vals.length;i++){
+      if(vals[i]===vals[i-1]) continue;
+      const thr=(vals[i]+vals[i-1])/2;
+      const L=pts.filter(q=> (feat===0?q.x:q.y)<thr), R=pts.filter(q=> (feat===0?q.x:q.y)>=thr);
+      if(!L.length||!R.length) continue;
+      const g=(L.length*gini(L)+R.length*gini(R))/pts.length;
+      if(best===null || g<best.g){ best={feat,thr,g,L,R}; }
+    }
+  }
+  if(!best || best.g>=parent-1e-9) return { leaf:true, p };
+  return { leaf:false, feat:best.feat, thr:best.thr,
+           left:buildTree(best.L,depth+1,maxDepth), right:buildTree(best.R,depth+1,maxDepth) };
+}
+function fitTree(tr,maxDepth){ return buildTree(tr,0,maxDepth||2); }
+function probTree(node,x,y){ while(!node.leaf){ const v=node.feat===0?x:y; node= v<node.thr?node.left:node.right; } return node.p; }
+
+// registry of base learners
+const BASES={
+  linear:{ name:"Linear (logistic)", fit:(tr,cfg)=>fitLinear(tr),            prob:(m,x,y)=>probLinear(m,x,y) },
+  knn:   { name:"k-NN",              fit:(tr,cfg)=>fitKNN(tr,cfg.knnK),       prob:(m,x,y)=>probKNN(m,x,y) },
+  tree:  { name:"Shallow tree",      fit:(tr,cfg)=>fitTree(tr,cfg.treeDepth), prob:(m,x,y)=>probTree(m,x,y) },
+};
+
+// assign every training row to one of F folds (shuffled, balanced round-robin)
+function foldAssign(n, F, seed){
+  const rng=mulberry32(seed); const idx=[...Array(n).keys()];
+  for(let i=idx.length-1;i>0;i--){ const r=Math.floor(rng()*(i+1)); const t=idx[i]; idx[i]=idx[r]; idx[r]=t; }
+  const fold=new Array(n); idx.forEach((id,pos)=> fold[id]=pos%F); return fold;
+}
+
+// THE OUT-OF-FOLD TRICK.
+// For each fold f: train each base on rows where fold != f, predict rows where fold == f.
+// Every row's meta-features come from a base that NEVER saw that row -> no leakage.
+function outOfFold(train, activeBases, cfg, F, foldSeed){
+  const n=train.length, fold=foldAssign(n,F,foldSeed);
+  const oof=train.map(()=>({}));
+  const trainIdxUsed=train.map(()=>null);   // for leakage verification
+  for(let f=0; f<F; f++){
+    const trIdx=[], teIdx=[];
+    for(let i=0;i<n;i++){ (fold[i]===f?teIdx:trIdx).push(i); }
+    if(!trIdx.length || !teIdx.length) continue;
+    const trRows=trIdx.map(i=>train[i]);
+    const models={}; for(const b of activeBases) models[b]=BASES[b].fit(trRows,cfg);
+    for(const i of teIdx){
+      const p=train[i];
+      for(const b of activeBases) oof[i][b]=BASES[b].prob(models[b],p.x,p.y);
+      trainIdxUsed[i]=new Set(trIdx);   // i is NOT in trIdx by construction
+    }
+  }
+  return { oof, fold, trainIdxUsed };
+}
+
+// full stacking pipeline
+function stack(train, test, activeBases, cfg, F, foldSeed){
+  const { oof, fold, trainIdxUsed } = outOfFold(train, activeBases, cfg, F, foldSeed);
+  const metaRows=train.map((p,i)=>({ f:activeBases.map(b=>oof[i][b]), c:p.c }));
+  const meta=fitLogReg(metaRows, activeBases.length, 800, 0.7);
+  const fullModels={}; for(const b of activeBases) fullModels[b]=BASES[b].fit(train,cfg);
+  const baseProb=(x,y)=> activeBases.map(b=> BASES[b].prob(fullModels[b],x,y));
+  const stackProb=(x,y)=> logRegProb(meta, baseProb(x,y));
+  const acc=fn=>{ let h=0; for(const p of test){ if((fn(p.x,p.y)>=0.5?1:0)===p.c) h++; } return h/test.length; };
+  const baseAcc={}; for(const b of activeBases){ const m=fullModels[b]; baseAcc[b]=acc((x,y)=>BASES[b].prob(m,x,y)); }
+  const stackAcc=acc(stackProb);
+  return { oof, fold, trainIdxUsed, meta, fullModels, baseProb, stackProb, baseAcc, stackAcc, activeBases };
+}
+// <<<ENGINE_END>>>
+
+// ---------------- fixed demo dataset (verified seed) ----------------
+const SEED=23, N=180, NOISE=0.18, FOLDSEED=123;
+const DATA = genData(SEED, N, NOISE);
+const ALLB = ["linear","knn","tree"];
+const FOLD_COLORS=["#0ea5e9","#f59e0b","#10b981","#8b5cf6","#ef4444","#14b8a6","#eab308","#ec4899"];
+const SKY="#0ea5e9", SLATE="#475569";
+
+const state = { folds:5, knnK:7, treeDepth:2, active:{linear:true,knn:true,tree:true} };
+const PRESETS = {
+  all:  { folds:5, knnK:7, treeDepth:2, active:{linear:true,knn:true,tree:true} },
+  pair: { folds:5, knnK:7, treeDepth:2, active:{linear:true,knn:false,tree:true} },
+  fine: { folds:8, knnK:7, treeDepth:2, active:{linear:true,knn:true,tree:true} },
+};
+
+let cache={ key:null };
+function accOn(fn){ let h=0; for(const p of DATA.test){ if((fn(p.x,p.y)>=0.5?1:0)===p.c) h++; } return h/DATA.test.length; }
+function computeAll(){
+  const active = ALLB.filter(b=>state.active[b]);
+  const key=[state.folds,state.knnK,state.treeDepth,active.join(",")].join("|");
+  if(cache.key===key) return cache.v;
+  const cfg={ knnK:state.knnK, treeDepth:state.treeDepth };
+  // every base fit on full train for its own panel + accuracy
+  const disp={}, dispAcc={};
+  for(const b of ALLB){ disp[b]=BASES[b].fit(DATA.train,cfg); const m=disp[b]; dispAcc[b]=accOn((x,y)=>BASES[b].prob(m,x,y)); }
+  // stack over active bases
+  let r=null, leakTrain=null, leakTest=null;
+  if(active.length){
+    r = stack(DATA.train, DATA.test, active, cfg, state.folds, FOLDSEED);
+    // leaky meta: bases predict their OWN training rows (in-sample) -> meta fit on those
+    const leakRows=DATA.train.map(p=>({ f:active.map(b=>BASES[b].prob(disp[b],p.x,p.y)), c:p.c }));
+    const leakMeta=fitLogReg(leakRows, active.length, 800, 0.7);
+    const leakProb=(x,y)=> logRegProb(leakMeta, active.map(b=>BASES[b].prob(disp[b],x,y)));
+    let ht=0; for(const p of DATA.train){ if((leakProb(p.x,p.y)>=0.5?1:0)===p.c) ht++; }
+    leakTrain=ht/DATA.train.length; leakTest=accOn(leakProb);
+  }
+  const v={ active, cfg, disp, dispAcc, r, leakTrain, leakTest };
+  cache={ key, v }; return v;
+}
+
+// ---------------- rendering ----------------
+const PW=360, PH=300, ml=30, mr=8, mt=8, mb=24;
+const iw=PW-ml-mr, ih=PH-mt-mb;
+const PX=x=> ml + x*iw, PY=y=> mt + (1-y)*ih;
+const CX=42, CY=34;
+
+function heat(probFn){
+  let g="";
+  for(let i=0;i<CX;i++) for(let j=0;j<CY;j++){
+    const x0=i/CX, x1=(i+1)/CX, y0=j/CY, y1=(j+1)/CY;
+    const p=probFn((x0+x1)/2,(y0+y1)/2);
+    const conf=Math.abs(p-0.5)*2;
+    const col=p>=0.5?"14,165,233":"100,116,139";
+    const a=(0.10+0.34*conf).toFixed(2);
+    g+=`<rect x="${PX(x0).toFixed(1)}" y="${PY(y1).toFixed(1)}" width="${(PX(x1)-PX(x0)+0.7).toFixed(1)}" height="${(PY(y0)-PY(y1)+0.7).toFixed(1)}" fill="rgba(${col},${a})"/>`;
+  }
+  return g;
+}
+function frame(){
+  let g=`<rect x="${ml}" y="${mt}" width="${iw}" height="${ih}" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g+=`<text x="${ml+iw/2}" y="${PH-5}" text-anchor="middle" font-size="11" font-weight="700" fill="#94a3b8">feature 1</text>`;
+  g+=`<text transform="translate(11,${mt+ih/2}) rotate(-90)" text-anchor="middle" font-size="11" font-weight="700" fill="#94a3b8">feature 2</text>`;
+  return g;
+}
+function points(probFn){
+  let g="";
+  // train points: faint context
+  for(const p of DATA.train){ g+=`<circle cx="${PX(p.x).toFixed(1)}" cy="${PY(p.y).toFixed(1)}" r="1.7" fill="${p.c?SKY:SLATE}" fill-opacity="0.28"/>`; }
+  // test points: solid; red ring if misclassified by this model
+  for(const p of DATA.test){
+    const wrong = probFn ? ((probFn(p.x,p.y)>=0.5?1:0)!==p.c) : false;
+    if(wrong) g+=`<circle cx="${PX(p.x).toFixed(1)}" cy="${PY(p.y).toFixed(1)}" r="5.4" fill="none" stroke="#ef4444" stroke-width="2"/>`;
+    g+=`<circle cx="${PX(p.x).toFixed(1)}" cy="${PY(p.y).toFixed(1)}" r="3.2" fill="${p.c?SKY:SLATE}" stroke="#fff" stroke-width="1"/>`;
+  }
+  return g;
+}
+function panel(elId, probFn){
+  const svg=`<svg viewBox="0 0 ${PW} ${PH}" width="100%" style="display:block">${frame()}${probFn?heat(probFn):""}${points(probFn)}</svg>`;
+  document.getElementById(elId).innerHTML=svg;
+}
+function emptyPanel(elId,label){
+  document.getElementById(elId).innerHTML=`<svg viewBox="0 0 ${PW} ${PH}" width="100%" style="display:block">${frame()}<text x="${ml+iw/2}" y="${mt+ih/2}" text-anchor="middle" font-size="14" font-weight="700" fill="#cbd5e1">${label}</text></svg>`;
+}
+
+function renderFolds(v){
+  if(!v.r){ document.getElementById("svgFolds").innerHTML=""; return; }
+  const W=240,H=190,fl=6,ft=6,fw=W-12,fh=H-12;
+  const px=x=> fl + x*fw, py=y=> ft + (1-y)*fh;
+  let g=`<rect x="${fl}" y="${ft}" width="${fw}" height="${fh}" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  DATA.train.forEach((p,i)=>{ const c=FOLD_COLORS[v.r.fold[i]%FOLD_COLORS.length];
+    g+=`<circle cx="${px(p.x).toFixed(1)}" cy="${py(p.y).toFixed(1)}" r="3" fill="${c}" fill-opacity="0.9"/>`; });
+  document.getElementById("svgFolds").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${g}</svg>`;
+  // fold legend
+}
+function renderBars(v){
+  const items=[];
+  for(const b of ALLB){ if(state.active[b]) items.push({name:b==="linear"?"Linear":b==="knn"?"k-NN":"Tree", acc:v.dispAcc[b], hero:false}); }
+  if(v.r) items.push({name:"Stacked", acc:v.r.stackAcc, hero:true});
+  const W=470,H=30+items.length*34,bl=88,bw=W-bl-56;
+  let g="";
+  items.forEach((it,i)=>{ const y=14+i*34; const w=bw*it.acc; const col=it.hero?SKY:"#94a3b8";
+    g+=`<text x="${bl-8}" y="${y+15}" text-anchor="end" font-size="12" font-weight="${it.hero?800:700}" fill="${it.hero?'#0369a1':'#475569'}">${it.name}</text>`;
+    g+=`<rect x="${bl}" y="${y}" width="${bw}" height="21" fill="#f1f5f9" rx="5"/>`;
+    g+=`<rect x="${bl}" y="${y}" width="${w.toFixed(1)}" height="21" fill="${col}" rx="5"/>`;
+    g+=`<text x="${bl+w+6}" y="${y+15}" font-size="12" font-weight="800" fill="${it.hero?'#0369a1':'#475569'}" font-variant-numeric="tabular-nums">${(it.acc*100).toFixed(1)}%</text>`;
+  });
+  document.getElementById("svgBars").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${g}</svg>`;
+}
+function renderWeights(v){
+  if(!v.r){ document.getElementById("svgWeights").innerHTML=""; return; }
+  const active=v.r.activeBases, w=v.r.meta.w;
+  const maxAbs=Math.max(0.5, ...w.map(Math.abs));
+  const W=470,H=14+active.length*30,bl=88,mid=bl+(W-bl-30)/2,half=(W-bl-30)/2;
+  let g=`<line x1="${mid}" y1="6" x2="${mid}" y2="${H-6}" stroke="#cbd5e1" stroke-dasharray="3 3"/>`;
+  active.forEach((b,i)=>{ const y=10+i*30; const val=w[i]; const len=half*Math.abs(val)/maxAbs; const pos=val>=0;
+    const col=pos?SKY:"#f59e0b"; const name=b==="linear"?"Linear":b==="knn"?"k-NN":"Tree";
+    g+=`<text x="${bl-8}" y="${y+14}" text-anchor="end" font-size="12" font-weight="700" fill="#475569">${name}</text>`;
+    g+=`<rect x="${pos?mid:mid-len}" y="${y}" width="${len.toFixed(1)}" height="19" fill="${col}" rx="4"/>`;
+    g+=`<text x="${pos?mid+len+5:mid-len-5}" y="${y+14}" text-anchor="${pos?'start':'end'}" font-size="11" font-weight="800" fill="${pos?'#0369a1':'#b45309'}" font-variant-numeric="tabular-nums">${val>=0?'+':''}${val.toFixed(2)}</text>`;
+  });
+  document.getElementById("svgWeights").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${g}</svg>`;
+}
+
+function setDiag(v){
+  const box=document.getElementById("diagBox");
+  if(!v.r){ box.className="diag diag-warn mt-6 max-w-4xl mx-auto text-left";
+    box.innerHTML=`<div class="text-base font-extrabold mb-1">Pick at least one base learner</div><div class="text-sm font-medium leading-relaxed">A stack needs something to stack. Toggle a base back on.</div>`; return; }
+  const active=v.r.activeBases;
+  const accs=active.map(b=>v.dispAcc[b]);
+  const best=Math.max(...accs); const bestB=active[accs.indexOf(best)];
+  const bn=b=> b==="linear"?"linear model":b==="knn"?"k-NN":"tree";
+  const margin=v.r.stackAcc-best;
+  if(active.length===1){
+    box.className="diag diag-warn mt-6 max-w-4xl mx-auto text-left";
+    box.innerHTML=`<div class="text-base font-extrabold mb-1">🤷 One base = nothing to combine</div><div class="text-sm font-medium leading-relaxed">With a single base learner the meta-model has one feature and just re-learns that base — the stacked accuracy (<strong>${(v.r.stackAcc*100).toFixed(1)}%</strong>) tracks the base (<strong>${(best*100).toFixed(1)}%</strong>). Turn on a second, <em>different</em> learner: stacking pays only when the bases disagree in useful ways.</div>`;
+    return;
+  }
+  if(margin>=0){
+    box.className="diag diag-good mt-6 max-w-4xl mx-auto text-left";
+    box.innerHTML=`<div class="text-base font-extrabold mb-1">🏗️ The stack beat every single base (+${(margin*100).toFixed(1)} pts)</div><div class="text-sm font-medium leading-relaxed">The best base alone (${bn(bestB)}) hit <strong>${(best*100).toFixed(1)}%</strong> on the held-out test set. Fed the bases' <strong>out-of-fold</strong> predictions, the meta-model reached <strong>${(v.r.stackAcc*100).toFixed(1)}%</strong> — it learned <em>where</em> each base is reliable instead of averaging them blindly. Note the leaky in-sample meta would have <em>claimed</em> <strong>${(v.leakTrain*100).toFixed(1)}%</strong> on its own training data, a mirage that evaporates to ${(v.leakTest*100).toFixed(1)}% when held out. That gap is exactly why out-of-fold matters.</div>`;
+  } else {
+    box.className="diag diag-warn mt-6 max-w-4xl mx-auto text-left";
+    box.innerHTML=`<div class="text-base font-extrabold mb-1">Here the stack didn't help</div><div class="text-sm font-medium leading-relaxed">Stacked <strong>${(v.r.stackAcc*100).toFixed(1)}%</strong> vs the best base's <strong>${(best*100).toFixed(1)}%</strong>. Stacking is not guaranteed to win — if the bases are too similar or one dominates, the meta-model can only match it. Try more diverse bases (the default three) or a different k-fold count.</div>`;
+  }
+}
+
+function draw(){
+  const v=computeAll();
+  // panels
+  for(const b of ALLB){
+    const p=document.getElementById(b==="linear"?"pLinear":b==="knn"?"pKnn":"pTree");
+    const svgId=b==="linear"?"svgLinear":b==="knn"?"svgKnn":"svgTree";
+    const accId=b==="linear"?"accLinear":b==="knn"?"accKnn":"accTree";
+    if(state.active[b]){ p.classList.remove("off");
+      const m=v.disp[b]; panel(svgId,(x,y)=>BASES[b].prob(m,x,y));
+      document.getElementById(accId).textContent=(v.dispAcc[b]*100).toFixed(1)+"%";
+    } else { p.classList.add("off"); emptyPanel(svgId,"excluded"); document.getElementById(accId).textContent="—"; }
+  }
+  if(v.r){ panel("svgStack", v.r.stackProb); document.getElementById("accStack").textContent=(v.r.stackAcc*100).toFixed(1)+"%"; }
+  else   { emptyPanel("svgStack","no bases"); document.getElementById("accStack").textContent="—"; }
+  // stat strip
+  document.getElementById("sFolds").textContent=state.folds;
+  document.getElementById("sLin").textContent = state.active.linear? (v.dispAcc.linear*100).toFixed(1)+"%":"off";
+  document.getElementById("sKnn").textContent = state.active.knn? (v.dispAcc.knn*100).toFixed(1)+"%":"off";
+  document.getElementById("sTree").textContent= state.active.tree? (v.dispAcc.tree*100).toFixed(1)+"%":"off";
+  document.getElementById("sStack").textContent = v.r? (v.r.stackAcc*100).toFixed(1)+"%":"—";
+  const active=v.active;
+  if(v.r && active.length){ const best=Math.max(...active.map(b=>v.dispAcc[b])); const m=v.r.stackAcc-best;
+    document.getElementById("sMargin").textContent=(m>=0?"+":"")+(m*100).toFixed(1)+" pts"; }
+  else document.getElementById("sMargin").textContent="—";
+  // OOF text + leakage
+  document.getElementById("foldTxt").textContent=state.folds;
+  document.getElementById("leakTrain").textContent = v.leakTrain!=null? (v.leakTrain*100).toFixed(1)+"%":"—";
+  document.getElementById("leakTest").textContent  = v.leakTest!=null?  (v.leakTest*100).toFixed(1)+"%":"—";
+  renderFolds(v); renderBars(v); renderWeights(v); setDiag(v);
+}
+
+// ---------------- controls ----------------
+function syncControls(){
+  document.getElementById("cFolds").value=state.folds;
+  document.getElementById("cKnn").value=state.knnK;
+  document.getElementById("cDepth").value=state.treeDepth;
+  document.getElementById("vFolds").textContent=state.folds;
+  document.getElementById("vKnn").textContent=state.knnK;
+  document.getElementById("vDepth").textContent=state.treeDepth;
+  document.querySelectorAll("[data-base]").forEach(b=> b.classList.toggle("on", !!state.active[b.dataset.base]));
+}
+document.getElementById("cFolds").addEventListener("input", e=>{ state.folds=+e.target.value; syncControls(); draw(); });
+document.getElementById("cKnn").addEventListener("input", e=>{ state.knnK=+e.target.value; syncControls(); draw(); });
+document.getElementById("cDepth").addEventListener("input", e=>{ state.treeDepth=+e.target.value; syncControls(); draw(); });
+document.querySelectorAll("[data-base]").forEach(b=> b.onclick=()=>{ state.active[b.dataset.base]=!state.active[b.dataset.base]; syncControls(); draw(); });
+document.getElementById("runBtn").addEventListener("click", ()=>{
+  const rb=document.getElementById("runBtn"); rb.classList.remove("run-pulse"); void rb.offsetWidth; rb.classList.add("run-pulse");
+  cache.key=null; draw();
+});
+document.querySelectorAll("[data-preset]").forEach(b=> b.onclick=()=>{ const p=PRESETS[b.dataset.preset]; state.folds=p.folds; state.knnK=p.knnK; state.treeDepth=p.treeDepth; state.active={...p.active}; syncControls(); draw(); });
+syncControls(); draw();
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. Ensembles so far — bagging, boosting, voting", why:"Three ensemble ideas came before stacking. BAGGING (random forest) trains many copies of the same kind of model on bootstrap resamples and averages them — it mainly cuts VARIANCE, smoothing out the wobble of a single high-variance learner like a deep tree. BOOSTING (AdaBoost, gradient boosting) trains models in sequence, each one fixing the errors of the last — it mainly cuts BIAS, turning weak learners into a strong one. VOTING is the plainest: train a few different models and average their probabilities (soft vote) or take a majority (hard vote). All three combine models, but the combination rule is FIXED in advance: average, weighted-by-a-schedule, or majority. Nobody learns from data how the models should be blended. Stacking is the step that makes the blend itself learnable.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">BAGGING &rarr; many same models, average &rarr; &darr; variance<br>BOOSTING &rarr; sequential fixers &rarr; &darr; bias<br>VOTING &rarr; average different models (fixed rule)<br><br>all combine &mdash; none LEARN the combination</div>`, code:`# fixed-rule ensembles
+from sklearn.ensemble import RandomForestClassifier   # bagging
+from sklearn.ensemble import GradientBoostingClassifier # boosting
+from sklearn.ensemble import VotingClassifier          # averaging
+VotingClassifier(estimators, voting="soft")  # blend = plain mean, not learned` },
+ { title:"2. The stacking idea — learn the combination", why:"Stacking (stacked generalization, Wolpert 1992) replaces the fixed averaging rule with a second model. You train several diverse BASE learners (level-0). Then you take THEIR predictions and treat them as a new feature matrix, and train a META learner (level-1) whose job is to map base predictions to the final answer. The meta-model discovers, from data, how much to trust each base — and can even learn interactions like 'trust the tree only when the k-NN and linear model disagree'. A soft vote is the special case where the meta-model is forced to be a fixed equal average; stacking lets the data choose the weights instead. That single change — a learnable combiner — is the whole method.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">level-0 (bases):  f1(x)  f2(x)  f3(x)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&darr; predictions become features<br>level-1 (meta):  g( f1, f2, f3 ) &rarr; y&#770;<br><br>the meta-model LEARNS the weighting</div>`, code:`# base predictions become the meta-model's input features
+Z_train = [[f1(x), f2(x), f3(x)] for x in X]   # level-0 outputs
+meta.fit(Z_train, y)                           # level-1 learns the blend
+y_hat = meta.predict([[f1(x), f2(x), f3(x)]])  # final prediction` },
+ { title:"3. Diversity is the fuel", why:"Stacking only helps if the base learners make DIFFERENT mistakes. If two models are near-identical, their predictions are redundant columns and the meta-model gains nothing. The magic comes from UNCORRELATED errors: when a linear model fails on curvature, a k-NN may still be right locally; when k-NN is fooled by a noisy point, an axis-aligned tree is unbothered. Combine learners that fail in complementary regions and their union of 'where I'm right' can cover the whole space. Practically, mix model FAMILIES (linear, distance-based, tree/forest, boosting, even a neural net), vary hyperparameters, or train on different feature subsets. A quick correlation matrix of base predictions tells you whether you actually have diversity — low off-diagonal correlation is what you want. The demo's three bases were chosen precisely because a line, a local vote, and a box each break on a different part of the moons.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">linear wrong here &nbsp;|&nbsp; k-NN right here<br>k-NN wrong here &nbsp;&nbsp;|&nbsp; tree right here<br><br>uncorrelated errors &rarr; the blend covers both<br>identical models &rarr; redundant &rarr; no gain</div>`, code:`import numpy as np
+P = np.column_stack([m.predict(X_val) for m in bases])
+print(np.corrcoef(P.T))   # LOW off-diagonal correlation = good diversity
+# near-1 correlation between two bases -> drop one, add something different` },
+ { title:"4. The out-of-fold trick (the heart of stacking)", why:"Watch out for the trap that sinks naive stacking. To train the meta-model you need base predictions to use as features — but if a base predicts the very rows it was trained on, those predictions are unrealistically good (the base has partly memorised them). The meta-model then learns to blindly trust bases that only LOOK perfect, and it collapses on new data. The fix is OUT-OF-FOLD (OOF) prediction: split the training data into k folds; for each fold, train the bases on the OTHER k-1 folds and predict the held-out fold. Every training row now has base predictions produced by models that never saw it — exactly the honest, generalisation-level predictions the meta-model will face at deploy time. You stack those OOF predictions and train the meta on them. In the demo, the leaky in-sample version brags a much higher accuracy on its own training data that vanishes on the test set; the OOF version reports the truth up front.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">split train into k folds<br>for each fold f:<br>&nbsp;&nbsp;fit bases on folds &ne; f<br>&nbsp;&nbsp;predict fold f &rarr; store as meta-features<br><br>every row scored by a base that never saw it<br>= no leakage = honest meta training data</div>`, code:`from sklearn.model_selection import cross_val_predict
+# honest meta-features: each row predicted while held out
+Z = np.column_stack([
+    cross_val_predict(base, X, y, cv=5, method="predict_proba")[:,1]
+    for base in bases
+])
+meta.fit(Z, y)   # trained on out-of-fold predictions, not in-sample ones` },
+ { title:"5. Choosing the meta (level-1) model — keep it simple", why:"The meta-model's input is tiny and already highly informative: just a handful of numbers per row (one probability per base). It does not need to be powerful — it needs to be STABLE and resistant to overfitting those few columns. The default choice is a plain logistic regression (linear regression for regression tasks), often regularised. A linear meta essentially learns a weighted average of the bases, plus the freedom to use negative weights (treat a weak base as a corrector). Fancy meta-models (another boosting machine, a deep net) usually overfit the small meta feature set and rarely beat the simple linear combiner. Rule of thumb: strong, diverse bases + a humble linear meta. If you feel the urge to make the meta complex, that effort almost always pays off better spent on the base models instead.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">meta input = [p1, p2, p3]  (few columns)<br><br>logistic / linear regression &rarr; usual pick<br>&nbsp;&nbsp;learns weights, allows negatives, hard to overfit<br>complex meta &rarr; overfits the tiny feature set</div>`, code:`from sklearn.linear_model import LogisticRegression, RidgeClassifier
+final_estimator = LogisticRegression()   # simple, stable meta
+# regularise if you have many bases:
+# final_estimator = LogisticRegression(C=0.5)   # stronger shrinkage` },
+ { title:"6. Predict time — bases on full data, then the meta", why:"There is an important asymmetry between training and inference. During TRAINING you needed OOF predictions, so the bases were refit k times on partial data. But for the FINAL deployed model you refit each base ONCE on the ENTIRE training set (all folds together) — you want the strongest possible bases at inference. To predict a new point x: run it through each fully-trained base to get their probabilities, assemble that little vector, and feed it to the already-trained meta-model, which outputs the final answer. scikit-learn's StackingClassifier does both jobs automatically: internally it uses cross-validated predictions to fit the meta, and separately refits each base on the full data for prediction. So a stack stores k-fold work at train time but is just 'bases then meta' at run time.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">TRAIN: bases refit k times (OOF) &rarr; meta fit<br>DEPLOY: bases refit ONCE on ALL data<br><br>predict(x): base probs &rarr; [p1,p2,p3] &rarr; meta &rarr; y&#770;</div>`, code:`# what StackingClassifier does under the hood at predict time
+def predict(x):
+    z = [base.predict_proba([x])[0,1] for base in fitted_bases_full]
+    return meta.predict([z])   # bases (full-data) -> meta -> answer` },
+ { title:"7. Blending vs stacking — holdout vs out-of-fold", why:"BLENDING is stacking's simpler cousin. Instead of k-fold OOF predictions, you carve off a single small HOLDOUT set: train the bases on the rest, predict the holdout once, and train the meta on those holdout predictions. It is faster (bases fit once, not k times) and dead simple to reason about — popularised in the Netflix Prize era. The costs: the meta sees fewer examples (only the holdout), and the split is a single random draw so results are noisier and some data is 'wasted' on the meta rather than the bases. STACKING (full k-fold OOF) uses every row for both base and meta training and gives lower-variance estimates, at k times the base-training cost. Rule of thumb: blend when data is plentiful and compute is tight; stack when data is precious and you want the most robust combination.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">BLENDING: one holdout &rarr; meta (fast, noisier)<br>STACKING: k-fold OOF &rarr; meta (robust, k&times; cost)<br><br>same idea, different way to get leak-free meta-features</div>`, code:`# blending: single holdout instead of k folds
+X_base, X_blend, y_base, y_blend = train_test_split(X_tr, y_tr, test_size=0.2)
+for b in bases: b.fit(X_base, y_base)
+Z_blend = np.column_stack([b.predict_proba(X_blend)[:,1] for b in bases])
+meta.fit(Z_blend, y_blend)   # meta trained on holdout preds only` },
+ { title:"8. Why stacking wins Kaggle", why:"Open the writeup of almost any Kaggle competition and you will find a stack — often a multi-level one. The reason is that leaderboards are decided by tiny margins, and stacking is a reliable way to squeeze the last fraction of a percent by pooling many good but different models: gradient boosters (XGBoost, LightGBM, CatBoost), neural nets, linear models, k-NN, all fed to a meta-learner. Because the top teams already have strong individual models, the extra signal lives in their DISAGREEMENTS — precisely what a meta-model exploits. Winners routinely go further: level-1 metas are themselves stacked into a level-2 meta, sometimes averaged across many random seeds. It works because competition scoring rewards accuracy above all else and ignores latency, interpretability, and maintenance — the exact things stacking sacrifices.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">level-0: XGB · LightGBM · NN · linear · k-NN<br>level-1: meta over their OOF preds<br>level-2: meta over the metas (sometimes!)<br><br>tiny margins + strong diverse models = stacking shines</div>`, code:`# a typical Kaggle-style two-level stack
+level0 = [xgb, lgbm, catboost, mlp, knn]         # diverse strong models
+level1 = StackingClassifier(level0, LogisticRegression(), cv=5)
+final  = StackingClassifier([("l1", level1)], LogisticRegression(), cv=5)` },
+ { title:"9. The catch — cost, overfitting, and when to skip it", why:"Stacking is not free lunch. COST: with k-fold OOF, each base is trained k+1 times, and you maintain a whole zoo of models plus a meta — training and inference both get heavier, which can be a deal-breaker in production. OVERFITTING: if you use in-sample instead of OOF predictions you leak and the whole thing is a lie; and even done right, adding many correlated bases or a complex meta can overfit the meta feature set, so regularise and validate with an OUTER cross-validation that wraps the entire stack. DIMINISHING RETURNS: if one tuned model (often a gradient booster) already dominates, or your bases are near-identical, a stack buys you almost nothing over a simple soft vote — and the vote is cheaper and easier to reason about. Ship a stack when several genuinely different strong models exist and the marginal accuracy is worth the operational weight; otherwise prefer the single model or the plain average.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">COST: bases refit k+1&times; · zoo of models to maintain<br>LEAKAGE: in-sample preds &rarr; fake scores (use OOF!)<br>OVERFIT: regularise meta · wrap in OUTER cv<br><br>if one model already wins &rarr; don't stack</div>`, code:`from sklearn.model_selection import cross_val_score, StratifiedKFold
+# validate the WHOLE stack with an outer CV (inner cv builds meta features)
+outer = StratifiedKFold(5, shuffle=True, random_state=0)
+print(cross_val_score(stack, X, y, cv=outer).mean())
+# if this barely beats the best single model, ship the single model.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
