@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 34 — Elastic Net</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .run-pulse { animation: runPulse .5s ease-out; }
+  @keyframes runPulse { 0% { box-shadow:0 0 0 0 rgba(14,165,233,.55);} 100% { box-shadow:0 0 0 14px rgba(14,165,233,0);} }
+  .ctl-row { display:grid; grid-template-columns:170px 1fr 58px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:14px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .preset-btn { border:1px solid #e2e8f0; }
+  .preset-btn:hover { border-color:#38bdf8; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:20px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 34</div>
+      <h1 class="text-xl font-bold">🕸️ Elastic Net — Blend L1 + L2 to Get Sparse <em>and</em> Stable Coefficients</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1">Two of these features are near-duplicates (correlation 0.98) and four are pure noise. Drag the two sliders and watch coordinate descent recompute every coefficient live — see lasso <em>arbitrarily</em> kill one of the correlated twins, ridge refuse to zero anything, and Elastic Net do the thing both miss.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">A plain least-squares fit gives every one of the eight features a weight — including the four that are just <strong>noise</strong>, and it splits the two <strong>correlated twins</strong> (x₁, x₂) randomly. Regularization fixes that by adding a <strong>penalty on the coefficients</strong>. <strong>Ridge (L2)</strong> shrinks them all smoothly and shares weight fairly between correlated features, but never drives one to exactly zero. <strong>Lasso (L1)</strong> zeros features for a sparse, self-selecting model — but faced with two correlated twins it keeps <em>one at random</em> and discards the other, and that pick flips with tiny data changes. <strong>Elastic Net</strong> adds <em>both</em> penalties: <code>alpha</code> sets the total strength, <code>l1_ratio</code> mixes them (0 = pure ridge … 1 = pure lasso). The L1 part zeros the noise (sparsity) while the L2 part keeps the correlated pair <em>together</em> (the grouping effect). Every coefficient below is genuinely solved by <strong>coordinate descent + soft-thresholding</strong> running live in your browser — no libraries.</p>
+
+      <div class="grid grid-cols-3 md:grid-cols-6 gap-2 max-w-4xl mx-auto mb-4">
+        <div class="metric-pill"><div class="v" id="mAlpha" style="color:#0ea5e9">—</div><div class="k">α strength</div></div>
+        <div class="metric-pill"><div class="v" id="mRatio" style="color:#8b5cf6">—</div><div class="k">l1_ratio</div></div>
+        <div class="metric-pill"><div class="v" id="mNZ">—</div><div class="k">nonzero coefs</div></div>
+        <div class="metric-pill"><div class="v" id="mTrain">—</div><div class="k">train R²</div></div>
+        <div class="metric-pill"><div class="v" id="mTest" style="color:#0ea5e9">—</div><div class="k">test R²</div></div>
+        <div class="metric-pill"><div class="v" id="mGap" style="color:#f59e0b">—</div><div class="k">twin gap |w₁−w₂|</div></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start">
+        <!-- controls -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+          <div class="text-xs font-bold text-slate-500 mb-3">CONTROLS — set the penalty, watch the coefficients recompute</div>
+          <div class="ctl-row">
+            <div class="ctl-name">🎚️ α &mdash; penalty strength</div>
+            <input type="range" id="cAlpha" min="0" max="1.5" step="0.02" value="0.4">
+            <div class="ctl-val" id="vAlpha">0.40</div>
+          </div>
+          <div class="text-[11px] text-slate-400 -mt-1 mb-1">0 = ordinary least squares · higher = more shrinkage</div>
+          <div class="ctl-row">
+            <div class="ctl-name">⚖️ l1_ratio</div>
+            <input type="range" id="cRatio" min="0" max="1" step="0.05" value="0.5">
+            <div class="ctl-val" id="vRatio">0.50</div>
+          </div>
+          <div class="flex justify-between text-[11px] font-bold -mt-1 mb-2"><span style="color:#10b981">0 = ridge (L2)</span><span style="color:#8b5cf6">1 = lasso (L1)</span></div>
+          <div class="mt-2 flex flex-wrap gap-2 items-center">
+            <span class="text-[11px] font-bold text-slate-400 uppercase w-full">presets</span>
+            <button data-preset="ols"     class="preset-btn bg-slate-50 hover:bg-slate-100 px-2.5 py-1 rounded-lg font-semibold text-xs">OLS (α=0)</button>
+            <button data-preset="ridge"   class="preset-btn bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🟢 Ridge</button>
+            <button data-preset="lasso"   class="preset-btn bg-violet-50 hover:bg-violet-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🟣 Lasso</button>
+            <button data-preset="elastic" class="preset-btn bg-sky-50 hover:bg-sky-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🕸️ Elastic 50/50</button>
+            <button data-preset="sweet"   class="preset-btn bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-semibold text-xs">⭐ Sweet spot</button>
+          </div>
+          <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+            The demo dataset has <strong>8 standardized features</strong> and one target. Two features (<span style="color:#0ea5e9;font-weight:700">x₁</span>, <span style="color:#38bdf8;font-weight:700">x₂</span>) are <strong>correlated twins</strong> that jointly carry real signal; <span style="color:#10b981;font-weight:700">x₃, x₄</span> are independent real signal; <strong>x₅–x₈ are pure noise</strong> (true weight = 0). A good model should keep the signal, share the twins, and zero the noise.
+          </div>
+        </div>
+
+        <!-- coefficient bar chart -->
+        <div class="panel hero text-left" style="width:560px; max-width:100%;">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-sm font-bold text-sky-700">📊 Fitted coefficients (standardized)</span>
+            <span class="text-xs font-bold text-slate-400">bars shrink as α grows · L1 snaps them to 0</span>
+          </div>
+          <div id="svgCoefs"></div>
+          <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+            <span><span class="swatch" style="background:#0ea5e9"></span> twin x₁ / <span class="swatch" style="background:#38bdf8"></span> twin x₂</span>
+            <span><span class="swatch" style="background:#10b981"></span> real signal x₃/x₄</span>
+            <span><span class="swatch" style="background:#cbd5e1"></span> noise x₅–x₈</span>
+            <span><span class="swatch" style="background:#fee2e2;border:1px solid #ef4444"></span> zeroed (dropped)</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- second row: coefficient path + fit/grouping -->
+      <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:600px; max-width:100%;">
+          <div class="text-xs font-bold text-slate-500 mb-1">THE REGULARIZATION PATH — every coefficient as α sweeps (at the current l1_ratio)</div>
+          <div id="svgPath"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-1">The dashed line marks your current <strong>α</strong>. Read left→right: as the penalty grows, coefficients shrink toward zero. Under <strong>lasso</strong> (l1_ratio→1) lines hit exactly zero and stay there — that is feature selection. Under <strong>ridge</strong> (l1_ratio→0) they only approach zero asymptotically. Watch the two <span style="color:#0ea5e9;font-weight:700">twin</span> lines: with L2 in the mix they descend <em>together</em>; pure lasso lets one collapse while the other keeps its weight.</div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:440px; max-width:100%;">
+          <div class="text-xs font-bold text-slate-500 mb-1">FIT QUALITY — measured on a held-out test set</div>
+          <div id="svgFit"></div>
+          <div class="text-xs font-bold text-slate-500 mt-3 mb-1">THE GROUPING EFFECT <span class="font-normal text-slate-400">— what happens to the correlated twins</span></div>
+          <div id="svgTwins"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-2">The twins x₁ and x₂ are <strong>98% correlated</strong> and share one true signal (~1.8 total). Lasso hands it all to one twin and zeros the other (a big <span style="color:#f59e0b;font-weight:700">gap</span>); ridge and elastic net split it fairly (small gap). Small gap = a <strong>stable</strong> model that won't flip its story when the data wiggles.</div>
+        </div>
+      </div>
+
+      <div id="diagBox" class="diag diag-good mt-6 max-w-4xl mx-auto text-left">—</div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">L1, L2, and why you blend them</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">scikit-learn ships Elastic Net as <code>ElasticNet</code> (and <code>ElasticNetCV</code> to pick the knobs for you). Its <code>alpha</code> is the total penalty strength and <code>l1_ratio</code> is the mix — exactly the two sliders in the demo. Below is the whole workflow: standardize, fit, pick <code>alpha</code>/<code>l1_ratio</code> by cross-validation, read the coefficients, and the from-scratch coordinate descent that produced every number you just dragged.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Standardize first — penalties are scale-sensitive</h3></div>
+        <p class="text-sm text-slate-600 mb-3">L1 and L2 penalize the <em>size</em> of each coefficient, so a feature measured in millimetres gets a bigger coefficient (and a harsher penalty) than the same feature in metres. Always put the features on a common scale first, inside a <code>Pipeline</code> so the scaler is refit per CV fold and never leaks.</p>
+        <div class="relative"><pre>from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import ElasticNet
+from sklearn.pipeline import make_pipeline
+
+# zero mean, unit variance -> every coefficient is penalized on equal footing
+model = make_pipeline(StandardScaler(), ElasticNet(alpha=0.4, l1_ratio=0.5))
+model.fit(X_train, y_train)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Understand the two knobs: alpha and l1_ratio</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The Elastic Net objective is the least-squares loss plus a blended penalty. <code>alpha</code> scales the whole penalty (0 = ordinary least squares); <code>l1_ratio</code> splits it between L1 and L2. Set <code>l1_ratio=1</code> and you have Lasso; set <code>l1_ratio=0</code> and you have Ridge.</p>
+        <div class="relative"><pre># minimize over w:
+#   (1 / 2n) * ||y - Xw||^2                      <- least-squares fit
+#   + alpha * l1_ratio       * ||w||_1           <- L1: sparsity
+#   + 0.5 * alpha * (1 - l1_ratio) * ||w||_2^2   <- L2: shrink + grouping
+
+ElasticNet(alpha=0.0)               # == LinearRegression (no penalty)
+ElasticNet(alpha=a, l1_ratio=1.0)   # == Lasso(alpha=a)
+ElasticNet(alpha=a, l1_ratio=0.0)   # == Ridge  (2*a on the L2 term)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Let cross-validation pick alpha AND l1_ratio</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Don't guess the knobs — sweep them. <code>ElasticNetCV</code> tries a grid of <code>l1_ratio</code> values and, for each, an automatically-chosen path of <code>alpha</code>s, scoring every combination with k-fold CV and keeping the best.</p>
+        <div class="relative"><pre>from sklearn.linear_model import ElasticNetCV
+
+cv = ElasticNetCV(
+    l1_ratio = [.1, .3, .5, .7, .9, .95, 1.0],  # grid of mixes to try
+    alphas   = None,      # None -> sklearn builds a sensible alpha path
+    cv       = 5,
+    n_jobs   = -1,
+).fit(X_train_scaled, y_train)
+
+print("best alpha    :", cv.alpha_)
+print("best l1_ratio :", cv.l1_ratio_)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Read the coefficients — which survived, which were dropped</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The payoff of the L1 part is a self-selecting model: dropped features have a coefficient of exactly <code>0.0</code>. Inspect them to see the sparsity, and compare correlated features to confirm the grouping effect (they should get similar, not wildly split, weights).</p>
+        <div class="relative"><pre>import numpy as np
+coef = cv.coef_
+print("nonzero features:", np.sum(coef != 0), "of", coef.size)
+for name, c in zip(feature_names, coef):
+    print(f"{name:12s} {c:+.3f}" + ("   <- dropped" if c == 0 else ""))
+# correlated twins should share weight (close values), not one-hot</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Coordinate descent from scratch — the exact demo engine</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Elastic Net has no closed form because of the L1 kink, so the standard solver cycles one coefficient at a time. For each feature it computes a partial residual correlation <code>rho</code>, applies <strong>soft-thresholding</strong> (that is what creates the exact zeros), then divides by the L2 term. This is the whole algorithm sklearn uses — and the one running in this page.</p>
+        <div class="relative"><pre>import numpy as np
+
+def soft_threshold(x, g):          # the L1 operator -> makes exact zeros
+    return np.sign(x) * max(abs(x) - g, 0.0)
+
+def elastic_net(X, y, alpha, l1_ratio, iters=500):
+    X = (X - X.mean(0)) / X.std(0)          # standardize
+    y = y - y.mean()                        # center (handle intercept apart)
+    n, p = X.shape
+    w = np.zeros(p)
+    r = y - X @ w                           # residual
+    thr   = alpha * l1_ratio                # L1 shrink amount
+    denom = 1.0 + alpha * (1 - l1_ratio)    # L2 divisor  (col var = 1)
+    for _ in range(iters):
+        for j in range(p):
+            rho = (X[:, j] @ (r + X[:, j] * w[j])) / n   # add j back in
+            new = soft_threshold(rho, thr) / denom
+            r += X[:, j] * (w[j] - new)     # keep residual in sync
+            w[j] = new
+    return w                                # zeros = dropped features</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Choose the right tool: ridge vs lasso vs elastic net</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Elastic Net is not always the answer. Reach for it specifically when you have <em>many, correlated</em> features and want sparsity you can trust. If nothing is correlated, plain Lasso is simpler; if you want to keep every feature and only tame their size, Ridge is enough.</p>
+        <div class="relative"><pre># rules of thumb
+# Ridge  (l1_ratio=0)  : keep ALL features, just shrink; great for
+#                        multicollinearity when you don't need selection.
+# Lasso  (l1_ratio=1)  : want a sparse model; features roughly independent.
+#                        Caveat: with p > n it selects at most n features,
+#                        and among correlated features it picks ONE at random.
+# Elastic (0<r<1)      : many correlated features + you want selection.
+#                        L2 rescues lasso's instability (grouping effect);
+#                        can select more than n features. l1_ratio~0.5 is a
+#                        safe default, push toward 1 for more sparsity.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 34 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You watched <strong>coordinate descent</strong> recompute eight coefficients live as you mixed two penalties. <strong>L2 (ridge)</strong> shrinks everything and shares weight between correlated features but never selects; <strong>L1 (lasso)</strong> zeros features for a sparse model but picks arbitrarily among correlated twins and caps out at n features. <strong>Elastic Net</strong> blends them: the L1 part kills the noise features while the L2 part keeps the correlated pair together — the <strong>grouping effect</strong> — which is why it beat pure lasso on the held-out test set here. You learned the objective (<code>alpha</code> for strength, <code>l1_ratio</code> for the mix), why standardizing first matters, that <strong>soft-thresholding</strong> is what manufactures the exact zeros, and to let <code>ElasticNetCV</code> choose the knobs. <strong>👉 Tomorrow — Day 35: Bayesian Linear Regression</strong> — put a distribution over the weights and get calibrated uncertainty on every prediction, not just a point estimate.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ============ ELASTIC NET ENGINE (pure JS — verified in Node) ============
+// <<<ENGINE_START>>>
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function gauss(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+const P = 8;
+
+// A tiny dataset built to expose the difference between L1, L2 and their blend:
+//   x1, x2  -> correlated "twins" (~0.98) that JOINTLY carry one real signal
+//   x3, x4  -> independent real signal (+ and -)
+//   x5..x8  -> pure noise, true coefficient = 0
+// Truth: y = 1.8*z + 1.3*x3 - 1.0*x4 + noise, where z is the shared twin latent.
+function genData(seed, n, noise){
+  const rng = mulberry32(seed); const rows=[];
+  for(let i=0;i<n;i++){
+    const z = gauss(rng);
+    const x = new Array(P);
+    x[0] = z + 0.12*gauss(rng);   // twin A
+    x[1] = z + 0.12*gauss(rng);   // twin B  (highly correlated with A)
+    x[2] = gauss(rng);            // real signal +
+    x[3] = gauss(rng);            // real signal -
+    x[4] = gauss(rng); x[5] = gauss(rng); x[6] = gauss(rng); x[7] = gauss(rng); // noise
+    const y = 1.8*z + 1.3*x[2] - 1.0*x[3] + noise*gauss(rng);
+    rows.push({ x, y });
+  }
+  return rows;
+}
+const softThreshold = (x,g)=>{ const s = x<0?-1:1; const a = Math.abs(x)-g; return a>0? s*a : 0; };
+
+// Coordinate descent for Elastic Net on standardized features + centered target.
+// Objective:  (1/2n)||y - Xw||^2 + alpha*l1_ratio*||w||_1 + (alpha*(1-l1_ratio)/2)*||w||_2^2
+// With unit-variance columns the per-coordinate update is a soft-threshold / (1 + L2):
+//   w_j = softThreshold( (1/n) x_j.(r + x_j w_j), alpha*l1_ratio ) / (1 + alpha*(1-l1_ratio))
+function elasticNet(Xtr, ytr, alpha, l1ratio, iters){
+  const n = Xtr.length;
+  const mean=new Array(P).fill(0), std=new Array(P).fill(0);
+  for(const x of Xtr) for(let j=0;j<P;j++) mean[j]+=x[j];
+  for(let j=0;j<P;j++) mean[j]/=n;
+  for(const x of Xtr) for(let j=0;j<P;j++) std[j]+=(x[j]-mean[j])**2;
+  for(let j=0;j<P;j++){ std[j]=Math.sqrt(std[j]/n)||1; }
+  const Xs = Xtr.map(x=> x.map((v,j)=> (v-mean[j])/std[j]));   // standardized design
+  const ymean = ytr.reduce((a,b)=>a+b,0)/n;
+  const w = new Array(P).fill(0);
+  const r = ytr.map(v=> v-ymean);                              // residual (w starts at 0)
+  const denom = 1 + alpha*(1-l1ratio);
+  const thr = alpha*l1ratio;
+  const IT = iters||400;
+  for(let it=0; it<IT; it++){
+    let maxChange=0;
+    for(let j=0;j<P;j++){
+      let rho=0; for(let i=0;i<n;i++) rho += Xs[i][j]*(r[i] + Xs[i][j]*w[j]);
+      rho/=n;
+      const wjNew = softThreshold(rho, thr)/denom;
+      const dw = wjNew - w[j];
+      if(dw!==0){ for(let i=0;i<n;i++) r[i]-=Xs[i][j]*dw; w[j]=wjNew; if(Math.abs(dw)>maxChange) maxChange=Math.abs(dw); }
+    }
+    if(maxChange<1e-8) break;
+  }
+  const wOrig = w.map((wj,j)=> wj/std[j]);                     // back to original feature units
+  const intercept = ymean - wOrig.reduce((s,wj,j)=> s + wj*mean[j], 0);
+  return { w, wOrig, intercept, mean, std };
+}
+function predict(m, x){ let z=m.intercept; for(let j=0;j<P;j++) z+=m.wOrig[j]*x[j]; return z; }
+function r2(m, rows){ const ym=rows.reduce((a,b)=>a+b.y,0)/rows.length; let ss=0,st=0; for(const r of rows){ const e=r.y-predict(m,r.x); ss+=e*e; st+=(r.y-ym)**2; } return st>0? 1-ss/st : 0; }
+function corr(rows,a,b){ const n=rows.length; let ma=0,mb=0; for(const r of rows){ma+=r.x[a];mb+=r.x[b];} ma/=n;mb/=n; let cab=0,va=0,vb=0; for(const r of rows){const da=r.x[a]-ma,db=r.x[b]-mb; cab+=da*db;va+=da*da;vb+=db*db;} return cab/Math.sqrt(va*vb); }
+// <<<ENGINE_END>>>
+
+// ---------------- fixed demo dataset (verified seed) ----------------
+const SEED=7, N=90, NOISE=0.7, NTR=54;
+const DATA = genData(SEED, N, NOISE);
+const TRAIN = DATA.slice(0, NTR), TEST = DATA.slice(NTR);
+const Xtr = TRAIN.map(r=>r.x), ytr = TRAIN.map(r=>r.y);
+const TWIN_CORR = corr(TRAIN, 0, 1);
+
+const FEATS = [
+  { name:"x₁", tag:"twin A",   color:"#0ea5e9" },
+  { name:"x₂", tag:"twin B",   color:"#38bdf8" },
+  { name:"x₃", tag:"signal +", color:"#10b981" },
+  { name:"x₄", tag:"signal −", color:"#059669" },
+  { name:"x₅", tag:"noise",    color:"#cbd5e1" },
+  { name:"x₆", tag:"noise",    color:"#cbd5e1" },
+  { name:"x₇", tag:"noise",    color:"#cbd5e1" },
+  { name:"x₈", tag:"noise",    color:"#cbd5e1" },
+];
+const SKY="#0ea5e9", AMBER="#f59e0b";
+
+// scale reference for the bar chart = OLS (alpha 0) coefficients
+const OLS = elasticNet(Xtr, ytr, 0, 0.5, 600);
+const COEF_SCALE = Math.max(1.0, ...OLS.w.map(Math.abs)) * 1.08;
+
+// regularization path (recomputed per l1_ratio, cached)
+const PATH_AMIN=0.008, PATH_AMAX=1.5, PATH_N=46;
+const PATH_ALPHAS=[]; for(let i=0;i<PATH_N;i++){ const t=i/(PATH_N-1); PATH_ALPHAS.push(PATH_AMIN*Math.pow(PATH_AMAX/PATH_AMIN, t)); }
+let pathCache={ key:null, series:null };
+function computePath(l1ratio){
+  const key=l1ratio.toFixed(3);
+  if(pathCache.key===key) return pathCache.series;
+  const series=FEATS.map(()=>[]);   // series[j] = [w_j at each alpha]
+  for(const a of PATH_ALPHAS){
+    const m=elasticNet(Xtr, ytr, a, l1ratio, 300);
+    for(let j=0;j<P;j++) series[j].push(m.w[j]);
+  }
+  pathCache={ key, series }; return series;
+}
+
+const state={ alpha:0.4, l1ratio:0.5 };
+const PRESETS={
+  ols:     { alpha:0.0, l1ratio:0.5 },
+  ridge:   { alpha:0.4, l1ratio:0.0 },
+  lasso:   { alpha:0.4, l1ratio:1.0 },
+  elastic: { alpha:0.4, l1ratio:0.5 },
+  sweet:   { alpha:0.4, l1ratio:0.5 },
+};
+
+let fitCache={ key:null, v:null };
+function computeFit(){
+  const key=state.alpha.toFixed(3)+"|"+state.l1ratio.toFixed(3);
+  if(fitCache.key===key) return fitCache.v;
+  const m=elasticNet(Xtr, ytr, state.alpha, state.l1ratio, 500);
+  const nz=m.w.filter(v=>Math.abs(v)>1e-6).length;
+  const v={ m, nz, trainR2:r2(m,TRAIN), testR2:r2(m,TEST), gap:Math.abs(m.w[0]-m.w[1]) };
+  fitCache={ key, v }; return v;
+}
+
+// ---------------- rendering: coefficient bar chart ----------------
+function renderCoefs(v){
+  const W=540, rowH=30, top=8, H=top+P*rowH+6;
+  const labelW=96, cx=labelW+ (W-labelW-14)/2, half=(W-labelW-14)/2;
+  let g=`<line x1="${cx}" y1="${top}" x2="${cx}" y2="${H-6}" stroke="#94a3b8" stroke-width="1.5"/>`;
+  g+=`<text x="${cx}" y="${H-0}" text-anchor="middle" font-size="9" fill="#94a3b8">0</text>`;
+  v.m.w.forEach((val,j)=>{
+    const y=top+j*rowH; const f=FEATS[j];
+    const zeroed=Math.abs(val)<1e-6;
+    const len=Math.min(half, half*Math.abs(val)/COEF_SCALE);
+    const pos=val>=0;
+    const col=zeroed? "#fecaca" : f.color;
+    // label + tag
+    g+=`<text x="${labelW-30}" y="${y+13}" text-anchor="end" font-size="13" font-weight="800" fill="${zeroed?'#cbd5e1':'#334155'}">${f.name}</text>`;
+    g+=`<text x="${labelW-26}" y="${y+13}" font-size="9" font-weight="700" fill="${zeroed?'#cbd5e1':'#94a3b8'}">${f.tag}</text>`;
+    // bar
+    if(zeroed){
+      g+=`<rect x="${cx-2}" y="${y+2}" width="4" height="18" fill="#fca5a5" rx="2"/>`;
+      g+=`<text x="${cx+10}" y="${y+15}" font-size="10" font-weight="700" fill="#ef4444">0 · dropped</text>`;
+    } else {
+      g+=`<rect x="${pos?cx:cx-len}" y="${y+2}" width="${Math.max(1,len).toFixed(1)}" height="18" fill="${col}" rx="3"/>`;
+      g+=`<text x="${pos?cx+len+5:cx-len-5}" y="${y+15}" text-anchor="${pos?'start':'end'}" font-size="11" font-weight="800" fill="#475569" font-variant-numeric="tabular-nums">${val>=0?'+':''}${val.toFixed(2)}</text>`;
+    }
+  });
+  document.getElementById("svgCoefs").innerHTML=`<svg viewBox="0 0 ${W} ${H+6}" width="100%" style="display:block">${g}</svg>`;
+}
+
+// ---------------- rendering: regularization path ----------------
+function renderPath(){
+  const series=computePath(state.l1ratio);
+  const W=572, H=250, l=34, r=8, t=10, b=26;
+  const iw=W-l-r, ih=H-t-b;
+  let maxAbs=0.2; for(const s of series) for(const val of s) if(Math.abs(val)>maxAbs) maxAbs=Math.abs(val);
+  maxAbs*=1.05;
+  const lminx=Math.log(PATH_AMIN), lmaxx=Math.log(PATH_AMAX);
+  const PXa=a=> l + iw*(Math.log(Math.max(a,PATH_AMIN))-lminx)/(lmaxx-lminx);
+  const PYw=w=> t + ih*(1-(w+maxAbs)/(2*maxAbs));
+  let g=`<rect x="${l}" y="${t}" width="${iw}" height="${ih}" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g+=`<line x1="${l}" y1="${PYw(0).toFixed(1)}" x2="${l+iw}" y2="${PYw(0).toFixed(1)}" stroke="#cbd5e1" stroke-dasharray="3 3"/>`;
+  // y ticks
+  [maxAbs/maxAbs*Math.round(maxAbs), 0, -Math.round(maxAbs)].forEach(()=>{});
+  g+=`<text x="${l-5}" y="${(PYw(maxAbs/1.05)+3).toFixed(1)}" text-anchor="end" font-size="9" fill="#94a3b8">+${(maxAbs/1.05).toFixed(1)}</text>`;
+  g+=`<text x="${l-5}" y="${(PYw(0)+3).toFixed(1)}" text-anchor="end" font-size="9" fill="#94a3b8">0</text>`;
+  g+=`<text x="${l-5}" y="${(PYw(-maxAbs/1.05)+3).toFixed(1)}" text-anchor="end" font-size="9" fill="#94a3b8">−${(maxAbs/1.05).toFixed(1)}</text>`;
+  g+=`<text x="${l+iw/2}" y="${H-4}" text-anchor="middle" font-size="10" font-weight="700" fill="#94a3b8">penalty strength α  (log scale) →</text>`;
+  g+=`<text transform="translate(11,${t+ih/2}) rotate(-90)" text-anchor="middle" font-size="10" font-weight="700" fill="#94a3b8">coefficient</text>`;
+  // lines: draw noise first (grey, thin), signal next, twins on top
+  const order=[4,5,6,7,2,3,0,1];
+  for(const j of order){
+    const f=FEATS[j];
+    let d=""; series[j].forEach((val,i)=>{ d+=(i===0?"M":"L")+PXa(PATH_ALPHAS[i]).toFixed(1)+" "+PYw(val).toFixed(1)+" "; });
+    const noise=(j>=4);
+    g+=`<path d="${d}" fill="none" stroke="${f.color}" stroke-width="${noise?1.3:2.4}" stroke-opacity="${noise?0.7:1}"/>`;
+    // label at right end
+    const last=series[j][series[j].length-1];
+    if(!noise) g+=`<text x="${l+iw+2}" y="${(PYw(last)+3).toFixed(1)}" font-size="9" font-weight="800" fill="${f.color}">${f.name}</text>`;
+  }
+  // current-alpha marker
+  const mx=PXa(state.alpha);
+  g+=`<line x1="${mx.toFixed(1)}" y1="${t}" x2="${mx.toFixed(1)}" y2="${t+ih}" stroke="#0f172a" stroke-width="1.5" stroke-dasharray="4 3"/>`;
+  g+=`<text x="${mx.toFixed(1)}" y="${t-1}" text-anchor="middle" font-size="9" font-weight="800" fill="#0f172a">α=${state.alpha.toFixed(2)}</text>`;
+  document.getElementById("svgPath").innerHTML=`<svg viewBox="0 0 ${W+16} ${H}" width="100%" style="display:block">${g}</svg>`;
+}
+
+// ---------------- rendering: fit quality + twins ----------------
+function renderFit(v){
+  const W=420, bl=70, bw=W-bl-52;
+  const rows=[{k:"train R²",val:v.trainR2,col:"#94a3b8"},{k:"test R²",val:v.testR2,col:SKY}];
+  let g="";
+  rows.forEach((it,i)=>{ const y=8+i*32; const w=bw*Math.max(0,Math.min(1,it.val));
+    g+=`<text x="${bl-8}" y="${y+15}" text-anchor="end" font-size="12" font-weight="700" fill="#475569">${it.k}</text>`;
+    g+=`<rect x="${bl}" y="${y}" width="${bw}" height="21" fill="#f1f5f9" rx="5"/>`;
+    g+=`<rect x="${bl}" y="${y}" width="${w.toFixed(1)}" height="21" fill="${it.col}" rx="5"/>`;
+    g+=`<text x="${bl+w+6}" y="${y+15}" font-size="12" font-weight="800" fill="#334155" font-variant-numeric="tabular-nums">${(it.val*100).toFixed(1)}%</text>`;
+  });
+  document.getElementById("svgFit").innerHTML=`<svg viewBox="0 0 ${W} 72" width="100%" style="display:block">${g}</svg>`;
+
+  // twins panel: two bars w1, w2 + gap
+  const W2=420, H2=96, base=70, maxV=Math.max(0.6, Math.abs(OLS.w[0]), Math.abs(OLS.w[1]))*1.1, bh=W2-base-70;
+  let t=`<text x="8" y="16" font-size="10" font-weight="700" fill="#94a3b8">correlation(x₁,x₂) = ${TWIN_CORR.toFixed(2)}</text>`;
+  [0,1].forEach((j,i)=>{ const y=26+i*30; const val=v.m.w[j]; const w=bh*Math.min(1,Math.abs(val)/maxV);
+    const zeroed=Math.abs(val)<1e-6;
+    t+=`<text x="${base-8}" y="${y+15}" text-anchor="end" font-size="12" font-weight="800" fill="${FEATS[j].color}">${FEATS[j].name}</text>`;
+    t+=`<rect x="${base}" y="${y}" width="${bh}" height="20" fill="#f1f5f9" rx="5"/>`;
+    t+=`<rect x="${base}" y="${y}" width="${Math.max(zeroed?0:1,w).toFixed(1)}" height="20" fill="${zeroed?'#fca5a5':FEATS[j].color}" rx="5"/>`;
+    t+=`<text x="${base+w+6}" y="${y+15}" font-size="11" font-weight="800" fill="#475569" font-variant-numeric="tabular-nums">${val>=0?'+':''}${val.toFixed(2)}${zeroed?' · dropped':''}</text>`;
+  });
+  const gapCol=v.gap>0.5?AMBER:"#10b981";
+  t+=`<text x="8" y="${H2-4}" font-size="11" font-weight="800" fill="${gapCol}">gap |w₁−w₂| = ${v.gap.toFixed(2)} — ${v.gap>0.5?'split apart (unstable)':'shared fairly (stable)'}</text>`;
+  document.getElementById("svgTwins").innerHTML=`<svg viewBox="0 0 ${W2} ${H2}" width="100%" style="display:block">${t}</svg>`;
+}
+
+// ---------------- diagnosis ----------------
+function setDiag(v){
+  const box=document.getElementById("diagBox");
+  const a=state.alpha, l1=state.l1ratio;
+  const zeroTwin = Math.abs(v.m.w[0])<1e-6 ? "x₁" : (Math.abs(v.m.w[1])<1e-6 ? "x₂" : null);
+  if(a<0.02){
+    box.className="diag diag-warn mt-6 max-w-4xl mx-auto text-left";
+    box.innerHTML=`<div class="text-base font-extrabold mb-1">No penalty — this is ordinary least squares</div><div class="text-sm font-medium leading-relaxed">Every one of the 8 features gets a coefficient, including the four pure-noise features, and the two correlated twins are split more or less at random (gap <strong>${v.gap.toFixed(2)}</strong>). Train R² is highest (<strong>${(v.trainR2*100).toFixed(1)}%</strong>) but that includes fitting the noise. Add some <strong>α</strong> and the noise coefficients are the first to shrink.</div>`;
+  } else if(l1<0.05){
+    box.className="diag diag-info mt-6 max-w-4xl mx-auto text-left";
+    box.innerHTML=`<div class="text-base font-extrabold mb-1">🟢 Pure Ridge (L2) — shrink everything, drop nothing</div><div class="text-sm font-medium leading-relaxed">All <strong>${v.nz}/8</strong> coefficients stay nonzero — ridge never produces exact zeros, so you get <em>no feature selection</em>. But notice the twins are shared almost equally (gap <strong>${v.gap.toFixed(2)}</strong>): L2 loves to spread weight across correlated features. Test R² = <strong>${(v.testR2*100).toFixed(1)}%</strong>. Slide l1_ratio right to start zeroing the noise.</div>`;
+  } else if(l1>0.95){
+    box.className="diag diag-warn mt-6 max-w-4xl mx-auto text-left";
+    box.innerHTML=`<div class="text-base font-extrabold mb-1">🟣 Pure Lasso (L1) — sparse, but it broke up the twins</div><div class="text-sm font-medium leading-relaxed">Lasso kept only <strong>${v.nz}/8</strong> features — nicely sparse. ${zeroTwin? `But it zeroed <strong>${zeroTwin}</strong> and dumped that whole signal onto its twin (gap <strong>${v.gap.toFixed(2)}</strong>).`:`It also drove the twin gap to <strong>${v.gap.toFixed(2)}</strong>.`} That choice between two near-identical features is essentially <em>arbitrary</em> and flips with a little more data — the classic lasso instability. Test R² = <strong>${(v.testR2*100).toFixed(1)}%</strong>. Pull l1_ratio back toward the middle to fix it.</div>`;
+  } else {
+    box.className="diag diag-good mt-6 max-w-4xl mx-auto text-left";
+    box.innerHTML=`<div class="text-base font-extrabold mb-1">🕸️ Elastic Net — sparse from L1, stable from L2</div><div class="text-sm font-medium leading-relaxed">The L1 part zeroed the noise (only <strong>${v.nz}/8</strong> features survive) while the L2 part kept the correlated twins <em>together</em> (gap just <strong>${v.gap.toFixed(2)}</strong>) — the <strong>grouping effect</strong> that pure lasso can't do. That combination is why the held-out <strong>test R² = ${(v.testR2*100).toFixed(1)}%</strong> here matches or beats both pure ridge and pure lasso. This is exactly when you reach for Elastic Net: many features, some correlated, and you still want a sparse model you can trust.</div>`;
+  }
+}
+
+// ---------------- draw + controls ----------------
+function draw(){
+  const v=computeFit();
+  renderCoefs(v); renderPath(); renderFit(v); setDiag(v);
+  document.getElementById("mAlpha").textContent=state.alpha.toFixed(2);
+  document.getElementById("mRatio").textContent=state.l1ratio.toFixed(2);
+  document.getElementById("mNZ").textContent=v.nz+" / 8";
+  document.getElementById("mTrain").textContent=(v.trainR2*100).toFixed(1)+"%";
+  document.getElementById("mTest").textContent=(v.testR2*100).toFixed(1)+"%";
+  document.getElementById("mGap").textContent=v.gap.toFixed(2);
+}
+function syncControls(){
+  document.getElementById("cAlpha").value=state.alpha;
+  document.getElementById("cRatio").value=state.l1ratio;
+  document.getElementById("vAlpha").textContent=state.alpha.toFixed(2);
+  document.getElementById("vRatio").textContent=state.l1ratio.toFixed(2);
+}
+document.getElementById("cAlpha").addEventListener("input", e=>{ state.alpha=+e.target.value; syncControls(); draw(); });
+document.getElementById("cRatio").addEventListener("input", e=>{ state.l1ratio=+e.target.value; syncControls(); draw(); });
+document.querySelectorAll("[data-preset]").forEach(b=> b.onclick=()=>{ const p=PRESETS[b.dataset.preset]; state.alpha=p.alpha; state.l1ratio=p.l1ratio; syncControls(); draw(); });
+syncControls(); draw();
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. The problem — plain least squares overfits", why:"Ordinary least squares (OLS) finds the coefficients that minimise the squared error on the training data, and nothing else constrains them. When you have many features — especially more features than you have clean signal for, or features that are correlated — OLS happily assigns weight to noise and produces large, unstable coefficients that fit the training set beautifully and generalise badly. With correlated features it gets worse: the fit can trade huge positive weight on one feature against huge negative weight on its correlated partner and the training error barely notices, so the solution is wildly sensitive to tiny data changes. Regularization is the cure: add a term that PENALISES big coefficients, trading a little training fit for a lot of stability. The two classic penalties are L2 (ridge) and L1 (lasso), and Elastic Net is their blend.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">OLS: minimise ||y − Xw||²  (fit only)<br><br>many / correlated features →<br>big, unstable w · fits noise<br><br>fix: add a penalty on the size of w</div>`, code:`# OLS: no penalty, minimise squared error only
+from sklearn.linear_model import LinearRegression
+LinearRegression().fit(X, y)   # coefficients can blow up when features
+                               # are correlated or barely informative` },
+ { title:"2. L2 / Ridge — shrink smoothly, share weight", why:"Ridge adds the sum of SQUARED coefficients to the loss: penalty = alpha * ||w||₂². Because squaring is smooth and grows fast for large values, ridge pushes every coefficient toward zero proportionally but never makes any of them EXACTLY zero — it shrinks, it doesn't select. Its superpower shows up with correlated features: given two near-identical predictors, the squared penalty is minimised by SPLITTING the weight between them (0.5² + 0.5² = 0.5 is much less than 1² + 0² = 1). So ridge spreads weight across a correlated group — the 'grouping effect' — which is stable and sensible. The cost is that you keep every feature, so ridge gives you no sparsity and no automatic feature selection. It has a clean closed-form solution and handles multicollinearity gracefully, which is why it's the default when you want to keep all features but tame their magnitude.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">penalty = alpha · Σ wⱼ²   (L2)<br><br>smooth · shrinks ALL toward 0<br>never exactly 0 → no selection<br><br>correlated pair → splits weight 0.5 / 0.5<br>(grouping · stable)</div>`, code:`from sklearn.linear_model import Ridge
+Ridge(alpha=1.0).fit(X, y)
+# all coefficients shrink but stay nonzero;
+# correlated features share the weight (grouping effect)` },
+ { title:"3. L1 / Lasso — sparsity and feature selection", why:"Lasso adds the sum of ABSOLUTE coefficients: penalty = alpha * ||w||₁. The absolute-value penalty has a sharp corner at zero, and that kink is what lets it drive coefficients to EXACTLY zero instead of just small. The result is a sparse model: lasso performs automatic feature selection, throwing away features by giving them a coefficient of 0. That's fantastic for interpretability and for high-dimensional data where most features are irrelevant. But lasso has two well-known weaknesses. First, when several features are correlated it tends to pick ONE of them arbitrarily and zero the rest — the choice is unstable and can flip with slightly different data. Second, when you have more features than samples (p > n), lasso can select at most n features, a hard ceiling. Those two flaws are exactly what Elastic Net was invented to repair.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">penalty = alpha · Σ |wⱼ|   (L1)<br><br>sharp corner at 0 → EXACT zeros<br>= automatic feature selection (sparse)<br><br>correlated pair → keeps ONE at random<br>p &gt; n → selects ≤ n features (ceiling)</div>`, code:`from sklearn.linear_model import Lasso
+Lasso(alpha=0.1).fit(X, y)
+import numpy as np
+print("kept:", np.sum(Lasso(alpha=0.1).fit(X,y).coef_ != 0))
+# exact zeros = dropped features; but correlated ones get picked arbitrarily` },
+ { title:"4. Why the geometry makes L1 sparse and L2 not", why:"The clearest way to see the difference is geometric. Minimising the squared error subject to a penalty budget is like inflating the elliptical contours of the loss until they first touch the region the penalty allows. For L2 that region is a CIRCLE (a ball): the loss contour usually touches it at a point where both coordinates are nonzero, so no coefficient is zero. For L1 that region is a DIAMOND (a cross-polytope) with sharp corners lying ON the axes. Elliptical contours expanding outward are very likely to first touch a corner — and a corner sits on an axis, meaning one coordinate is exactly zero. That is the whole intuition for why L1 yields sparsity and L2 doesn't: pointy constraint set → solutions land on axes → zeros. Elastic Net's constraint region is a rounded diamond — it keeps L1's corners (so it can still zero things) but bulges out like L2 in between (so correlated features can share), inheriting both behaviours.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">L2 ball ●  → touch point off-axis → no zeros<br>L1 diamond ◆ → touch a CORNER → on axis → zero<br><br>Elastic = rounded diamond ◈<br>corners (can zero) + bulge (can share)</div>`, code:`# intuition, not code: constrained view of the same penalties
+# L2:  minimise ||y-Xw||^2  s.t. ||w||_2 <= t   (circle -> off-axis)
+# L1:  minimise ||y-Xw||^2  s.t. ||w||_1 <= t   (diamond -> corner = zero)
+# EN:  s.t.  r*||w||_1 + (1-r)*||w||_2^2 <= t    (rounded diamond)` },
+ { title:"5. Elastic Net — blend both penalties", why:"Elastic Net (Zou & Hastie, 2005) simply adds BOTH penalties to the loss at once. Its objective is the least-squares error plus alpha*l1_ratio*||w||₁ plus 0.5*alpha*(1-l1_ratio)*||w||₂². The single knob 'alpha' controls the OVERALL strength of regularization (alpha = 0 recovers plain OLS; bigger alpha shrinks harder). The knob 'l1_ratio' between 0 and 1 controls the MIX: l1_ratio = 0 is pure ridge, l1_ratio = 1 is pure lasso, and anything in between is a genuine blend. The L1 component still produces exact zeros, so you keep lasso's sparsity and feature selection. The L2 component adds strict convexity, which stabilises the solution and — crucially — restores the grouping effect so that correlated features are kept or dropped TOGETHER rather than one being chosen at random. You get a sparse model that is also stable.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">loss + alpha·[ l1_ratio·Σ|wⱼ|<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;+ (1−l1_ratio)·½·Σwⱼ² ]<br><br>alpha    = how much regularization<br>l1_ratio = 0 ridge · 1 lasso · between = blend<br><br>sparse (L1) + stable / grouped (L2)</div>`, code:`from sklearn.linear_model import ElasticNet
+# alpha = overall strength, l1_ratio = L1 vs L2 mix
+ElasticNet(alpha=0.4, l1_ratio=0.5).fit(X, y)
+ElasticNet(alpha=0.4, l1_ratio=1.0)   # == Lasso
+ElasticNet(alpha=0.4, l1_ratio=0.0)   # == Ridge` },
+ { title:"6. The grouping effect — why it beats lasso on correlated data", why:"This is the headline reason to choose Elastic Net over pure lasso. Suppose two features are strongly correlated and both genuinely predictive — the two 'twins' in the demo. Lasso, minimising an L1 penalty, finds it just as cheap to put all the weight on one twin and zero the other (|1|+|0| = 1 = |0.5|+|0.5|), so it picks one essentially at random and the choice is fragile. Elastic Net's L2 term breaks that tie decisively: because squaring rewards spreading weight (0.5²+0.5² < 1²+0²), the penalty is strictly LOWER when the correlated twins SHARE the weight. So Elastic Net keeps both, with similar coefficients — the grouping effect. Practically this means: more stable coefficients that don't flip between correlated features when you resample the data, honest attribution of importance across a correlated group instead of an arbitrary winner, and often better generalisation. In the demo you can watch the twin gap |w₁−w₂| stay small under Elastic Net and blow up under pure lasso.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">two correlated twins, both useful<br><br>lasso:  |1|+|0| = |.5|+|.5| → picks one (random)<br>L2:     .5²+.5² &lt; 1²+0²    → prefers to SHARE<br><br>Elastic Net → keeps both, small gap = stable</div>`, code:`import numpy as np
+# lasso vs elastic net on correlated features
+from sklearn.linear_model import Lasso, ElasticNet
+la = Lasso(alpha=0.1).fit(X, y).coef_
+en = ElasticNet(alpha=0.1, l1_ratio=0.5).fit(X, y).coef_
+print("lasso twin gap :", abs(la[0]-la[1]))   # large -> unstable pick
+print("enet  twin gap :", abs(en[0]-en[1]))   # small -> shared (grouping)` },
+ { title:"7. Coordinate descent — how it's actually solved", why:"The L1 term has a non-differentiable kink at zero, so you can't just set the gradient to zero like OLS or ridge. The standard, extremely fast solver is COORDINATE DESCENT: cycle through the coefficients one at a time, and for each one solve the tiny 1-D problem of its optimal value while holding the others fixed. That 1-D solution has a beautiful closed form. First compute rho, the correlation of feature j with the current residual (adding feature j's own contribution back in). Then apply the SOFT-THRESHOLDING operator: if |rho| is below the L1 threshold (alpha*l1_ratio) the coefficient is set to exactly zero, otherwise it is shrunk toward zero by that threshold. Finally divide by (1 + the L2 term) to account for ridge shrinkage. Soft-thresholding is precisely the operation that manufactures the exact zeros. Repeat the sweep until the coefficients stop changing. It converges in a handful of passes and is what scikit-learn — and this very page — runs under the hood.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">repeat until stable:<br>&nbsp;&nbsp;for each feature j:<br>&nbsp;&nbsp;&nbsp;&nbsp;rho = corr(xⱼ, residual + own part)<br>&nbsp;&nbsp;&nbsp;&nbsp;wⱼ = softThreshold(rho, alpha·l1_ratio)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/ (1 + alpha·(1−l1_ratio))<br><br>soft-threshold below cutoff → wⱼ = 0</div>`, code:`import numpy as np
+def soft_threshold(x, g):        # L1 operator -> exact zeros
+    return np.sign(x) * max(abs(x) - g, 0.0)
+
+def coord_descent(X, y, alpha, l1_ratio, iters=500):
+    n, p = X.shape; w = np.zeros(p); r = y - X @ w
+    thr, denom = alpha*l1_ratio, 1 + alpha*(1-l1_ratio)
+    for _ in range(iters):
+        for j in range(p):
+            rho = (X[:,j] @ (r + X[:,j]*w[j])) / n
+            new = soft_threshold(rho, thr) / denom
+            r += X[:,j]*(w[j]-new); w[j] = new
+    return w` },
+ { title:"8. Standardize first, and choose the knobs by CV", why:"Two practical must-dos. FIRST, standardize your features (zero mean, unit variance) before fitting. Both penalties act on the raw magnitude of each coefficient, so a feature measured in small units gets a large coefficient and an unfairly large penalty, while a large-unit feature is under-penalised. Standardizing puts every feature on equal footing so the penalty is fair; do it inside a Pipeline so the scaler is refit per fold and never leaks test information. SECOND, don't hand-pick alpha and l1_ratio — sweep them with cross-validation. ElasticNetCV tries a grid of l1_ratio values and, for each, an automatically-generated path of alphas (warm-started along the path, which is cheap), scoring each combination by k-fold CV and returning the best. As a starting grid, a few l1_ratios like [.1,.5,.7,.9,.95,1] plus the default alpha path is usually plenty. The result is a principled, reproducible choice instead of a guess.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">1) StandardScaler → fair penalty per feature<br>&nbsp;&nbsp;&nbsp;(inside a Pipeline → no leakage)<br><br>2) ElasticNetCV → grid of l1_ratio<br>&nbsp;&nbsp;&nbsp;× auto alpha path, scored by k-fold CV<br>&nbsp;&nbsp;&nbsp;→ best (alpha, l1_ratio)</div>`, code:`from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import ElasticNetCV
+
+pipe = make_pipeline(
+    StandardScaler(),
+    ElasticNetCV(l1_ratio=[.1,.5,.7,.9,.95,1.0], cv=5, n_jobs=-1),
+).fit(X_train, y_train)
+en = pipe[-1]
+print(en.alpha_, en.l1_ratio_)` },
+ { title:"9. When to use ridge vs lasso vs elastic net", why:"A short decision guide. Use RIDGE (l1_ratio = 0) when you want to keep every feature and just control coefficient size — ideal for multicollinearity where all predictors matter and you don't need selection; it's smooth and has a closed form. Use LASSO (l1_ratio = 1) when you want an explicitly sparse, interpretable model and your features are roughly independent, so its arbitrary pick among correlated features isn't an issue. Use ELASTIC NET (0 < l1_ratio < 1) when you have MANY features, some CORRELATED, and you still want selection — genomics, text, and most wide tabular problems fit this description. It gives you lasso-style sparsity with ridge-style stability and the grouping effect, and it isn't capped at n selected features. A pragmatic default is l1_ratio around 0.5, nudged toward 1 when you want a sparser model and toward 0 when stability matters more than a short feature list. When in doubt, let ElasticNetCV decide — ridge and lasso are just its endpoints, so the search can land on either if that's genuinely best.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">keep all + tame size ........... RIDGE (r=0)<br>sparse + features independent ... LASSO (r=1)<br>many + correlated + want sparse . ELASTIC (0&lt;r&lt;1)<br><br>unsure? ElasticNetCV — ridge & lasso are its ends</div>`, code:`# ridge & lasso are the endpoints of the same family:
+ElasticNet(alpha=a, l1_ratio=0.0)   # Ridge   — keep all, shrink
+ElasticNet(alpha=a, l1_ratio=1.0)   # Lasso   — sparse, independent feats
+ElasticNet(alpha=a, l1_ratio=0.5)   # Elastic — many correlated + sparse
+# let CV search the whole family; it can return either extreme.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
