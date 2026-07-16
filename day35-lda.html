@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 35 — Linear Discriminant Analysis</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:180px 1fr 52px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:14px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .preset-btn { border:1px solid #e2e8f0; }
+  .preset-btn:hover { border-color:#38bdf8; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:20px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .kbtn { border:1px solid #e2e8f0; background:#fff; }
+  .kbtn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 35</div>
+      <h1 class="text-xl font-bold">🧭 Linear Discriminant Analysis — Project to the Axis That <em>Separates the Classes</em></h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1">These two clouds are <em>stretched</em> the wrong way. <strong>PCA</strong> chases the direction of biggest spread and points straight <em>along</em> the classes — a projection where they blur together. <strong>LDA</strong> uses the labels to find the one axis that pulls the classes <em>apart</em>. Drag the sliders to move the classes and watch both axes — and the decision threshold — recompute live.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">PCA is <strong>unsupervised</strong>: it maximises total variance and never looks at the labels, so when each class is elongated it happily picks the long within-class direction — useless for telling the classes apart. <strong>LDA is supervised</strong>: it maximises the <strong>Fisher criterion</strong> <code>J(w) = (wᵀ S_b w) / (wᵀ S_w w)</code> — between-class scatter <code>S_b</code> over within-class scatter <code>S_w</code> — i.e. it looks for the projection where the class means are far apart <em>relative to</em> the spread inside each class. For two classes that has the tidy closed form <code>w ∝ S_w⁻¹(μ₁ − μ₀)</code>. Every number below — the class means, <code>S_w</code>, <code>S_b</code>, the LDA axis, the PCA axis and the accuracy of classifying along each — is solved for real in your browser, no libraries.</p>
+
+      <div class="grid grid-cols-3 md:grid-cols-6 gap-2 max-w-4xl mx-auto mb-4">
+        <div class="metric-pill"><div class="v" id="mJl" style="color:#0f172a">—</div><div class="k">Fisher J · LDA</div></div>
+        <div class="metric-pill"><div class="v" id="mJp" style="color:#a855f7">—</div><div class="k">Fisher J · PCA</div></div>
+        <div class="metric-pill"><div class="v" id="mAl" style="color:#0ea5e9">—</div><div class="k">LDA accuracy</div></div>
+        <div class="metric-pill"><div class="v" id="mAp" style="color:#a855f7">—</div><div class="k">PCA accuracy</div></div>
+        <div class="metric-pill"><div class="v" id="mAng">—</div><div class="k">LDA∠PCA axes</div></div>
+        <div class="metric-pill"><div class="v" id="mK">—</div><div class="k">classes</div></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start">
+        <!-- controls -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+          <div class="text-xs font-bold text-slate-500 mb-3">CONTROLS — move the classes, watch the axes recompute</div>
+          <div class="ctl-row">
+            <div class="ctl-name">↔️ class separation</div>
+            <input type="range" id="cSep" min="0.4" max="7" step="0.1" value="3.2">
+            <div class="ctl-val" id="vSep">3.2</div>
+          </div>
+          <div class="text-[11px] text-slate-400 -mt-1 mb-1">how far apart the class means sit</div>
+          <div class="ctl-row">
+            <div class="ctl-name">↕️ within-class elongation</div>
+            <input type="range" id="cElong" min="0.3" max="4" step="0.1" value="3.0">
+            <div class="ctl-val" id="vElong">3.0</div>
+          </div>
+          <div class="text-[11px] text-slate-400 -mt-1 mb-1">stretch <em>along</em> the classes — the PCA trap</div>
+          <div class="ctl-row">
+            <div class="ctl-name">◾ within-class spread</div>
+            <input type="range" id="cSpread" min="0.2" max="2" step="0.05" value="0.55">
+            <div class="ctl-val" id="vSpread">0.55</div>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-name">🔄 tilt (rotate all)</div>
+            <input type="range" id="cTilt" min="0" max="180" step="1" value="25">
+            <div class="ctl-val" id="vTilt">25°</div>
+          </div>
+          <div class="mt-2 flex items-center gap-2">
+            <span class="text-[11px] font-bold text-slate-400 uppercase">classes</span>
+            <button id="k2" class="kbtn on px-3 py-1 rounded-lg font-semibold text-xs">2</button>
+            <button id="k3" class="kbtn px-3 py-1 rounded-lg font-semibold text-xs">3</button>
+            <button id="regen" class="ml-auto bg-slate-800 text-white px-3 py-1 rounded-lg font-semibold text-xs hover:bg-slate-700">🎲 regenerate</button>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2 items-center">
+            <span class="text-[11px] font-bold text-slate-400 uppercase w-full">presets</span>
+            <button data-preset="pcafails"  class="preset-btn bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-semibold text-xs">⚠️ PCA fails</button>
+            <button data-preset="separated" class="preset-btn bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🟢 Well separated</button>
+            <button data-preset="overlap"   class="preset-btn bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🔴 Overlapping</button>
+            <button data-preset="three"      class="preset-btn bg-sky-50 hover:bg-sky-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🧩 3 classes</button>
+          </div>
+          <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+            The <span style="color:#0f172a;font-weight:800">— solid</span> line is the <strong>LDA</strong> axis (label-aware); the <span style="color:#a855f7;font-weight:800">- - dashed</span> line is the <strong>PCA</strong> axis (variance-only). When elongation ≫ separation the two are nearly <strong>perpendicular</strong>: PCA runs along the classes, LDA cuts across them. The <span style="color:#16a34a;font-weight:800">green</span> line is LDA's decision boundary.
+          </div>
+        </div>
+
+        <!-- 2D scatter -->
+        <div class="panel hero text-left" style="width:500px; max-width:100%;">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-sm font-bold text-sky-700">📈 The 2-D data · both projection axes</span>
+            <span class="text-xs font-bold text-slate-400">LDA cuts across · PCA runs along</span>
+          </div>
+          <div id="svgScatter"></div>
+          <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+            <span><span class="swatch" style="background:#2563eb"></span> class A</span>
+            <span><span class="swatch" style="background:#dc2626"></span> class B</span>
+            <span id="legC" class="hidden"><span class="swatch" style="background:#16a34a"></span> class C</span>
+            <span><span class="swatch-line" style="border-color:#0f172a;border-top-style:solid"></span> LDA axis</span>
+            <span><span class="swatch-line" style="border-color:#a855f7;border-top-style:dashed"></span> PCA axis</span>
+            <span><span class="swatch-line" style="border-color:#16a34a;border-top-style:dashed"></span> LDA boundary</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- second row: the two 1-D projections -->
+      <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:500px; max-width:100%;">
+          <div class="text-xs font-bold mb-1" style="color:#0f172a">▮ COLLAPSED ONTO THE LDA AXIS — classes pull apart</div>
+          <div id="svgProjLda"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-1">Every point squashed down to its position on the <strong>LDA</strong> line. LDA chose this direction precisely to make these coloured humps sit <em>side by side</em> with little overlap. The dashed line is the <strong>decision threshold</strong> — a new point lands on whichever side its projection falls.</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:500px; max-width:100%;">
+          <div class="text-xs font-bold mb-1" style="color:#a855f7">▮ COLLAPSED ONTO THE PCA AXIS — classes blur together</div>
+          <div id="svgProjPca"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-1">The same points squashed onto the <strong>PCA</strong> line. PCA maximised spread without knowing the labels, so the humps pile on top of each other — the projection with the most variance is often the <em>worst</em> one for telling the classes apart. That gap between the two accuracies is the entire point of LDA.</div>
+        </div>
+      </div>
+
+      <div id="diagBox" class="diag diag-good mt-6 max-w-4xl mx-auto text-left">—</div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">Scatter, Fisher, and why labels change everything</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">scikit-learn ships LDA as <code>LinearDiscriminantAnalysis</code> — it is both a <em>classifier</em> and a supervised <em>dimensionality reducer</em>. Below is the whole workflow: fit it, use it to project down to the class-separating axes, then the from-scratch scatter matrices and eigen-solve that produced every axis you just dragged.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Fit LDA as a classifier</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Out of the box LDA is a fast, closed-form classifier. It assumes each class is Gaussian with a <em>shared</em> covariance, which makes its decision boundaries linear — exactly the green line in the demo.</p>
+        <div class="relative"><pre>from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import make_pipeline
+
+clf = make_pipeline(StandardScaler(), LinearDiscriminantAnalysis())
+clf.fit(X_train, y_train)
+print("test accuracy:", clf.score(X_test, y_test))</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Use it as a supervised reducer — and compare with PCA</h3></div>
+        <p class="text-sm text-slate-600 mb-3"><code>transform</code> projects your data onto the class-separating axes (at most <code>C − 1</code> of them for <code>C</code> classes). This is the supervised cousin of PCA: same "reduce to a few axes" idea, but LDA uses the labels to keep the axes that <em>discriminate</em> instead of the axes that merely have the most variance.</p>
+        <div class="relative"><pre>from sklearn.decomposition import PCA
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+
+X_lda = LinearDiscriminantAnalysis(n_components=1).fit_transform(X, y)  # uses y
+X_pca = PCA(n_components=1).fit_transform(X)                            # ignores y
+
+# On elongated classes X_lda separates the labels; X_pca often does not.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">From scratch: class means and within-class scatter S_w</h3></div>
+        <p class="text-sm text-slate-600 mb-3"><code>S_w</code> adds up how spread each class is <em>around its own mean</em>. It is the sum of the per-class scatter matrices — the "noise" LDA wants in the denominator, so it can divide it out.</p>
+        <div class="relative"><pre>import numpy as np
+
+classes = np.unique(y)
+means   = {c: X[y == c].mean(axis=0) for c in classes}
+overall = X.mean(axis=0)
+d = X.shape[1]
+
+Sw = np.zeros((d, d))                       # within-class scatter
+for c in classes:
+    Xc = X[y == c] - means[c]
+    Sw += Xc.T @ Xc                         # sum of (x-mu_c)(x-mu_c)^T</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">From scratch: between-class scatter S_b</h3></div>
+        <p class="text-sm text-slate-600 mb-3"><code>S_b</code> measures how far the class means sit from the grand mean, weighted by class size — the "signal" LDA wants in the numerator. Maximising signal-over-noise is the whole idea.</p>
+        <div class="relative"><pre>Sb = np.zeros((d, d))                       # between-class scatter
+for c in classes:
+    n_c  = (y == c).sum()
+    diff = (means[c] - overall).reshape(d, 1)
+    Sb  += n_c * (diff @ diff.T)            # n_c (mu_c - mu)(mu_c - mu)^T</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Solve for the axes — the exact demo engine</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Maximising the Fisher criterion <code>J(w) = (wᵀS_b w)/(wᵀS_w w)</code> is a generalized eigenvalue problem: the best axes are the top eigenvectors of <code>S_w⁻¹ S_b</code>. For <strong>two classes</strong> that collapses to the one-liner <code>w ∝ S_w⁻¹(μ₁ − μ₀)</code> — the closed form the demo uses. This is what runs in the page.</p>
+        <div class="relative"><pre>import numpy as np
+
+# --- two-class closed form (what the LOOK tab draws) ---
+w2 = np.linalg.inv(Sw) @ (means[1] - means[0])
+w2 /= np.linalg.norm(w2)
+
+# --- general multi-class: top eigenvectors of Sw^-1 Sb ---
+eigvals, eigvecs = np.linalg.eig(np.linalg.inv(Sw) @ Sb)
+order = np.argsort(eigvals.real)[::-1]        # largest first
+W = eigvecs[:, order[:n_components]].real      # the LDA axes
+
+X_proj = X @ W                                 # project onto them</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Project, threshold, and know the assumptions</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Classify a point by projecting it and comparing to the midpoint of the projected class means (equal priors) — the dashed threshold in the demo. LDA is fast, needs no tuning, and regularises naturally when data is scarce. But it assumes Gaussian classes with a <em>shared</em> covariance: if the classes have very different shapes, reach for <strong>QDA</strong>; if you only want variance-preserving compression with no labels, that's <strong>PCA</strong>.</p>
+        <div class="relative"><pre># project + nearest-projected-mean rule (= midpoint threshold for 2 classes)
+proj_means = {c: means[c] @ w2 for c in classes}
+def predict(x):
+    t = x @ w2
+    return min(classes, key=lambda c: abs(t - proj_means[c]))
+
+# when to use what:
+# LDA : Gaussian classes, shared covariance -> linear boundary, supervised
+# QDA : per-class covariance              -> curved boundary
+# PCA : no labels, keep variance          -> unsupervised compression
+# Singular Sw (few samples)? use shrinkage: LinearDiscriminantAnalysis(
+#     solver="lsqr", shrinkage="auto")</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 35 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You watched <strong>LDA</strong> and <strong>PCA</strong> fight over the same 2-D cloud. PCA, blind to the labels, chased raw variance and pointed <em>along</em> the elongated classes — a projection where they blur into one hump. LDA used the labels to maximise the <strong>Fisher criterion</strong> <code>J(w)=(wᵀS_bw)/(wᵀS_ww)</code>: between-class scatter <code>S_b</code> over within-class scatter <code>S_w</code>. You saw the two-class closed form <code>w ∝ S_w⁻¹(μ₁−μ₀)</code>, the general solve as the top eigenvectors of <code>S_w⁻¹S_b</code>, the projection collapsing the points onto that axis, and a midpoint <strong>decision threshold</strong> — with LDA's accuracy leaving PCA's far behind whenever spread and separation disagree. <strong>👉 Tomorrow — Day 36: Bayesian Linear Regression</strong> — put a distribution over the weights and get calibrated uncertainty on every prediction, not just a point estimate.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= LDA ENGINE (pure JS — verified in Node) =================
+// <<<ENGINE_START>>>
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function gauss(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+// Build k Gaussian class-clouds. Each cloud is narrow along the SEPARATION axis
+// (small `spread`) and stretched along the ELONGATION axis (large `elong`), then
+// the whole scene is rotated by `tilt`. When elong >> spread the direction of most
+// TOTAL variance (what PCA finds) is the within-class stretch, which does NOT
+// separate the classes — that is the trap LDA is built to avoid.
+function genData(seed, cfg){
+  const rng = mulberry32(seed);
+  const { sep, elong, spread, tilt, k, nPer } = cfg;
+  const th = tilt*Math.PI/180, ct=Math.cos(th), st=Math.sin(th);
+  const centers = k===2 ? [-sep/2, sep/2] : [-sep, 0, sep];
+  const pts=[];
+  centers.forEach((cxLocal, ci)=>{
+    for(let i=0;i<nPer;i++){
+      const lx = cxLocal + spread*gauss(rng);   // separation axis (small spread)
+      const ly = elong*gauss(rng);              // elongation axis (large spread)
+      pts.push({ x: ct*lx - st*ly, y: st*lx + ct*ly, c: ci });   // rotate into place
+    }
+  });
+  return pts;
+}
+
+function classMeans(pts, k){
+  const s=Array.from({length:k},()=>[0,0]), n=new Array(k).fill(0);
+  for(const p of pts){ s[p.c][0]+=p.x; s[p.c][1]+=p.y; n[p.c]++; }
+  return s.map((m,c)=> n[c]? [m[0]/n[c], m[1]/n[c]] : [0,0]);
+}
+function overallMean(pts){ let x=0,y=0; for(const p of pts){x+=p.x;y+=p.y;} return [x/pts.length, y/pts.length]; }
+function classCounts(pts,k){ const n=new Array(k).fill(0); for(const p of pts)n[p.c]++; return n; }
+
+// S_w = sum over classes sum over points  (x - mu_c)(x - mu_c)^T   (within-class scatter)
+function scatterWithin(pts, means){
+  const S=[[0,0],[0,0]];
+  for(const p of pts){ const m=means[p.c], dx=p.x-m[0], dy=p.y-m[1];
+    S[0][0]+=dx*dx; S[0][1]+=dx*dy; S[1][0]+=dx*dy; S[1][1]+=dy*dy; }
+  return S;
+}
+// S_b = sum over classes  n_c (mu_c - mu)(mu_c - mu)^T             (between-class scatter)
+function scatterBetween(pts, means, gm, k){
+  const n=classCounts(pts,k), S=[[0,0],[0,0]];
+  for(let c=0;c<k;c++){ const dx=means[c][0]-gm[0], dy=means[c][1]-gm[1];
+    S[0][0]+=n[c]*dx*dx; S[0][1]+=n[c]*dx*dy; S[1][0]+=n[c]*dx*dy; S[1][1]+=n[c]*dy*dy; }
+  return S;
+}
+function covariance(pts, gm){
+  const C=[[0,0],[0,0]], n=pts.length;
+  for(const p of pts){ const dx=p.x-gm[0], dy=p.y-gm[1];
+    C[0][0]+=dx*dx; C[0][1]+=dx*dy; C[1][0]+=dx*dy; C[1][1]+=dy*dy; }
+  return [[C[0][0]/n,C[0][1]/n],[C[1][0]/n,C[1][1]/n]];
+}
+function inv2(M){ const a=M[0][0],b=M[0][1],c=M[1][0],d=M[1][1]; let det=a*d-b*c; if(Math.abs(det)<1e-12)det=det<0?-1e-12:1e-12; return [[d/det,-b/det],[-c/det,a/det]]; }
+function matVec(M,v){ return [M[0][0]*v[0]+M[0][1]*v[1], M[1][0]*v[0]+M[1][1]*v[1]]; }
+function matMul(A,B){ return [[A[0][0]*B[0][0]+A[0][1]*B[1][0], A[0][0]*B[0][1]+A[0][1]*B[1][1]],[A[1][0]*B[0][0]+A[1][1]*B[1][0], A[1][0]*B[0][1]+A[1][1]*B[1][1]]]; }
+function normalize(v){ const n=Math.hypot(v[0],v[1])||1; return [v[0]/n, v[1]/n]; }
+
+// top eigenvector of a 2x2 with real eigenvalues (symmetric for PCA, Sw^-1 Sb for multiclass)
+function topEig(M){
+  const a=M[0][0], b=M[0][1], c=M[1][0], d=M[1][1];
+  const tr=a+d, det=a*d-b*c;
+  const disc=Math.sqrt(Math.max(0,(tr*tr)/4-det));
+  const l1=tr/2+disc;
+  let v;
+  if(Math.abs(b)>1e-12) v=[b, l1-a];
+  else if(Math.abs(c)>1e-12) v=[l1-d, c];
+  else v = a>=d ? [1,0] : [0,1];
+  return normalize(v);
+}
+
+// LDA axis:  2-class -> closed form Sw^-1 (mu1 - mu0);  multiclass -> top eigvec of Sw^-1 Sb
+function ldaDirection(pts, means, k, gm){
+  const Sw=scatterWithin(pts,means), Swi=inv2(Sw);
+  if(k===2){
+    const diff=[means[1][0]-means[0][0], means[1][1]-means[0][1]];
+    return normalize(matVec(Swi,diff));
+  }
+  const Sb=scatterBetween(pts,means,gm,k);
+  return topEig(matMul(Swi,Sb));
+}
+function pcaDirection(pts, gm){ return topEig(covariance(pts,gm)); }        // ignores labels
+
+function fisher(w, Sw, Sb){
+  const num=w[0]*(Sb[0][0]*w[0]+Sb[0][1]*w[1])+w[1]*(Sb[1][0]*w[0]+Sb[1][1]*w[1]);
+  const den=w[0]*(Sw[0][0]*w[0]+Sw[0][1]*w[1])+w[1]*(Sw[1][0]*w[0]+Sw[1][1]*w[1]);
+  return den>0? num/den : 0;
+}
+// classify along a 1-D projection by nearest projected class mean (= midpoint threshold for 2 classes)
+function projAccuracy(pts, w, means){
+  const pm=means.map(m=> w[0]*m[0]+w[1]*m[1]);
+  let ok=0;
+  for(const p of pts){ const t=w[0]*p.x+w[1]*p.y; let best=0,bd=Infinity;
+    pm.forEach((val,ci)=>{ const dd=Math.abs(t-val); if(dd<bd){bd=dd;best=ci;} });
+    if(best===p.c)ok++; }
+  return ok/pts.length;
+}
+// <<<ENGINE_END>>>
+
+// ---------------- state + presets ----------------
+const CLS=["#2563eb","#dc2626","#16a34a"];      // class colors A / B / C
+const LDA_COL="#0f172a", PCA_COL="#a855f7", BND_COL="#16a34a";
+const NPER=110;
+const state={ sep:3.2, elong:3.0, spread:0.55, tilt:25, k:2, seed:7 };
+const PRESETS={
+  pcafails:  { sep:3.2, elong:3.0, spread:0.55, tilt:25, k:2 },
+  separated: { sep:6.0, elong:1.2, spread:0.80, tilt:15, k:2 },
+  overlap:   { sep:1.2, elong:2.2, spread:1.00, tilt:40, k:2 },
+  three:     { sep:2.6, elong:2.6, spread:0.60, tilt:20, k:3 },
+};
+
+function analyze(){
+  const cfg={ sep:state.sep, elong:state.elong, spread:state.spread, tilt:state.tilt, k:state.k, nPer: state.k===2?NPER:90 };
+  const pts=genData(state.seed, cfg), k=state.k;
+  const gm=overallMean(pts), means=classMeans(pts,k);
+  const Sw=scatterWithin(pts,means), Sb=scatterBetween(pts,means,gm,k);
+  let wl=ldaDirection(pts,means,k,gm), wp=pcaDirection(pts,gm);
+  // orient both axes so class means increase along them (nicer, stable display)
+  const pmL=means.map(m=>wl[0]*m[0]+wl[1]*m[1]);
+  if(pmL[pmL.length-1] < pmL[0]) wl=[-wl[0],-wl[1]];
+  const pmP=means.map(m=>wp[0]*m[0]+wp[1]*m[1]);
+  if(pmP[pmP.length-1] < pmP[0]) wp=[-wp[0],-wp[1]];
+  const dot=Math.abs(wl[0]*wp[0]+wl[1]*wp[1]);
+  return {
+    pts, means, gm, k, wl, wp, Sw, Sb,
+    Jl:fisher(wl,Sw,Sb), Jp:fisher(wp,Sw,Sb),
+    accL:projAccuracy(pts,wl,means), accP:projAccuracy(pts,wp,means),
+    angle: Math.acos(Math.min(1,dot))*180/Math.PI
+  };
+}
+
+// ---------------- rendering: 2D scatter ----------------
+function renderScatter(A){
+  const W=474, H=360, pad=20;
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  for(const p of A.pts){ if(p.x<minX)minX=p.x; if(p.x>maxX)maxX=p.x; if(p.y<minY)minY=p.y; if(p.y>maxY)maxY=p.y; }
+  const dw=(maxX-minX)||1, dh=(maxY-minY)||1, cx=(minX+maxX)/2, cy=(minY+maxY)/2;
+  const sc=Math.min((W-2*pad)/dw, (H-2*pad)/dh)*0.94;   // EQUAL scale on both axes -> true angles
+  const TX=x=> W/2 + (x-cx)*sc, TY=y=> H/2 - (y-cy)*sc;
+  const L=Math.hypot(dw,dh)*0.62;                        // axis half-length in data units
+  const axisSeg=(dir)=>[[A.gm[0]-dir[0]*L, A.gm[1]-dir[1]*L],[A.gm[0]+dir[0]*L, A.gm[1]+dir[1]*L]];
+
+  let g=`<clipPath id="pc"><rect x="1" y="1" width="${W-2}" height="${H-2}" rx="10"/></clipPath>`;
+  g+=`<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g+=`<g clip-path="url(#pc)">`;
+  // PCA axis (dashed purple)
+  let s=axisSeg(A.wp);
+  g+=`<line x1="${TX(s[0][0]).toFixed(1)}" y1="${TY(s[0][1]).toFixed(1)}" x2="${TX(s[1][0]).toFixed(1)}" y2="${TY(s[1][1]).toFixed(1)}" stroke="${PCA_COL}" stroke-width="2.5" stroke-dasharray="7 5" stroke-opacity="0.9"/>`;
+  g+=`<text x="${TX(s[1][0]).toFixed(1)}" y="${(TY(s[1][1])-4).toFixed(1)}" font-size="11" font-weight="800" fill="${PCA_COL}">PCA</text>`;
+  // LDA decision boundary (2-class only): perpendicular to wl through midpoint of the two means
+  if(A.k===2){
+    const mid=[(A.means[0][0]+A.means[1][0])/2, (A.means[0][1]+A.means[1][1])/2];
+    const perp=[-A.wl[1], A.wl[0]];
+    const b0=[mid[0]-perp[0]*L, mid[1]-perp[1]*L], b1=[mid[0]+perp[0]*L, mid[1]+perp[1]*L];
+    g+=`<line x1="${TX(b0[0]).toFixed(1)}" y1="${TY(b0[1]).toFixed(1)}" x2="${TX(b1[0]).toFixed(1)}" y2="${TY(b1[1]).toFixed(1)}" stroke="${BND_COL}" stroke-width="2" stroke-dasharray="4 4" stroke-opacity="0.85"/>`;
+  }
+  // LDA axis (solid dark)
+  s=axisSeg(A.wl);
+  g+=`<line x1="${TX(s[0][0]).toFixed(1)}" y1="${TY(s[0][1]).toFixed(1)}" x2="${TX(s[1][0]).toFixed(1)}" y2="${TY(s[1][1]).toFixed(1)}" stroke="${LDA_COL}" stroke-width="3"/>`;
+  g+=`<text x="${TX(s[1][0]).toFixed(1)}" y="${(TY(s[1][1])-4).toFixed(1)}" font-size="11" font-weight="800" fill="${LDA_COL}">LDA</text>`;
+  // points
+  for(const p of A.pts){
+    g+=`<circle cx="${TX(p.x).toFixed(1)}" cy="${TY(p.y).toFixed(1)}" r="2.6" fill="${CLS[p.c]}" fill-opacity="0.62"/>`;
+  }
+  // class means (X markers)
+  A.means.forEach((m,ci)=>{
+    const x=TX(m[0]), y=TY(m[1]), r=6;
+    g+=`<line x1="${(x-r).toFixed(1)}" y1="${(y-r).toFixed(1)}" x2="${(x+r).toFixed(1)}" y2="${(y+r).toFixed(1)}" stroke="#fff" stroke-width="4"/><line x1="${(x-r).toFixed(1)}" y1="${(y+r).toFixed(1)}" x2="${(x+r).toFixed(1)}" y2="${(y-r).toFixed(1)}" stroke="#fff" stroke-width="4"/>`;
+    g+=`<line x1="${(x-r).toFixed(1)}" y1="${(y-r).toFixed(1)}" x2="${(x+r).toFixed(1)}" y2="${(y+r).toFixed(1)}" stroke="${CLS[ci]}" stroke-width="2.6"/><line x1="${(x-r).toFixed(1)}" y1="${(y+r).toFixed(1)}" x2="${(x+r).toFixed(1)}" y2="${(y-r).toFixed(1)}" stroke="${CLS[ci]}" stroke-width="2.6"/>`;
+  });
+  g+=`</g>`;
+  document.getElementById("svgScatter").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${g}</svg>`;
+}
+
+// ---------------- rendering: 1-D projection histogram ----------------
+function renderProj(elId, A, w, axisColor){
+  const W=474, H=150, padL=14, padR=14, padT=18, padB=26;
+  const iw=W-padL-padR, plotB=H-padB, plotT=padT, ih=plotB-plotT;
+  const vals=A.pts.map(p=>({ t: w[0]*p.x+w[1]*p.y, c:p.c }));
+  let mn=Infinity,mx=-Infinity; for(const v of vals){ if(v.t<mn)mn=v.t; if(v.t>mx)mx=v.t; }
+  const span=(mx-mn)||1; mn-=span*0.04; mx+=span*0.04;
+  const PX=t=> padL + iw*(t-mn)/(mx-mn);
+  const B=28;
+  const bins=Array.from({length:A.k},()=> new Array(B).fill(0));
+  for(const v of vals){ let bi=Math.floor((v.t-mn)/(mx-mn)*B); if(bi<0)bi=0; if(bi>=B)bi=B-1; bins[v.c][bi]++; }
+  let maxC=1; for(const arr of bins) for(const c of arr) if(c>maxC)maxC=c;
+  const bw=iw/B;
+  let g=`<rect x="${padL}" y="${plotT}" width="${iw}" height="${ih}" fill="#fbfdff" stroke="#eef2f7"/>`;
+  // overlaid per-class histograms
+  for(let c=0;c<A.k;c++){
+    for(let bi=0;bi<B;bi++){
+      const h=ih*bins[c][bi]/maxC; if(h<=0) continue;
+      g+=`<rect x="${(padL+bi*bw).toFixed(1)}" y="${(plotB-h).toFixed(1)}" width="${(bw-0.6).toFixed(1)}" height="${h.toFixed(1)}" fill="${CLS[c]}" fill-opacity="0.5"/>`;
+    }
+  }
+  // rug of points
+  for(const v of vals){ g+=`<circle cx="${PX(v.t).toFixed(1)}" cy="${(plotB+7).toFixed(1)}" r="1.7" fill="${CLS[v.c]}" fill-opacity="0.7"/>`; }
+  // baseline
+  g+=`<line x1="${padL}" y1="${plotB}" x2="${padL+iw}" y2="${plotB}" stroke="#94a3b8" stroke-width="1"/>`;
+  // thresholds = midpoints between adjacent sorted projected class means
+  const pm=A.means.map((m,ci)=>({ t:w[0]*m[0]+w[1]*m[1], c:ci })).sort((a,b)=>a.t-b.t);
+  for(let i=0;i<pm.length-1;i++){ const tt=(pm[i].t+pm[i+1].t)/2;
+    g+=`<line x1="${PX(tt).toFixed(1)}" y1="${plotT}" x2="${PX(tt).toFixed(1)}" y2="${(plotB+2).toFixed(1)}" stroke="${axisColor}" stroke-width="1.8" stroke-dasharray="5 3"/>`;
+  }
+  // projected class means (little triangles)
+  pm.forEach(m=>{ const x=PX(m.t); g+=`<path d="M ${x.toFixed(1)} ${(plotT+2).toFixed(1)} l -5 -8 l 10 0 z" fill="${CLS[m.c]}"/>`; });
+  g+=`<text x="${padL}" y="${H-6}" font-size="9" fill="#94a3b8">projection value  (▲ = class mean · dashed = decision threshold)</text>`;
+  document.getElementById(elId).innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">${g}</svg>`;
+}
+
+// ---------------- diagnosis ----------------
+function setDiag(A){
+  const box=document.getElementById("diagBox");
+  const dL=(A.accL*100), dP=(A.accP*100), gap=dL-dP;
+  if(gap>18){
+    box.className="diag diag-warn mt-6 max-w-4xl mx-auto text-left";
+    box.innerHTML=`<div class="text-base font-extrabold mb-1">⚠️ This is exactly where PCA fails</div><div class="text-sm font-medium leading-relaxed">The classes are stretched <em>along</em> a direction that has nothing to do with telling them apart, so PCA — which only sees variance — points the wrong way and its 1-D projection scores just <strong>${dP.toFixed(1)}%</strong>. LDA reads the labels, divides out that within-class stretch (<code>S_w</code>) and lands on the separating axis for <strong>${dL.toFixed(1)}%</strong>. The two axes are nearly <strong>${A.angle.toFixed(0)}°</strong> apart, and Fisher J is <strong>${A.Jl.toFixed(1)}</strong> for LDA vs <strong>${A.Jp.toFixed(2)}</strong> for PCA. This gap is the whole reason LDA exists.</div>`;
+  } else if(dL>=92 && dP>=88){
+    box.className="diag diag-good mt-6 max-w-4xl mx-auto text-left";
+    box.innerHTML=`<div class="text-base font-extrabold mb-1">🟢 Both axes work — the classes are separated along the high-variance direction</div><div class="text-sm font-medium leading-relaxed">Here separation and spread happen to <em>agree</em>: the biggest-variance direction also pulls the classes apart, so PCA (<strong>${dP.toFixed(1)}%</strong>) does almost as well as LDA (<strong>${dL.toFixed(1)}%</strong>). PCA got lucky. Crank up <strong>within-class elongation</strong> and watch PCA veer off while LDA stays locked on the separating axis.</div>`;
+  } else if(dL<75){
+    box.className="diag diag-info mt-6 max-w-4xl mx-auto text-left";
+    box.innerHTML=`<div class="text-base font-extrabold mb-1">🔴 Classes genuinely overlap — no 1-D axis can fully separate them</div><div class="text-sm font-medium leading-relaxed">With the means this close and the spread this wide, the clouds sit on top of each other, so even the optimal Fisher axis only reaches <strong>${dL.toFixed(1)}%</strong>. But notice LDA still beats PCA (<strong>${dP.toFixed(1)}%</strong>): given a hopeless problem it still finds the <em>least</em>-bad direction. Slide <strong>class separation</strong> up to pull the means apart.</div>`;
+  } else {
+    box.className="diag diag-good mt-6 max-w-4xl mx-auto text-left";
+    box.innerHTML=`<div class="text-base font-extrabold mb-1">🧭 LDA is doing its job</div><div class="text-sm font-medium leading-relaxed">LDA maximises the Fisher ratio to <strong>J=${A.Jl.toFixed(1)}</strong> and separates the ${A.k} classes at <strong>${dL.toFixed(1)}%</strong>, ahead of PCA's <strong>${dP.toFixed(1)}%</strong> (J=${A.Jp.toFixed(2)}). The axes sit <strong>${A.angle.toFixed(0)}°</strong> apart. Push <strong>within-class elongation</strong> higher to open the gap, or <strong>separation</strong> to close it.</div>`;
+  }
+}
+
+// ---------------- draw + controls ----------------
+function draw(){
+  const A=analyze();
+  document.getElementById("legC").classList.toggle("hidden", A.k!==3);
+  renderScatter(A);
+  renderProj("svgProjLda", A, A.wl, LDA_COL);
+  renderProj("svgProjPca", A, A.wp, PCA_COL);
+  setDiag(A);
+  document.getElementById("mJl").textContent=A.Jl.toFixed(2);
+  document.getElementById("mJp").textContent=A.Jp.toFixed(2);
+  document.getElementById("mAl").textContent=(A.accL*100).toFixed(1)+"%";
+  document.getElementById("mAp").textContent=(A.accP*100).toFixed(1)+"%";
+  document.getElementById("mAng").textContent=A.angle.toFixed(0)+"°";
+  document.getElementById("mK").textContent=A.k;
+}
+function syncControls(){
+  document.getElementById("cSep").value=state.sep;
+  document.getElementById("cElong").value=state.elong;
+  document.getElementById("cSpread").value=state.spread;
+  document.getElementById("cTilt").value=state.tilt;
+  document.getElementById("vSep").textContent=state.sep.toFixed(1);
+  document.getElementById("vElong").textContent=state.elong.toFixed(1);
+  document.getElementById("vSpread").textContent=state.spread.toFixed(2);
+  document.getElementById("vTilt").textContent=state.tilt.toFixed(0)+"°";
+  document.getElementById("k2").classList.toggle("on", state.k===2);
+  document.getElementById("k3").classList.toggle("on", state.k===3);
+}
+document.getElementById("cSep").addEventListener("input", e=>{ state.sep=+e.target.value; syncControls(); draw(); });
+document.getElementById("cElong").addEventListener("input", e=>{ state.elong=+e.target.value; syncControls(); draw(); });
+document.getElementById("cSpread").addEventListener("input", e=>{ state.spread=+e.target.value; syncControls(); draw(); });
+document.getElementById("cTilt").addEventListener("input", e=>{ state.tilt=+e.target.value; syncControls(); draw(); });
+document.getElementById("k2").onclick=()=>{ state.k=2; syncControls(); draw(); };
+document.getElementById("k3").onclick=()=>{ state.k=3; syncControls(); draw(); };
+document.getElementById("regen").onclick=()=>{ state.seed=(state.seed*1664525+1013904223)>>>0; draw(); };
+document.querySelectorAll("[data-preset]").forEach(b=> b.onclick=()=>{ const p=PRESETS[b.dataset.preset]; Object.assign(state,p); syncControls(); draw(); });
+syncControls(); draw();
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. The goal — reduce dimensions, but keep the classes apart", why:"Linear Discriminant Analysis projects your data onto a low-dimensional axis (or a few axes) just like PCA, but with a completely different objective. PCA is UNSUPERVISED: it finds the directions of largest total variance and throws away the small ones, never once looking at which class a point belongs to. That is perfect for compression, but it can be terrible for classification, because the direction with the most spread is frequently the direction that spreads points WITHIN a class, not the direction that separates one class from another. LDA is SUPERVISED: it uses the labels to find the projection that pulls the class means as far apart as possible while keeping each class tight. When you then classify in that reduced space, the classes are already lined up in a row. The demo shows the sharpest version of this: two clouds that are stretched sideways, where PCA points hopelessly along the stretch and LDA cuts cleanly across it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">PCA: maximise TOTAL variance · ignores labels<br>LDA: maximise BETWEEN-class / WITHIN-class · uses labels<br><br>same 'project to fewer axes' idea<br>opposite notion of a 'good' axis</div>`, code:`# PCA keeps variance; LDA keeps class separation
+from sklearn.decomposition import PCA
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+X_pca = PCA(n_components=1).fit_transform(X)        # no labels
+X_lda = LinearDiscriminantAnalysis(n_components=1).fit_transform(X, y)  # labels!` },
+ { title:"2. Class means — where each group lives", why:"Everything in LDA is built from two ingredients: the mean of each class and how points scatter around those means. The per-class mean vector mu_c is just the average of the points with label c; the grand mean mu is the average of everything. Intuitively, the vector between two class means already points in a promising 'separating' direction — but only if the classes are round. The whole subtlety of LDA, and the reason it beats naively drawing a line between the means, is that it corrects that between-means direction for the SHAPE of the scatter inside the classes. So first we compute the means; the next two steps turn the scatter into matrices we can divide with.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">mu_c = mean of class c<br>mu   = grand mean of all points<br><br>mu_1 - mu_0  → a first guess at the<br>separating direction (fixed up next)</div>`, code:`import numpy as np
+classes = np.unique(y)
+means   = {c: X[y == c].mean(axis=0) for c in classes}
+overall = X.mean(axis=0)` },
+ { title:"3. Within-class scatter S_w — the 'noise'", why:"S_w captures how spread out each class is around its OWN mean, summed over all classes. For every point you form the outer product (x - mu_c)(x - mu_c)^T and add them all up. The result is a matrix that encodes both the size and the ORIENTATION of the within-class cloud: if a class is a long thin ellipse tilted at 30 degrees, S_w knows that. This is the quantity LDA wants to SUPPRESS — it is the 'noise' that makes classes bleed into each other along their fat direction. Crucially, because S_w is a full matrix and not just a number, LDA can account for correlated, elongated, tilted classes; that is what lets it beat a simple midpoint-of-the-means rule. In the demo, S_w is dominated by the big within-class elongation, and dividing by it is exactly what steers LDA away from that useless direction.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">S_w = Σ_classes Σ_points (x − mu_c)(x − mu_c)ᵀ<br><br>= how fat / tilted each class is<br>the 'noise' LDA divides OUT<br>(a matrix → captures orientation, not just size)</div>`, code:`d  = X.shape[1]
+Sw = np.zeros((d, d))
+for c in classes:
+    Xc = X[y == c] - means[c]      # center each class
+    Sw += Xc.T @ Xc                # sum of outer products` },
+ { title:"4. Between-class scatter S_b — the 'signal'", why:"S_b measures how far the class means sit from the grand mean — the spread BETWEEN classes rather than within them. Each class contributes n_c * (mu_c - mu)(mu_c - mu)^T, weighting bigger classes more. This is the quantity LDA wants to MAXIMISE: large S_b means the class centres are far apart, which is good for separation. For two classes S_b has rank one and points purely along (mu_1 - mu_0), which is why the two-class solution has a clean closed form. For C classes, S_b has rank at most C - 1, and that is also the maximum number of useful LDA axes you can extract — a fundamental limit worth remembering (three classes give you at most two discriminant axes, ten digits give you at most nine).", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">S_b = Σ_classes n_c (mu_c − mu)(mu_c − mu)ᵀ<br><br>= how far apart the class centres are<br>the 'signal' LDA divides BY<br>rank ≤ C−1 → at most C−1 LDA axes</div>`, code:`Sb = np.zeros((d, d))
+for c in classes:
+    n_c  = (y == c).sum()
+    diff = (means[c] - overall).reshape(d, 1)
+    Sb  += n_c * (diff @ diff.T)` },
+ { title:"5. The Fisher criterion — signal over noise", why:"Now put the two matrices together. For a candidate projection direction w, the projected between-class spread is w^T S_b w and the projected within-class spread is w^T S_w w. Ronald Fisher's insight (1936) was to maximise their RATIO: J(w) = (w^T S_b w) / (w^T S_w w). Maximising the numerator pushes the class means apart on the projected line; minimising the denominator squeezes each class tight. A big J means the coloured humps in the projection are far apart relative to their width — exactly what you see on the LDA strip in the demo. PCA, by contrast, maximises only w^T C w (total variance) with no denominator, so it is perfectly happy to choose a direction with huge within-class spread. That missing denominator is the entire difference between the two methods, and it is why LDA's J is always at least as large as PCA's J on the same data.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">maximise&nbsp;&nbsp;J(w) = (wᵀ S_b w) / (wᵀ S_w w)<br><br>↑ numerator: means far apart<br>↓ denominator: classes tight<br><br>PCA maximises wᵀ C w — NO denominator</div>`, code:`def fisher_J(w, Sw, Sb):
+    return (w @ Sb @ w) / (w @ Sw @ w)
+# LDA picks w to maximise J; PCA maximises only w @ C @ w (no denominator)` },
+ { title:"6. Solving it — S_w⁻¹ S_b and the two-class shortcut", why:"Maximising a ratio of quadratic forms is a generalized eigenvalue problem. Setting the gradient of J to zero gives S_b w = lambda S_w w, i.e. S_w^-1 S_b w = lambda w: the optimal directions are the EIGENVECTORS of S_w^-1 S_b, and the eigenvalue is the value of J along each. You keep the eigenvectors with the largest eigenvalues (up to C - 1 of them). For the special case of TWO classes, S_b is rank one and proportional to the outer product of (mu_1 - mu_0), so the whole thing collapses to a one-line formula: w is proportional to S_w^-1 (mu_1 - mu_0). Read that as 'take the direction between the means, then reshape it by the inverse of the within-class scatter' — the S_w^-1 factor is precisely what rotates the naive between-means direction onto the true discriminant when the classes are elongated. That closed form is what the LOOK tab computes every time you move a slider.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">∇J = 0  ⇒  S_w⁻¹ S_b w = λ w<br><br>axes = top eigenvectors of S_w⁻¹ S_b<br><br>TWO classes → w ∝ S_w⁻¹ (mu₁ − mu₀)<br>(between-means, reshaped by the scatter)</div>`, code:`import numpy as np
+# two-class closed form
+w = np.linalg.inv(Sw) @ (means[1] - means[0])
+w /= np.linalg.norm(w)
+# general multi-class
+vals, vecs = np.linalg.eig(np.linalg.inv(Sw) @ Sb)
+W = vecs[:, np.argsort(vals.real)[::-1][:n_components]].real` },
+ { title:"7. LDA vs PCA — the same picture, different winner", why:"Stack the two side by side. PCA finds w maximising w^T C w where C is the TOTAL covariance; LDA finds w maximising w^T S_b w / w^T S_w w. When the direction of greatest total variance happens to also separate the classes, the two agree and PCA looks fine. But the moment your classes are elongated — stretched along some direction that is not the separating one — the total variance is dominated by that within-class stretch, PCA locks onto it, and its projection smears the classes together. LDA, dividing by S_w, explicitly cancels that stretch and rotates onto the separating axis instead. This is not a rare corner case: correlated, anisotropic classes are the norm in real data, which is why 'PCA then classify' can quietly throw away the very signal you need. The demo's 'PCA fails' preset is this situation dialled to the extreme, with the two axes almost 90 degrees apart.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">PCA axis = most TOTAL variance (blind to y)<br>LDA axis = most class SEPARATION (uses y)<br><br>elongated classes → variance ≠ separation<br>→ PCA points the wrong way, LDA does not</div>`, code:`# same 2-D data, two philosophies
+pca_axis = PCA(1).fit(X).components_[0]                 # variance only
+lda_axis = LinearDiscriminantAnalysis().fit(X, y).coef_[0]  # separation
+# on elongated classes these point in very different directions` },
+ { title:"8. The decision rule and its assumptions", why:"Projection is only half of LDA; the other half is turning a projected value into a class. Under the hood LDA assumes each class is Gaussian with the SAME covariance matrix. With that assumption the optimal boundary between any two classes is linear, and for equal class priors a point is assigned to whichever class mean its projection is closest to — for two classes that is simply a threshold at the MIDPOINT of the two projected means, the dashed line in the demo. Because the model is so constrained (one shared covariance, linear boundaries) it has very few parameters, trains in closed form with no tuning, and is remarkably hard to overfit — a great baseline. The flip side is the assumptions: if the classes really do have different shapes, the shared-covariance premise is wrong and you should switch to Quadratic Discriminant Analysis (QDA), which fits a covariance per class and gives curved boundaries.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">assume: Gaussian classes · SHARED covariance<br>⇒ boundary is LINEAR<br><br>classify: nearest projected class mean<br>(2 classes → midpoint threshold)<br><br>different per-class shapes? → use QDA</div>`, code:`proj_means = {c: means[c] @ w for c in classes}
+def predict(x):                       # nearest projected mean (equal priors)
+    t = x @ w
+    return min(classes, key=lambda c: abs(t - proj_means[c]))` },
+ { title:"9. Practicalities — singular S_w, scaling, when to reach for it", why:"A few things bite in practice. First, S_w must be invertible: when you have more features than samples (or perfectly correlated features) it becomes singular and S_w^-1 blows up. The standard cure is SHRINKAGE — nudge S_w toward a scaled identity — which sklearn does automatically with solver='lsqr' or 'eigen' and shrinkage='auto'; it is what makes LDA usable on wide data like gene expression. Second, although LDA is not scale-sensitive in the same way regularised regression is (it already accounts for covariance), standardising features is still good hygiene and helps the numerics. Third, know when to pick it: LDA shines as a fast, no-tuning linear classifier and as a supervised reducer to at most C - 1 dimensions for visualisation. Use PCA when you have no labels or want pure variance-preserving compression; use QDA when class shapes differ; use LDA when you want a cheap, robust, label-aware linear separator or projection.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">S_w singular (p &gt; n)? → shrinkage toward αI<br>&nbsp;&nbsp;LinearDiscriminantAnalysis(solver='lsqr',<br>&nbsp;&nbsp;&nbsp;&nbsp;shrinkage='auto')<br><br>reduce to ≤ C−1 dims · fast · no tuning<br>no labels → PCA · different shapes → QDA</div>`, code:`from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+# robust on wide / small-sample data via shrinkage
+lda = LinearDiscriminantAnalysis(solver="lsqr", shrinkage="auto").fit(X, y)
+# supervised 2-D visualisation of C-class data:
+X2 = LinearDiscriminantAnalysis(n_components=2).fit_transform(X, y)` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>

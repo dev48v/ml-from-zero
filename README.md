@@ -41,6 +41,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 32 — SMOTE](https://dev48v.infy.uk/ml/day32-smote.html) — `day32-smote.html`
 - [MachineLearningFromZero · Day 33 — Stacking](https://dev48v.infy.uk/ml/day33-stacking.html) — `day33-stacking.html`
 - [MachineLearningFromZero · Day 34 — Elastic Net](https://dev48v.infy.uk/ml/day34-elastic-net.html) — `day34-elastic-net.html`
+- [MachineLearningFromZero · Day 35 — Linear Discriminant Analysis](https://dev48v.infy.uk/ml/day35-lda.html) — `day35-lda.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
