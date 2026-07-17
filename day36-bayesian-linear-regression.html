@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 36 — Bayesian Linear Regression</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:180px 1fr 52px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:14px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .preset-btn { border:1px solid #e2e8f0; }
+  .preset-btn:hover { border-color:#38bdf8; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-band { display:inline-block; width:16px; height:11px; border-radius:3px; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:20px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .kbtn { border:1px solid #e2e8f0; background:#fff; }
+  .kbtn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  #wrapData { position:relative; cursor:crosshair; }
+  .htip { position:absolute; pointer-events:none; background:#0f172a; color:#e2e8f0; font-size:11px; font-weight:700;
+          padding:3px 7px; border-radius:6px; transform:translate(-50%,-140%); white-space:nowrap; display:none; z-index:20; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 36</div>
+      <h1 class="text-xl font-bold">🔮 Bayesian Linear Regression — Not One Line, a <em>Distribution</em> of Lines With Honest Error Bars</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>Click anywhere on the chart to drop data points.</strong> Ordinary least-squares would draw <em>one</em> best-fit line and stop. Bayesian regression keeps a whole <strong>distribution over lines</strong> — a mean line, a cloud of plausible lines sampled from the posterior, and a shaded <strong>±σ uncertainty band</strong> that <em>balloons out where you have no data</em> and <em>tightens</em> as points pile in. Every number is solved in closed form in your browser.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">The model is a straight line <code>y = w₀ + w₁·x</code> with Gaussian noise of precision <strong>β</strong> (so noise variance is <code>1/β</code>). We start from a Gaussian <strong>prior</strong> on the weights, <code>w ~ N(0, α⁻¹I)</code> — prior precision <strong>α</strong> pulls the line gently toward flat. Multiplying prior × likelihood gives a Gaussian <strong>posterior</strong> with precision <code>Aₙ = αI + βΦᵀΦ</code>, covariance <code>Σₙ = Aₙ⁻¹</code> and mean <code>mₙ = β·Σₙ·Φᵀy</code>. A prediction at input <code>x*</code> is itself Gaussian: mean <code>mₙᵀφ(x*)</code> and variance <code>1/β + φ(x*)ᵀΣₙφ(x*)</code> — the second term is the model's own uncertainty, and it grows quadratically as you move away from where the data lives. Move the sliders, drop points, and watch the band breathe.</p>
+
+      <div class="grid grid-cols-3 md:grid-cols-6 gap-2 max-w-4xl mx-auto mb-4">
+        <div class="metric-pill"><div class="v" id="mN" style="color:#0f172a">—</div><div class="k">data points N</div></div>
+        <div class="metric-pill"><div class="v" id="mInt" style="color:#0ea5e9">—</div><div class="k">intercept w₀ ± σ</div></div>
+        <div class="metric-pill"><div class="v" id="mSlope" style="color:#0ea5e9">—</div><div class="k">slope w₁ ± σ</div></div>
+        <div class="metric-pill"><div class="v" id="mNoise" style="color:#a855f7">—</div><div class="k">noise σ = 1/√β</div></div>
+        <div class="metric-pill"><div class="v" id="mBandC">—</div><div class="k">band waist ±σ</div></div>
+        <div class="metric-pill"><div class="v" id="mBandE">—</div><div class="k">band edge ±σ</div></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start">
+        <!-- controls -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+          <div class="text-xs font-bold text-slate-500 mb-3">CONTROLS — set the prior &amp; noise, then click to add data</div>
+          <div class="ctl-row">
+            <div class="ctl-name">🪢 prior strength α</div>
+            <input type="range" id="cAlpha" min="0.05" max="12" step="0.05" value="2">
+            <div class="ctl-val" id="vAlpha">2.00</div>
+          </div>
+          <div class="text-[11px] text-slate-400 -mt-1 mb-1">bigger α ⇒ tighter prior ⇒ lines hug flat until data pushes back</div>
+          <div class="ctl-row">
+            <div class="ctl-name">📡 noise precision β</div>
+            <input type="range" id="cBeta" min="0.4" max="60" step="0.1" value="6">
+            <div class="ctl-val" id="vBeta">6.0</div>
+          </div>
+          <div class="text-[11px] text-slate-400 -mt-1 mb-1">bigger β ⇒ you trust each point more ⇒ band's floor <code>1/√β</code> shrinks</div>
+          <div class="mt-2 flex items-center gap-2 flex-wrap">
+            <button id="regen" class="bg-slate-800 text-white px-3 py-1 rounded-lg font-semibold text-xs hover:bg-slate-700">🎲 sample data</button>
+            <button id="resample" class="bg-sky-600 text-white px-3 py-1 rounded-lg font-semibold text-xs hover:bg-sky-500">🔁 redraw sample lines</button>
+            <button id="clear" class="ml-auto bg-rose-100 text-rose-700 px-3 py-1 rounded-lg font-semibold text-xs hover:bg-rose-200">🗑 clear</button>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2 items-center">
+            <span class="text-[11px] font-bold text-slate-400 uppercase w-full">show</span>
+            <button id="tSamples" class="kbtn on px-2.5 py-1 rounded-lg font-semibold text-xs">〰 sample lines</button>
+            <button id="t2sig"    class="kbtn on px-2.5 py-1 rounded-lg font-semibold text-xs">▨ ±2σ band</button>
+            <button id="tOLS"     class="kbtn px-2.5 py-1 rounded-lg font-semibold text-xs">┈ least-squares</button>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2 items-center">
+            <span class="text-[11px] font-bold text-slate-400 uppercase w-full">presets</span>
+            <button data-preset="prior"  class="preset-btn bg-sky-50 hover:bg-sky-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🌫️ Prior only</button>
+            <button data-preset="sparse" class="preset-btn bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-semibold text-xs">⚠️ Sparse (left)</button>
+            <button data-preset="few"    class="preset-btn bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🟢 A few points</button>
+            <button data-preset="dense"  class="preset-btn bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg font-semibold text-xs">💠 Dense</button>
+          </div>
+          <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+            The <span style="color:#0ea5e9;font-weight:800">— solid sky</span> line is the posterior <strong>mean</strong>. The <span style="color:#0ea5e9;font-weight:800">pale sky</span> fill is the <strong>±σ / ±2σ predictive band</strong>. The <span style="color:#64748b;font-weight:800">thin grey</span> lines are actual <strong>lines sampled from the posterior</strong> — their spread <em>is</em> the uncertainty. Turn on <span style="color:#334155;font-weight:800">┈ least-squares</span> to see what a non-Bayesian fit gives you: one line, no error bars.
+          </div>
+        </div>
+
+        <!-- data-space plot -->
+        <div class="panel hero text-left" style="width:500px; max-width:100%;">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-sm font-bold text-sky-700">📈 Data space · click to add points</span>
+            <span class="text-xs font-bold text-slate-400">band widens where data is thin</span>
+          </div>
+          <div id="wrapData"><div id="svgData"></div><div class="htip" id="htip"></div></div>
+          <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+            <span><span class="swatch" style="background:#0f172a"></span> your data</span>
+            <span><span class="swatch-line" style="border-color:#0ea5e9;border-top-style:solid"></span> posterior mean</span>
+            <span><span class="swatch-band" style="background:rgba(14,165,233,.28)"></span> ±σ / ±2σ band</span>
+            <span><span class="swatch-line" style="border-color:#94a3b8;border-top-style:solid"></span> sampled lines</span>
+            <span id="legTrue" class="hidden"><span class="swatch-line" style="border-color:#16a34a;border-top-style:dashed"></span> true line</span>
+            <span id="legOls" class="hidden"><span class="swatch-line" style="border-color:#334155;border-top-style:dashed"></span> least-squares</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- second row: weight-space posterior + predictive-sigma slice -->
+      <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:500px; max-width:100%;">
+          <div class="text-xs font-bold mb-1" style="color:#0ea5e9">▮ WEIGHT SPACE — the posterior over (w₀, w₁)</div>
+          <div id="svgWeights"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-1">Every straight line is a single point <code>(w₀, w₁)</code> here. The dashed grey ring is the <strong>prior</strong> (centred at 0). The filled sky ellipses are the <strong>posterior</strong> 1σ &amp; 2σ contours — each dot is one <em>sampled line</em> from the chart on the left. Add data and watch this cloud <strong>shrink and slide</strong> onto the true weights (green ✚). The <span style="color:#334155;font-weight:800">grey ✚</span> is the least-squares point estimate — Bayes gives the whole ellipse instead.</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:500px; max-width:100%;">
+          <div class="text-xs font-bold mb-1" style="color:#a855f7">▮ PREDICTIVE ±σ AS A FUNCTION OF x</div>
+          <div id="svgSigma"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-1">The half-width of the band, <code>σ(x*) = √(1/β + φᵀΣₙφ)</code>, plotted across the input range. It bottoms out near the centre of mass of your data and <strong>rises like a parabola toward the edges</strong> — extrapolation is uncertain. The dashed purple line is the irreducible <strong>noise floor</strong> <code>1/√β</code>; no amount of data pushes the band below it. Ticks along the bottom mark where your points sit.</div>
+        </div>
+      </div>
+
+      <div id="diagBox" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From a point estimate to a posterior over lines</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">scikit-learn ships this as <code>BayesianRidge</code> — it even learns the prior strength α and the noise precision β from the data for you (via the marginal likelihood / evidence). Below is the whole thing: fit it, get predictions <em>with error bars</em>, then the from-scratch closed-form posterior and predictive that produced every band and sampled line you just dragged around.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The design matrix Φ — turn inputs into features</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A straight line is just two basis functions: the constant <code>1</code> (the intercept) and <code>x</code> (the slope). Stack them into a matrix Φ with one row per data point. Swap in polynomial or Gaussian basis functions later and <em>the exact same posterior maths</em> gives you curved fits with the same honest uncertainty.</p>
+        <div class="relative"><pre>import numpy as np
+
+x = np.array([-4., -2.5, -1., 0.5, 3.])   # your inputs
+y = np.array([-2.1, -1.0, 0.2, 0.6, 2.4]) # your targets
+
+# basis functions phi(x) = [1, x]  ->  design matrix, one row per point
+Phi = np.c_[np.ones_like(x), x]            # shape (N, 2)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The prior and the likelihood</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Before seeing data we say the weights are small: <code>w ~ N(0, α⁻¹I)</code>. The likelihood says each target is the line plus Gaussian noise of precision β: <code>y ~ N(Φw, β⁻¹I)</code>. These two knobs are the α and β sliders in the demo — the entire model lives in them.</p>
+        <div class="relative"><pre>alpha = 2.0     # prior precision  -> prior variance is 1/alpha
+beta  = 6.0     # noise precision  -> noise std is 1/sqrt(beta)
+
+# prior:      p(w)   = N(w | 0, (1/alpha) I)
+# likelihood: p(y|w) = N(y | Phi @ w, (1/beta) I)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The posterior — closed form (the demo engine)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A Gaussian prior times a Gaussian likelihood is again Gaussian (conjugacy), so no sampling is needed. The posterior precision is <code>Aₙ = αI + βΦᵀΦ</code>, its covariance is <code>Σₙ = Aₙ⁻¹</code>, and its mean is <code>mₙ = β·Σₙ·Φᵀy</code>. This is exactly what runs on every slider move.</p>
+        <div class="relative"><pre>A = alpha * np.eye(Phi.shape[1]) + beta * Phi.T @ Phi   # posterior precision
+S = np.linalg.inv(A)                                    # posterior covariance
+m = beta * S @ Phi.T @ y                                # posterior mean weights
+
+print("mean weights [w0, w1]:", m)
+print("weight std devs:", np.sqrt(np.diag(S)))</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The predictive distribution — mean ± the band</h3></div>
+        <p class="text-sm text-slate-600 mb-3">For a new input <code>x*</code> the prediction is Gaussian. Its mean is <code>mₙᵀφ(x*)</code>; its variance is <code>1/β + φ(x*)ᵀΣₙφ(x*)</code> — noise floor plus model uncertainty. That second term is a parabola in <code>x*</code>, so the band is narrowest near your data and flares outward. Adding points shrinks Σₙ, so the band thins toward the noise floor.</p>
+        <div class="relative"><pre>def predict(xs):
+    P    = np.c_[np.ones_like(xs), xs]                 # basis at test points
+    mean = P @ m                                       # posterior mean line
+    var  = 1.0/beta + np.einsum('ij,jk,ik->i', P, S, P)  # 1/beta + phiᵀ S phi
+    return mean, np.sqrt(var)                          # <- std = the band
+
+xs = np.linspace(-5, 5, 200)
+mean, std = predict(xs)
+band_low, band_high = mean - std, mean + std           # +/- 1 sigma band</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Sample whole lines from the posterior</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The band summarises the uncertainty, but drawing actual lines makes it visceral. Sample weight vectors from <code>N(mₙ, Σₙ)</code> and plot each as a line — where they fan apart is where the model is unsure. These are the grey lines in the demo (done there with a 2×2 Cholesky factor).</p>
+        <div class="relative"><pre>W = np.random.multivariate_normal(m, S, size=20)   # 20 plausible weight vectors
+xs = np.linspace(-5, 5, 2)
+for w0, w1 in W:
+    plt.plot(xs, w0 + w1 * xs, color="grey", alpha=0.3)   # one sampled line each
+plt.plot(xs, m[0] + m[1] * xs, color="dodgerblue", lw=2)  # posterior mean</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">The one-liner: scikit-learn learns α and β for you</h3></div>
+        <p class="text-sm text-slate-600 mb-3"><code>BayesianRidge</code> does everything above <em>and</em> estimates α and β from the data by maximising the evidence — no hand-tuning. Ask for <code>return_std=True</code> and you get the error bars for free. Reach for it when a prediction interval matters (forecasting, active learning, safety) and for plain point predictions on small/wide data where it self-regularises.</p>
+        <div class="relative"><pre>from sklearn.linear_model import BayesianRidge
+
+model = BayesianRidge()                 # learns alpha &amp; beta via the evidence
+model.fit(X, y)                         # X shape (N, n_features)
+mean, std = model.predict(X_test, return_std=True)   # predictions WITH error bars
+
+# when to reach for it:
+# ridge regression  = the MAP point estimate of this model (alpha = lambda)
+# least squares     = the limit alpha -> 0 (flat prior): one line, no error bars
+# full Bayes (here) = the whole posterior -> calibrated uncertainty everywhere
+# want curves + uncertainty of any shape? swap the basis -> Gaussian Processes</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 36 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You turned regression from a single best-fit line into a <strong>distribution over lines</strong>. A Gaussian <strong>prior</strong> <code>N(0, α⁻¹I)</code> times a Gaussian <strong>likelihood</strong> gave a Gaussian <strong>posterior</strong> in closed form — precision <code>Aₙ = αI + βΦᵀΦ</code>, covariance <code>Σₙ = Aₙ⁻¹</code>, mean <code>mₙ = β·Σₙ·Φᵀy</code>. The <strong>predictive variance</strong> <code>1/β + φᵀΣₙφ</code> gave you a band that widens where data is sparse and tightens as points arrive, never dropping below the noise floor <code>1/√β</code>. You saw the posterior <em>shrink and slide</em> in weight space, sampled real lines from it, and watched least-squares give you one naked line by comparison. <strong>👉 Tomorrow — Day 37: Gaussian Processes</strong> — put the prior over <em>functions themselves</em>, and get these uncertainty bands for any shape, not just straight lines.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= BAYESIAN LINEAR REGRESSION ENGINE (pure JS) =================
+// <<<ENGINE_START>>>
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function gauss(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+// Closed-form Gaussian posterior for the straight-line model  y = w0 + w1*x + noise.
+// basis phi(x) = [1, x]  =>  Phi^T Phi = [[N, Sx],[Sx, Sxx]],  Phi^T y = [Sy, Sxy].
+// posterior precision  A = alpha*I + beta*Phi^T Phi   (2x2)
+// posterior covariance S = A^-1
+// posterior mean       m = beta * S * Phi^T y
+function posterior(points, alpha, beta){
+  let n=points.length, sx=0, sxx=0, sy=0, sxy=0;
+  for(const p of points){ sx+=p.x; sxx+=p.x*p.x; sy+=p.y; sxy+=p.x*p.y; }
+  const A00=alpha+beta*n, A01=beta*sx, A11=alpha+beta*sxx;      // precision matrix
+  let det=A00*A11-A01*A01; if(Math.abs(det)<1e-12) det = det<0?-1e-12:1e-12;
+  const S00=A11/det, S01=-A01/det, S11=A00/det;                 // covariance = A^-1
+  const by0=beta*sy, by1=beta*sxy;                             // beta * Phi^T y
+  const m0=S00*by0+S01*by1, m1=S01*by0+S11*by1;                // mean = beta*S*Phi^T y
+  return { n, S00, S01, S11, m0, m1, alpha, beta };
+}
+// predictive mean at x*  =  m . phi(x*)
+function predMean(P, x){ return P.m0 + P.m1*x; }
+// predictive variance at x*  =  1/beta + phi^T S phi   (noise floor + model uncertainty)
+function predVar(P, x){ const model = P.S00 + 2*P.S01*x + P.S11*x*x; return 1/P.beta + Math.max(0,model); }
+function predStd(P, x){ return Math.sqrt(Math.max(0, predVar(P,x))); }
+// x* where the band is narrowest = vertex of the quadratic phi^T S phi
+function bandWaistX(P){ return Math.abs(P.S11)<1e-12 ? 0 : -P.S01/P.S11; }
+
+// sample a weight vector from the posterior N(m, S) via a 2x2 Cholesky factor of S
+function sampleWeights(P, rng){
+  const l00=Math.sqrt(Math.max(1e-12,P.S00));
+  const l10=P.S01/l00;
+  const l11=Math.sqrt(Math.max(1e-12,P.S11-l10*l10));
+  const z0=gauss(rng), z1=gauss(rng);
+  return [ P.m0 + l00*z0, P.m1 + l10*z0 + l11*z1 ];
+}
+// eigen-decomposition of a symmetric 2x2 [[a,b],[b,d]] -> ellipse axes for the posterior
+function eig2sym(a,b,d){
+  const tr=a+d, det=a*d-b*b, disc=Math.sqrt(Math.max(0,tr*tr/4-det));
+  const l1=tr/2+disc, l2=tr/2-disc;
+  let v1 = Math.abs(b)>1e-12 ? [l1-d, b] : (a>=d?[1,0]:[0,1]);
+  const nn=Math.hypot(v1[0],v1[1])||1; v1=[v1[0]/nn, v1[1]/nn];
+  return { l1:Math.max(0,l1), l2:Math.max(0,l2), v1, v2:[-v1[1],v1[0]] };
+}
+// ordinary least squares (the non-Bayesian fit) for comparison — needs >= 2 spread-out points
+function ols(points){
+  const n=points.length; if(n<2) return null;
+  let sx=0,sy=0,sxx=0,sxy=0; for(const p of points){ sx+=p.x; sy+=p.y; sxx+=p.x*p.x; sxy+=p.x*p.y; }
+  const denom=n*sxx-sx*sx; if(Math.abs(denom)<1e-9) return null;
+  const slope=(n*sxy-sx*sy)/denom, intercept=(sy-slope*sx)/n;
+  return { intercept, slope };
+}
+// <<<ENGINE_END>>>
+
+// ---------------- domain + geometry ----------------
+const XMIN=-5, XMAX=5, YMIN=-5, YMAX=5;
+const DW=474, DH=360, DPAD=32;                    // data-space svg
+const WW=474, WH=300, WPAD=38;                    // weight-space svg
+const SW=474, SH=210, SPAD=36;                    // sigma-slice svg
+const SKY="#0ea5e9", MEAN_COL="#0ea5e9", SAMP_COL="#94a3b8", TRUE_COL="#16a34a", OLS_COL="#334155", NOISE_COL="#a855f7";
+const NSAMPLES=18, NBAND=72;
+
+const state={ alpha:2, beta:6, points:[], trueW:null, seed:20260717,
+              showSamples:true, show2sig:true, showOLS:false };
+
+function genData(seed, count){
+  const rng=mulberry32(seed);
+  const trueSlope = -0.75 + 1.5*rng();            // gentle slopes keep y in view
+  const trueInt   = -1.6 + 3.2*rng();
+  const noise = 0.55;
+  const pts=[];
+  for(let i=0;i<count;i++){
+    let x = (XMIN+0.6) + (XMAX-XMIN-1.2)*rng();
+    let y = trueInt + trueSlope*x + noise*gauss(rng);
+    y = Math.max(YMIN+0.2, Math.min(YMAX-0.2, y));
+    pts.push({ x:+x.toFixed(3), y:+y.toFixed(3) });
+  }
+  return { pts, trueW:[trueInt, trueSlope] };
+}
+
+// ---------------- data-space transforms ----------------
+const TX = x => DPAD + (x-XMIN)/(XMAX-XMIN)*(DW-2*DPAD);
+const TY = y => (DH-DPAD) - (y-YMIN)/(YMAX-YMIN)*(DH-2*DPAD);
+const dataX = sx => XMIN + (sx-DPAD)/(DW-2*DPAD)*(XMAX-XMIN);
+const dataY = sy => YMIN + ((DH-DPAD)-sy)/(DH-2*DPAD)*(YMAX-YMIN);
+
+// ---------------- rendering: data space ----------------
+function renderData(P){
+  const clip=`<clipPath id="dc"><rect x="1" y="1" width="${DW-2}" height="${DH-2}" rx="10"/></clipPath>`;
+  let g = clip;
+  g += `<rect x="1" y="1" width="${DW-2}" height="${DH-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g += `<g clip-path="url(#dc)">`;
+  // grid
+  for(let v=Math.ceil(YMIN); v<=Math.floor(YMAX); v++){ const y=TY(v); const ax=(v===0);
+    g += `<line x1="${DPAD}" y1="${y.toFixed(1)}" x2="${DW-DPAD}" y2="${y.toFixed(1)}" stroke="${ax?'#cbd5e1':'#eef2f7'}" stroke-width="${ax?1.4:1}"/>`; }
+  for(let v=Math.ceil(XMIN); v<=Math.floor(XMAX); v++){ const x=TX(v); const ax=(v===0);
+    g += `<line x1="${x.toFixed(1)}" y1="${DPAD}" x2="${x.toFixed(1)}" y2="${DH-DPAD}" stroke="${ax?'#cbd5e1':'#eef2f7'}" stroke-width="${ax?1.4:1}"/>`; }
+
+  // predictive band(s): build upper/lower polylines from the closed-form predictive std
+  const xs=[]; for(let i=0;i<=NBAND;i++) xs.push(XMIN + i*(XMAX-XMIN)/NBAND);
+  function bandPath(k){
+    let up="", dn="";
+    xs.forEach((x,i)=>{ const mu=predMean(P,x), s=predStd(P,x);
+      up += `${i?'L':'M'} ${TX(x).toFixed(1)} ${TY(mu+k*s).toFixed(1)} `; });
+    for(let i=xs.length-1;i>=0;i--){ const x=xs[i], mu=predMean(P,x), s=predStd(P,x);
+      dn += `L ${TX(x).toFixed(1)} ${TY(mu-k*s).toFixed(1)} `; }
+    return up+dn+"Z";
+  }
+  if(state.show2sig) g += `<path d="${bandPath(2)}" fill="${SKY}" fill-opacity="0.13" stroke="none"/>`;
+  g += `<path d="${bandPath(1)}" fill="${SKY}" fill-opacity="0.24" stroke="none"/>`;
+
+  // sampled lines from the posterior
+  if(state.showSamples){
+    const rng=mulberry32(state.seed);
+    for(let i=0;i<NSAMPLES;i++){ const w=sampleWeights(P,rng);
+      const y0=w[0]+w[1]*XMIN, y1=w[0]+w[1]*XMAX;
+      g += `<line x1="${TX(XMIN).toFixed(1)}" y1="${TY(y0).toFixed(1)}" x2="${TX(XMAX).toFixed(1)}" y2="${TY(y1).toFixed(1)}" stroke="${SAMP_COL}" stroke-width="1" stroke-opacity="0.32"/>`;
+    }
+  }
+  // true line (only when data was generated)
+  if(state.trueW){ const w=state.trueW, y0=w[0]+w[1]*XMIN, y1=w[0]+w[1]*XMAX;
+    g += `<line x1="${TX(XMIN).toFixed(1)}" y1="${TY(y0).toFixed(1)}" x2="${TX(XMAX).toFixed(1)}" y2="${TY(y1).toFixed(1)}" stroke="${TRUE_COL}" stroke-width="1.8" stroke-dasharray="6 4" stroke-opacity="0.8"/>`;
+  }
+  // least-squares line
+  const o = state.showOLS ? ols(state.points) : null;
+  if(o){ const y0=o.intercept+o.slope*XMIN, y1=o.intercept+o.slope*XMAX;
+    g += `<line x1="${TX(XMIN).toFixed(1)}" y1="${TY(y0).toFixed(1)}" x2="${TX(XMAX).toFixed(1)}" y2="${TY(y1).toFixed(1)}" stroke="${OLS_COL}" stroke-width="2" stroke-dasharray="5 4"/>`;
+  }
+  // posterior mean line
+  { const y0=predMean(P,XMIN), y1=predMean(P,XMAX);
+    g += `<line x1="${TX(XMIN).toFixed(1)}" y1="${TY(y0).toFixed(1)}" x2="${TX(XMAX).toFixed(1)}" y2="${TY(y1).toFixed(1)}" stroke="${MEAN_COL}" stroke-width="3"/>`;
+  }
+  // data points
+  for(const p of state.points){
+    g += `<circle cx="${TX(p.x).toFixed(1)}" cy="${TY(p.y).toFixed(1)}" r="4" fill="#0f172a" stroke="#fff" stroke-width="1.5"/>`;
+  }
+  g += `</g>`;
+  // axis labels
+  g += `<text x="${DW-DPAD}" y="${TY(0)-5}" font-size="10" fill="#94a3b8" text-anchor="end">x →</text>`;
+  g += `<text x="${TX(0)+5}" y="${DPAD+2}" font-size="10" fill="#94a3b8">y</text>`;
+  document.getElementById("svgData").innerHTML = `<svg viewBox="0 0 ${DW} ${DH}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+
+// ---------------- rendering: weight space ----------------
+function renderWeights(P){
+  const sd0=Math.sqrt(Math.max(0,P.S00)), sd1=Math.sqrt(Math.max(0,P.S11));
+  const priorSd=1/Math.sqrt(P.alpha);
+  const o=ols(state.points);
+  const c0=[P.m0-3*sd0, P.m0+3*sd0, 0, priorSd, -priorSd];
+  const c1=[P.m1-3*sd1, P.m1+3*sd1, 0, priorSd, -priorSd];
+  if(state.trueW){ c0.push(state.trueW[0]); c1.push(state.trueW[1]); }
+  if(o){ c0.push(o.intercept); c1.push(o.slope); }
+  let lo0=Math.min(...c0), hi0=Math.max(...c0), lo1=Math.min(...c1), hi1=Math.max(...c1);
+  const p0=(hi0-lo0)*0.12+0.25, p1=(hi1-lo1)*0.12+0.25; lo0-=p0;hi0+=p0;lo1-=p1;hi1+=p1;
+  const WX=w=>WPAD+(w-lo0)/(hi0-lo0)*(WW-2*WPAD);
+  const WY=w=>(WH-WPAD)-(w-lo1)/(hi1-lo1)*(WH-2*WPAD);
+
+  let g=`<clipPath id="wc"><rect x="1" y="1" width="${WW-2}" height="${WH-2}" rx="10"/></clipPath>`;
+  g+=`<rect x="1" y="1" width="${WW-2}" height="${WH-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g+=`<g clip-path="url(#wc)">`;
+  // zero axes
+  if(0>lo0&&0<hi0) g+=`<line x1="${WX(0).toFixed(1)}" y1="${WPAD}" x2="${WX(0).toFixed(1)}" y2="${WH-WPAD}" stroke="#e2e8f0"/>`;
+  if(0>lo1&&0<hi1) g+=`<line x1="${WPAD}" y1="${WY(0).toFixed(1)}" x2="${WW-WPAD}" y2="${WY(0).toFixed(1)}" stroke="#e2e8f0"/>`;
+
+  function ellipsePath(cx,cy,eig,k){
+    let d="";
+    for(let t=0;t<=48;t++){ const th=t/48*2*Math.PI, ct=Math.cos(th), stt=Math.sin(th);
+      const a=k*Math.sqrt(eig.l1), b=k*Math.sqrt(eig.l2);
+      const wx=cx + a*ct*eig.v1[0] + b*stt*eig.v2[0];
+      const wy=cy + a*ct*eig.v1[1] + b*stt*eig.v2[1];
+      d += `${t?'L':'M'} ${WX(wx).toFixed(1)} ${WY(wy).toFixed(1)} `; }
+    return d+"Z";
+  }
+  // prior ring (isotropic: cov = (1/alpha) I)
+  const priorEig={ l1:1/P.alpha, l2:1/P.alpha, v1:[1,0], v2:[0,1] };
+  g+=`<path d="${ellipsePath(0,0,priorEig,2)}" fill="none" stroke="#cbd5e1" stroke-width="1.4" stroke-dasharray="5 4"/>`;
+  g+=`<path d="${ellipsePath(0,0,priorEig,1)}" fill="none" stroke="#cbd5e1" stroke-width="1.4" stroke-dasharray="3 3"/>`;
+  // posterior ellipses
+  const eig=eig2sym(P.S00,P.S01,P.S11);
+  g+=`<path d="${ellipsePath(P.m0,P.m1,eig,2)}" fill="${SKY}" fill-opacity="0.12" stroke="${SKY}" stroke-width="1.5"/>`;
+  g+=`<path d="${ellipsePath(P.m0,P.m1,eig,1)}" fill="${SKY}" fill-opacity="0.22" stroke="${SKY}" stroke-width="1.8"/>`;
+  // sampled weight dots (same seed as the sampled lines)
+  const rng=mulberry32(state.seed);
+  for(let i=0;i<NSAMPLES;i++){ const w=sampleWeights(P,rng);
+    g+=`<circle cx="${WX(w[0]).toFixed(1)}" cy="${WY(w[1]).toFixed(1)}" r="2.4" fill="${SAMP_COL}" fill-opacity="0.85"/>`; }
+  // posterior mean
+  g+=`<circle cx="${WX(P.m0).toFixed(1)}" cy="${WY(P.m1).toFixed(1)}" r="4.5" fill="${MEAN_COL}" stroke="#fff" stroke-width="1.5"/>`;
+  // least-squares point estimate
+  if(o){ const x=WX(o.intercept), y=WY(o.slope), r=5;
+    g+=`<line x1="${(x-r).toFixed(1)}" y1="${y.toFixed(1)}" x2="${(x+r).toFixed(1)}" y2="${y.toFixed(1)}" stroke="${OLS_COL}" stroke-width="2"/><line x1="${x.toFixed(1)}" y1="${(y-r).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(y+r).toFixed(1)}" stroke="${OLS_COL}" stroke-width="2"/>`; }
+  // true weights
+  if(state.trueW){ const x=WX(state.trueW[0]), y=WY(state.trueW[1]), r=6;
+    g+=`<line x1="${(x-r).toFixed(1)}" y1="${y.toFixed(1)}" x2="${(x+r).toFixed(1)}" y2="${y.toFixed(1)}" stroke="${TRUE_COL}" stroke-width="2.6"/><line x1="${x.toFixed(1)}" y1="${(y-r).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(y+r).toFixed(1)}" stroke="${TRUE_COL}" stroke-width="2.6"/>`; }
+  g+=`</g>`;
+  g+=`<text x="${WW-WPAD}" y="${WH-8}" font-size="10" fill="#94a3b8" text-anchor="end">w₀ (intercept) →</text>`;
+  g+=`<text x="10" y="${WPAD-6}" font-size="10" fill="#94a3b8">w₁ (slope)</text>`;
+  document.getElementById("svgWeights").innerHTML=`<svg viewBox="0 0 ${WW} ${WH}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+
+// ---------------- rendering: predictive-sigma slice ----------------
+function renderSigma(P){
+  const xs=[]; for(let i=0;i<=NBAND;i++) xs.push(XMIN + i*(XMAX-XMIN)/NBAND);
+  const sig=xs.map(x=>predStd(P,x));
+  const floor=1/Math.sqrt(P.beta);
+  let smax=Math.max(...sig, floor)*1.12;
+  const PX=x=>SPAD+(x-XMIN)/(XMAX-XMIN)*(SW-2*SPAD);
+  const PY=s=>(SH-SPAD)-(s/smax)*(SH-2*SPAD);
+  let g=`<rect x="1" y="1" width="${SW-2}" height="${SH-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  // baseline
+  g+=`<line x1="${SPAD}" y1="${(SH-SPAD).toFixed(1)}" x2="${SW-SPAD}" y2="${(SH-SPAD).toFixed(1)}" stroke="#94a3b8" stroke-width="1"/>`;
+  // noise floor
+  g+=`<line x1="${SPAD}" y1="${PY(floor).toFixed(1)}" x2="${SW-SPAD}" y2="${PY(floor).toFixed(1)}" stroke="${NOISE_COL}" stroke-width="1.6" stroke-dasharray="6 4"/>`;
+  g+=`<text x="${SW-SPAD}" y="${(PY(floor)-4).toFixed(1)}" font-size="10" font-weight="700" fill="${NOISE_COL}" text-anchor="end">noise floor 1/√β = ${floor.toFixed(2)}</text>`;
+  // sigma curve (filled to baseline)
+  let area=`M ${PX(XMIN).toFixed(1)} ${(SH-SPAD).toFixed(1)} `;
+  let line="";
+  xs.forEach((x,i)=>{ area+=`L ${PX(x).toFixed(1)} ${PY(sig[i]).toFixed(1)} `; line+=`${i?'L':'M'} ${PX(x).toFixed(1)} ${PY(sig[i]).toFixed(1)} `; });
+  area+=`L ${PX(XMAX).toFixed(1)} ${(SH-SPAD).toFixed(1)} Z`;
+  g+=`<path d="${area}" fill="${SKY}" fill-opacity="0.14"/>`;
+  g+=`<path d="${line}" fill="none" stroke="${SKY}" stroke-width="2.4"/>`;
+  // data x ticks
+  for(const p of state.points){ const x=PX(p.x);
+    g+=`<line x1="${x.toFixed(1)}" y1="${(SH-SPAD).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(SH-SPAD+6).toFixed(1)}" stroke="#0f172a" stroke-width="1.4"/>`; }
+  g+=`<text x="${SPAD}" y="${SH-6}" font-size="9" fill="#94a3b8">input x  ( | = your data points )</text>`;
+  g+=`<text x="10" y="${SPAD-4}" font-size="10" fill="#94a3b8">σ(x)</text>`;
+  document.getElementById("svgSigma").innerHTML=`<svg viewBox="0 0 ${SW} ${SH}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+
+// ---------------- diagnosis ----------------
+function setDiag(P){
+  const box=document.getElementById("diagBox");
+  const waist=predStd(P, bandWaistX(P)), edge=Math.max(predStd(P,XMIN), predStd(P,XMAX));
+  const floor=1/Math.sqrt(P.beta), sd1=Math.sqrt(Math.max(0,P.S11));
+  const set=(cls,title,body)=>{ box.className="diag "+cls+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${title}</div><div class="text-sm font-medium leading-relaxed">${body}</div>`; };
+  if(P.n===0){
+    set("diag-info","🌫️ Prior only — no data yet, so this is what the model believes <em>before</em> seeing anything",
+      `With zero points the posterior <em>is</em> the prior: the mean line is flat at <code>y = 0</code> and the band is pure prior uncertainty <code>√(1/β + (1/α)(1 + x²))</code>, fanning out symmetrically. Click on the chart to drop a point and watch the posterior react. Prior std on each weight is <strong>${(1/Math.sqrt(P.alpha)).toFixed(2)}</strong> (from α = ${P.alpha.toFixed(2)}).`);
+  } else if(P.n===1){
+    set("diag-info","📍 One point can pin a <em>height</em> but not a <em>slope</em>",
+      `A single observation anchors the line where the point sits, but the slope is still almost entirely up to the prior — so the sampled lines pivot wildly through that one point and the band is a tight waist there (≈ <strong>${waist.toFixed(2)}</strong>) blowing up to <strong>${edge.toFixed(2)}</strong> at the edges. Add a second, well-separated point and the slope uncertainty collapses.`);
+  } else if(edge-waist > 2.2 || sd1 > 0.35){
+    set("diag-warn","⚠️ Uncertain slope — the band flares hard toward the edges",
+      `The data is sparse or bunched together, so the posterior can't pin down the slope (its std is <strong>${sd1.toFixed(2)}</strong>). The band is narrow at its waist (±<strong>${waist.toFixed(2)}</strong>, near your data) but balloons to ±<strong>${edge.toFixed(2)}</strong> where there's nothing to constrain it. This is the honest answer least-squares hides: extrapolation is a guess. Spread points across the x-range, or add more, to tighten it.`);
+  } else if(waist <= floor*1.35 && P.n>=6){
+    set("diag-good","🟢 Well-determined — the band has collapsed toward the irreducible noise floor",
+      `With ${P.n} points the posterior covariance Σₙ is small, so the model-uncertainty term <code>φᵀΣₙφ</code> has nearly vanished and the band sits just above the noise floor <code>1/√β = ${floor.toFixed(2)}</code> — the part no amount of data can remove. Slope is <strong>${P.m1.toFixed(2)} ± ${sd1.toFixed(2)}</strong>. Drag β down to admit more noise and watch the whole band lift.`);
+  } else {
+    set("diag-good","🔮 The posterior is doing its job",
+      `${P.n} points give a mean line of slope <strong>${P.m1.toFixed(2)} ± ${sd1.toFixed(2)}</strong> and intercept <strong>${P.m0.toFixed(2)}</strong>. The band tightens to ±<strong>${waist.toFixed(2)}</strong> where your data lives and widens to ±<strong>${edge.toFixed(2)}</strong> at the edges — exactly the "confident here, unsure out there" behaviour least-squares can't express. Add points where the band is fat to shrink it there.`);
+  }
+}
+
+// ---------------- metrics + draw ----------------
+let lastP=null;
+function updateMetrics(P){
+  const sd0=Math.sqrt(Math.max(0,P.S00)), sd1=Math.sqrt(Math.max(0,P.S11));
+  document.getElementById("mN").textContent=P.n;
+  document.getElementById("mInt").textContent=`${P.m0.toFixed(2)}±${sd0.toFixed(2)}`;
+  document.getElementById("mSlope").textContent=`${P.m1.toFixed(2)}±${sd1.toFixed(2)}`;
+  document.getElementById("mNoise").textContent=(1/Math.sqrt(P.beta)).toFixed(2);
+  document.getElementById("mBandC").textContent=predStd(P,bandWaistX(P)).toFixed(2);
+  document.getElementById("mBandE").textContent=Math.max(predStd(P,XMIN),predStd(P,XMAX)).toFixed(2);
+}
+function draw(){
+  const P=posterior(state.points, state.alpha, state.beta);
+  lastP=P;
+  renderData(P); renderWeights(P); renderSigma(P); setDiag(P); updateMetrics(P);
+  document.getElementById("legTrue").classList.toggle("hidden", !state.trueW);
+  document.getElementById("legOls").classList.toggle("hidden", !(state.showOLS && ols(state.points)));
+}
+
+// ---------------- interaction ----------------
+const wrap=document.getElementById("wrapData"), htip=document.getElementById("htip");
+function localXY(e){ const svg=wrap.querySelector("svg"); const r=svg.getBoundingClientRect();
+  return { sx:(e.clientX-r.left)/r.width*DW, sy:(e.clientY-r.top)/r.height*DH, rx:e.clientX-r.left, ry:e.clientY-r.top }; }
+wrap.addEventListener("click", e=>{
+  const {sx,sy}=localXY(e);
+  let x=dataX(sx), y=dataY(sy);
+  if(x<XMIN||x>XMAX||y<YMIN||y>YMAX) return;
+  state.points.push({ x:+x.toFixed(3), y:+y.toFixed(3) });
+  draw();
+});
+wrap.addEventListener("mousemove", e=>{
+  if(!lastP) return; const {sx,rx,ry}=localXY(e); const x=dataX(sx);
+  if(x<XMIN||x>XMAX){ htip.style.display="none"; return; }
+  const mu=predMean(lastP,x), s=predStd(lastP,x);
+  htip.style.display="block"; htip.style.left=rx+"px"; htip.style.top=ry+"px";
+  htip.textContent=`x=${x.toFixed(2)} · ŷ=${mu.toFixed(2)} ± ${s.toFixed(2)}`;
+});
+wrap.addEventListener("mouseleave", ()=>{ htip.style.display="none"; });
+
+// ---------------- controls ----------------
+function syncControls(){
+  document.getElementById("cAlpha").value=state.alpha;
+  document.getElementById("cBeta").value=state.beta;
+  document.getElementById("vAlpha").textContent=state.alpha.toFixed(2);
+  document.getElementById("vBeta").textContent=state.beta.toFixed(1);
+  document.getElementById("tSamples").classList.toggle("on", state.showSamples);
+  document.getElementById("t2sig").classList.toggle("on", state.show2sig);
+  document.getElementById("tOLS").classList.toggle("on", state.showOLS);
+}
+document.getElementById("cAlpha").addEventListener("input", e=>{ state.alpha=+e.target.value; syncControls(); draw(); });
+document.getElementById("cBeta").addEventListener("input",  e=>{ state.beta=+e.target.value;  syncControls(); draw(); });
+document.getElementById("regen").onclick=()=>{ state.seed=(state.seed*1664525+1013904223)>>>0; const d=genData(state.seed,7); state.points=d.pts; state.trueW=d.trueW; draw(); };
+document.getElementById("resample").onclick=()=>{ state.seed=(state.seed*1664525+1013904223)>>>0; draw(); };
+document.getElementById("clear").onclick=()=>{ state.points=[]; state.trueW=null; draw(); };
+document.getElementById("tSamples").onclick=()=>{ state.showSamples=!state.showSamples; syncControls(); draw(); };
+document.getElementById("t2sig").onclick=()=>{ state.show2sig=!state.show2sig; syncControls(); draw(); };
+document.getElementById("tOLS").onclick=()=>{ state.showOLS=!state.showOLS; syncControls(); draw(); };
+const PRESETS={
+  prior:  ()=>{ state.alpha=2; state.beta=6; state.points=[]; state.trueW=null; },
+  sparse: ()=>{ state.alpha=1.2; state.beta=8; state.trueW=[-0.6,0.55];
+                state.points=[{x:-4.2,y:-2.9},{x:-3.4,y:-2.5},{x:-2.8,y:-2.0}]; },
+  few:    ()=>{ state.seed=(state.seed*1664525+1013904223)>>>0; state.alpha=2; state.beta=8; const d=genData(state.seed,5); state.points=d.pts; state.trueW=d.trueW; },
+  dense:  ()=>{ state.seed=(state.seed*1664525+1013904223)>>>0; state.alpha=2; state.beta=14; const d=genData(state.seed,16); state.points=d.pts; state.trueW=d.trueW; },
+};
+document.querySelectorAll("[data-preset]").forEach(b=> b.onclick=()=>{ PRESETS[b.dataset.preset](); syncControls(); draw(); });
+
+// initial data
+(()=>{ const d=genData(state.seed,6); state.points=d.pts; state.trueW=d.trueW; })();
+syncControls(); draw();
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. The problem with a single best-fit line", why:"Ordinary least squares hands you one line and total silence about how sure it is. Fit a line to three points and it looks just as confident as a fit to three hundred. But those are wildly different situations: with three points, huge families of lines are almost equally plausible; with three hundred, the line is essentially pinned down. And even a perfectly-fit line says nothing about how much you should trust its prediction when you extrapolate far from where you actually collected data. Bayesian linear regression fixes exactly this. Instead of committing to one weight vector, it maintains a probability distribution over all weight vectors, and turns that into a predictive distribution: not just 'the value is 4.2' but 'the value is 4.2, give or take 0.3 here, give or take 1.8 way out there'. The demo makes the difference literal — turn on the least-squares line and you get one naked line; the Bayesian fit around it carries a shaded band and a whole fan of plausible lines.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">least squares:&nbsp;&nbsp;ŵ  → one line, no error bars<br>Bayesian:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;p(w | data) → a distribution of lines<br><br>prediction becomes a distribution, not a number:<br>ŷ(x*) = mean ± σ(x*)</div>`, code:`# least squares: a point estimate, silent about uncertainty
+w_hat = np.linalg.lstsq(Phi, y, rcond=None)[0]   # one line, that's it
+
+# Bayesian: keep the WHOLE posterior p(w | data) -> error bars everywhere` },
+ { title:"2. The model and the likelihood", why:"We keep the model itself simple and linear: the output is a weighted sum of features, y = w0 + w1*x for a straight line (or more generally w dot phi(x) for any basis). What makes it a probability model is the noise assumption: each observed target is the true line plus independent Gaussian noise with precision beta, so p(y | w) = N(y | Phi w, beta^-1 I). Precision is just one-over-variance, so a large beta means low-noise, high-trust data and a small beta means noisy data you shouldn't chase. This single number becomes the beta slider, and it sets the floor of the uncertainty band: even with infinite data you can never predict a noisy target more precisely than 1/sqrt(beta), because the noise is part of the world, not the model. Keep an eye on that when you slide beta in the demo — the whole band lifts or drops with it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">y = w·φ(x) + ε,&nbsp;&nbsp; ε ~ N(0, 1/β)<br><br>likelihood: p(y | w) = N(y | Φw, β⁻¹ I)<br><br>β = noise precision = 1 / noise-variance<br>irreducible error floor = 1/√β</div>`, code:`beta = 6.0                     # noise precision (1 / variance)
+# each target is the line plus Gaussian noise:
+#   p(y | w) = N(y | Phi @ w, (1/beta) * I)
+noise_std = 1/np.sqrt(beta)    # the band can never go below this` },
+ { title:"3. The prior — what we believe before any data", why:"The Bayesian ingredient least squares lacks is a prior: a distribution over the weights before we look at the data. The standard choice is a zero-mean Gaussian, w ~ N(0, alpha^-1 I), where alpha is the prior precision. A large alpha is a strong, skeptical prior that keeps the weights near zero — lines start out flat and only bend when the data genuinely demands it. A small alpha is a vague prior that barely constrains anything. This prior is not a nuisance; it is what makes the method well-behaved when data is scarce, and it is exactly what regularisation quietly does in disguise. In the demo, alpha is a slider and the dashed grey ring in weight space is this prior. Crank alpha up and watch the whole posterior get pulled toward the origin; drop it and the posterior is free to wander wherever the data points.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">prior:&nbsp;&nbsp;p(w) = N(w | 0, α⁻¹ I)<br><br>large α → strong prior → weights near 0 (flat lines)<br>small α → vague prior → data decides everything<br><br>this is where 'regularisation' secretly comes from</div>`, code:`alpha = 2.0                    # prior precision
+# prior over the weights, centered at zero:
+#   p(w) = N(w | 0, (1/alpha) * I)
+prior_std = 1/np.sqrt(alpha)   # how far weights are allowed to roam a priori` },
+ { title:"4. Bayes' rule and the gift of conjugacy", why:"Bayes' rule says the posterior is proportional to the likelihood times the prior: p(w | y) is proportional to p(y | w) p(w). In general that product is an ugly integral you must approximate with sampling. But here both pieces are Gaussian in w, and the product of two Gaussians is another Gaussian — the prior and likelihood are said to be conjugate. That is a small miracle: it means the posterior over the weights is itself an exact Gaussian, with a mean and covariance we can write down in closed form, no MCMC, no variational tricks. Everything the demo draws on every slider move is one matrix inverse and two matrix products. This conjugacy is the reason Bayesian linear regression is the one Bayesian model you can genuinely solve on paper, and why it is the perfect place to build intuition before facing models where you do have to approximate.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">posterior ∝ likelihood × prior<br>p(w | y) ∝ N(y | Φw, β⁻¹I) · N(w | 0, α⁻¹I)<br><br>Gaussian × Gaussian = Gaussian&nbsp;&nbsp;(conjugacy)<br>⇒ posterior is EXACT, closed form, no sampling</div>`, code:`# Bayes' rule:  posterior  ∝  likelihood  ×  prior
+#   p(w | y)   ∝  N(y | Phi w, 1/beta)  ×  N(w | 0, 1/alpha)
+# both Gaussian in w  ->  the product is Gaussian too  ->  solvable exactly` },
+ { title:"5. The posterior in closed form", why:"Completing the square on that Gaussian product gives the two formulas that are the heart of the method — and the literal engine of this page. The posterior precision (inverse covariance) is A_N = alpha*I + beta*Phi^T Phi: it starts as the prior precision alpha*I and gains beta times Phi^T Phi for every data point, so more data (or more trusted data, larger beta) means a higher-precision, tighter posterior. Invert it to get the covariance S_N = A_N^-1, and the posterior mean is m_N = beta*S_N*Phi^T y. Read the mean as a precision-weighted compromise between the prior's pull toward zero and the data's pull toward the least-squares fit. When alpha is tiny the mean coincides with ordinary least squares; when alpha is large it is shrunk toward zero, which is precisely ridge regression. This is the closed form running behind the LOOK tab.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">posterior precision&nbsp;&nbsp;Aₙ = αI + β ΦᵀΦ<br>posterior covariance Σₙ = Aₙ⁻¹<br>posterior mean&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;mₙ = β Σₙ Φᵀy<br><br>each point adds β·φφᵀ to the precision → tighter</div>`, code:`A = alpha*np.eye(2) + beta * Phi.T @ Phi   # posterior precision  (2x2 here)
+S = np.linalg.inv(A)                       # posterior covariance
+m = beta * S @ Phi.T @ y                   # posterior mean weights
+# alpha -> 0 recovers least squares; large alpha == ridge regression` },
+ { title:"6. Watch it in weight space — the posterior shrinks and slides", why:"Every straight line corresponds to a single point (w0, w1) in weight space, so a distribution over lines is a cloud of probability there. Before any data the cloud is the prior: a circle centred at the origin whose radius is 1/sqrt(alpha). Each observation multiplies in a likelihood that is a soft ridge in weight space (all the lines that pass near that point), and the posterior contracts onto the overlap. Add points and you can literally watch the ellipse do two things at once: shrink, because you are more certain, and slide, because you are homing in on the weights that actually generated the data (the green cross in the demo). With only one or two points the ellipse is long and thin — one weight is well determined but the other is not — which is exactly why the sampled lines pivot around the data. This is the same information the band encodes, shown in the space of models instead of the space of data.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">a line ⟷ a point (w₀, w₁) in weight space<br><br>prior circle (radius 1/√α)&nbsp;&nbsp;→&nbsp;&nbsp;posterior ellipse<br>more data ⇒ ellipse SHRINKS and SLIDES onto true w<br><br>long thin ellipse = one weight unsure ⇒ lines pivot</div>`, code:`# eigen-decompose the covariance to draw the posterior ellipse
+vals, vecs = np.linalg.eigh(S)          # axis lengths ∝ sqrt(vals)
+# each sampled weight vector is one dot in this plane = one line on the left
+W = np.random.multivariate_normal(m, S, size=20)` },
+ { title:"7. The predictive distribution — where the band comes from", why:"You rarely want the weights themselves; you want a prediction at a new input x*. Because prediction is a linear function of Gaussian weights plus Gaussian noise, the predictive distribution is Gaussian too, and you get it by integrating the weights out analytically. Its mean is simply the mean line, m_N dot phi(x*). Its variance is the star of the show: sigma^2(x*) = 1/beta + phi(x*)^T S_N phi(x*). The first term, 1/beta, is the irreducible observation noise — the floor. The second term, phi^T S_N phi, is the model's own uncertainty about the weights, projected onto this particular input. For a straight line that second term is a quadratic in x*, so the band is a parabola-like waist: narrow near the data, widening as you move away. Take the square root and you have the shaded band in the demo, and the U-shaped curve in the sigma-vs-x panel.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">predict at x*:&nbsp;&nbsp;ŷ ~ N( mean , σ²(x*) )<br><br>mean&nbsp;&nbsp;= mₙᵀ φ(x*)<br>σ²(x*) = 1/β&nbsp;+&nbsp;φ(x*)ᵀ Σₙ φ(x*)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└ noise floor ┘ └ model uncertainty ┘</div>`, code:`def predict(xs):
+    P    = np.c_[np.ones_like(xs), xs]
+    mean = P @ m
+    var  = 1/beta + np.einsum('ij,jk,ik->i', P, S, P)  # 1/beta + phiᵀ S phi
+    return mean, np.sqrt(var)          # sqrt(var) = half-width of the band` },
+ { title:"8. Why uncertainty grows where there is no data", why:"The whole reason the band is not a constant-width ribbon is the term phi(x*)^T S_N phi(x*). Near the centre of mass of your training inputs, small changes in the weights barely move the prediction, so this term is small and the band is tight. Far from the data — especially when you extrapolate past the last point — a tiny wobble in the slope swings the prediction enormously, so the term blows up and the band flares. That is the model honestly admitting 'I have never seen anything out here, so plausible lines disagree wildly'. Add points in a region and S_N shrinks in the directions those points constrain, pulling the band down there; the sigma-vs-x panel shows this as the U dropping and its minimum sliding toward your new data. This single feature is why Bayesian models are the backbone of active learning and Bayesian optimisation: the band tells you exactly where a new measurement would buy you the most.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">band half-width σ(x) is a parabola in x<br><br>near the data:&nbsp;&nbsp;φᵀΣₙφ ≈ 0 → band ≈ noise floor<br>far / extrapolating: φᵀΣₙφ ≫ 0 → band explodes<br><br>'I've never seen data here' = wide band</div>`, code:`# the model-uncertainty term is a quadratic in x for a straight line:
+#   phi^T S phi = S00 + 2*S01*x + S11*x**2   (a parabola, min near the data)
+# adding points shrinks S -> the whole band drops toward 1/sqrt(beta)` },
+ { title:"9. The bigger map — least squares, ridge, and beyond", why:"Bayesian linear regression quietly contains the classics as special cases. Take the posterior mean and let the prior precision alpha go to zero (a flat, uninformative prior) and it becomes ordinary least squares. Keep alpha finite and the posterior mean is exactly ridge regression, with the ridge penalty lambda equal to alpha/beta — so ridge is nothing more than the MAP estimate of this Bayesian model, throwing away the covariance. What full Bayes adds on top is that covariance: the error bars, the sampled lines, the honest extrapolation. You can even let the data choose alpha and beta for you by maximising the marginal likelihood (the 'evidence'), which is what scikit-learn's BayesianRidge does automatically. And if you want this same calibrated uncertainty for curves of any shape rather than straight lines, you swap the finite basis phi for a kernel and arrive at Gaussian Processes — a prior over functions rather than over a handful of weights. That is exactly where Day 37 goes.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">α → 0&nbsp;&nbsp;⇒&nbsp;&nbsp;posterior mean = least squares<br>α finite ⇒ posterior mean = ridge (λ = α/β) = MAP<br>full Bayes ⇒ + covariance = error bars &amp; samples<br><br>learn α, β from data → evidence / BayesianRidge<br>basis → kernel ⇒ Gaussian Processes (Day 37)</div>`, code:`from sklearn.linear_model import BayesianRidge
+model = BayesianRidge().fit(X, y)      # learns alpha & beta via the evidence
+mean, std = model.predict(X_test, return_std=True)   # calibrated error bars
+
+# ridge = MAP of this model (lambda = alpha/beta); OLS = flat-prior limit
+# next: swap the basis for a kernel  ->  Gaussian Processes` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
