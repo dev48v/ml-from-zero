@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 37 — Gaussian Processes</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:180px 1fr 52px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:14px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .preset-btn { border:1px solid #e2e8f0; }
+  .preset-btn:hover { border-color:#38bdf8; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-band { display:inline-block; width:16px; height:11px; border-radius:3px; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:20px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .kbtn { border:1px solid #e2e8f0; background:#fff; }
+  .kbtn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  #wrapData { position:relative; cursor:crosshair; }
+  .htip { position:absolute; pointer-events:none; background:#0f172a; color:#e2e8f0; font-size:11px; font-weight:700;
+          padding:3px 7px; border-radius:6px; transform:translate(-50%,-140%); white-space:nowrap; display:none; z-index:20; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 37</div>
+      <h1 class="text-xl font-bold">🌊 Gaussian Processes — Don't Fit Weights, Put a Prior Over <em>Functions Themselves</em></h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>Click anywhere on the chart to drop observations.</strong> Day 36 kept a distribution over the <em>weights</em> of a straight line. A Gaussian Process throws the line away and keeps a distribution over <strong>whole functions</strong> — no fixed shape at all. You never pick basis functions; you pick a <strong>kernel</strong> (a notion of "which inputs should give similar outputs") and the maths hands you a <strong>posterior mean curve</strong>, a shaded <strong>±2σ band</strong> that <em>pinches tight where you have data</em> and <em>fattens back to the prior between and beyond points</em>, and actual <strong>sampled functions</strong>. Every curve is conditioned in your browser with a real Cholesky solve.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">The kernel here is the squared-exponential (RBF): <code>k(x,x') = σ_f²·exp(−(x−x')² / 2ℓ²)</code> — two inputs are correlated, and that correlation decays with distance over a length-scale <strong>ℓ</strong>. Stack it into a matrix and the observations become one big joint Gaussian; conditioning the unseen points on the seen ones is pure linear algebra. Posterior mean <code>μ* = K*(K + σ_n²I)⁻¹y</code>; posterior covariance <code>Σ* = K** − K*(K + σ_n²I)⁻¹K*ᵀ</code>. The diagonal of Σ* is the band; a Cholesky of Σ* draws the wiggly sampled functions. Move the sliders, drop points, and watch the band breathe.</p>
+
+      <div class="grid grid-cols-3 md:grid-cols-6 gap-2 max-w-4xl mx-auto mb-4">
+        <div class="metric-pill"><div class="v" id="mN" style="color:#0f172a">—</div><div class="k">observations N</div></div>
+        <div class="metric-pill"><div class="v" id="mLen" style="color:#0ea5e9">—</div><div class="k">length-scale ℓ</div></div>
+        <div class="metric-pill"><div class="v" id="mSig" style="color:#0ea5e9">—</div><div class="k">signal σ_f = √σ_f²</div></div>
+        <div class="metric-pill"><div class="v" id="mNoise" style="color:#a855f7">—</div><div class="k">noise σ_n = √σ_n²</div></div>
+        <div class="metric-pill"><div class="v" id="mBandC">—</div><div class="k">band waist ±2σ</div></div>
+        <div class="metric-pill"><div class="v" id="mBandE">—</div><div class="k">band gap ±2σ</div></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start">
+        <!-- controls -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+          <div class="text-xs font-bold text-slate-500 mb-3">CONTROLS — shape the kernel, then click to add observations</div>
+          <div class="ctl-row">
+            <div class="ctl-name">📏 length-scale ℓ</div>
+            <input type="range" id="cLen" min="0.2" max="4" step="0.05" value="1.1">
+            <div class="ctl-val" id="vLen">1.10</div>
+          </div>
+          <div class="text-[11px] text-slate-400 -mt-1 mb-1">small ℓ ⇒ wiggly, only trusts <em>very</em> near points; large ℓ ⇒ smooth, correlations reach far</div>
+          <div class="ctl-row">
+            <div class="ctl-name">🌊 signal variance σ_f²</div>
+            <input type="range" id="cSig" min="0.1" max="4" step="0.05" value="1.2">
+            <div class="ctl-val" id="vSig">1.20</div>
+          </div>
+          <div class="text-[11px] text-slate-400 -mt-1 mb-1">how far the function is allowed to swing — also the <em>height</em> the band reverts to away from data</div>
+          <div class="ctl-row">
+            <div class="ctl-name">📡 noise σ_n²</div>
+            <input type="range" id="cNoise" min="0.002" max="0.5" step="0.002" value="0.02">
+            <div class="ctl-val" id="vNoise">0.02</div>
+          </div>
+          <div class="text-[11px] text-slate-400 -mt-1 mb-1">bigger σ_n² ⇒ the curve needn't pass exactly through points ⇒ waist stops pinching to zero</div>
+          <div class="mt-2 flex items-center gap-2 flex-wrap">
+            <button id="regen" class="bg-slate-800 text-white px-3 py-1 rounded-lg font-semibold text-xs hover:bg-slate-700">🎲 sample data</button>
+            <button id="resample" class="bg-sky-600 text-white px-3 py-1 rounded-lg font-semibold text-xs hover:bg-sky-500">🔁 redraw sample curves</button>
+            <button id="clear" class="ml-auto bg-rose-100 text-rose-700 px-3 py-1 rounded-lg font-semibold text-xs hover:bg-rose-200">🗑 clear</button>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2 items-center">
+            <span class="text-[11px] font-bold text-slate-400 uppercase w-full">show</span>
+            <button id="tSamples" class="kbtn on px-2.5 py-1 rounded-lg font-semibold text-xs">〰 sample functions</button>
+            <button id="t2sig"    class="kbtn on px-2.5 py-1 rounded-lg font-semibold text-xs">▨ ±2σ band</button>
+            <button id="tMean"    class="kbtn on px-2.5 py-1 rounded-lg font-semibold text-xs">— mean curve</button>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2 items-center">
+            <span class="text-[11px] font-bold text-slate-400 uppercase w-full">presets</span>
+            <button data-preset="prior"  class="preset-btn bg-sky-50 hover:bg-sky-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🌫️ Prior only</button>
+            <button data-preset="wiggly" class="preset-btn bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-lg font-semibold text-xs">〰️ Short ℓ (wiggly)</button>
+            <button data-preset="smooth" class="preset-btn bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1 rounded-lg font-semibold text-xs">🟢 Long ℓ (smooth)</button>
+            <button data-preset="dense"  class="preset-btn bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-lg font-semibold text-xs">💠 Dense</button>
+          </div>
+          <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+            The <span style="color:#0ea5e9;font-weight:800">— solid sky</span> curve is the posterior <strong>mean</strong>. The <span style="color:#0ea5e9;font-weight:800">pale sky</span> fill is the <strong>±σ / ±2σ predictive band</strong>. The <span style="color:#64748b;font-weight:800">thin grey</span> curves are actual <strong>functions sampled from the posterior</strong> — where they fan apart <em>is</em> the uncertainty. With <strong>no points</strong> they are pure prior draws; the band is flat at <code>±2σ_f</code>. Add a point and every sample is forced through it.
+          </div>
+        </div>
+
+        <!-- data-space plot -->
+        <div class="panel hero text-left" style="width:500px; max-width:100%;">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-sm font-bold text-sky-700">📈 Function space · click to add observations</span>
+            <span class="text-xs font-bold text-slate-400">band pinches at data, reverts to prior between</span>
+          </div>
+          <div id="wrapData"><div id="svgData"></div><div class="htip" id="htip"></div></div>
+          <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+            <span><span class="swatch" style="background:#0f172a"></span> your observations</span>
+            <span><span class="swatch-line" style="border-color:#0ea5e9;border-top-style:solid"></span> posterior mean</span>
+            <span><span class="swatch-band" style="background:rgba(14,165,233,.28)"></span> ±σ / ±2σ band</span>
+            <span><span class="swatch-line" style="border-color:#94a3b8;border-top-style:solid"></span> sampled functions</span>
+            <span id="legTrue" class="hidden"><span class="swatch-line" style="border-color:#16a34a;border-top-style:dashed"></span> true function</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- second row: kernel profile + predictive-sigma slice -->
+      <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:500px; max-width:100%;">
+          <div class="text-xs font-bold mb-1" style="color:#0ea5e9">▮ THE KERNEL — correlation as a function of distance</div>
+          <div id="svgKernel"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-1">This is the entire model: <code>k(τ) = σ_f²·exp(−τ² / 2ℓ²)</code>, the covariance between two outputs whose inputs are a distance <code>τ</code> apart. At <code>τ = 0</code> it equals the signal variance <strong>σ_f²</strong> (a point is perfectly correlated with itself); it decays to near-zero past a few <strong>length-scales ℓ</strong> (dashed line), beyond which the GP treats inputs as effectively independent. Slide <strong>ℓ</strong> to stretch or squeeze this bell — that single choice is what makes the fit on the left smooth or wiggly.</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:500px; max-width:100%;">
+          <div class="text-xs font-bold mb-1" style="color:#a855f7">▮ PREDICTIVE ±σ AS A FUNCTION OF x</div>
+          <div id="svgSigma"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-1">The half-width of the band, <code>σ(x*) = √(k(x*,x*) − k*ᵀ(K+σ_n²I)⁻¹k*)</code>, plotted across the input range. Unlike Bayesian linear regression — where uncertainty grows without bound — a GP's band <strong>dips to a noise-limited minimum at every observation</strong> and <strong>rises back to a flat ceiling</strong> <code>σ_f</code> (dashed purple) between and beyond points: it never claims to know more than the prior where it has no data. Ticks along the bottom mark where your observations sit.</div>
+        </div>
+      </div>
+
+      <div id="diagBox" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From a distribution over weights to a distribution over functions</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">scikit-learn ships this as <code>GaussianProcessRegressor</code> — hand it a kernel and it even learns the length-scale, signal variance and noise from your data by maximising the marginal likelihood. Below is the whole thing: the kernel, the three kernel matrices, the Cholesky conditioning that produced every mean curve and band you just dragged around, sampling real functions from the posterior, and finally the one-liner.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The kernel — similarity as a function of distance</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A GP is defined entirely by its kernel: the covariance between the outputs at two inputs. The squared-exponential (RBF) kernel says nearby inputs are strongly correlated and that correlation decays smoothly with distance. Two knobs: <code>σ_f²</code> the signal variance (how far the function swings) and <code>ℓ</code> the length-scale (how quickly inputs stop mattering to each other).</p>
+        <div class="relative"><pre>import numpy as np
+
+# squared-exponential / RBF kernel: nearby inputs -> correlated outputs
+def rbf(a, b, sf2=1.0, ell=1.0):
+    d = a[:, None] - b[None, :]          # all pairwise input differences
+    return sf2 * np.exp(-d**2 / (2 * ell**2))
+
+# sf2 = signal variance  (vertical swing, and the band's height far from data)
+# ell = length-scale     (how fast correlation decays with distance)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The three kernel matrices</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Conditioning needs three blocks of one big joint covariance: <code>K</code> between the observed inputs (plus observation noise on its diagonal), <code>K*</code> between the test inputs and the observed ones, and <code>K**</code> between the test inputs themselves. That's it — no design matrix, no weights.</p>
+        <div class="relative"><pre>X = np.array([-4., -2., 0.5, 3.])      # where you observed
+y = np.array([-1.2, 0.8, 0.3, -1.5])   # what you observed
+noise = 0.02                           # observation-noise VARIANCE (sigma_n^2)
+
+Xs  = np.linspace(-5, 5, 200)          # test inputs (where we predict)
+K   = rbf(X, X)  + noise*np.eye(len(X))   # train-train  (N x N)
+Ks  = rbf(Xs, X)                          # test-train   (M x N)
+Kss = rbf(Xs, Xs)                         # test-test    (M x M)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Condition — the posterior mean via a Cholesky solve</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The posterior mean is <code>μ* = K*(K + σ_n²I)⁻¹y</code>. Never form that inverse directly — factor <code>K = L Lᵀ</code> once with a Cholesky (numerically stable, half the cost) and solve two triangular systems. The vector <code>alpha</code> is reused for every test point. This is the exact solve the demo runs on each click and slider move.</p>
+        <div class="relative"><pre>L     = np.linalg.cholesky(K)                    # K = L Lᵀ   (lower-triangular)
+alpha = np.linalg.solve(L.T, np.linalg.solve(L, y))   # solve (K) alpha = y
+mean  = Ks @ alpha                               # posterior mean = K* (K)^-1 y</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The posterior covariance — the ±2σ band</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The posterior covariance is <code>Σ* = K** − K*(K + σ_n²I)⁻¹K*ᵀ</code>: start from the prior covariance and <em>subtract</em> whatever the data explains. Its diagonal is the per-point variance; the square root, times two, is the shaded band. At an observation the subtracted term nearly cancels the prior, so the band pinches; far away <code>K*→0</code>, nothing is subtracted, and it relaxes back to the prior height <code>σ_f</code>.</p>
+        <div class="relative"><pre>v    = np.linalg.solve(L, Ks.T)              # solve L v = K*ᵀ   (reuse L)
+cov  = Kss - v.T @ v                         # K** - K* (K)^-1 K*ᵀ
+std  = np.sqrt(np.clip(np.diag(cov), 0, None))
+band_lo, band_hi = mean - 2*std, mean + 2*std   # tight at data, wide between</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Sample whole functions from the posterior</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The band summarises the spread; drawing actual functions makes it visceral. A sample is a draw from the joint Gaussian <code>N(mean, Σ*)</code> over the whole test grid — Cholesky-factor <code>Σ*</code> (with a whisper of jitter for stability) and push standard-normal noise through it. These are the grey curves in the demo; watch every one thread exactly through your observations.</p>
+        <div class="relative"><pre>Ls = np.linalg.cholesky(cov + 1e-6*np.eye(len(Xs)))   # jitter keeps it PD
+for _ in range(10):
+    f = mean + Ls @ np.random.randn(len(Xs))   # one plausible function
+    plt.plot(Xs, f, color="grey", alpha=0.3)
+plt.fill_between(Xs, band_lo, band_hi, alpha=0.2)      # the uncertainty band
+plt.plot(Xs, mean, color="dodgerblue", lw=2)           # posterior mean curve
+plt.scatter(X, y, c="k", zorder=3)                     # the observations</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">The one-liner: scikit-learn learns the kernel for you</h3></div>
+        <p class="text-sm text-slate-600 mb-3"><code>GaussianProcessRegressor</code> does all of the above <em>and</em> tunes the length-scale, signal variance and noise by maximising the log marginal likelihood — no hand-tuning of sliders. Ask for <code>return_std=True</code> and you get calibrated error bars for free. Reach for a GP when data is small-to-medium, smoothness is a fair assumption, and an honest uncertainty band matters (forecasting, active learning, Bayesian optimisation).</p>
+        <div class="relative"><pre>from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, WhiteKernel, ConstantKernel as C
+
+kernel = C(1.0) * RBF(length_scale=1.0) + WhiteKernel(noise_level=0.02)
+gp = GaussianProcessRegressor(kernel=kernel, normalize_y=True)
+gp.fit(X[:, None], y)          # LEARNS sf2, ell, noise by max marginal likelihood
+mean, std = gp.predict(Xs[:, None], return_std=True)   # predictions WITH error bars
+
+# GP = Bayesian linear regression with an INFINITE basis (the kernel trick):
+#   finite basis phi -> pick a kernel and never write the basis down at all.
+# cost is O(N^3) from the Cholesky -> sparse / inducing-point GPs for big N.
+# use the band to pick where to sample next -> Bayesian Optimization.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 37 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You stopped fitting weights and put a prior over <strong>functions</strong>. A <strong>kernel</strong> <code>k(x,x') = σ_f²·exp(−(x−x')²/2ℓ²)</code> defined similarity; stacking it made the data one joint Gaussian. Conditioning gave a closed form — mean <code>μ* = K*(K+σ_n²I)⁻¹y</code>, covariance <code>Σ* = K** − K*(K+σ_n²I)⁻¹K*ᵀ</code> — solved stably with a <strong>Cholesky</strong>. The band <strong>pinched to a noise-limited waist at every observation</strong> and <strong>relaxed to the prior ceiling σ_f</strong> in the gaps, never over-claiming where there was no data — the calibrated, any-shape cousin of Day 36's straight-line uncertainty. You sampled real wiggly functions that all thread your points, and saw the length-scale turn the fit smooth or jittery. <strong>👉 Tomorrow — Day 38: Bayesian Optimization</strong> — turn this uncertainty band into a decision: use it to pick the single most informative place to sample next, and optimise expensive black-box functions in a handful of evaluations.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= GAUSSIAN PROCESS ENGINE (pure JS, real Cholesky solve) =================
+// <<<ENGINE_START>>>
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+function gauss(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+// squared-exponential (RBF) kernel: covariance between outputs at inputs a and b.
+// k(a,b) = sf2 * exp( -(a-b)^2 / (2 * ell^2) )   -> sf2 at a==b, decays over ell.
+function kernel(a, b, sf2, ell){ const d=a-b; return sf2*Math.exp(-d*d/(2*ell*ell)); }
+
+// Cholesky factor of a symmetric positive-definite matrix A (n x n): returns lower L, L Lᵀ = A.
+// A tiny floor on the pivot keeps it from blowing up if A is only borderline PD.
+function cholesky(A, n){
+  const L = Array.from({length:n}, ()=>new Float64Array(n));
+  for(let i=0;i<n;i++){
+    for(let j=0;j<=i;j++){
+      let s = A[i][j];
+      for(let k=0;k<j;k++) s -= L[i][k]*L[j][k];
+      if(i===j) L[i][j] = Math.sqrt(Math.max(s, 1e-12));
+      else      L[i][j] = s / L[j][j];
+    }
+  }
+  return L;
+}
+// solve L y = b for y  (forward substitution, L lower-triangular)
+function forwardSolve(L, b, n){
+  const y = new Float64Array(n);
+  for(let i=0;i<n;i++){ let s=b[i]; for(let k=0;k<i;k++) s-=L[i][k]*y[k]; y[i]=s/L[i][i]; }
+  return y;
+}
+// solve Lᵀ x = y for x  (back substitution)
+function backSolveT(L, y, n){
+  const x = new Float64Array(n);
+  for(let i=n-1;i>=0;i--){ let s=y[i]; for(let k=i+1;k<n;k++) s-=L[k][i]*x[k]; x[i]=s/L[i][i]; }
+  return x;
+}
+
+// FIT: factor (K + noise*I) once and precompute alpha = (K+noise*I)^-1 y.
+// Everything the demo draws reuses this single factorisation.
+function gpFit(points, sf2, ell, noise){
+  const n = points.length;
+  if(n===0) return { n:0, points:[], sf2, ell, noise, L:null, alpha:null };
+  const K = Array.from({length:n}, ()=>new Float64Array(n));
+  for(let i=0;i<n;i++) for(let j=0;j<n;j++)
+    K[i][j] = kernel(points[i].x, points[j].x, sf2, ell) + (i===j ? noise : 0);
+  const L = cholesky(K, n);
+  const y = Float64Array.from(points.map(p=>p.y));
+  const alpha = backSolveT(L, forwardSolve(L, y, n), n);   // (K+noise*I)^-1 y
+  return { n, points:points.slice(), sf2, ell, noise, L, alpha };
+}
+
+// Posterior mean & std over a grid, plus the per-point solve vectors V (=L^-1 k*)
+// needed to assemble the full posterior covariance for sampling.
+//   mean(x*) = k*ᵀ alpha ;  var(x*) = k(x*,x*) - (L^-1 k*)ᵀ(L^-1 k*)
+function gpOnGrid(fit, grid){
+  const m = grid.length, mean = new Float64Array(m), std = new Float64Array(m), V = new Array(m);
+  const sfStd = Math.sqrt(fit.sf2);
+  for(let j=0;j<m;j++){
+    if(fit.n===0){ mean[j]=0; std[j]=sfStd; V[j]=null; continue; }   // no data -> the prior
+    const ks = new Float64Array(fit.n);
+    for(let i=0;i<fit.n;i++) ks[i] = kernel(grid[j], fit.points[i].x, fit.sf2, fit.ell);
+    let mu=0; for(let i=0;i<fit.n;i++) mu += ks[i]*fit.alpha[i];
+    const v = forwardSolve(fit.L, ks, fit.n);
+    let vv=0; for(let i=0;i<fit.n;i++) vv += v[i]*v[i];
+    mean[j]=mu; std[j]=Math.sqrt(Math.max(0, fit.sf2 - vv)); V[j]=v;
+  }
+  return { mean, std, V };
+}
+
+// Draw whole functions from the posterior: build the full covariance
+//   Sigma = K_grid,grid - VᵀV   (V column j = L^-1 k*(grid_j)), Cholesky it, push noise through.
+function gpSampleCurves(fit, grid, gd, nSamples, rng){
+  const m = grid.length;
+  const Sigma = Array.from({length:m}, ()=>new Float64Array(m));
+  for(let i=0;i<m;i++) for(let j=0;j<=i;j++){
+    let s = kernel(grid[i], grid[j], fit.sf2, fit.ell);
+    if(fit.n>0){ const vi=gd.V[i], vj=gd.V[j]; let d=0; for(let k=0;k<fit.n;k++) d+=vi[k]*vj[k]; s-=d; }
+    if(i===j) s += 1e-6;                     // jitter -> keeps Sigma positive-definite
+    Sigma[i][j]=s; Sigma[j][i]=s;
+  }
+  const Ls = cholesky(Sigma, m);
+  const curves = [];
+  for(let s=0;s<nSamples;s++){
+    const z = new Float64Array(m); for(let i=0;i<m;i++) z[i]=gauss(rng);
+    const f = new Float64Array(m);
+    for(let i=0;i<m;i++){ let acc=gd.mean[i]; for(let k=0;k<=i;k++) acc+=Ls[i][k]*z[k]; f[i]=acc; }
+    curves.push(f);
+  }
+  return curves;
+}
+// <<<ENGINE_END>>>
+
+// ---------------- domain + geometry ----------------
+const XMIN=-5, XMAX=5, YMIN=-4, YMAX=4;
+const DW=474, DH=360, DPAD=32;                    // function-space svg
+const KW=474, KH=210, KPAD=36;                    // kernel-profile svg
+const SW=474, SH=210, SPAD=36;                    // sigma-slice svg
+const SKY="#0ea5e9", MEAN_COL="#0ea5e9", SAMP_COL="#94a3b8", TRUE_COL="#16a34a", NOISE_COL="#a855f7";
+const NSAMPLES=10, NG=96;
+const GRIDX=[]; for(let i=0;i<=NG;i++) GRIDX.push(XMIN + i*(XMAX-XMIN)/NG);
+
+const state={ ell:1.1, sf2:1.2, noise:0.02, points:[], trueFn:null, seed:20260718,
+              showSamples:true, show2sig:true, showMean:true };
+
+function genData(seed, count){
+  const rng=mulberry32(seed);
+  // a smooth latent function: gentle sine + slope, kept inside the view box
+  const amp = 0.9 + 1.1*rng(), freq = 0.5 + 0.9*rng(), phase = 2*Math.PI*rng(), slope = -0.35 + 0.7*rng();
+  const f = x => amp*Math.sin(freq*x + phase) + slope*x;
+  const nz = 0.14, pts=[];
+  for(let i=0;i<count;i++){
+    let x = (XMIN+0.6) + (XMAX-XMIN-1.2)*rng();
+    let y = f(x) + nz*gauss(rng);
+    y = Math.max(YMIN+0.3, Math.min(YMAX-0.3, y));
+    pts.push({ x:+x.toFixed(3), y:+y.toFixed(3) });
+  }
+  return { pts, trueFn:f };
+}
+
+// ---------------- transforms ----------------
+const TX = x => DPAD + (x-XMIN)/(XMAX-XMIN)*(DW-2*DPAD);
+const TY = y => (DH-DPAD) - (y-YMIN)/(YMAX-YMIN)*(DH-2*DPAD);
+const dataX = sx => XMIN + (sx-DPAD)/(DW-2*DPAD)*(XMAX-XMIN);
+const dataY = sy => YMIN + ((DH-DPAD)-sy)/(DH-2*DPAD)*(YMAX-YMIN);
+
+// ---------------- rendering: function space ----------------
+function renderData(gd){
+  const clip=`<clipPath id="dc"><rect x="1" y="1" width="${DW-2}" height="${DH-2}" rx="10"/></clipPath>`;
+  let g = clip;
+  g += `<rect x="1" y="1" width="${DW-2}" height="${DH-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g += `<g clip-path="url(#dc)">`;
+  // grid
+  for(let v=Math.ceil(YMIN); v<=Math.floor(YMAX); v++){ const y=TY(v); const ax=(v===0);
+    g += `<line x1="${DPAD}" y1="${y.toFixed(1)}" x2="${DW-DPAD}" y2="${y.toFixed(1)}" stroke="${ax?'#cbd5e1':'#eef2f7'}" stroke-width="${ax?1.4:1}"/>`; }
+  for(let v=Math.ceil(XMIN); v<=Math.floor(XMAX); v++){ const x=TX(v); const ax=(v===0);
+    g += `<line x1="${x.toFixed(1)}" y1="${DPAD}" x2="${x.toFixed(1)}" y2="${DH-DPAD}" stroke="${ax?'#cbd5e1':'#eef2f7'}" stroke-width="${ax?1.4:1}"/>`; }
+
+  // predictive band(s): upper/lower polylines from mean +/- k*std
+  function bandPath(k){
+    let up="", dn="";
+    for(let i=0;i<GRIDX.length;i++){ up += `${i?'L':'M'} ${TX(GRIDX[i]).toFixed(1)} ${TY(gd.mean[i]+k*gd.std[i]).toFixed(1)} `; }
+    for(let i=GRIDX.length-1;i>=0;i--){ dn += `L ${TX(GRIDX[i]).toFixed(1)} ${TY(gd.mean[i]-k*gd.std[i]).toFixed(1)} `; }
+    return up+dn+"Z";
+  }
+  if(state.show2sig) g += `<path d="${bandPath(2)}" fill="${SKY}" fill-opacity="0.13" stroke="none"/>`;
+  g += `<path d="${bandPath(1)}" fill="${SKY}" fill-opacity="0.24" stroke="none"/>`;
+
+  // sampled functions from the posterior (stable until "redraw")
+  if(state.showSamples){
+    const curves = gpSampleCurves(lastFit, GRIDX, gd, NSAMPLES, mulberry32(state.seed));
+    for(const f of curves){
+      let d=""; for(let i=0;i<GRIDX.length;i++) d += `${i?'L':'M'} ${TX(GRIDX[i]).toFixed(1)} ${TY(f[i]).toFixed(1)} `;
+      g += `<path d="${d}" fill="none" stroke="${SAMP_COL}" stroke-width="1" stroke-opacity="0.42"/>`;
+    }
+  }
+  // true latent function (only when data was generated)
+  if(state.trueFn){
+    let d=""; for(let i=0;i<GRIDX.length;i++) d += `${i?'L':'M'} ${TX(GRIDX[i]).toFixed(1)} ${TY(Math.max(YMIN,Math.min(YMAX,state.trueFn(GRIDX[i])))).toFixed(1)} `;
+    g += `<path d="${d}" fill="none" stroke="${TRUE_COL}" stroke-width="1.8" stroke-dasharray="6 4" stroke-opacity="0.85"/>`;
+  }
+  // posterior mean curve
+  if(state.showMean){
+    let d=""; for(let i=0;i<GRIDX.length;i++) d += `${i?'L':'M'} ${TX(GRIDX[i]).toFixed(1)} ${TY(gd.mean[i]).toFixed(1)} `;
+    g += `<path d="${d}" fill="none" stroke="${MEAN_COL}" stroke-width="3"/>`;
+  }
+  // observations
+  for(const p of state.points){
+    g += `<circle cx="${TX(p.x).toFixed(1)}" cy="${TY(p.y).toFixed(1)}" r="4" fill="#0f172a" stroke="#fff" stroke-width="1.5"/>`;
+  }
+  g += `</g>`;
+  g += `<text x="${DW-DPAD}" y="${TY(0)-5}" font-size="10" fill="#94a3b8" text-anchor="end">x →</text>`;
+  g += `<text x="${TX(0)+5}" y="${DPAD+2}" font-size="10" fill="#94a3b8">f(x)</text>`;
+  document.getElementById("svgData").innerHTML = `<svg viewBox="0 0 ${DW} ${DH}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+
+// ---------------- rendering: kernel profile ----------------
+function renderKernel(){
+  const TAUMAX=6, tau=[]; for(let i=0;i<=80;i++) tau.push(i*TAUMAX/80);
+  const ymax = state.sf2*1.12;
+  const KX = t => KPAD + t/TAUMAX*(KW-2*KPAD);
+  const KY = k => (KH-KPAD) - (k/ymax)*(KH-2*KPAD);
+  let g=`<rect x="1" y="1" width="${KW-2}" height="${KH-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g+=`<line x1="${KPAD}" y1="${(KH-KPAD).toFixed(1)}" x2="${KW-KPAD}" y2="${(KH-KPAD).toFixed(1)}" stroke="#94a3b8" stroke-width="1"/>`;
+  // length-scale marker
+  const lx=KX(Math.min(TAUMAX,state.ell));
+  g+=`<line x1="${lx.toFixed(1)}" y1="${KPAD}" x2="${lx.toFixed(1)}" y2="${KH-KPAD}" stroke="${SKY}" stroke-width="1.4" stroke-dasharray="5 4"/>`;
+  g+=`<text x="${(lx+4).toFixed(1)}" y="${KPAD+10}" font-size="10" font-weight="700" fill="${SKY}">ℓ = ${state.ell.toFixed(2)}</text>`;
+  // sf2 marker at tau=0
+  g+=`<text x="${KPAD}" y="${(KY(state.sf2)-4).toFixed(1)}" font-size="10" font-weight="700" fill="#0f172a">k(0) = σ_f² = ${state.sf2.toFixed(2)}</text>`;
+  // curve filled
+  let area=`M ${KX(0).toFixed(1)} ${(KH-KPAD).toFixed(1)} `, line="";
+  tau.forEach((t,i)=>{ const k=kernel(0,t,state.sf2,state.ell); area+=`L ${KX(t).toFixed(1)} ${KY(k).toFixed(1)} `; line+=`${i?'L':'M'} ${KX(t).toFixed(1)} ${KY(k).toFixed(1)} `; });
+  area+=`L ${KX(TAUMAX).toFixed(1)} ${(KH-KPAD).toFixed(1)} Z`;
+  g+=`<path d="${area}" fill="${SKY}" fill-opacity="0.14"/>`;
+  g+=`<path d="${line}" fill="none" stroke="${SKY}" stroke-width="2.4"/>`;
+  g+=`<text x="${KW-KPAD}" y="${KH-6}" font-size="9" fill="#94a3b8" text-anchor="end">input separation τ = |x − x'| →</text>`;
+  g+=`<text x="10" y="${KPAD-4}" font-size="10" fill="#94a3b8">k(τ)</text>`;
+  document.getElementById("svgKernel").innerHTML=`<svg viewBox="0 0 ${KW} ${KH}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+
+// ---------------- rendering: predictive-sigma slice ----------------
+function renderSigma(gd){
+  const sig=gd.std, floor=Math.sqrt(state.sf2);
+  const smax=Math.max(...sig, floor)*1.12;
+  const PX=x=>SPAD+(x-XMIN)/(XMAX-XMIN)*(SW-2*SPAD);
+  const PY=s=>(SH-SPAD)-(s/smax)*(SH-2*SPAD);
+  let g=`<rect x="1" y="1" width="${SW-2}" height="${SH-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g+=`<line x1="${SPAD}" y1="${(SH-SPAD).toFixed(1)}" x2="${SW-SPAD}" y2="${(SH-SPAD).toFixed(1)}" stroke="#94a3b8" stroke-width="1"/>`;
+  // prior ceiling
+  g+=`<line x1="${SPAD}" y1="${PY(floor).toFixed(1)}" x2="${SW-SPAD}" y2="${PY(floor).toFixed(1)}" stroke="${NOISE_COL}" stroke-width="1.6" stroke-dasharray="6 4"/>`;
+  g+=`<text x="${SW-SPAD}" y="${(PY(floor)-4).toFixed(1)}" font-size="10" font-weight="700" fill="${NOISE_COL}" text-anchor="end">prior ceiling σ_f = ${floor.toFixed(2)}</text>`;
+  // sigma curve filled to baseline
+  let area=`M ${PX(XMIN).toFixed(1)} ${(SH-SPAD).toFixed(1)} `, line="";
+  for(let i=0;i<GRIDX.length;i++){ area+=`L ${PX(GRIDX[i]).toFixed(1)} ${PY(sig[i]).toFixed(1)} `; line+=`${i?'L':'M'} ${PX(GRIDX[i]).toFixed(1)} ${PY(sig[i]).toFixed(1)} `; }
+  area+=`L ${PX(XMAX).toFixed(1)} ${(SH-SPAD).toFixed(1)} Z`;
+  g+=`<path d="${area}" fill="${SKY}" fill-opacity="0.14"/>`;
+  g+=`<path d="${line}" fill="none" stroke="${SKY}" stroke-width="2.4"/>`;
+  for(const p of state.points){ const x=PX(p.x);
+    g+=`<line x1="${x.toFixed(1)}" y1="${(SH-SPAD).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(SH-SPAD+6).toFixed(1)}" stroke="#0f172a" stroke-width="1.4"/>`; }
+  g+=`<text x="${SPAD}" y="${SH-6}" font-size="9" fill="#94a3b8">input x  ( | = your observations )</text>`;
+  g+=`<text x="10" y="${SPAD-4}" font-size="10" fill="#94a3b8">σ(x)</text>`;
+  document.getElementById("svgSigma").innerHTML=`<svg viewBox="0 0 ${SW} ${SH}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+
+// ---------------- diagnosis ----------------
+function setDiag(gd){
+  const box=document.getElementById("diagBox");
+  const waist=Math.min(...gd.std), gap=Math.max(...gd.std);
+  const floor=Math.sqrt(state.sf2), nz=Math.sqrt(state.noise);
+  const set=(cls,title,body)=>{ box.className="diag "+cls+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${title}</div><div class="text-sm font-medium leading-relaxed">${body}</div>`; };
+  const n=state.points.length;
+  if(n===0){
+    set("diag-info","🌫️ Prior only — no observations, so this is what the GP believes <em>before</em> seeing anything",
+      `With zero data the posterior <em>is</em> the prior: the mean curve is flat at <code>f = 0</code> and the band is a constant <code>±2σ_f = ±${(2*floor).toFixed(2)}</code>. The grey curves are pure <strong>prior draws</strong> — every wiggle is one function the kernel considers plausible, its smoothness set entirely by the length-scale <strong>ℓ = ${state.ell.toFixed(2)}</strong>. Click on the chart to condition on a point and watch the band collapse around it.`);
+  } else if(n===1){
+    set("diag-info","📍 One observation pins the curve <em>there</em>, and nowhere else",
+      `A single point drags every sampled function through it — so the band pinches to a noise-limited waist of <strong>±${(2*waist).toFixed(2)}</strong> at that x and relaxes straight back to the prior ceiling <strong>±${(2*gap).toFixed(2)}</strong> a few length-scales away. Notice the GP makes <em>no</em> commitment out in the gaps: unlike a straight-line fit, it doesn't extrapolate a trend, it just returns to "I don't know". Add more points to carve the curve out.`);
+  } else if(state.ell < 0.55){
+    set("diag-warn","〰️ Short length-scale — the fit is jittery and forgets fast",
+      `With <strong>ℓ = ${state.ell.toFixed(2)}</strong> the kernel decays almost immediately, so each observation only influences a tiny neighbourhood. The mean curve snaps to each point then dives back to zero, and the band re-opens to nearly the full <strong>±${(2*gap).toFixed(2)}</strong> in the smallest gaps — the GP is effectively overfitting, trusting nothing beyond point-blank range. Slide ℓ up to let neighbours share information and smooth the fit.`);
+  } else if(gap-waist < floor*0.35 && n>=6){
+    set("diag-good","🟢 Well-determined — observations cover the range, band is tight throughout",
+      `With ${n} observations spread across x, the subtracted term <code>K*(K+σ_n²I)⁻¹K*ᵀ</code> is large everywhere, so the band stays near its noise-limited floor across the whole range (waist ±<strong>${(2*waist).toFixed(2)}</strong>, widest gap ±<strong>${(2*gap).toFixed(2)}</strong>). This is the GP fully informed. Push <strong>σ_n²</strong> up to admit more measurement noise and watch the curve stop chasing every point.`);
+  } else {
+    set("diag-good","🌊 The posterior is doing its job",
+      `${n} observations with <strong>ℓ = ${state.ell.toFixed(2)}</strong> give a mean curve that threads the data and a band that <strong>pinches to ±${(2*waist).toFixed(2)}</strong> at your points and <strong>widens to ±${(2*gap).toFixed(2)}</strong> in the gaps and beyond — confident where you measured, honest where you didn't. The grey samples all pass through the observations yet disagree between them; that disagreement <em>is</em> the band. Drop a point into a fat region to shrink it there.`);
+  }
+}
+
+// ---------------- metrics + draw ----------------
+let lastFit=null, lastGd=null;
+function updateMetrics(gd){
+  const waist=Math.min(...gd.std), gap=Math.max(...gd.std);
+  document.getElementById("mN").textContent=state.points.length;
+  document.getElementById("mLen").textContent=state.ell.toFixed(2);
+  document.getElementById("mSig").textContent=Math.sqrt(state.sf2).toFixed(2);
+  document.getElementById("mNoise").textContent=Math.sqrt(state.noise).toFixed(2);
+  document.getElementById("mBandC").textContent="±"+(2*waist).toFixed(2);
+  document.getElementById("mBandE").textContent="±"+(2*gap).toFixed(2);
+}
+function draw(){
+  lastFit = gpFit(state.points, state.sf2, state.ell, state.noise);
+  const gd = gpOnGrid(lastFit, GRIDX);
+  lastGd = gd;
+  renderData(gd); renderKernel(); renderSigma(gd); setDiag(gd); updateMetrics(gd);
+  document.getElementById("legTrue").classList.toggle("hidden", !state.trueFn);
+}
+
+// ---------------- interaction ----------------
+const wrap=document.getElementById("wrapData"), htip=document.getElementById("htip");
+function localXY(e){ const svg=wrap.querySelector("svg"); const r=svg.getBoundingClientRect();
+  return { sx:(e.clientX-r.left)/r.width*DW, sy:(e.clientY-r.top)/r.height*DH, rx:e.clientX-r.left, ry:e.clientY-r.top }; }
+wrap.addEventListener("click", e=>{
+  const {sx,sy}=localXY(e);
+  let x=dataX(sx), y=dataY(sy);
+  if(x<XMIN||x>XMAX||y<YMIN||y>YMAX) return;
+  state.points.push({ x:+x.toFixed(3), y:+y.toFixed(3) });
+  draw();
+});
+wrap.addEventListener("mousemove", e=>{
+  if(!lastGd) return; const {sx,rx,ry}=localXY(e); const x=dataX(sx);
+  if(x<XMIN||x>XMAX){ htip.style.display="none"; return; }
+  // interpolate mean/std at the hovered x from the grid
+  const t=(x-XMIN)/(XMAX-XMIN)*NG, i=Math.max(0,Math.min(NG-1,Math.floor(t))), f=t-i;
+  const mu=lastGd.mean[i]*(1-f)+lastGd.mean[i+1]*f, s=lastGd.std[i]*(1-f)+lastGd.std[i+1]*f;
+  htip.style.display="block"; htip.style.left=rx+"px"; htip.style.top=ry+"px";
+  htip.textContent=`x=${x.toFixed(2)} · f̂=${mu.toFixed(2)} ± ${(2*s).toFixed(2)}`;
+});
+wrap.addEventListener("mouseleave", ()=>{ htip.style.display="none"; });
+
+// ---------------- controls ----------------
+function syncControls(){
+  document.getElementById("cLen").value=state.ell;
+  document.getElementById("cSig").value=state.sf2;
+  document.getElementById("cNoise").value=state.noise;
+  document.getElementById("vLen").textContent=state.ell.toFixed(2);
+  document.getElementById("vSig").textContent=state.sf2.toFixed(2);
+  document.getElementById("vNoise").textContent=state.noise.toFixed(3);
+  document.getElementById("tSamples").classList.toggle("on", state.showSamples);
+  document.getElementById("t2sig").classList.toggle("on", state.show2sig);
+  document.getElementById("tMean").classList.toggle("on", state.showMean);
+}
+document.getElementById("cLen").addEventListener("input",  e=>{ state.ell=+e.target.value;   syncControls(); draw(); });
+document.getElementById("cSig").addEventListener("input",  e=>{ state.sf2=+e.target.value;   syncControls(); draw(); });
+document.getElementById("cNoise").addEventListener("input",e=>{ state.noise=+e.target.value; syncControls(); draw(); });
+document.getElementById("regen").onclick=()=>{ state.seed=(state.seed*1664525+1013904223)>>>0; const d=genData(state.seed,7); state.points=d.pts; state.trueFn=d.trueFn; draw(); };
+document.getElementById("resample").onclick=()=>{ state.seed=(state.seed*1664525+1013904223)>>>0; draw(); };
+document.getElementById("clear").onclick=()=>{ state.points=[]; state.trueFn=null; draw(); };
+document.getElementById("tSamples").onclick=()=>{ state.showSamples=!state.showSamples; syncControls(); draw(); };
+document.getElementById("t2sig").onclick=()=>{ state.show2sig=!state.show2sig; syncControls(); draw(); };
+document.getElementById("tMean").onclick=()=>{ state.showMean=!state.showMean; syncControls(); draw(); };
+const PRESETS={
+  prior:  ()=>{ state.ell=1.1; state.sf2=1.2; state.noise=0.02; state.points=[]; state.trueFn=null; },
+  wiggly: ()=>{ state.seed=(state.seed*1664525+1013904223)>>>0; state.ell=0.4; state.sf2=1.2; state.noise=0.02; const d=genData(state.seed,6); state.points=d.pts; state.trueFn=d.trueFn; },
+  smooth: ()=>{ state.seed=(state.seed*1664525+1013904223)>>>0; state.ell=2.6; state.sf2=1.4; state.noise=0.03; const d=genData(state.seed,6); state.points=d.pts; state.trueFn=d.trueFn; },
+  dense:  ()=>{ state.seed=(state.seed*1664525+1013904223)>>>0; state.ell=1.2; state.sf2=1.3; state.noise=0.02; const d=genData(state.seed,14); state.points=d.pts; state.trueFn=d.trueFn; },
+};
+document.querySelectorAll("[data-preset]").forEach(b=> b.onclick=()=>{ PRESETS[b.dataset.preset](); syncControls(); draw(); });
+
+// initial data
+(()=>{ const d=genData(state.seed,5); state.points=d.pts; state.trueFn=d.trueFn; })();
+syncControls(); draw();
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. From weights to functions", why:"Day 36 kept a distribution over the two weights of a straight line, then read off a distribution over predictions. That only works once you have committed to a shape — a line, a cubic, a fixed set of basis functions. A Gaussian Process refuses to commit. It places a probability distribution directly over functions of any shape, and lets the data carve out which ones survive. Formally a GP is an infinite collection of random variables (the function's value at every possible input) such that any finite subset of them is jointly Gaussian. That sounds abstract, but it means you only ever manipulate the finite handful of inputs you actually care about — the training points and wherever you want to predict — as one multivariate Gaussian. Everything you saw on Day 36 (mean, band, sampled objects) reappears here, but now the objects being sampled are whole curves, and the shape is never fixed in advance.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Day 36: p(weights)&nbsp;&nbsp;→ distribution over LINES<br>Day 37: p(function) → distribution over ANY curve<br><br>a GP: any finite set of function values<br>is jointly Gaussian ⇒ pure linear algebra</div>`, code:`# Bayesian linear regression: distribution over a few WEIGHTS
+# Gaussian process:            distribution over whole FUNCTIONS
+# a GP is fully specified by a mean function (take 0) and a kernel k(x, x')` },
+ { title:"2. The kernel is the whole model", why:"Because we fix the mean at zero, a GP is defined entirely by its kernel: a function k(x, x') giving the covariance between the outputs at two inputs. The kernel encodes your assumptions about the function — chiefly, which inputs should produce similar outputs. The workhorse is the squared-exponential (a.k.a. RBF or Gaussian) kernel, k(x,x') = sf2 * exp(-(x-x')^2 / (2 l^2)). It says two outputs are highly correlated when their inputs are close and essentially independent when they are far apart, with 'close' and 'far' measured in units of the length-scale l. The signal variance sf2 sets the overall vertical scale — how far the function tends to swing from zero, and equally the height the uncertainty band returns to when there is no nearby data. Pick a kernel and you have implicitly picked a prior over an entire space of functions; no basis functions are ever written down.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">k(x, x') = σ_f² · exp( −(x−x')² / 2ℓ² )<br><br>close inputs&nbsp;&nbsp;→ high covariance → similar outputs<br>far inputs&nbsp;&nbsp;&nbsp;&nbsp;→ ~0 covariance → independent<br><br>ℓ = length-scale&nbsp;&nbsp;σ_f² = signal variance</div>`, code:`def rbf(a, b, sf2=1.0, ell=1.0):
+    d = a[:, None] - b[None, :]
+    return sf2 * np.exp(-d**2 / (2 * ell**2))   # covariance, not a basis
+# the ENTIRE prior over functions lives in this one line` },
+ { title:"3. Sampling from the prior", why:"Before any data, what does 'a prior over functions' actually look like? Pick a dense grid of inputs, build the kernel matrix K between all of them, and draw a single sample from the multivariate Gaussian N(0, K). Join the sampled values and you get one random function; repeat and you get a family of them. Every one is a plausible function under your kernel, and their smoothness is dictated entirely by the length-scale: a short l gives jittery, fast-varying curves, a long l gives lazy, gently-rolling ones. The spread of these prior samples at any input is sqrt(sf2) — that is exactly the flat +/- band you see in the demo with no points added. Conditioning on data, next, simply keeps only the members of this prior family that pass near your observations.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">prior sample: f ~ N(0, K)&nbsp;&nbsp;over a grid<br><br>join the dots → one random function<br>short ℓ → jittery&nbsp;&nbsp;·&nbsp;&nbsp;long ℓ → smooth<br><br>prior spread at every x = √σ_f²  (flat band)</div>`, code:`Xs = np.linspace(-5, 5, 200)
+K  = rbf(Xs, Xs) + 1e-9*np.eye(len(Xs))   # jitter -> positive definite
+L  = np.linalg.cholesky(K)
+for _ in range(5):
+    f = L @ np.random.randn(len(Xs))      # one draw from the PRIOR
+    plt.plot(Xs, f)` },
+ { title:"4. Conditioning — the joint Gaussian trick", why:"Here is the engine. Stack the observed outputs y and the unknown test outputs f* into one vector; because it is a GP, that whole vector is jointly Gaussian, with a covariance built from four kernel blocks: K over train-train (plus noise), K* over test-train, and K** over test-test. The single most useful fact in Gaussian theory is that conditioning one part of a jointly-Gaussian vector on the other part yields another Gaussian, with mean and covariance you can write in closed form. Applying that formula to 'test given train' is the entire GP. There is no iterative optimisation, no sampling to fit — just partitioning a covariance matrix and reading off the conditional. Every mean curve and band in the demo is one evaluation of these two lines.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">[ y  ]&nbsp;&nbsp;&nbsp; ( [0]&nbsp; [ K+σ_n²I&nbsp;&nbsp;K*ᵀ ] )<br>[ f* ] ~ N( [0] , [ K*&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; K**&nbsp; ] )<br><br>condition f* on the observed y:<br>Gaussian in → Gaussian out (closed form)</div>`, code:`K   = rbf(X, X) + noise*np.eye(len(X))   # train-train  (+ obs noise)
+Ks  = rbf(Xs, X)                         # test-train
+Kss = rbf(Xs, Xs)                        # test-test
+# f* | y  is Gaussian:  mean and covariance below` },
+ { title:"5. The posterior mean and covariance", why:"The conditioning formula gives the two equations at the heart of the method. The posterior mean is mu* = K* (K + sn2 I)^-1 y — a smooth interpolation of the observations, weighted by how similar each test input is to each training input. The posterior covariance is Sigma* = K** - K* (K + sn2 I)^-1 K*^T — the prior covariance K** minus everything the data explains away. Read the second equation carefully: you start from full prior uncertainty and subtract a non-negative amount wherever the test point is correlated with data. That subtraction is why observing points can only ever reduce uncertainty, never increase it. In practice you never invert K; you Cholesky-factor it once (K = L L^T) and solve triangular systems, which is stabler and cheaper. That factorisation is literally what runs on every click in the LOOK tab.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">μ* = K* (K + σ_n²I)⁻¹ y&nbsp;&nbsp;&nbsp;&nbsp;← posterior mean<br>Σ* = K** − K* (K + σ_n²I)⁻¹ K*ᵀ ← posterior cov<br><br>prior cov&nbsp;−&nbsp;'what the data explains'<br>solve via Cholesky K = L Lᵀ, never invert</div>`, code:`L     = np.linalg.cholesky(K)                     # K = L Lᵀ
+alpha = np.linalg.solve(L.T, np.linalg.solve(L, y))
+mean  = Ks @ alpha                                # μ* = K*(K)^-1 y
+v     = np.linalg.solve(L, Ks.T)
+cov   = Kss - v.T @ v                             # Σ* = K** - K*(K)^-1 K*ᵀ
+std   = np.sqrt(np.diag(cov))                     # the band = 2*std` },
+ { title:"6. Why the band pinches at data and swells between", why:"The width of the band is sqrt(diag(Sigma*)), and the diagonal is k(x*,x*) minus the quadratic form k*^T (K+sn2 I)^-1 k*. Sit a test point right on top of an observation: k* is large and well-aligned with a row of K, the subtracted term nearly cancels k(x*,x*), and the variance collapses to roughly the noise level sn2 — the band pinches. Move the test point into a gap far from every observation: k* decays toward zero, nothing is subtracted, and the variance relaxes back to the full prior value sf2 — the band swells to +/- 2*sqrt(sf2). This is the qualitative difference from Bayesian linear regression, whose band grows without limit as you extrapolate; a GP's band is capped by the prior, so far from data it says a flat, honest 'I only know it's somewhere in the prior range', never inventing a trend.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">σ²(x*) = k(x*,x*) − k*ᵀ(K+σ_n²I)⁻¹k*<br><br>on a data point:&nbsp;&nbsp;subtracted term ≈ k(x*,x*) → σ²≈σ_n²<br>far in a gap:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;k* → 0 → σ² → σ_f²  (prior ceiling)<br><br>BLR band grows forever · GP band is capped</div>`, code:`# the band is capped by the prior, unlike Bayesian linear regression:
+#   near an observation -> variance ~ noise  (tight waist)
+#   far from all data    -> variance ~ sf2   (prior ceiling, flat)
+# observing points can only SUBTRACT variance, never add it` },
+ { title:"7. The three knobs — length-scale, signal, noise", why:"A GP with the RBF kernel has exactly three hyperparameters, and each does one clear job. The length-scale l controls horizontal wiggle: small l means each point only informs a tiny neighbourhood, giving a jagged fit whose band re-opens between even close points; large l lets information travel far, giving a smooth fit and a band that stays tight across wide gaps. The signal variance sf2 sets the vertical amplitude and the height the band returns to away from data. The noise variance sn2 decides how literally to take each observation: near zero forces the mean curve exactly through every point (interpolation) and the waist pinches to almost nothing; larger values let the curve pass near rather than through the points (regression), lifting the whole band's floor and smoothing away measurement scatter. In the demo these are the three sliders; in practice you rarely set them by hand — you learn them from the data.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ℓ&nbsp;&nbsp; length-scale → horizontal wiggle (smooth ↔ jagged)<br>σ_f² signal var&nbsp;&nbsp;→ vertical swing + band ceiling<br>σ_n² noise var&nbsp;&nbsp;&nbsp;→ interpolate (≈0) ↔ regress (large)<br><br>set by hand here · learned by evidence in practice</div>`, code:`# small ell -> jagged, band re-opens between points
+# large ell -> smooth, band stays tight across gaps
+# sn2 -> 0  -> curve INTERPOLATES every point (waist ~ 0)
+# sn2 large -> curve REGRESSES, band floor lifts, scatter smoothed` },
+ { title:"8. GP = Bayesian linear regression with an infinite basis", why:"Gaussian processes are not a different universe from Day 36 — they are its limit. Take Bayesian linear regression with a finite set of basis functions phi and integrate the weights out analytically; the predictive distribution depends on the basis only through inner products phi(x)^T Sigma phi(x'), which is precisely a kernel k(x,x'). So every kernel corresponds to some (possibly infinite) set of basis functions, and the RBF kernel corresponds to infinitely many Gaussian bumps at every location. This is the kernel trick: instead of choosing and computing an explicit high-dimensional feature map, you choose a kernel and work only with the N-by-N matrix of pairwise similarities. The payoff is enormous flexibility — you get calibrated uncertainty for functions of essentially any shape — for a price: the Cholesky costs O(N^3) in time and O(N^2) in memory, which is why plain GPs are a small-to-medium-data method and why sparse or inducing-point approximations exist for large N.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">integrate out the weights of Bayesian lin. reg.<br>⇒ prediction depends on φ only via φᵀΣφ = k(x,x')<br><br>RBF kernel ⟺ infinitely many Gaussian bumps<br>the 'kernel trick': never write the basis down<br>price: Cholesky is O(N³) time, O(N²) memory</div>`, code:`# finite basis (Day 36):  y = w · phi(x),  keep p(w)
+# kernel trick:            k(x, x') = phi(x)ᵀ Σ phi(x')
+# RBF kernel  <=>  an INFINITE basis of Gaussian bumps
+# flexibility of any shape, but the Cholesky is O(N^3)` },
+ { title:"9. The bigger map — where GPs take you", why:"Two directions open up from here. First, the kernel is a design space, not a fixed choice: swap the RBF for a periodic kernel to model seasonality, a linear kernel to recover ordinary regression, a Matern kernel for rougher functions, or add and multiply kernels to compose structure — 'smooth trend plus yearly cycle plus noise'. Learning the hyperparameters by maximising the log marginal likelihood (the evidence) automatically balances fit against simplicity, which is exactly what scikit-learn's GaussianProcessRegressor does when you call fit. Second, the uncertainty band is not just decoration — it is a decision-making tool. Because a GP tells you where it is unsure, you can deliberately sample there: that is active learning, and its optimisation cousin, Bayesian optimisation, uses the GP's mean and band to choose the single most promising point to evaluate next when each evaluation is expensive (tuning a model, running a simulation, a lab experiment). That is exactly where Day 38 goes.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">kernels compose: RBF + Periodic + Linear + …<br>learn hyperparams by max marginal likelihood<br><br>the band drives decisions:<br>sample where σ(x) is large → active learning<br>optimise expensive f(x) → Bayesian optimisation (Day 38)</div>`, code:`from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, WhiteKernel, ExpSineSquared
+
+kernel = RBF(1.0) + ExpSineSquared(1.0, 5.0) + WhiteKernel(0.02)  # trend+season+noise
+gp = GaussianProcessRegressor(kernel=kernel).fit(X[:, None], y)   # learns it all
+# next: use gp's mean & std to pick where to look -> Bayesian Optimization` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
