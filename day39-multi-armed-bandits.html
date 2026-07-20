@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 39 — Multi-Armed Bandits</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:180px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-band { display:inline-block; width:16px; height:11px; border-radius:3px; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .kbtn { border:1px solid #e2e8f0; background:#fff; }
+  .kbtn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .objbtn { border:1px solid #e2e8f0; }
+  .objbtn:hover { border-color:#38bdf8; }
+  .objbtn.on { border-color:#0ea5e9; background:#e0f2fe; color:#075985; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 39</div>
+      <h1 class="text-xl font-bold">🎰 Multi-Armed Bandits — When Every Pull Costs, How Do You Balance <em>Exploring</em> New Arms Against <em>Exploiting</em> the Best One?</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>Every arm hides a payout rate. Press "Pull" and watch three strategies each decide which lever to yank next — then watch their <em>regret</em> curves diverge.</strong> Day 38 spent an expensive evaluation where a surrogate said the payoff was highest. Today the choices are <strong>discrete</strong>: a row of slot machines, each paying out 1 with some hidden probability and 0 otherwise. You have a fixed number of pulls and want the most total reward. The catch is the same explore-vs-exploit tension — pull the arm that has looked best so far (<em>exploit</em>) and you might be stuck on an unlucky loser; pull an under-tried arm (<em>explore</em>) and you spend a turn that might have paid off. Three classic rules solve this and they all run <strong>live and for real</strong> below on the same bandit.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">The scoreboard is <strong>regret</strong>: how much reward you gave up versus an oracle that always pulled the best arm, <code>Regret(T) = T·μ* − Σ μ<sub>aₜ</sub></code>. A good strategy makes regret grow <em>sublinearly</em> (it stops making mistakes); a bad one grows it in a straight line. <strong>ε-greedy</strong> exploits the best empirical mean but rolls a die with probability ε to explore at random — simple, but it keeps wasting that ε fraction forever. <strong>UCB1</strong> pulls the arm with the highest optimistic bound <code>μ̂ᵢ + c·√(ln t / nᵢ)</code>: the confidence bonus shrinks as an arm is pulled, so exploration decays on its own. <strong>Thompson sampling</strong> keeps a <code>Beta(1+wins, 1+losses)</code> belief per arm, draws one sample from each, and pulls the winner — probability-matching that is often the strongest of all. All three run on every pull; the panel shows the strategy you select, and the regret chart races all three.</p>
+
+      <div class="grid grid-cols-3 md:grid-cols-6 gap-2 max-w-4xl mx-auto mb-4">
+        <div class="metric-pill"><div class="v" id="mT" style="color:#0f172a">—</div><div class="k">pulls</div></div>
+        <div class="metric-pill"><div class="v" id="mReward" style="color:#16a34a">—</div><div class="k">reward · this strat</div></div>
+        <div class="metric-pill"><div class="v" id="mRegret" style="color:#f43f5e">—</div><div class="k">regret · this strat</div></div>
+        <div class="metric-pill"><div class="v" id="mBestArm" style="color:#0ea5e9">—</div><div class="k">arm it believes best</div></div>
+        <div class="metric-pill"><div class="v" id="mOpt" style="color:#a855f7">—</div><div class="k">% pulls on best arm</div></div>
+        <div class="metric-pill"><div class="v" id="mStar" style="color:#eab308">—</div><div class="k">true best rate μ*</div></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start">
+        <!-- controls -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+          <div class="text-xs font-bold text-slate-500 mb-2">THE BANDIT — pick a set of hidden arms</div>
+          <div class="flex flex-wrap gap-2 mb-3">
+            <button data-scn="classic" class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">🎰 Classic</button>
+            <button data-scn="spread"  class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">📶 Wide spread</button>
+            <button data-scn="close"   class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">🤏 Hard (close)</button>
+            <button data-scn="needle"  class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">🪡 Needle</button>
+          </div>
+
+          <div class="text-xs font-bold text-slate-500 mb-1">STRATEGY (arm panel shows this one)</div>
+          <div class="flex gap-1.5 mb-1">
+            <button id="sEps" class="kbtn px-2 py-1 rounded-lg font-semibold text-xs flex-1">🎲 ε-greedy</button>
+            <button id="sUcb" class="kbtn px-2 py-1 rounded-lg font-semibold text-xs flex-1">📈 UCB1</button>
+            <button id="sTs"  class="kbtn on px-2 py-1 rounded-lg font-semibold text-xs flex-1">🎯 Thompson</button>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-name">🎲 ε explore rate</div>
+            <input type="range" id="cEps" min="0" max="0.5" step="0.01" value="0.10">
+            <div class="ctl-val" id="vEps">ε=0.10</div>
+          </div>
+          <div class="text-[11px] text-slate-400 -mt-1 mb-2">affects <strong>ε-greedy</strong> only — the chance it ignores the current best and pulls a random arm. Bigger ⇒ explores more, but never stops wasting pulls.</div>
+
+          <div class="mt-1 flex items-center gap-2 flex-wrap">
+            <button id="btnStep" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">🎰 Pull (1 round)</button>
+            <button id="btnAuto" class="bg-slate-800 text-white px-3 py-1.5 rounded-lg font-semibold text-xs hover:bg-slate-700">▶ Auto-run</button>
+            <button id="btnReset" class="ml-auto bg-rose-100 text-rose-700 px-3 py-1.5 rounded-lg font-semibold text-xs hover:bg-rose-200">↺ reset</button>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2 items-center">
+            <span class="text-[11px] font-bold text-slate-400 uppercase w-full">show</span>
+            <button id="tReveal" class="kbtn px-2.5 py-1 rounded-lg font-semibold text-xs">👁 reveal true rates</button>
+          </div>
+
+          <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+            Each arm's curve is a <strong>Beta posterior</strong> — the strategy's <em>belief</em> about that arm's payout rate. It starts flat (no idea) and sharpens toward the truth as the arm is pulled. The <span style="color:#0f172a;font-weight:800">dark tick</span> is the empirical mean <code>wins/pulls</code>; the <span style="color:#eab308;font-weight:800">★</span> marks the arm this strategy currently believes is best; the <span style="color:#16a34a;font-weight:800">green dashed tick</span> (once revealed) is the arm's real hidden rate. Keep pulling and watch the belief over the winning arm grow tall and slide onto its true rate.
+          </div>
+        </div>
+
+        <!-- arm belief panel -->
+        <div class="panel hero text-left" style="width:540px; max-width:100%;">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-sm font-bold text-sky-700" id="armTitle">🎯 Thompson — belief over each arm</span>
+            <span class="text-xs font-bold text-slate-400">posteriors sharpen where you've pulled</span>
+          </div>
+          <div id="svgArms"></div>
+          <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+            <span><span class="swatch-band" id="legPost" style="background:rgba(168,85,247,.30)"></span> Beta posterior belief</span>
+            <span><span class="swatch-line" style="border-color:#0f172a;border-top-style:solid"></span> empirical mean</span>
+            <span style="color:#eab308;font-weight:800">★ arm believed best</span>
+            <span id="legTrue" class="hidden"><span class="swatch-line" style="border-color:#16a34a;border-top-style:dashed"></span> true hidden rate</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- second row: cumulative reward + regret -->
+      <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:520px; max-width:100%;">
+          <div class="text-xs font-bold mb-1" style="color:#16a34a">▮ CUMULATIVE REWARD — total winnings over time</div>
+          <div id="svgReward"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-1">Total reward banked by each strategy, pull by pull, against the <span style="color:#16a34a;font-weight:800">oracle</span> that pulls the best arm every time (dashed — the unbeatable ceiling <code>μ*·t</code>). All three climb, but the good strategies hug the oracle line while <span style="color:#f43f5e;font-weight:800">ε-greedy</span> falls a little further behind each round. The <em>vertical gap</em> to the oracle is exactly the regret plotted to the right.</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:520px; max-width:100%;">
+          <div class="text-xs font-bold mb-1" style="color:#f43f5e">▮ CUMULATIVE REGRET — the reward you left on the table</div>
+          <div id="svgRegret"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-1">This is the whole story. <span style="color:#f43f5e;font-weight:800">ε-greedy</span> keeps its regret climbing in a near-<strong>straight line</strong> — it never stops pulling random arms at rate ε. <span style="color:#0ea5e9;font-weight:800">UCB1</span> and <span style="color:#a855f7;font-weight:800">Thompson</span> bend over and flatten: their exploration <em>decays</em> as they learn which arm wins, so regret grows only <strong>logarithmically</strong>. A flatter curve = fewer mistakes = more money. Run it a few hundred pulls and the gap is unmistakable.</div>
+        </div>
+      </div>
+
+      <div id="diagBox" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">Explore, exploit, and the arithmetic of regret</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">A bandit algorithm is astonishingly little code — no gradients, no matrices, just a running tally per arm and a rule for picking the next one. Here are the three classics in full, plus the loop that scores them on regret. Everything the LOOK tab does is in these snippets.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The bandit — N arms with hidden Bernoulli rates</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Each arm pays out 1 with some hidden probability <code>p</code> and 0 otherwise. You never see the <code>p</code>s — only the 0/1 outcomes of the pulls you spend. The best you could do is always pull the arm with the highest <code>p</code>; the whole game is finding it fast.</p>
+        <div class="relative"><pre>import numpy as np
+rng = np.random.default_rng(0)
+
+true_rates = np.array([0.25, 0.45, 0.55, 0.72, 0.38])  # HIDDEN from the learner
+K          = len(true_rates)
+best_arm   = true_rates.argmax()          # the oracle's choice (unknown to us)
+mu_star    = true_rates.max()
+
+def pull(arm):
+    return 1.0 if rng.random() < true_rates[arm] else 0.0   # one Bernoulli draw</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">ε-greedy — exploit the best, explore at random</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Keep the empirical mean of each arm. Most of the time pull the arm with the highest mean (exploit). With probability ε, ignore all that and pull a uniformly random arm (explore). One knob, dead simple — but the constant ε means it keeps throwing away that fraction of pulls forever, so its regret grows linearly.</p>
+        <div class="relative"><pre>def eps_greedy(counts, values, eps=0.1):
+    if rng.random() < eps:                 # EXPLORE: random arm
+        return rng.integers(K)
+    return int(np.argmax(values))          # EXPLOIT: best empirical mean
+
+# values[a] = running mean reward of arm a ; counts[a] = times pulled
+# update after each pull:
+#   counts[a] += 1
+#   values[a] += (reward - values[a]) / counts[a]   # incremental mean</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">UCB1 — optimism in the face of uncertainty</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Add a confidence bonus to each mean: <code>μ̂ᵢ + c·√(ln t / nᵢ)</code>. The bonus is big for arms pulled few times (small <code>nᵢ</code>) and shrinks as you learn them; the <code>ln t</code> keeps a tiny curiosity alive so nothing is abandoned forever. Pull the arm with the highest bound. The weight <code>c</code> tunes exploration — Auer's original UCB1 fixes <code>c = √2 ≈ 1.41</code>; a smaller value (0.7 here) explores less and does better on short horizons — and it is provably <code>O(ln T)</code> regret.</p>
+        <div class="relative"><pre>def ucb1(counts, values, t, c=0.7):
+    for a in range(K):
+        if counts[a] == 0:                     # play each arm once first
+            return a
+    bonus = c * np.sqrt(np.log(t) / counts)    # shrinks as an arm is pulled
+    return int(np.argmax(values + bonus))      # optimistic index (c=sqrt(2)=UCB1)
+
+# small n  -> big bonus  -> "worth checking"
+# big  n   -> tiny bonus -> judged on its mean alone</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Thompson sampling — pull in proportion to being best</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Be Bayesian. For Bernoulli arms the conjugate belief is a <code>Beta(1+wins, 1+losses)</code> posterior per arm — flat at the start, sharpening toward the true rate with every pull. Each round, draw <em>one sample</em> from every arm's posterior and pull whichever sample is highest. Arms that are plausibly the best get pulled often; arms shown to be poor rarely resurface. Tiny code, frequently the best empirical performer.</p>
+        <div class="relative"><pre>def thompson(wins, losses):
+    # sample a plausible rate from each arm's Beta posterior...
+    samples = rng.beta(1 + wins, 1 + losses)
+    return int(np.argmax(samples))         # ...and pull the winner
+
+# update after each pull:
+#   wins[a]   += reward          # a success bumps alpha
+#   losses[a] += (1 - reward)    # a failure bumps beta
+# uncertainty (wide Beta) => this arm sometimes wins the draw => gets explored</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">The loop — play, learn, and score on regret</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Every strategy is the same loop: pick an arm, pull it, update that arm's tally. To compare them fairly, track <strong>regret</strong> — how much expected reward each pull gave up versus always pulling the best arm. A good strategy's regret curve bends over and flattens; a bad one's keeps climbing.</p>
+        <div class="relative"><pre>counts, values = np.zeros(K), np.zeros(K)
+regret = 0.0; curve = []
+for t in range(1, 2001):
+    a = ucb1(counts, values, t)            # or eps_greedy / thompson
+    r = pull(a)                            # spend one pull
+    counts[a] += 1
+    values[a] += (r - values[a]) / counts[a]
+    regret += mu_star - true_rates[a]      # gap vs the oracle's arm
+    curve.append(regret)
+print("regret:", regret, " %best:", counts[best_arm] / counts.sum())</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Why UCB/Thompson win — and where bandits go next</h3></div>
+        <p class="text-sm text-slate-600 mb-3">ε-greedy explores blindly and forever; UCB1 and Thompson explore <em>where the uncertainty is</em> and taper off as they learn, so their regret is logarithmic instead of linear. Bandits power A/B testing, ad and content selection, recommendations, and clinical trials — anywhere you must earn while you learn. Add a state that your actions change and delayed rewards, and the bandit grows up into full reinforcement learning.</p>
+        <div class="relative"><pre># libraries: Vowpal Wabbit (contextual bandits), TensorFlow-Agents, River,
+#            scikit-optimize/Ax for the continuous cousin (Bayesian optimization)
+# variants: contextual bandits (features per round) -> LinUCB, Thompson-linear
+#           non-stationary arms -> sliding-window / discounted counts
+#           the explore/exploit core reappears in RL -> Q-learning (Day 40)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 39 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You turned Day 38's explore/exploit tension into a <strong>discrete decision problem</strong>. A row of arms hid Bernoulli payout rates; the score was <strong>regret</strong> <code>T·μ* − Σ μ<sub>aₜ</sub></code>, the reward left on the table versus an oracle. <strong>ε-greedy</strong> exploited the best mean but explored blindly at rate ε — linear regret. <strong>UCB1</strong> added an optimistic confidence bonus <code>c·√(ln t / nᵢ)</code> that decays as arms are learned, and <strong>Thompson sampling</strong> kept a <code>Beta(1+wins,1+losses)</code> belief and pulled in proportion to being best — both bend regret down to logarithmic and beat greedy handily. That is the whole game: explore just enough, then commit. <strong>👉 Tomorrow — Day 40: Q-Learning (Reinforcement Learning)</strong> — when your actions move you between <em>states</em> and rewards arrive with a delay, the bandit grows a memory: value iteration and temporal-difference learning teach an agent to plan, not just to pick.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= RANDOMNESS (seeded, so a seed reproduces a whole run) =================
+// <<<ENGINE_START>>>
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+let _spare=null;
+// standard normal via Marsaglia polar method, drawing from a seeded uniform rng
+function gauss(rng){
+  if(_spare!==null){ const s=_spare; _spare=null; return s; }
+  let u,v,s; do{ u=2*rng()-1; v=2*rng()-1; s=u*u+v*v; } while(s>=1||s===0);
+  const m=Math.sqrt(-2*Math.log(s)/s); _spare=v*m; return u*m;
+}
+// Gamma(k,1) sample, Marsaglia & Tsang (valid for shape k>=1; here k=1+count>=1)
+function randGamma(k, rng){
+  const d=k-1/3, c=1/Math.sqrt(9*d);
+  for(;;){
+    let x,v; do{ x=gauss(rng); v=1+c*x; } while(v<=0);
+    v=v*v*v; const u=rng();
+    if(u < 1-0.0331*x*x*x*x) return d*v;
+    if(Math.log(u) < 0.5*x*x + d*(1-v+Math.log(v))) return d*v;
+  }
+}
+// Beta(a,b) sample as the ratio of two Gamma draws -> a real Thompson posterior sample
+function randBeta(a, b, rng){ const x=randGamma(a,rng), y=randGamma(b,rng); return x/(x+y); }
+
+// argmax with random tie-breaking (so all-equal ties don't always pick arm 0)
+function argmaxRand(vals, rng){
+  let best=-Infinity, idx=[];
+  for(let i=0;i<vals.length;i++){
+    if(vals[i] > best+1e-12){ best=vals[i]; idx=[i]; }
+    else if(vals[i] >= best-1e-12){ idx.push(i); }
+  }
+  return idx[Math.floor(rng()*idx.length)];
+}
+
+// ---- the three strategies: each returns the arm index to pull next ----
+// ε-greedy: with prob eps pull a random arm, else the highest empirical mean
+function selectEps(st, eps, rng){
+  if(rng() < eps) return Math.floor(rng()*st.n.length);
+  const means = st.n.map((n,i)=> n>0 ? st.s[i]/n : 0);
+  return argmaxRand(means, rng);
+}
+// UCB1: play each arm once, then argmax( mean + c*sqrt(ln t / n) ).
+// c is the confidence weight (Auer's original UCB1 uses c=sqrt(2)~1.41; a smaller
+// c explores less, which pays off over the short horizons in this demo).
+const UCB_C = 0.7;
+function selectUcb(st, rng){
+  const K=st.n.length;
+  for(let i=0;i<K;i++) if(st.n[i]===0) return i;
+  const t=st.total, v=new Array(K);
+  for(let i=0;i<K;i++) v[i] = st.s[i]/st.n[i] + UCB_C*Math.sqrt(Math.log(t)/st.n[i]);
+  return argmaxRand(v, rng);
+}
+// Thompson: sample once from each arm's Beta(1+wins,1+losses) posterior, pull the max
+function selectTs(st, rng){
+  const K=st.n.length; let bi=0, bv=-1;
+  for(let i=0;i<K;i++){
+    const th = randBeta(1+st.s[i], 1+(st.n[i]-st.s[i]), rng);
+    if(th>bv){ bv=th; bi=i; }
+  }
+  return bi;
+}
+// <<<ENGINE_END>>>
+
+// ================= domain, scenarios, state =================
+const SCEN = {
+  classic:{ name:"Classic",     rates:[0.25,0.45,0.55,0.72,0.38] },
+  spread: { name:"Wide spread", rates:[0.10,0.30,0.50,0.70,0.90] },
+  close:  { name:"Hard (close)",rates:[0.48,0.55,0.52,0.50,0.53,0.49] },
+  needle: { name:"Needle",      rates:[0.12,0.10,0.11,0.13,0.80,0.10] }
+};
+const COL  = { eps:"#f43f5e", ucb:"#0ea5e9", ts:"#a855f7" };
+const NAME = { eps:"🎲 ε-greedy", ucb:"📈 UCB1", ts:"🎯 Thompson" };
+const ORDER=["eps","ucb","ts"];
+const TRUE_COL="#16a34a", GOLD="#eab308";
+const CAP=1200;
+
+const state = {
+  scn:"classic", N:0, rates:[], muStar:0, bestArm:0,
+  sel:"ts", eps:0.10, reveal:false,
+  T:0, seed:271, rng:null, auto:null, strat:{}
+};
+
+function makeStrat(K){ return { n:new Array(K).fill(0), s:new Array(K).fill(0),
+  total:0, reward:0, regret:0, opt:0, lastArm:-1, rewardHist:[0], regretHist:[0] }; }
+
+function loadScenario(key){
+  state.scn=key; const sc=SCEN[key];
+  state.rates=sc.rates.slice(); state.N=sc.rates.length;
+  state.muStar=Math.max(...sc.rates);
+  state.bestArm=sc.rates.indexOf(state.muStar);
+  _spare=null; state.rng=mulberry32(state.seed); state.T=0;
+  state.strat={ eps:makeStrat(state.N), ucb:makeStrat(state.N), ts:makeStrat(state.N) };
+  draw();
+}
+
+// ---------------- one round: advance ALL THREE strategies by one pull ----------------
+function pullRound(){
+  state.T++;
+  for(const k of ORDER){
+    const st=state.strat[k];
+    let a;
+    if(k==="eps") a=selectEps(st, state.eps, state.rng);
+    else if(k==="ucb") a=selectUcb(st, state.rng);
+    else a=selectTs(st, state.rng);
+    const r = state.rng() < state.rates[a] ? 1 : 0;   // real Bernoulli pull
+    st.n[a]++; st.s[a]+=r; st.total++; st.reward+=r;
+    st.regret += state.muStar - state.rates[a];        // expected (pseudo) regret
+    if(a===state.bestArm) st.opt++;
+    st.lastArm=a;
+    st.rewardHist.push(st.reward);
+    st.regretHist.push(st.regret);
+  }
+}
+function step(){ if(state.T>=CAP) return true; pullRound(); draw(); return state.T>=CAP; }
+
+// ---------------- auto-run ----------------
+function stopAuto(){ if(state.auto){ clearInterval(state.auto); state.auto=null; }
+  const b=document.getElementById("btnAuto"); if(b) b.textContent="▶ Auto-run"; }
+function toggleAuto(){
+  if(state.auto){ stopAuto(); return; }
+  document.getElementById("btnAuto").textContent="⏸ Pause";
+  state.auto=setInterval(()=>{
+    for(let i=0;i<6 && state.T<CAP;i++) pullRound();
+    draw();
+    if(state.T>=CAP) stopAuto();
+  }, 55);
+}
+
+// ---------------- transforms ----------------
+function mkT(w,h,pad,xmin,xmax,ymin,ymax){
+  return { X:x=> pad + (x-xmin)/(xmax-xmin)*(w-2*pad),
+           Y:y=> (h-pad) - (y-ymin)/(ymax-ymin)*(h-2*pad) };
+}
+
+// ---------------- render: arm belief panel (selected strategy) ----------------
+function betaDensity(a,b,M){
+  const xs=new Array(M), lp=new Array(M); let mx=-Infinity;
+  for(let j=0;j<M;j++){
+    const x=(j+0.5)/M; xs[j]=x;
+    const l=(a-1)*Math.log(x)+(b-1)*Math.log(1-x);
+    lp[j]=l; if(l>mx) mx=l;
+  }
+  const h=new Array(M); for(let j=0;j<M;j++) h[j]=Math.exp(lp[j]-mx);   // 0..1
+  return { xs, h };
+}
+function renderArms(){
+  const st=state.strat[state.sel], K=state.N;
+  const W=540, padL=58, padR=104, top=8, laneH=Math.min(52, Math.max(40, 300/K)), H=top+K*laneH+24;
+  const px = p => padL + p*(W-padL-padR);
+  // which arm does this strategy currently believe is best (highest empirical mean, among pulled)?
+  let believe=-1, bm=-1;
+  for(let i=0;i<K;i++){ if(st.n[i]>0){ const m=st.s[i]/st.n[i]; if(m>bm){ bm=m; believe=i; } } }
+  let g=`<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  // probability gridlines
+  for(let p=0;p<=1.0001;p+=0.25){ const x=px(p);
+    g+=`<line x1="${x.toFixed(1)}" y1="${top}" x2="${x.toFixed(1)}" y2="${H-18}" stroke="#eef2f7" stroke-width="1"/>`;
+    g+=`<text x="${x.toFixed(1)}" y="${H-6}" font-size="9" fill="#94a3b8" text-anchor="middle">${p.toFixed(2)}</text>`; }
+  g+=`<text x="${padL-6}" y="${H-6}" font-size="9" fill="#94a3b8" text-anchor="end">rate</text>`;
+  const col=COL[state.sel];
+  for(let i=0;i<K;i++){
+    const laneTop=top+i*laneH, base=laneTop+laneH-8, amp=laneH-16;
+    if(i===st.lastArm) g+=`<rect x="${padL}" y="${laneTop+1}" width="${W-padL-6}" height="${laneH-2}" rx="6" fill="${col}" fill-opacity="0.06"/>`;
+    g+=`<line x1="${padL}" y1="${base.toFixed(1)}" x2="${(W-padR).toFixed(1)}" y2="${base.toFixed(1)}" stroke="#e2e8f0" stroke-width="1"/>`;
+    // Beta posterior belief
+    const a=1+st.s[i], b=1+(st.n[i]-st.s[i]);
+    const den=betaDensity(a,b,64);
+    let area=`M ${px(den.xs[0]).toFixed(1)} ${base.toFixed(1)} `, line="";
+    for(let j=0;j<den.xs.length;j++){ const X=px(den.xs[j]).toFixed(1), Y=(base-den.h[j]*amp).toFixed(1);
+      area+=`L ${X} ${Y} `; line+=`${j?'L':'M'} ${X} ${Y} `; }
+    area+=`L ${px(den.xs[den.xs.length-1]).toFixed(1)} ${base.toFixed(1)} Z`;
+    g+=`<path d="${area}" fill="${col}" fill-opacity="0.28"/>`;
+    g+=`<path d="${line}" fill="none" stroke="${col}" stroke-width="1.8"/>`;
+    // empirical mean tick
+    if(st.n[i]>0){ const m=st.s[i]/st.n[i], x=px(m);
+      g+=`<line x1="${x.toFixed(1)}" y1="${(base-amp).toFixed(1)}" x2="${x.toFixed(1)}" y2="${base.toFixed(1)}" stroke="#0f172a" stroke-width="1.8"/>`; }
+    // true hidden rate (revealed)
+    if(state.reveal){ const x=px(state.rates[i]);
+      g+=`<line x1="${x.toFixed(1)}" y1="${(base-amp).toFixed(1)}" x2="${x.toFixed(1)}" y2="${base.toFixed(1)}" stroke="${TRUE_COL}" stroke-width="1.6" stroke-dasharray="4 3"/>`; }
+    // labels
+    g+=`<text x="10" y="${(laneTop+laneH/2-2).toFixed(1)}" font-size="12" font-weight="800" fill="#334155">A${i}</text>`;
+    if(i===believe) g+=`<text x="34" y="${(laneTop+laneH/2+1).toFixed(1)}" font-size="14" fill="${GOLD}">★</text>`;
+    const mtxt = st.n[i]>0 ? (st.s[i]/st.n[i]).toFixed(2) : "—";
+    g+=`<text x="${W-8}" y="${(laneTop+laneH/2-3).toFixed(1)}" font-size="11" font-weight="800" fill="#0f172a" text-anchor="end">μ̂=${mtxt}</text>`;
+    g+=`<text x="${W-8}" y="${(laneTop+laneH/2+11).toFixed(1)}" font-size="10" fill="#64748b" text-anchor="end">n=${st.n[i]}${state.reveal?"  p="+state.rates[i].toFixed(2):""}</text>`;
+  }
+  document.getElementById("svgArms").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto">${g}</svg>`;
+  document.getElementById("armTitle").textContent=`${NAME[state.sel]} — belief over each arm`;
+  document.getElementById("legPost").style.background = hexA(COL[state.sel],0.30);
+}
+function hexA(hex,a){ const n=parseInt(hex.slice(1),16); return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`; }
+
+// ---------------- render: cumulative reward ----------------
+function sampledPath(hist, T2X, V2Y){
+  const step=Math.max(1, Math.ceil(hist.length/420));
+  let d="";
+  for(let i=0;i<hist.length;i+=step){ d+=`${d?'L':'M'} ${T2X(i).toFixed(1)} ${V2Y(hist[i]).toFixed(1)} `; }
+  const last=hist.length-1; d+=`L ${T2X(last).toFixed(1)} ${V2Y(hist[last]).toFixed(1)}`;
+  return d;
+}
+function renderReward(){
+  const W=488,H=210,PAD=40, xmax=Math.max(state.T,20);
+  const ymax=Math.max(1, state.muStar*xmax*1.02);
+  const T=mkT(W,H,PAD,0,xmax,0,ymax);
+  let g=`<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g+=`<line x1="${PAD}" y1="${(H-PAD).toFixed(1)}" x2="${W-PAD}" y2="${(H-PAD).toFixed(1)}" stroke="#94a3b8" stroke-width="1"/>`;
+  g+=`<line x1="${PAD}" y1="${PAD}" x2="${PAD}" y2="${H-PAD}" stroke="#94a3b8" stroke-width="1"/>`;
+  // oracle ceiling mu* * t
+  g+=`<line x1="${T.X(0).toFixed(1)}" y1="${T.Y(0).toFixed(1)}" x2="${T.X(xmax).toFixed(1)}" y2="${T.Y(state.muStar*xmax).toFixed(1)}" stroke="${TRUE_COL}" stroke-width="1.6" stroke-dasharray="6 4"/>`;
+  g+=`<text x="${W-PAD}" y="${(T.Y(state.muStar*xmax)+12).toFixed(1)}" font-size="9" font-weight="700" fill="${TRUE_COL}" text-anchor="end">oracle μ*·t</text>`;
+  for(const k of ORDER){ g+=`<path d="${sampledPath(state.strat[k].rewardHist, T.X, T.Y)}" fill="none" stroke="${COL[k]}" stroke-width="2.2"/>`; }
+  // legend + finals
+  let lx=PAD+4;
+  for(const k of ORDER){ const val=state.strat[k].reward;
+    g+=`<rect x="${lx}" y="${PAD-6}" width="10" height="10" rx="2" fill="${COL[k]}"/>`;
+    g+=`<text x="${lx+13}" y="${PAD+2}" font-size="9.5" font-weight="700" fill="#334155">${val}</text>`;
+    lx+=64; }
+  g+=`<text x="${W-PAD}" y="${H-6}" font-size="9" fill="#94a3b8" text-anchor="end">pulls →</text>`;
+  g+=`<text x="10" y="${PAD-2}" font-size="10" fill="#16a34a">reward</text>`;
+  document.getElementById("svgReward").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+
+// ---------------- render: cumulative regret (the key chart) ----------------
+function renderRegret(){
+  const W=488,H=210,PAD=40, xmax=Math.max(state.T,20);
+  let rmax=1; for(const k of ORDER) rmax=Math.max(rmax, state.strat[k].regret);
+  const ymax=rmax*1.12;
+  const T=mkT(W,H,PAD,0,xmax,0,ymax);
+  let g=`<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g+=`<line x1="${PAD}" y1="${(H-PAD).toFixed(1)}" x2="${W-PAD}" y2="${(H-PAD).toFixed(1)}" stroke="#94a3b8" stroke-width="1"/>`;
+  g+=`<line x1="${PAD}" y1="${PAD}" x2="${PAD}" y2="${H-PAD}" stroke="#94a3b8" stroke-width="1"/>`;
+  // horizontal gridlines
+  for(let f=0.25; f<1.0001; f+=0.25){ const y=T.Y(ymax*f);
+    g+=`<line x1="${PAD}" y1="${y.toFixed(1)}" x2="${W-PAD}" y2="${y.toFixed(1)}" stroke="#eef2f7" stroke-width="1"/>`;
+    g+=`<text x="${PAD-4}" y="${(y+3).toFixed(1)}" font-size="8" fill="#94a3b8" text-anchor="end">${(ymax*f).toFixed(0)}</text>`; }
+  for(const k of ORDER){ g+=`<path d="${sampledPath(state.strat[k].regretHist, T.X, T.Y)}" fill="none" stroke="${COL[k]}" stroke-width="2.4"/>`;
+    const st=state.strat[k], n=st.regretHist.length-1;
+    g+=`<circle cx="${T.X(n).toFixed(1)}" cy="${T.Y(st.regret).toFixed(1)}" r="3.2" fill="${COL[k]}"/>`; }
+  let lx=PAD+4;
+  for(const k of ORDER){ const val=state.strat[k].regret;
+    g+=`<rect x="${lx}" y="${PAD-6}" width="10" height="10" rx="2" fill="${COL[k]}"/>`;
+    g+=`<text x="${lx+13}" y="${PAD+2}" font-size="9.5" font-weight="700" fill="#334155">${val.toFixed(1)}</text>`;
+    lx+=64; }
+  g+=`<text x="${W-PAD}" y="${H-6}" font-size="9" fill="#94a3b8" text-anchor="end">pulls →</text>`;
+  g+=`<text x="10" y="${PAD-2}" font-size="10" fill="#f43f5e">regret</text>`;
+  document.getElementById("svgRegret").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+
+// ---------------- metrics + diagnosis ----------------
+function updateMetrics(){
+  const st=state.strat[state.sel];
+  let believe="—", bm=-1;
+  for(let i=0;i<state.N;i++){ if(st.n[i]>0){ const m=st.s[i]/st.n[i]; if(m>bm){ bm=m; believe="A"+i; } } }
+  document.getElementById("mT").textContent=state.T;
+  document.getElementById("mReward").textContent=st.reward;
+  document.getElementById("mRegret").textContent=st.regret.toFixed(1);
+  document.getElementById("mBestArm").textContent=believe;
+  document.getElementById("mOpt").textContent=(st.total? (st.opt/st.total*100):0).toFixed(0)+"%";
+  document.getElementById("mStar").textContent=state.muStar.toFixed(2);
+}
+function setDiag(){
+  const box=document.getElementById("diagBox");
+  const e=state.strat.eps, u=state.strat.ucb, t=state.strat.ts;
+  const set=(cls,title,body)=>{ box.className="diag "+cls+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${title}</div><div class="text-sm font-medium leading-relaxed">${body}</div>`; };
+  const selName={eps:"ε-greedy",ucb:"UCB1",ts:"Thompson"}[state.sel];
+  if(state.T <= state.N){
+    set("diag-info","🌱 Fresh bandit — nobody knows anything yet",
+      `${state.N} arms, each with a hidden payout rate you can only learn by spending pulls. All three strategies (and the arm-belief panel for <strong>${selName}</strong>) start with flat, uninformative posteriors. Press <strong>Pull</strong> a few times, or hit <strong>Auto-run</strong>, and watch each Beta belief sharpen while the regret curves on the right start to separate.`);
+  } else if(e.regret > u.regret + 2 && e.regret > t.regret + 2){
+    set("diag-good","📉 UCB1 & Thompson are bending regret down — greedy isn't",
+      `After ${state.T} pulls, <strong>ε-greedy</strong> has racked up regret <strong>${e.regret.toFixed(1)}</strong> and it keeps climbing in a straight line — it never stops pulling random arms at rate ε=${state.eps.toFixed(2)}. <strong>UCB1</strong> (${u.regret.toFixed(1)}) and <strong>Thompson</strong> (${t.regret.toFixed(1)}) taper off because their exploration decays as they learn. That flattening is <em>sublinear regret</em> — the entire reason these two are the workhorses of A/B testing and ad selection. Try the <strong>Needle</strong> bandit to see greedy struggle even harder.`);
+  } else if(state.T < 40){
+    set("diag-info","🧭 Early exploration — the beliefs are still wide",
+      `With ${state.T} pulls the arms are barely mapped. Regret so far: ε-greedy ${e.regret.toFixed(1)}, UCB1 ${u.regret.toFixed(1)}, Thompson ${t.regret.toFixed(1)}. This is where every strategy pays the price of exploring. Keep going — the good strategies stop paying it once they've found the winner, while greedy keeps paying the ε tax.`);
+  } else {
+    set("diag-info","🎯 Converging — watch which curve flattens first",
+      `${state.T} pulls in. ${selName} has spent <strong>${(state.strat[state.sel].opt/Math.max(1,state.strat[state.sel].total)*100).toFixed(0)}%</strong> of its pulls on the true best arm (A${state.bestArm}). Current regret: ε-greedy ${e.regret.toFixed(1)}, UCB1 ${u.regret.toFixed(1)}, Thompson ${t.regret.toFixed(1)}. Reveal the true rates to see how close each strategy's beliefs have landed, and keep running to widen the gap.`);
+  }
+}
+
+// ---------------- main draw ----------------
+function draw(){ renderArms(); renderReward(); renderRegret(); updateMetrics(); setDiag(); }
+
+// ---------------- controls ----------------
+function highlightScn(){ document.querySelectorAll("[data-scn]").forEach(b=> b.classList.toggle("on", b.dataset.scn===state.scn)); }
+function syncSel(){
+  document.getElementById("sEps").classList.toggle("on", state.sel==="eps");
+  document.getElementById("sUcb").classList.toggle("on", state.sel==="ucb");
+  document.getElementById("sTs").classList.toggle("on", state.sel==="ts");
+}
+document.querySelectorAll("[data-scn]").forEach(b=> b.onclick=()=>{ stopAuto(); loadScenario(b.dataset.scn); highlightScn(); });
+document.getElementById("sEps").onclick=()=>{ state.sel="eps"; syncSel(); draw(); };
+document.getElementById("sUcb").onclick=()=>{ state.sel="ucb"; syncSel(); draw(); };
+document.getElementById("sTs").onclick =()=>{ state.sel="ts";  syncSel(); draw(); };
+document.getElementById("cEps").addEventListener("input", e=>{ state.eps=+e.target.value;
+  document.getElementById("vEps").textContent="ε="+state.eps.toFixed(2); });
+document.getElementById("btnStep").onclick =()=> step();
+document.getElementById("btnAuto").onclick =()=> toggleAuto();
+document.getElementById("btnReset").onclick=()=>{ stopAuto(); loadScenario(state.scn); };
+document.getElementById("tReveal").onclick =()=>{ state.reveal=!state.reveal;
+  document.getElementById("tReveal").classList.toggle("on", state.reveal);
+  document.getElementById("legTrue").classList.toggle("hidden", !state.reveal); draw(); };
+
+// ---------------- init ----------------
+syncSel(); highlightScn();
+loadScenario("classic");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. The setup: N arms, hidden payouts, a fixed budget", why:"Picture a row of slot machines. Each arm pays out a reward of 1 with some fixed but hidden probability, and 0 otherwise. You get a limited number of pulls and want to maximise total reward. You do not know the probabilities and the only way to learn one is to spend a pull on that arm and see the outcome. That is the whole dilemma in miniature: information and reward come from the same action. Pull the arm that has looked best so far and you cash in on what you know, but you might be riding an unlucky estimate; pull a barely-tried arm and you buy information that might reveal a better machine, at the cost of a turn that could have paid off. This is the explore-vs-exploit trade-off, and the multi-armed bandit is its cleanest formal home.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">K arms, hidden rates p₁…p_K (Bernoulli)<br>each pull → reward 1 (prob pᵢ) or 0<br><br>fixed budget of pulls · maximise total reward<br>learning an arm COSTS a pull ⇒ explore vs exploit</div>`, code:`# a pull is one Bernoulli draw from the chosen arm's hidden rate
+def pull(arm):
+    return 1.0 if rng.random() < true_rates[arm] else 0.0
+# we never see true_rates -- only these 0/1 outcomes.` },
+ { title:"2. Regret — the number that scores a strategy", why:"To compare strategies we need a yardstick. Raw total reward is noisy and depends on the arms, so instead we measure regret: how much reward we gave up compared to an oracle that magically pulls the best arm every single time. After T pulls, regret is T times the best arm's rate, minus the sum of the true rates of the arms we actually chose. Equivalently it is the sum over pulls of the gap between the best rate and the rate of the arm we pulled — every time we pull a sub-optimal arm we add its gap to our regret. A great strategy makes regret grow sublinearly, typically like log T: it makes fewer and fewer mistakes over time and eventually almost always pulls the best arm. A poor strategy makes regret grow linearly, a constant rate of mistakes forever. The shape of the regret curve is the whole verdict.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Regret(T) = T·μ* − Σₜ μ(aₜ)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= Σₜ ( μ* − μ(aₜ) )<br><br>good strategy → regret ~ log T (sublinear, flattens)<br>bad strategy → regret ~ T (linear, never stops paying)</div>`, code:`regret = 0.0
+for t in range(1, T+1):
+    a = choose_arm(...)          # the strategy's decision
+    reward = pull(a)
+    regret += mu_star - true_rates[a]   # add this pull's gap to the oracle` },
+ { title:"3. ε-greedy — the simplest thing that works", why:"ε-greedy is the baseline everyone starts with. Track the empirical mean reward of each arm. On each turn, flip a biased coin: with probability ε pull a uniformly random arm (explore), otherwise pull the arm with the highest empirical mean (exploit). The single parameter ε sets how much you explore. It is trivial to implement and surprisingly competitive, but it has a fatal flaw for the long run: because ε is constant, it keeps pulling random arms at that fixed rate forever, even long after it is certain which arm is best. Those forced random pulls each cost some regret, so its regret grows linearly. Decaying ε over time fixes the asymptotics but adds a schedule to tune. It is the honest floor against which the smarter methods prove their worth.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">with prob ε&nbsp;&nbsp;&nbsp;→ pull a RANDOM arm (explore)<br>with prob 1−ε → pull argmax μ̂ᵢ (exploit)<br><br>one knob · dead simple · strong baseline<br>flaw: constant ε ⇒ explores forever ⇒ linear regret</div>`, code:`def eps_greedy(values, eps=0.1):
+    if rng.random() < eps:
+        return rng.integers(K)        # explore: random arm
+    return int(np.argmax(values))     # exploit: best mean so far` },
+ { title:"4. UCB1 — optimism in the face of uncertainty", why:"UCB1 removes the coin flip. Instead of judging each arm by its mean alone, it judges it by an optimistic upper confidence bound: the empirical mean plus a bonus term, a confidence weight c times the square root of (ln t over n), where n is how many times that arm has been pulled and t is the total number of pulls so far. Read the bonus: an arm pulled only a few times has a small n and therefore a large bonus, so it looks attractive and gets tried; as an arm accumulates pulls its bonus shrinks and it is judged more and more on its actual mean. The ln t in the numerator grows slowly, keeping a whisper of curiosity alive for every arm so none is abandoned permanently on the strength of a few unlucky pulls. The weight c tunes exploration — Auer's original UCB1 fixes it at square-root-two (about 1.41); a smaller c like the 0.7 used here explores a bit less, which is often better over a short horizon. The principle — act as if each arm is as good as its data plausibly allow — is called optimism in the face of uncertainty, and it provably delivers logarithmic regret.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">UCB1: pull argmax [ μ̂ᵢ + c·√( ln t / nᵢ ) ]<br><br>few pulls (small nᵢ) → big bonus → "worth a look"<br>many pulls → tiny bonus → judged on its mean<br>c = confidence weight (√2 ≈ 1.41 classic · 0.7 here) · O(log T) regret</div>`, code:`def ucb1(values, counts, t, c=0.7):
+    for a in range(K):
+        if counts[a] == 0: return a          # each arm once
+    bonus = c * np.sqrt(np.log(t) / counts)  # confidence bonus
+    return int(np.argmax(values + bonus))    # c=sqrt(2) is Auer's UCB1` },
+ { title:"5. Thompson sampling — bet in proportion to being best", why:"Thompson sampling is the Bayesian approach, and it is beautifully short. Maintain a posterior belief about each arm's rate. For Bernoulli arms the conjugate prior is the Beta distribution, so the posterior after some wins and losses is simply Beta(1 + wins, 1 + losses) — it starts flat (total ignorance) and sharpens toward the true rate as evidence accumulates. Each turn, draw a single random sample from every arm's posterior and pull whichever arm produced the largest sample. The magic is that an arm gets pulled with exactly the probability that it is the best arm under the current belief: arms that are clearly bad almost never win a draw, arms that are plausibly the best win often, and arms we are still unsure about occasionally win — automatic, self-calibrating exploration. No bonus term, no ε; the uncertainty in the posteriors does all the exploration bookkeeping. In practice Thompson sampling often matches or beats UCB1 and it also achieves logarithmic regret.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">belief per arm: Beta(1+wins, 1+losses)<br>each turn: sample θᵢ ~ Betaᵢ , pull argmax θᵢ<br><br>P(pull arm i) = P(arm i is the best) under belief<br>uncertainty ⇒ sometimes wins ⇒ auto-exploration</div>`, code:`def thompson(wins, losses):
+    samples = rng.beta(1+wins, 1+losses)  # one draw per arm
+    return int(np.argmax(samples))        # pull the sampled winner
+# update:  wins[a]+=reward ; losses[a]+=(1-reward)` },
+ { title:"6. The Beta posterior, up close", why:"The Beta distribution is the engine behind Thompson sampling and the belief curves you see in the LOOK panel, so it is worth understanding directly. Beta(α, β) lives on the interval from 0 to 1 — perfect for a probability — with two shape parameters. Start every arm at Beta(1, 1), which is the flat uniform distribution: before any evidence, every rate from 0 to 1 is equally plausible. Each pull updates it by conjugacy: a success (reward 1) increments α, a failure increments β, so after w wins and l losses the belief is Beta(1 + w, 1 + l). Its mean sits near w over (w + l), the empirical rate, and its spread narrows as w + l grows — a tall, tight spike once the arm is well sampled, a broad hump when it is barely tried. That width is literally the model's uncertainty, and sampling from it is what lets Thompson explore uncertain arms without any explicit exploration rule. Watch a winning arm's curve in the demo climb tall and slide onto its true rate.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Beta(1,1) = flat = "no idea" (uniform on 0..1)<br>success → α+1 &nbsp;·&nbsp; failure → β+1<br><br>mean ≈ wins/(wins+losses) · width = uncertainty<br>more pulls ⇒ taller, tighter spike on the true rate</div>`, code:`# conjugacy makes the update a one-liner, no integration needed:
+alpha, beta = 1, 1                 # prior: flat belief
+for reward in outcomes:
+    alpha += reward                # a win  sharpens toward 1
+    beta  += (1 - reward)          # a loss sharpens toward 0
+# belief now = Beta(alpha, beta)` },
+ { title:"7. Why the smart ones beat ε-greedy", why:"All three strategies must explore, but they differ in how their exploration behaves over time, and that difference is the whole ballgame. ε-greedy explores blindly and at a constant rate: it spends an ε fraction of pulls on uniformly random arms no matter how certain it already is, so it keeps paying a fixed regret tax every round and its total regret climbs linearly. UCB1 and Thompson explore adaptively and their exploration decays: UCB1's confidence bonus shrinks as arms are pulled, and Thompson's posteriors tighten so unpromising arms stop winning the sampling lottery. Both concentrate exploration on arms that are plausibly the best given the evidence, and they essentially stop exploring the ones already shown to be poor. The result is logarithmic regret — the rate of mistakes goes to zero. You can watch this directly in the regret panel: ε-greedy is a rising straight line while UCB1 and Thompson bend over and flatten. That bend is the payoff of exploring where it matters instead of everywhere equally.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ε-greedy: explores at FIXED rate ε forever → linear regret<br>UCB1 / Thompson: exploration DECAYS as arms are learned<br><br>they stop retrying arms proven bad<br>⇒ regret ~ log T (flattens) &nbsp;≫&nbsp; wins long-run</div>`, code:`# same budget, three strategies, compare final regret:
+# eps-greedy : regret keeps rising ~ eps * gap * T   (linear)
+# UCB1       : regret ~ C * log(T)                   (sublinear)
+# Thompson   : regret ~ C * log(T), often the lowest constant` },
+ { title:"8. Practical wrinkles and variants", why:"The clean version above assumes stationary arms and no side information, which is rarely quite true. If the payout rates drift over time (fashions change, an ad fatigues), use a sliding window or discount old counts so the algorithm can forget stale evidence and re-explore. If you observe features each round — this user, this time of day, this device — you want a contextual bandit that learns a rate as a function of those features; LinUCB and linear Thompson sampling are the standard tools, and this is exactly how modern ad and content systems work. If several pulls happen at once, batched acquisitions pick a diverse set. Reward shape matters too: Beta priors are for 0/1 rewards, while Gaussian or other conjugate pairs handle continuous payoffs. And ε-greedy's ε or UCB's constant can be tuned or scheduled. The core loop — believe, choose, observe, update — stays the same throughout; the variants just adapt it to the messiness of real problems.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">non-stationary arms → sliding window / discounting<br>features per round → contextual bandits (LinUCB, TS-linear)<br>continuous reward → Gaussian posterior instead of Beta<br>parallel pulls → batched / diverse selection</div>`, code:`# contextual: rate depends on features x seen each round
+#   LinUCB: theta_a . x  +  alpha * sqrt(x' A_a^-1 x)
+# non-stationary: decay counts each step so old data fades
+#   counts *= gamma ; values via discounted running mean` },
+ { title:"9. Where bandits live — and the road to RL", why:"Multi-armed bandits are everywhere you must earn while you learn. A/B and multivariate testing use them to shift traffic toward winning variants without wasting users on losers. Ad networks, news feeds, and recommender systems pick which item to show as a contextual bandit. Adaptive clinical trials assign more patients to the treatment that is looking better. They tune hyperparameters (Hyperband is a bandit over training budgets) and route queries in systems design. Their one limitation, by definition, is that pulling an arm does not change anything about the world — there is no state, and rewards are immediate. Lift that assumption — let each action move you to a new situation and let rewards arrive after a delay — and the bandit grows up into the full reinforcement-learning problem, where you must value not just the immediate payoff but the states an action leads to. The explore-vs-exploit tension you just met is still there at the heart of it. That is exactly where Day 40 goes: Q-learning and the Markov decision process.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">uses: A/B testing · ads &amp; recs · clinical trials · tuning<br><br>limit: no state, immediate reward (arms don't change the world)<br>add state + delayed reward ⇒ reinforcement learning<br>same explore/exploit core → Q-learning (Day 40)</div>`, code:`# bandit  : maximise reward over independent, stateless pulls
+# RL / MDP: actions change STATE, rewards are DELAYED ->
+#   value an action by immediate reward + value of where it leads
+#   -> Q-learning, temporal-difference learning  (Day 40)` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
