@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 38 — Bayesian Optimization</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:180px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-band { display:inline-block; width:16px; height:11px; border-radius:3px; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .kbtn { border:1px solid #e2e8f0; background:#fff; }
+  .kbtn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .objbtn { border:1px solid #e2e8f0; }
+  .objbtn:hover { border-color:#38bdf8; }
+  .objbtn.on { border-color:#0ea5e9; background:#e0f2fe; color:#075985; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 38</div>
+      <h1 class="text-xl font-bold">🔦 Bayesian Optimization — Find the Peak of an <em>Expensive</em> Black-Box in a Handful of Evaluations</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>The objective is hidden. Press "Sample next" and watch it get found in a handful of evaluations.</strong> Day 37 built a Gaussian Process that gives a <em>calibrated uncertainty band</em>. Today we turn that band into a <strong>decision</strong>. When every evaluation of <code>f(x)</code> is expensive — a training run, a lab experiment, an A/B test — you can't afford a grid. Bayesian Optimization fits the GP as a cheap <strong>surrogate</strong>, then an <strong>acquisition function</strong> reads its mean and band to score every candidate <em>x</em> by how promising it is. Evaluate the true function at the acquisition's <strong>argmax</strong>, add the point, refit — repeat. In a dozen steps it homes in on the peak while a random search is still wandering.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Two acquisition functions, switchable below. <strong>Expected Improvement</strong> <code>EI(x) = 𝔼[max(0, f(x) − f⁺)]</code> scores the expected amount you'd beat the best value seen so far <code>f⁺</code>; it is large where the mean is high (<em>exploit</em>) <em>or</em> the band is wide (<em>explore</em>), and collapses to zero at points you've already measured. <strong>Upper Confidence Bound</strong> <code>UCB(x) = μ(x) + κ·σ(x)</code> is an optimist's score with one dial: small <strong>κ</strong> exploits the current best, large <strong>κ</strong> chases uncertainty. Every mean, band and acquisition curve on this page is computed live in your browser with the same Cholesky-based GP you dragged around yesterday.</p>
+
+      <div class="grid grid-cols-3 md:grid-cols-6 gap-2 max-w-4xl mx-auto mb-4">
+        <div class="metric-pill"><div class="v" id="mN" style="color:#0f172a">—</div><div class="k">evaluations</div></div>
+        <div class="metric-pill"><div class="v" id="mBest" style="color:#0ea5e9">—</div><div class="k">best f · BO</div></div>
+        <div class="metric-pill"><div class="v" id="mRand" style="color:#f43f5e">—</div><div class="k">best f · random</div></div>
+        <div class="metric-pill"><div class="v" id="mGap" style="color:#16a34a">—</div><div class="k">gap to true max</div></div>
+        <div class="metric-pill"><div class="v" id="mNext" style="color:#f59e0b">—</div><div class="k">next sample x*</div></div>
+        <div class="metric-pill"><div class="v" id="mAcq" style="color:#a855f7">—</div><div class="k">acquisition</div></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start">
+        <!-- controls -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+          <div class="text-xs font-bold text-slate-500 mb-2">HIDDEN OBJECTIVE — pick a black-box to optimize</div>
+          <div class="flex flex-wrap gap-2 mb-3">
+            <button data-obj="twohills" class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">⛰️ Two Hills</button>
+            <button data-obj="ripple"   class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">🌊 Ripple</button>
+            <button data-obj="spike"    class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">📍 Hidden Spike</button>
+            <button data-obj="rugged"   class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">⛰️ Rugged</button>
+          </div>
+
+          <div class="text-xs font-bold text-slate-500 mb-1">ACQUISITION FUNCTION</div>
+          <div class="flex gap-2 mb-1">
+            <button id="acqEI"  class="kbtn on px-3 py-1 rounded-lg font-semibold text-xs flex-1">📈 Expected Improvement</button>
+            <button id="acqUCB" class="kbtn px-3 py-1 rounded-lg font-semibold text-xs flex-1">🎚 UCB</button>
+          </div>
+          <div class="ctl-row">
+            <div class="ctl-name" id="expName">📈 EI ξ (explore margin)</div>
+            <input type="range" id="cExp" min="0" max="0.4" step="0.01" value="0.01">
+            <div class="ctl-val" id="vExp">ξ=0.01</div>
+          </div>
+          <div class="text-[11px] text-slate-400 -mt-1 mb-2">bigger ⇒ the sampler is pushed to <em>explore</em> uncertain regions rather than <em>exploit</em> the current best</div>
+
+          <div class="mt-1 flex items-center gap-2 flex-wrap">
+            <button id="btnStep" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">🎯 Sample next (1 eval)</button>
+            <button id="btnAuto" class="bg-slate-800 text-white px-3 py-1.5 rounded-lg font-semibold text-xs hover:bg-slate-700">▶ Auto-run</button>
+            <button id="btnReset" class="ml-auto bg-rose-100 text-rose-700 px-3 py-1.5 rounded-lg font-semibold text-xs hover:bg-rose-200">↺ reset</button>
+          </div>
+          <div class="mt-3 flex flex-wrap gap-2 items-center">
+            <span class="text-[11px] font-bold text-slate-400 uppercase w-full">show</span>
+            <button id="tReveal" class="kbtn px-2.5 py-1 rounded-lg font-semibold text-xs">👁 reveal true objective</button>
+          </div>
+
+          <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+            The <span style="color:#0ea5e9;font-weight:800">— sky</span> curve is the surrogate's <strong>mean</strong>; the <span style="color:#0ea5e9;font-weight:800">pale sky</span> fill is its <strong>±σ / ±2σ band</strong> — wide where it hasn't looked. The <span style="color:#a855f7;font-weight:800">purple</span> curve below is the <strong>acquisition</strong>; its <span style="color:#f59e0b;font-weight:800">amber argmax</span> is where the next real evaluation goes. The <span style="color:#eab308;font-weight:800">★</span> marks the best point found so far. Keep pressing <strong>Sample next</strong>: the band collapses around each new point and the acquisition re-aims — the whole thing converges on the peak.
+          </div>
+        </div>
+
+        <!-- surrogate plot -->
+        <div class="panel hero text-left" style="width:540px; max-width:100%;">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-sm font-bold text-sky-700">📈 GP surrogate over the evaluations</span>
+            <span class="text-xs font-bold text-slate-400">band collapses where you've sampled</span>
+          </div>
+          <div id="svgSurr"></div>
+          <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+            <span><span class="swatch" style="background:#0f172a"></span> evaluations</span>
+            <span><span class="swatch-line" style="border-color:#0ea5e9;border-top-style:solid"></span> surrogate mean</span>
+            <span><span class="swatch-band" style="background:rgba(14,165,233,.28)"></span> ±σ / ±2σ band</span>
+            <span style="color:#eab308;font-weight:800">★ best so far</span>
+            <span style="color:#f59e0b;font-weight:800">┆ next x*</span>
+            <span id="legTrue" class="hidden"><span class="swatch-line" style="border-color:#16a34a;border-top-style:dashed"></span> true objective</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- second row: acquisition + convergence -->
+      <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:520px; max-width:100%;">
+          <div class="text-xs font-bold mb-1" style="color:#a855f7">▮ THE ACQUISITION FUNCTION — where should we look next?</div>
+          <div id="svgAcq"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-1">The acquisition turns the surrogate's mean and band into a single "worth-sampling" score at every candidate <code>x</code>. Its <strong>argmax</strong> (amber) is the one place we spend the next expensive evaluation. <strong>EI</strong> peaks near unmeasured regions where the mean is promising <em>and</em> the band is fat; it drops to zero right on top of existing observations, so it never wastes a sample. Slide the explore knob and watch the argmax jump between exploiting the best hill and exploring an untried gap.</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:520px; max-width:100%;">
+          <div class="text-xs font-bold mb-1" style="color:#0ea5e9">▮ BAYESIAN OPT vs RANDOM SEARCH — best value found</div>
+          <div id="svgConv"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-1">Best value found so far, per evaluation, for <span style="color:#0ea5e9;font-weight:800">Bayesian Optimization</span> versus a <span style="color:#f43f5e;font-weight:800">random search</span> given the exact same budget and the exact same seed points. Both climb toward the <span style="color:#16a34a;font-weight:800">true maximum</span> (dashed), but BO gets there in far fewer evaluations because it spends each one where its model says the payoff is highest — random just guesses. That gap <em>is</em> the value of a surrogate.</div>
+        </div>
+      </div>
+
+      <div id="diagBox" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">Turn an uncertainty band into a search strategy</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">scikit-optimize ships this as <code>gp_minimize</code> and BoTorch/Ax do it on the GPU — but the whole loop is six short pieces you already have most of. The surrogate is <em>literally</em> Day 37's Gaussian Process; all we add is a cheap acquisition function and a five-line loop that fits, maximises the acquisition, evaluates the true function once, and repeats.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The expensive black-box and a few seed points</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Bayesian Optimization is for functions that are <em>expensive</em> to evaluate: a model training run, a simulation, a lab experiment. You don't know the formula and you can only afford a handful of calls. Start with two or three seed evaluations to give the surrogate something to fit.</p>
+        <div class="relative"><pre>import numpy as np
+
+# an EXPENSIVE black-box: each call costs real money/time, formula unknown to us
+def objective(x):
+    return 1.7*np.exp(-(x-7)**2/1.6) + 1.15*np.exp(-(x-2.6)**2/2.5) - 0.15   # hidden
+
+bounds = (0.0, 10.0)
+X = np.array([1.6, 8.4])                    # a few seed evaluations
+y = np.array([objective(x) for x in X])     # the only truth we have</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The surrogate — reuse Day 37's Gaussian Process</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The surrogate is a cheap stand-in for the real function that we can query for free. A GP is perfect: it returns a posterior <strong>mean</strong> and a calibrated <strong>±σ band</strong> at every input. This is exactly yesterday's engine — kernel, three matrices, one Cholesky solve.</p>
+        <div class="relative"><pre>def rbf(a, b, sf2=1.3, ell=1.2):
+    d = a[:, None] - b[None, :]
+    return sf2 * np.exp(-d**2 / (2*ell**2))
+
+def gp_posterior(X, y, Xs, noise=1e-3):
+    K   = rbf(X, X) + noise*np.eye(len(X))       # train-train
+    Ks  = rbf(Xs, X)                             # test-train
+    Kss = rbf(Xs, Xs)                            # test-test
+    L     = np.linalg.cholesky(K)                # K = L Lᵀ  (Day 37)
+    alpha = np.linalg.solve(L.T, np.linalg.solve(L, y))
+    mean  = Ks @ alpha                           # posterior mean
+    v     = np.linalg.solve(L, Ks.T)
+    std   = np.sqrt(np.clip(np.diag(Kss) - np.sum(v*v, 0), 0, None))
+    return mean, std                             # <-- the surrogate's belief</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Expected Improvement — the acquisition function</h3></div>
+        <p class="text-sm text-slate-600 mb-3">An acquisition function scores every candidate <code>x</code> by how <em>worth sampling</em> it is, folding mean and uncertainty into one number. Expected Improvement asks: how much do we expect to beat the best value so far, <code>f⁺</code>? It rewards a high mean (exploit) and a wide band (explore) at once, and goes to zero at points already measured — so it never wastes an evaluation.</p>
+        <div class="relative"><pre>from scipy.stats import norm
+
+def expected_improvement(mean, std, f_best, xi=0.01):
+    std = np.maximum(std, 1e-9)
+    imp = mean - f_best - xi          # xi nudges toward more exploration
+    z   = imp / std
+    return imp*norm.cdf(z) + std*norm.pdf(z)   # E[max(0, f - f_best)]</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">UCB — the same idea with one explicit dial</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Upper Confidence Bound is an optimist's score: assume every point is as good as its mean <em>plus</em> a few standard deviations. The single knob <code>κ</code> sets the explore/exploit balance directly — small κ trusts the mean and exploits, large κ chases the widest bands. Both EI and UCB are cheap to evaluate, so we can maximise them over a dense grid.</p>
+        <div class="relative"><pre>def ucb(mean, std, kappa=1.8):
+    return mean + kappa*std      # small kappa -> exploit, large kappa -> explore
+
+# an 'acquisition function' is a cheap proxy for 'where is the next real eval
+# most likely to pay off'. Its ARGMAX is the single point we choose to sample.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">The loop: fit → maximise acquisition → evaluate → repeat</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This is the entire method. Fit the surrogate to everything seen so far, score a dense grid of candidates with the acquisition, pick its argmax, spend one real (expensive) evaluation there, append it, and go again. A dozen iterations is usually plenty — exactly the loop the LOOK tab runs on every click.</p>
+        <div class="relative"><pre>Xs = np.linspace(*bounds, 400)                 # a fine candidate grid
+for t in range(12):                            # a handful of expensive evals
+    mean, std = gp_posterior(X, y, Xs)         # 1. fit surrogate to data so far
+    acq       = expected_improvement(mean, std, y.max())   # 2. score candidates
+    x_next    = Xs[np.argmax(acq)]             # 3. pick the acquisition's argmax
+    y_next    = objective(x_next)              # 4. spend ONE real evaluation
+    X = np.append(X, x_next); y = np.append(y, y_next)     # 5. repeat
+print("best x:", X[np.argmax(y)], " best f:", y.max())</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">The one-liner — and why it beats grid/random search</h3></div>
+        <p class="text-sm text-slate-600 mb-3"><code>scikit-optimize</code>'s <code>gp_minimize</code> (or BoTorch/Ax on the GPU) does all of the above and tunes the kernel too. Reach for BO when each evaluation is genuinely expensive and the budget is small — hyperparameter tuning, materials/drug screening, robotics, A/B tests. Grid and random search ignore everything they've learned; BO spends every evaluation where its uncertainty-aware model says the payoff is highest.</p>
+        <div class="relative"><pre>from skopt import gp_minimize          # scikit-optimize; BoTorch/Ax for torch/GPU
+
+# skopt MINIMIZES, so negate to maximize:
+res = gp_minimize(lambda x: -objective(x[0]), [bounds],
+                  n_calls=15, acq_func="EI")
+print(-res.fun, res.x)                 # best value, best x  -- in ~15 evals
+
+# grid/random search waste calls; BO spends each one where payoff is highest.
+# cost: the GP is O(N^3) -> BO shines for EXPENSIVE f with a SMALL eval budget.
+# high-dim / batch / parallel -> Thompson sampling, TuRBO, q-EI (BoTorch).</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 38 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You turned Day 37's uncertainty band into a <strong>decision rule</strong>. A Gaussian Process <strong>surrogate</strong> stood in for an expensive black-box; an <strong>acquisition function</strong> — Expected Improvement <code>𝔼[max(0, f−f⁺)]</code> or UCB <code>μ+κσ</code> — scored every candidate by folding mean (exploit) and band (explore) into one number, and its <strong>argmax</strong> chose where to spend the next real evaluation. Fit → maximise acquisition → evaluate → repeat, and the surrogate's band collapsed around each new point until it converged on the peak in a dozen steps — while random search was still wandering. That explore-vs-exploit balance is the whole game. <strong>👉 Tomorrow — Day 39: Multi-Armed Bandits</strong> — the same tension when the choices are discrete arms and every pull has a cost: UCB and Thompson sampling decide which lever to pull next.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= GAUSSIAN PROCESS SURROGATE (pure JS, reused from Day 37) =================
+// <<<ENGINE_START>>>
+function mulberry32(a){ return function(){ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+// squared-exponential (RBF) kernel: covariance between outputs at inputs a and b.
+function kernel(a, b, sf2, ell){ const d=a-b; return sf2*Math.exp(-d*d/(2*ell*ell)); }
+
+// Cholesky factor of a symmetric positive-definite matrix A (n x n): returns lower L, L Lᵀ = A.
+function cholesky(A, n){
+  const L = Array.from({length:n}, ()=>new Float64Array(n));
+  for(let i=0;i<n;i++){
+    for(let j=0;j<=i;j++){
+      let s = A[i][j];
+      for(let k=0;k<j;k++) s -= L[i][k]*L[j][k];
+      if(i===j) L[i][j] = Math.sqrt(Math.max(s, 1e-12));
+      else      L[i][j] = s / L[j][j];
+    }
+  }
+  return L;
+}
+// solve L y = b for y  (forward substitution, L lower-triangular)
+function forwardSolve(L, b, n){
+  const y = new Float64Array(n);
+  for(let i=0;i<n;i++){ let s=b[i]; for(let k=0;k<i;k++) s-=L[i][k]*y[k]; y[i]=s/L[i][i]; }
+  return y;
+}
+// solve Lᵀ x = y for x  (back substitution)
+function backSolveT(L, y, n){
+  const x = new Float64Array(n);
+  for(let i=n-1;i>=0;i--){ let s=y[i]; for(let k=i+1;k<n;k++) s-=L[k][i]*x[k]; x[i]=s/L[i][i]; }
+  return x;
+}
+// FIT the surrogate: factor (K + noise*I) once, precompute alpha = (K+noise*I)^-1 y.
+function gpFit(points, sf2, ell, noise){
+  const n = points.length;
+  if(n===0) return { n:0, points:[], sf2, ell, noise, L:null, alpha:null };
+  const K = Array.from({length:n}, ()=>new Float64Array(n));
+  for(let i=0;i<n;i++) for(let j=0;j<n;j++)
+    K[i][j] = kernel(points[i].x, points[j].x, sf2, ell) + (i===j ? noise : 0);
+  const L = cholesky(K, n);
+  const y = Float64Array.from(points.map(p=>p.y));
+  const alpha = backSolveT(L, forwardSolve(L, y, n), n);   // (K+noise*I)^-1 y
+  return { n, points:points.slice(), sf2, ell, noise, L, alpha };
+}
+// Posterior mean & std over a grid.
+//   mean(x*) = k*ᵀ alpha ;  var(x*) = k(x*,x*) - (L^-1 k*)ᵀ(L^-1 k*)
+function gpOnGrid(fit, grid){
+  const m = grid.length, mean = new Float64Array(m), std = new Float64Array(m);
+  const sfStd = Math.sqrt(fit.sf2);
+  for(let j=0;j<m;j++){
+    if(fit.n===0){ mean[j]=0; std[j]=sfStd; continue; }     // no data -> the prior
+    const ks = new Float64Array(fit.n);
+    for(let i=0;i<fit.n;i++) ks[i] = kernel(grid[j], fit.points[i].x, fit.sf2, fit.ell);
+    let mu=0; for(let i=0;i<fit.n;i++) mu += ks[i]*fit.alpha[i];
+    const v = forwardSolve(fit.L, ks, fit.n);
+    let vv=0; for(let i=0;i<fit.n;i++) vv += v[i]*v[i];
+    mean[j]=mu; std[j]=Math.sqrt(Math.max(0, fit.sf2 - vv));
+  }
+  return { mean, std };
+}
+// <<<ENGINE_END>>>
+
+// ================= ACQUISITION FUNCTIONS =================
+function normPDF(z){ return Math.exp(-0.5*z*z)/Math.sqrt(2*Math.PI); }
+function normCDF(z){ // Abramowitz & Stegun 26.2.17 rational approximation
+  const t = 1/(1+0.2316419*Math.abs(z));
+  const d = 0.3989422804014327*Math.exp(-0.5*z*z);
+  let p = d*t*(0.319381530 + t*(-0.356563782 + t*(1.781477937 + t*(-1.821255978 + t*1.330274429))));
+  return z>0 ? 1-p : p;
+}
+// Expected Improvement (maximization): E[max(0, f(x) - f_best - xi)]
+function acqEI(mu, sd, best, xi){
+  if(sd < 1e-9) return 0;
+  const imp = mu - best - xi, z = imp/sd;
+  return imp*normCDF(z) + sd*normPDF(z);
+}
+// Upper Confidence Bound (maximization)
+function acqUCB(mu, sd, kappa){ return mu + kappa*sd; }
+
+// ---------------- domain + geometry ----------------
+const XMIN=0, XMAX=10;
+let YMIN=-1, YMAX=2.2;
+const GW=520, GH=320, GPAD=34;                    // surrogate svg
+const AW=488, AH=196, APAD=34;                    // acquisition svg
+const CW=488, CH=196, CPAD=38;                    // convergence svg
+const SKY="#0ea5e9", MEAN_COL="#0ea5e9", ACQ_COL="#a855f7", NEXT_COL="#f59e0b",
+      TRUE_COL="#16a34a", RAND_COL="#f43f5e", GOLD="#eab308";
+const NG=120;
+const GRIDX=[]; for(let i=0;i<=NG;i++) GRIDX.push(XMIN + i*(XMAX-XMIN)/NG);
+
+function mkT(w,h,pad,xmin,xmax,ymin,ymax){
+  return { X:x=> pad + (x-xmin)/(xmax-xmin)*(w-2*pad),
+           Y:y=> (h-pad) - (y-ymin)/(ymax-ymin)*(h-2*pad) };
+}
+const clampY = y => Math.max(YMIN, Math.min(YMAX, y));
+function bestSoFar(arr){ let b=-Infinity, out=[]; for(const p of arr){ if(p.y>b)b=p.y; out.push(b);} return out; }
+
+// ---------------- hidden objectives ----------------
+const OBJECTIVES = {
+  twohills: { name:"Two Hills", seeds:[1.6, 8.4],
+              fn:x=> 1.7*Math.exp(-Math.pow(x-7,2)/1.6) + 1.15*Math.exp(-Math.pow(x-2.6,2)/2.5) - 0.15 },
+  ripple:   { name:"Decaying Ripple", seeds:[1.2, 9.0],
+              fn:x=> 1.6*Math.sin(1.15*x-0.4)*Math.exp(-0.045*Math.pow(x-5.2,2)) },
+  spike:    { name:"Hidden Spike", seeds:[2.5, 5.5],
+              fn:x=> 1.9*Math.exp(-Math.pow(x-7.6,2)/0.22) + 0.7*Math.exp(-Math.pow(x-3.2,2)/4.0) - 0.05 },
+  rugged:   { name:"Rugged", seeds:[1.0, 9.2],
+              fn:x=> Math.sin(1.6*x) + 0.55*Math.sin(3.1*x+0.7) + 0.05*x - 0.3 }
+};
+
+const state = { objKey:"twohills", trueFn:null, trueMax:0, trueArgmax:0,
+  ell:1.2, sf2:1.3, noise:0.001,
+  evals:[], randEvals:[],
+  acq:"ei", xi:0.01, kappa:1.8,
+  reveal:false, nextX:null, seed:71938, _rng:null, auto:null };
+
+let lastFit=null, lastGd=null;
+
+function loadObjective(key){
+  state.objKey = key; const o = OBJECTIVES[key]; state.trueFn = o.fn;
+  let mx=-Infinity, mn=Infinity, ax=0;
+  for(let i=0;i<=400;i++){ const x=XMIN+i*(XMAX-XMIN)/400, y=o.fn(x);
+    if(y>mx){ mx=y; ax=x; } if(y<mn) mn=y; }
+  state.trueMax=mx; state.trueArgmax=ax;
+  YMIN = mn - 0.45; YMAX = mx + 0.5;
+  state._rng = mulberry32(state.seed);
+  state.evals    = o.seeds.map(x=>({ x, y:+o.fn(x).toFixed(4) }));
+  state.randEvals= o.seeds.map(x=>({ x, y:+o.fn(x).toFixed(4) }));
+  draw();
+}
+
+// ---------------- acquisition over the grid ----------------
+function computeAcq(gd){
+  const best = state.evals.length ? Math.max(...state.evals.map(p=>p.y)) : 0;
+  const m = GRIDX.length, a = new Float64Array(m); let bi=0, bv=-Infinity;
+  for(let i=0;i<m;i++){
+    const mu=gd.mean[i], sd=gd.std[i];
+    const val = state.acq==="ucb" ? acqUCB(mu,sd,state.kappa) : acqEI(mu,sd,best,state.xi);
+    a[i]=val; if(val>bv){ bv=val; bi=i; }
+  }
+  return { a, bi, best };
+}
+
+// ---------------- one BO step ----------------
+function stepBO(){
+  if(!lastGd) return true;
+  const acq = computeAcq(lastGd);
+  const nx = GRIDX[acq.bi];
+  state.evals.push({ x:+nx.toFixed(4), y:+state.trueFn(nx).toFixed(4) });
+  // fair random-search baseline: same budget, independent uniform draw
+  const rx = XMIN + (XMAX-XMIN)*state._rng();
+  state.randEvals.push({ x:rx, y:+state.trueFn(rx).toFixed(4) });
+  draw();
+  const bo = Math.max(...state.evals.map(p=>p.y));
+  return (state.trueMax - bo) < 0.02 || state.evals.length >= 24;   // converged / budget
+}
+
+// ---------------- auto-run ----------------
+function stopAuto(){ if(state.auto){ clearInterval(state.auto); state.auto=null; }
+  const b=document.getElementById("btnAuto"); if(b) b.textContent="▶ Auto-run"; }
+function toggleAuto(){
+  if(state.auto){ stopAuto(); return; }
+  document.getElementById("btnAuto").textContent="⏸ Pause";
+  state.auto = setInterval(()=>{ if(stepBO()) stopAuto(); }, 720);
+}
+
+// ---------------- rendering: surrogate ----------------
+function renderSurrogate(gd){
+  const T = mkT(GW,GH,GPAD,XMIN,XMAX,YMIN,YMAX);
+  let g = `<clipPath id="sc"><rect x="1" y="1" width="${GW-2}" height="${GH-2}" rx="10"/></clipPath>`;
+  g += `<rect x="1" y="1" width="${GW-2}" height="${GH-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g += `<g clip-path="url(#sc)">`;
+  for(let v=Math.ceil(YMIN); v<=Math.floor(YMAX); v++){ const y=T.Y(v), ax=(v===0);
+    g+=`<line x1="${GPAD}" y1="${y.toFixed(1)}" x2="${GW-GPAD}" y2="${y.toFixed(1)}" stroke="${ax?'#cbd5e1':'#eef2f7'}" stroke-width="${ax?1.4:1}"/>`; }
+  for(let v=Math.ceil(XMIN); v<=Math.floor(XMAX); v++){ const x=T.X(v);
+    g+=`<line x1="${x.toFixed(1)}" y1="${GPAD}" x2="${x.toFixed(1)}" y2="${GH-GPAD}" stroke="#eef2f7" stroke-width="1"/>`; }
+  function bandPath(k){ let up="",dn="";
+    for(let i=0;i<GRIDX.length;i++) up+=`${i?'L':'M'} ${T.X(GRIDX[i]).toFixed(1)} ${T.Y(clampY(gd.mean[i]+k*gd.std[i])).toFixed(1)} `;
+    for(let i=GRIDX.length-1;i>=0;i--) dn+=`L ${T.X(GRIDX[i]).toFixed(1)} ${T.Y(clampY(gd.mean[i]-k*gd.std[i])).toFixed(1)} `;
+    return up+dn+"Z"; }
+  g+=`<path d="${bandPath(2)}" fill="${SKY}" fill-opacity="0.12"/>`;
+  g+=`<path d="${bandPath(1)}" fill="${SKY}" fill-opacity="0.22"/>`;
+  if(state.reveal){ let d=""; for(let i=0;i<GRIDX.length;i++) d+=`${i?'L':'M'} ${T.X(GRIDX[i]).toFixed(1)} ${T.Y(clampY(state.trueFn(GRIDX[i]))).toFixed(1)} `;
+    g+=`<path d="${d}" fill="none" stroke="${TRUE_COL}" stroke-width="1.8" stroke-dasharray="6 4" stroke-opacity="0.85"/>`; }
+  { let d=""; for(let i=0;i<GRIDX.length;i++) d+=`${i?'L':'M'} ${T.X(GRIDX[i]).toFixed(1)} ${T.Y(clampY(gd.mean[i])).toFixed(1)} `;
+    g+=`<path d="${d}" fill="none" stroke="${MEAN_COL}" stroke-width="2.6"/>`; }
+  if(state.nextX!=null){ const nx=T.X(state.nextX);
+    g+=`<line x1="${nx.toFixed(1)}" y1="${GPAD}" x2="${nx.toFixed(1)}" y2="${GH-GPAD}" stroke="${NEXT_COL}" stroke-width="1.8" stroke-dasharray="5 4"/>`;
+    g+=`<text x="${(nx+4).toFixed(1)}" y="${GPAD+11}" font-size="10" font-weight="800" fill="${NEXT_COL}">next x*</text>`; }
+  for(const p of state.evals) g+=`<circle cx="${T.X(p.x).toFixed(1)}" cy="${T.Y(clampY(p.y)).toFixed(1)}" r="4" fill="#0f172a" stroke="#fff" stroke-width="1.5"/>`;
+  if(state.evals.length){ const b=state.evals.reduce((a,p)=>p.y>a.y?p:a);
+    g+=`<text x="${T.X(b.x).toFixed(1)}" y="${(T.Y(clampY(b.y))-8).toFixed(1)}" font-size="17" fill="${GOLD}" text-anchor="middle">★</text>`; }
+  g+=`</g>`;
+  g+=`<text x="${GW-GPAD}" y="${GH-6}" font-size="9" fill="#94a3b8" text-anchor="end">search input x →</text>`;
+  g+=`<text x="10" y="${GPAD-2}" font-size="10" fill="#94a3b8">f(x)</text>`;
+  document.getElementById("svgSurr").innerHTML=`<svg viewBox="0 0 ${GW} ${GH}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+
+// ---------------- rendering: acquisition ----------------
+function renderAcq(acq){
+  let aMin=Infinity, aMax=-Infinity; for(const v of acq.a){ if(v<aMin)aMin=v; if(v>aMax)aMax=v; }
+  if(state.acq==="ei") aMin=Math.min(0,aMin);
+  if(aMax-aMin<1e-6) aMax=aMin+1;
+  const span=aMax-aMin, lo=aMin-span*0.08, hi=aMax+span*0.18;
+  const T = mkT(AW,AH,APAD,XMIN,XMAX,lo,hi);
+  let g=`<rect x="1" y="1" width="${AW-2}" height="${AH-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g+=`<line x1="${APAD}" y1="${(AH-APAD).toFixed(1)}" x2="${AW-APAD}" y2="${(AH-APAD).toFixed(1)}" stroke="#94a3b8" stroke-width="1"/>`;
+  const nx=T.X(state.nextX);
+  g+=`<line x1="${nx.toFixed(1)}" y1="${APAD}" x2="${nx.toFixed(1)}" y2="${AH-APAD}" stroke="${NEXT_COL}" stroke-width="1.8" stroke-dasharray="5 4"/>`;
+  let area=`M ${T.X(GRIDX[0]).toFixed(1)} ${(AH-APAD).toFixed(1)} `, line="";
+  for(let i=0;i<GRIDX.length;i++){ area+=`L ${T.X(GRIDX[i]).toFixed(1)} ${T.Y(acq.a[i]).toFixed(1)} `; line+=`${i?'L':'M'} ${T.X(GRIDX[i]).toFixed(1)} ${T.Y(acq.a[i]).toFixed(1)} `; }
+  area+=`L ${T.X(GRIDX[GRIDX.length-1]).toFixed(1)} ${(AH-APAD).toFixed(1)} Z`;
+  g+=`<path d="${area}" fill="${ACQ_COL}" fill-opacity="0.15"/>`;
+  g+=`<path d="${line}" fill="none" stroke="${ACQ_COL}" stroke-width="2.4"/>`;
+  g+=`<circle cx="${nx.toFixed(1)}" cy="${T.Y(acq.a[acq.bi]).toFixed(1)}" r="5" fill="${NEXT_COL}" stroke="#fff" stroke-width="1.5"/>`;
+  g+=`<text x="${nx.toFixed(1)}" y="${(T.Y(acq.a[acq.bi])-9).toFixed(1)}" font-size="10" font-weight="800" fill="${NEXT_COL}" text-anchor="middle">argmax</text>`;
+  for(const p of state.evals){ const x=T.X(p.x); g+=`<line x1="${x.toFixed(1)}" y1="${(AH-APAD).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(AH-APAD+6).toFixed(1)}" stroke="#0f172a" stroke-width="1.3"/>`; }
+  g+=`<text x="${AW-APAD}" y="${AH-6}" font-size="9" fill="#94a3b8" text-anchor="end">x  ( | = evaluated )</text>`;
+  g+=`<text x="10" y="${APAD-2}" font-size="10" fill="${ACQ_COL}">${state.acq==="ei"?"EI(x)":"UCB(x)"}</text>`;
+  document.getElementById("svgAcq").innerHTML=`<svg viewBox="0 0 ${AW} ${AH}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+
+// ---------------- rendering: convergence (BO vs random) ----------------
+function renderConv(){
+  const bo=bestSoFar(state.evals), rd=bestSoFar(state.randEvals), n=bo.length;
+  const xmax=Math.max(n,10);
+  const lo=Math.min(bo[0], rd[0], state.trueMax)-0.15, hi=state.trueMax+0.25;
+  const T=mkT(CW,CH,CPAD,1,xmax,lo,hi);
+  let g=`<rect x="1" y="1" width="${CW-2}" height="${CH-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g+=`<line x1="${CPAD}" y1="${T.Y(state.trueMax).toFixed(1)}" x2="${CW-CPAD}" y2="${T.Y(state.trueMax).toFixed(1)}" stroke="${TRUE_COL}" stroke-width="1.6" stroke-dasharray="6 4"/>`;
+  g+=`<text x="${CW-CPAD}" y="${(T.Y(state.trueMax)-4).toFixed(1)}" font-size="10" font-weight="700" fill="${TRUE_COL}" text-anchor="end">true max = ${state.trueMax.toFixed(2)}</text>`;
+  g+=`<line x1="${CPAD}" y1="${(CH-CPAD).toFixed(1)}" x2="${CW-CPAD}" y2="${(CH-CPAD).toFixed(1)}" stroke="#94a3b8" stroke-width="1"/>`;
+  const poly=(arr,col,w)=>{ let d=""; for(let i=0;i<arr.length;i++) d+=`${i?'L':'M'} ${T.X(i+1).toFixed(1)} ${T.Y(arr[i]).toFixed(1)} `; return `<path d="${d}" fill="none" stroke="${col}" stroke-width="${w}"/>`; };
+  g+=poly(rd, RAND_COL, 2.2);
+  g+=poly(bo, SKY, 2.6);
+  if(n){ g+=`<circle cx="${T.X(n).toFixed(1)}" cy="${T.Y(bo[n-1]).toFixed(1)}" r="4" fill="${SKY}"/>`;
+         g+=`<circle cx="${T.X(n).toFixed(1)}" cy="${T.Y(rd[n-1]).toFixed(1)}" r="4" fill="${RAND_COL}"/>`; }
+  g+=`<text x="${CPAD}" y="${CPAD-2}" font-size="10" font-weight="700" fill="${SKY}">BO ${bo[n-1].toFixed(2)}</text>`;
+  g+=`<text x="${CPAD+66}" y="${CPAD-2}" font-size="10" font-weight="700" fill="${RAND_COL}">random ${rd[n-1].toFixed(2)}</text>`;
+  g+=`<text x="${CW-CPAD}" y="${CH-6}" font-size="9" fill="#94a3b8" text-anchor="end">evaluations →</text>`;
+  document.getElementById("svgConv").innerHTML=`<svg viewBox="0 0 ${CW} ${CH}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+
+// ---------------- metrics + diagnosis ----------------
+function updateMetrics(){
+  const bo=state.evals.length?Math.max(...state.evals.map(p=>p.y)):0;
+  const rd=state.randEvals.length?Math.max(...state.randEvals.map(p=>p.y)):0;
+  document.getElementById("mN").textContent=state.evals.length;
+  document.getElementById("mBest").textContent=bo.toFixed(3);
+  document.getElementById("mRand").textContent=rd.toFixed(3);
+  document.getElementById("mGap").textContent=(state.trueMax-bo).toFixed(3);
+  document.getElementById("mNext").textContent=state.nextX.toFixed(2);
+  document.getElementById("mAcq").textContent=state.acq.toUpperCase();
+}
+function setDiag(){
+  const box=document.getElementById("diagBox");
+  const bo=Math.max(...state.evals.map(p=>p.y)), rd=Math.max(...state.randEvals.map(p=>p.y));
+  const gap=state.trueMax-bo, n=state.evals.length;
+  const set=(cls,title,body)=>{ box.className="diag "+cls+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${title}</div><div class="text-sm font-medium leading-relaxed">${body}</div>`; };
+  if(n<=2){
+    set("diag-info","🌱 Seeded — two evaluations, and the surrogate already has an opinion",
+      `The GP is fit to just ${n} points, so its band is fat almost everywhere. The <strong>${state.acq==="ei"?"Expected Improvement":"UCB"}</strong> acquisition (purple) is already pointing at <strong>x* = ${state.nextX.toFixed(2)}</strong> — the spot that best trades a promising mean against a wide uncertainty. Press <strong>Sample next</strong> to spend one real evaluation there and watch the band collapse around it.`);
+  } else if(gap < 0.03){
+    set("diag-good","🎯 Converged — the peak was found in "+n+" evaluations",
+      `Best value found is <strong>${bo.toFixed(3)}</strong>, essentially the true maximum <strong>${state.trueMax.toFixed(3)}</strong> (gap ${gap.toFixed(3)}). Random search with the same budget only reached <strong>${rd.toFixed(3)}</strong>. That head-start is the whole point: Bayesian Optimization spent every one of its ${n} expensive calls where the surrogate said the payoff was highest, instead of guessing. Try the <strong>Hidden Spike</strong> objective — random search almost never finds that needle.`);
+  } else if(bo > rd + 0.05){
+    set("diag-good","📈 Bayesian Optimization is pulling ahead of random",
+      `After ${n} evaluations BO's best is <strong>${bo.toFixed(3)}</strong> versus random's <strong>${rd.toFixed(3)}</strong> — a lead of <strong>${(bo-rd).toFixed(3)}</strong>, with <strong>${gap.toFixed(3)}</strong> still to go to the true max. The acquisition is now aiming at <strong>x* = ${state.nextX.toFixed(2)}</strong>. Keep sampling: each new point pinches the band there and re-aims the acquisition elsewhere.`);
+  } else {
+    set("diag-info","🧭 Exploring — the acquisition is still probing uncertain ground",
+      `With ${n} evaluations the surrogate is mapping the landscape; best so far is <strong>${bo.toFixed(3)}</strong> (gap ${gap.toFixed(3)} to the true max). ${state.acq==="ei"?"EI":"UCB"} points at <strong>x* = ${state.nextX.toFixed(2)}</strong> — a wide-band region worth checking before committing. Nudge the explore knob or switch acquisition to change how boldly it probes, then Sample next.`);
+  }
+}
+
+// ---------------- main draw ----------------
+function draw(){
+  const ymean = state.evals.length ? state.evals.reduce((a,p)=>a+p.y,0)/state.evals.length : 0;
+  const shifted = state.evals.map(p=>({ x:p.x, y:p.y-ymean }));   // zero-mean the GP, add back
+  lastFit = gpFit(shifted, state.sf2, state.ell, state.noise);
+  const gd0 = gpOnGrid(lastFit, GRIDX);
+  const mean = new Float64Array(GRIDX.length);
+  for(let i=0;i<GRIDX.length;i++) mean[i]=gd0.mean[i]+ymean;
+  const gd = { mean, std: gd0.std };
+  lastGd = gd;
+  const acq = computeAcq(gd);
+  state.nextX = GRIDX[acq.bi];
+  renderSurrogate(gd); renderAcq(acq); renderConv();
+  updateMetrics(); setDiag();
+}
+
+// ---------------- controls ----------------
+function highlightObj(){ document.querySelectorAll("[data-obj]").forEach(b=> b.classList.toggle("on", b.dataset.obj===state.objKey)); }
+function syncAcqSlider(){
+  const s=document.getElementById("cExp");
+  if(state.acq==="ucb"){ s.min=0.1; s.max=4; s.step=0.1; s.value=state.kappa;
+    document.getElementById("vExp").textContent="κ="+state.kappa.toFixed(1);
+    document.getElementById("expName").textContent="🎚 UCB κ (explore weight)"; }
+  else { s.min=0; s.max=0.4; s.step=0.01; s.value=state.xi;
+    document.getElementById("vExp").textContent="ξ="+state.xi.toFixed(2);
+    document.getElementById("expName").textContent="📈 EI ξ (explore margin)"; }
+}
+function syncAcqUI(){
+  document.getElementById("acqEI").classList.toggle("on", state.acq==="ei");
+  document.getElementById("acqUCB").classList.toggle("on", state.acq==="ucb");
+  syncAcqSlider();
+}
+document.querySelectorAll("[data-obj]").forEach(b=> b.onclick=()=>{ stopAuto(); loadObjective(b.dataset.obj); highlightObj(); });
+document.getElementById("acqEI").onclick =()=>{ state.acq="ei";  syncAcqUI(); draw(); };
+document.getElementById("acqUCB").onclick=()=>{ state.acq="ucb"; syncAcqUI(); draw(); };
+document.getElementById("cExp").addEventListener("input", e=>{ const v=+e.target.value; if(state.acq==="ucb") state.kappa=v; else state.xi=v; syncAcqSlider(); draw(); });
+document.getElementById("btnStep").onclick =()=> stepBO();
+document.getElementById("btnAuto").onclick =()=> toggleAuto();
+document.getElementById("btnReset").onclick=()=>{ stopAuto(); loadObjective(state.objKey); };
+document.getElementById("tReveal").onclick =()=>{ state.reveal=!state.reveal;
+  document.getElementById("tReveal").classList.toggle("on", state.reveal);
+  document.getElementById("legTrue").classList.toggle("hidden", !state.reveal); draw(); };
+
+// ---------------- init ----------------
+syncAcqUI(); highlightObj();
+loadObjective("twohills");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. The problem: an expensive black-box", why:"Bayesian Optimization exists for one specific pain: optimising a function f(x) that is expensive to evaluate and whose formula you do not know. Each evaluation might be a full model training run, a physical experiment, a costly simulation, or a live A/B test — minutes to weeks, and real money, per call. That rules out gradients (you have no formula to differentiate) and it rules out brute force (a grid of 10,000 points is 10,000 experiments you cannot afford). You have a tiny budget of evaluations, and every single one must count. The whole method is an answer to the question: given everything I have measured so far, where is the one place most worth spending my next expensive evaluation?", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">f(x) is EXPENSIVE + black-box (no formula)<br>budget = a handful of evaluations<br><br>no gradients · a grid is unaffordable<br>⇒ choose each next x as wisely as possible</div>`, code:`# each call is minutes-to-weeks and costs real money:
+def objective(x):
+    ...            # train a model / run an experiment / a simulation
+# we can afford maybe 10-20 calls total, and we know no formula for f.` },
+ { title:"2. The surrogate — a cheap model of the expensive function", why:"The first idea is to build a cheap stand-in — a surrogate — that mimics the expensive function using only the points we have already evaluated. We can then interrogate the surrogate as much as we like for free. A Gaussian Process (Day 37) is the classic choice because it gives two things at every input: a posterior mean (its best guess of f there) and a calibrated standard deviation (how unsure it is). The band is wide where we have not looked and pinches to almost nothing at points we have measured. That honest, spatially-varying uncertainty is exactly what lets us reason about where to look next — a plain regressor that only gives a mean cannot tell us where it is ignorant.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">surrogate = GP fit to the evaluations so far<br><br>gives μ(x) = best guess &nbsp;AND&nbsp; σ(x) = uncertainty<br>band wide where unseen · tight where measured<br><br>query it for FREE instead of the real f</div>`, code:`from sklearn.gaussian_process import GaussianProcessRegressor
+gp = GaussianProcessRegressor(kernel=RBF()).fit(X[:,None], y)
+mean, std = gp.predict(Xs[:,None], return_std=True)   # cheap: mean AND uncertainty` },
+ { title:"3. The acquisition function turns uncertainty into a decision", why:"A surrogate on its own does not tell you where to sample. The acquisition function does: it maps the surrogate's mean and std at each candidate x to a single number measuring how worth-sampling that point is, and we choose the x that maximises it. Crucially the acquisition rewards two different things at once — a high predicted mean (a point likely to be good) and a high uncertainty (a point we know little about and could be surprised by). Because the acquisition is cheap — just arithmetic on the surrogate — we can evaluate it over a dense grid or optimise it with ordinary methods, then spend our one expensive real evaluation at its argmax. Fit surrogate, maximise acquisition, evaluate, repeat.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">acquisition a(x) = f( μ(x), σ(x) )<br><br>score every candidate → pick argmax a(x)<br>cheap to compute → optimise it freely<br><br>spend the ONE real evaluation at the argmax</div>`, code:`acq   = acquisition(mean, std, best_so_far)   # cheap score at every candidate
+x_next = Xs[np.argmax(acq)]                    # the most promising place
+y_next = objective(x_next)                      # <- the only expensive call` },
+ { title:"4. Expected Improvement (EI)", why:"Expected Improvement is the most popular acquisition. Let f-plus be the best value observed so far. The improvement at a candidate x is max(0, f(x) - f-plus): how much we would beat the incumbent if we sampled there. We do not know f(x), but the surrogate says it is Gaussian with mean mu and std sigma, so we can take the expectation of that improvement in closed form: EI = (mu - f-plus) * Phi(z) + sigma * phi(z), where z = (mu - f-plus)/sigma and Phi, phi are the normal CDF and PDF. Read the two terms: the first grows when the mean beats the incumbent (exploitation), the second grows with sigma (exploration). At a point already measured sigma is ~0 and mu ~ f, so EI collapses to zero — EI automatically refuses to waste an evaluation re-sampling somewhere it already knows. A small margin xi can be added to push it to explore a little more.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">EI(x) = 𝔼[ max(0, f(x) − f⁺) ]<br>&nbsp;&nbsp;&nbsp;&nbsp; = (μ−f⁺)·Φ(z) + σ·φ(z),&nbsp; z = (μ−f⁺)/σ<br><br>term 1 ↑ with mean (exploit) · term 2 ↑ with σ (explore)<br>≈ 0 at measured points → never wastes a sample</div>`, code:`from scipy.stats import norm
+def expected_improvement(mean, std, f_best, xi=0.01):
+    std = np.maximum(std, 1e-9)
+    imp = mean - f_best - xi
+    z   = imp / std
+    return imp*norm.cdf(z) + std*norm.pdf(z)` },
+ { title:"5. Upper Confidence Bound (UCB) and the κ dial", why:"UCB is the other workhorse, and it makes the explore/exploit trade explicit with a single knob. It scores each candidate as UCB(x) = mu(x) + kappa * sigma(x): be optimistic, and assume every point is as good as its mean plus kappa standard deviations. With kappa = 0 it is pure exploitation — it just chases the highest predicted mean. As kappa grows it increasingly favours points with large sigma, i.e. places the surrogate is unsure about, which is pure exploration. There is theory (from the bandit literature) giving schedules for kappa that guarantee you eventually find the optimum, but in practice a fixed value around 1.5-2.5 works well. EI and UCB usually behave similarly; UCB's advantage is that its single interpretable knob makes the trade-off you are choosing obvious.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">UCB(x) = μ(x) + κ · σ(x)<br><br>κ = 0&nbsp;&nbsp; → pure exploit (chase the mean)<br>κ large → pure explore (chase the band)<br>κ ≈ 1.5–2.5 is a good default</div>`, code:`def ucb(mean, std, kappa=1.8):
+    return mean + kappa*std     # one dial for the whole explore/exploit balance
+# kappa small -> exploit the best hill; kappa large -> probe uncertain gaps` },
+ { title:"6. Explore vs exploit — the central tension", why:"Every acquisition function is really a rule for balancing two opposing urges. Exploitation says: sample near the best point you have found, to squeeze out a slightly better value. Exploration says: sample where the surrogate is most uncertain, because the true optimum might be hiding in a region you have barely touched. Pure exploitation gets stuck polishing a local optimum and never discovers a taller hill elsewhere; pure exploration wastes the budget mapping the whole space and never zooms in. Good optimisation interleaves them, and it does so automatically: after you sample a point its uncertainty there collapses, so the acquisition's incentive to revisit it vanishes and attention shifts elsewhere. Watch the LOOK demo — a couple of exploratory jumps to map the landscape, then a tightening cluster around the winning peak.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">EXPLOIT: sample near the current best (refine)<br>EXPLORE: sample where σ is largest (discover)<br><br>pure exploit → stuck on a local peak<br>pure explore → never zooms in<br>acquisition blends both, self-correcting</div>`, code:`# after sampling x, sigma(x) -> ~0, so the acquisition stops rewarding it.
+# attention automatically shifts to the next most promising / uncertain x.
+# no manual schedule needed -- the collapsing band does the bookkeeping.` },
+ { title:"7. The loop", why:"Assemble the pieces and Bayesian Optimization is a short loop. (1) Fit the GP surrogate to every point evaluated so far. (2) Compute the acquisition function over a dense set of candidate inputs. (3) Take its argmax — the single most promising place. (4) Evaluate the true, expensive function there exactly once. (5) Append the new (x, y) and go back to step 1. Each pass costs one real evaluation plus some cheap linear algebra, and the surrogate gets sharper every iteration. You stop when the budget runs out or the best value stops improving. That is the entire algorithm — and it is exactly what runs on every press of 'Sample next' in the LOOK tab. Seed it with two or three points so the first surrogate is not vacuous.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">repeat until budget spent:<br>&nbsp;1. fit surrogate to all (x, y) so far<br>&nbsp;2. score candidates with the acquisition<br>&nbsp;3. x* = argmax acquisition<br>&nbsp;4. y* = objective(x*)&nbsp; ← one real eval<br>&nbsp;5. add (x*, y*), loop</div>`, code:`Xs = np.linspace(*bounds, 400)
+for t in range(12):
+    mean, std = gp_posterior(X, y, Xs)
+    x_next = Xs[np.argmax(expected_improvement(mean, std, y.max()))]
+    y_next = objective(x_next)
+    X, y = np.append(X, x_next), np.append(y, y_next)` },
+ { title:"8. Why it beats grid and random search", why:"Grid search and random search are memoryless: every point they pick ignores everything they have already learned. Grid search also scales catastrophically — a modest resolution in d dimensions is resolution-to-the-d evaluations, hopeless past a few dimensions. Random search is a surprisingly strong baseline and parallelises trivially, but it still spends evaluations uniformly, including deep in regions it has already shown to be poor. Bayesian Optimization is different because it is adaptive: the surrogate summarises all past evaluations, and the acquisition directs the next one to wherever the expected payoff is highest, concentrating the budget on promising regions while still checking uncertain ones. When each evaluation is cheap, random search's simplicity wins; when each evaluation is expensive, that adaptivity means BO reaches a better value in far fewer calls — exactly the gap you see widening in the convergence panel.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">grid/random: memoryless, ignore past results<br>grid also blows up as resolutionᵈ<br><br>BO: adaptive — model summarises the past,<br>acquisition aims the next eval at the payoff<br><br>expensive f + small budget ⇒ BO wins big</div>`, code:`# random search: x_next = uniform(bounds)          # ignores all history
+# grid search:   O(resolution ** d) evaluations     # explodes with dimension
+# Bayesian opt:  x_next = argmax acquisition(model)  # uses every past point
+# -> far fewer expensive calls to reach a good optimum` },
+ { title:"9. Where it's used, limits, and what's next", why:"Bayesian Optimization is the engine behind automated hyperparameter tuning (it is what tools like Ax, Optuna's GP sampler, scikit-optimize, and SigOpt do), and it shows up in materials and drug discovery, A/B testing, robotics and control, and any 'design of experiments' setting where trials are costly. Its limits are the GP's limits: the Cholesky is O(N-cubed), so plain BO is a small-budget method (dozens to low hundreds of evaluations); it struggles in very high dimensions and with cheap functions where random search's throughput wins. The frontier addresses these — trust-region BO (TuRBO) and additive kernels for high dimensions, batch acquisitions (q-EI, local penalisation) to evaluate several points in parallel, and multi-fidelity methods that mix cheap approximate evaluations with expensive exact ones. The core tension — balancing exploration and exploitation under a budget — also drives its discrete cousin, the multi-armed bandit, which is exactly where Day 39 goes.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">uses: hyperparameter tuning · materials · A/B · robotics<br><br>limits: GP is O(N³) · small budgets · low-dim<br>frontier: TuRBO, batch q-EI, multi-fidelity<br><br>same explore/exploit tension → bandits (Day 39)</div>`, code:`# real toolkits: scikit-optimize (gp_minimize), Optuna, Ax / BoTorch, SigOpt
+# high-dim / parallel / multi-fidelity -> TuRBO, q-EI, Hyperband+BOHB
+# the explore/exploit core reappears in multi-armed bandits -> Day 39` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>

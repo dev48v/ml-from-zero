@@ -44,6 +44,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 35 — Linear Discriminant Analysis](https://dev48v.infy.uk/ml/day35-lda.html) — `day35-lda.html`
 - [MachineLearningFromZero · Day 36 — Bayesian Linear Regression](https://dev48v.infy.uk/ml/day36-bayesian-linear-regression.html) — `day36-bayesian-linear-regression.html`
 - [MachineLearningFromZero · Day 37 — Gaussian Processes](https://dev48v.infy.uk/ml/day37-gaussian-processes.html) — `day37-gaussian-processes.html`
+- [MachineLearningFromZero · Day 38 — Bayesian Optimization](https://dev48v.infy.uk/ml/day38-bayesian-optimization.html) — `day38-bayesian-optimization.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
