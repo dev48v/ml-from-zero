@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 40 — XGBoost Internals</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:172px 1fr 74px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-band { display:inline-block; width:16px; height:11px; border-radius:3px; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .kbtn { border:1px solid #e2e8f0; background:#fff; }
+  .kbtn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .objbtn { border:1px solid #e2e8f0; }
+  .objbtn:hover { border-color:#38bdf8; }
+  .objbtn.on { border-color:#0ea5e9; background:#e0f2fe; color:#075985; }
+  table.gh { width:100%; border-collapse:collapse; font-size:11.5px; font-variant-numeric:tabular-nums; }
+  table.gh th { color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:.03em; font-size:9.5px; padding:3px 5px; text-align:right; border-bottom:1px solid #e2e8f0; }
+  table.gh td { padding:3px 5px; text-align:right; border-bottom:1px solid #f1f5f9; }
+  table.gh td.lft { text-align:left; font-weight:700; color:#334155; }
+  table.gh tr.side-L td { background:#fff1f2; }
+  table.gh tr.side-R td { background:#eff6ff; }
+  table.gh tr.tot td { font-weight:900; color:#0f172a; border-top:2px solid #cbd5e1; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 40</div>
+      <h1 class="text-xl font-bold">⚡ XGBoost Internals — What Turns Plain Gradient Boosting Into the Algorithm That Keeps Winning: a <em>Regularized</em> Objective, <em>Second-Order</em> Taylor Splits, and <em>γ-Pruned</em> Trees</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>Day 15 boosted weak trees by fitting each new one to the previous model's residuals. XGBoost keeps that skeleton but rebuilds the engine — and every piece of the rebuild is on screen below, computed for real on a tiny 1-D dataset.</strong> Instead of chasing raw residuals, XGBoost writes down a single <em>regularized objective</em>, approximates it with a <strong>second-order Taylor expansion</strong> so every sample carries both a gradient <code>gᵢ</code> and a curvature <code>hᵢ</code>, and then derives — in closed form — the best leaf weight and the exact <em>gain</em> of any candidate split. Two knobs it adds, <strong>λ</strong> and <strong>γ</strong>, decide how hard leaf weights shrink and whether a split is even worth making.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Below is a single tree being grown the XGBoost way. Each point gets its <code>gᵢ</code> (gradient of the loss at the current prediction) and <code>hᵢ</code> (its second derivative). Group sums <code>G=Σgᵢ</code> and <code>H=Σhᵢ</code> are all a leaf needs: its optimal weight is <code>w* = −G/(H+λ)</code> and the value of a split is <code>Gain = ½[ G<sub>L</sub>²/(H<sub>L</sub>+λ) + G<sub>R</sub>²/(H<sub>R</sub>+λ) − G²/(H+λ) ] − γ</code>. Sweep the threshold and the <strong>gain curve</strong> (top-right) rises and falls; the dashed <strong>γ line</strong> is the bar a split must clear — below it, XGBoost refuses to split and the branch stays a leaf. Drag <strong>λ</strong> and watch the leaf weights shrink; drag <strong>γ</strong> and watch splits appear and vanish. The amber overlay shows what <em>plain</em> gradient boosting would have done: divide by the raw count <code>n</code> instead of <code>H+λ</code>, and never prune.</p>
+
+      <div class="grid grid-cols-3 md:grid-cols-6 gap-2 max-w-4xl mx-auto mb-4">
+        <div class="metric-pill"><div class="v" id="mG" style="color:#0f172a">—</div><div class="k">Σgᵢ = G</div></div>
+        <div class="metric-pill"><div class="v" id="mH" style="color:#0f172a">—</div><div class="k">Σhᵢ = H</div></div>
+        <div class="metric-pill"><div class="v" id="mSplit" style="color:#eab308">—</div><div class="k">best split</div></div>
+        <div class="metric-pill"><div class="v" id="mGain" style="color:#0ea5e9">—</div><div class="k">gain − γ (net)</div></div>
+        <div class="metric-pill"><div class="v" id="mWL" style="color:#16a34a">—</div><div class="k">left leaf w*</div></div>
+        <div class="metric-pill"><div class="v" id="mWR" style="color:#16a34a">—</div><div class="k">right leaf w*</div></div>
+      </div>
+
+      <div class="flex justify-center gap-6 flex-wrap items-start">
+        <!-- controls -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+          <div class="text-xs font-bold text-slate-500 mb-2">DATASET &amp; LOSS — pick the problem</div>
+          <div class="flex flex-wrap gap-2 mb-3">
+            <button data-scn="step"  class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">📈 Step · MSE</button>
+            <button data-scn="stair" class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">🪜 Staircase · MSE</button>
+            <button data-scn="sep"   class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">🔵 Separable · log-loss</button>
+            <button data-scn="over"  class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">🌫️ Overlap · log-loss</button>
+          </div>
+          <div class="rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-600 mb-3 leading-relaxed">
+            <span id="lossLabel" class="font-extrabold text-slate-800">—</span><br>
+            <span id="lossFormula">—</span>
+          </div>
+
+          <div class="ctl-row">
+            <div class="ctl-name">🪢 λ — L2 leaf reg</div>
+            <input type="range" id="cLam" min="0" max="20" step="0.5" value="1">
+            <div class="ctl-val" id="vLam">λ=1.0</div>
+          </div>
+          <div class="text-[11px] text-slate-400 -mt-1 mb-1">bigger λ ⇒ divide by a larger <code>H+λ</code> ⇒ every leaf weight <strong>shrinks toward 0</strong> and gains shrink too.</div>
+          <div class="ctl-row">
+            <div class="ctl-name">✂️ γ — min split gain</div>
+            <input type="range" id="cGam" min="0" max="8" step="0.25" value="0">
+            <div class="ctl-val" id="vGam">γ=0.0</div>
+          </div>
+          <div class="text-[11px] text-slate-400 -mt-1 mb-2">the bar a split's gain must clear. Raise it past the peak of the gain curve and the split is <strong>pruned</strong> — the branch collapses to one leaf.</div>
+
+          <div class="ctl-row">
+            <div class="ctl-name">🔎 inspect threshold</div>
+            <input type="range" id="cCand" min="0" max="1" step="1" value="0">
+            <div class="ctl-val" id="vCand">—</div>
+          </div>
+          <div class="mt-1 flex items-center gap-2 flex-wrap">
+            <button id="btnBest" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">↦ snap to best</button>
+            <button id="tGB" class="kbtn px-2.5 py-1 rounded-lg font-semibold text-xs">📐 show plain-GB</button>
+            <button id="btnReset" class="ml-auto bg-rose-100 text-rose-700 px-3 py-1.5 rounded-lg font-semibold text-xs hover:bg-rose-200">↺ reset λ/γ</button>
+          </div>
+
+          <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+            The tree, the data step, and the leaf-weight pills always reflect the <span style="color:#eab308;font-weight:800">★ best split</span> XGBoost would auto-pick at the current λ/γ (or a single pruned leaf when γ wins). The <strong>inspect</strong> slider just moves a marker along the gain curve so you can read the gain of <em>any</em> candidate split.
+          </div>
+        </div>
+
+        <!-- gain sweep hero -->
+        <div class="panel hero text-left" style="width:540px; max-width:100%;">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-sm font-bold text-sky-700">📊 Split-gain sweep — every candidate threshold, scored</span>
+            <span class="text-xs font-bold text-slate-400">peak above γ ⇒ split</span>
+          </div>
+          <div id="svgGain"></div>
+          <div class="text-[11px] text-slate-500 mt-1" id="candTxt">—</div>
+          <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+            <span><span class="swatch-line" style="border-color:#0ea5e9;border-top-style:solid"></span> gain ½[G<sub>L</sub>²/(H<sub>L</sub>+λ)+G<sub>R</sub>²/(H<sub>R</sub>+λ)−G²/(H+λ)]</span>
+            <span><span class="swatch-line" style="border-color:#f43f5e;border-top-style:dashed"></span> γ threshold</span>
+            <span style="color:#eab308;font-weight:800">★ best split</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- second row: data+split, and g/h table -->
+      <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:520px; max-width:100%;">
+          <div class="text-xs font-bold mb-1" style="color:#0f172a">▮ THE DATA &amp; THE CHOSEN SPLIT</div>
+          <div id="svgData"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-1" id="dataCap">—</div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:520px; max-width:100%;">
+          <div class="text-xs font-bold mb-1" style="color:#0f172a">▮ PER-SAMPLE gᵢ &amp; hᵢ — all a leaf ever needs</div>
+          <div id="tblGH" style="max-height:250px; overflow:auto;"></div>
+          <div class="text-[11px] text-slate-400 leading-relaxed mt-1">Rows are tinted by the side of the <span style="color:#eab308;font-weight:800">best</span> split they fall on — <span style="color:#e11d48;font-weight:700">left</span> / <span style="color:#2563eb;font-weight:700">right</span>. A leaf collapses its whole membership into just two numbers, <code>G=Σgᵢ</code> and <code>H=Σhᵢ</code>; nothing else about the points matters.</div>
+        </div>
+      </div>
+
+      <!-- third row: tree + plain-GB contrast -->
+      <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:540px; max-width:100%;">
+          <div class="text-xs font-bold mb-1" style="color:#0f172a">▮ THE TREE XGBOOST BUILDS (live with λ/γ)</div>
+          <div id="svgTree"></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:500px; max-width:100%;">
+          <div class="text-xs font-bold mb-1" style="color:#b45309">▮ XGBOOST vs PLAIN GRADIENT BOOSTING</div>
+          <div id="gbBox"></div>
+        </div>
+      </div>
+
+      <div id="diagBox" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From residual-chasing to a regularized, second-order objective</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">XGBoost's inner loop is startlingly small once you have <code>gᵢ</code> and <code>hᵢ</code>: a leaf is two sums, a split is one formula, and a tree is that formula applied greedily. Here is the whole thing — the second-order setup, the gain, the split search, the closed-form leaf weight, the boosting round with its learning rate, and finally the two systems tricks (histogram binning and sparsity-aware default directions) that make it fast. Everything the LOOK tab computes is in these snippets.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">g and h — the second-order Taylor expansion of the loss</h3></div>
+        <p class="text-sm text-slate-600 mb-3">We are adding one more tree to an ensemble whose current raw prediction for point <code>i</code> is <code>Fᵢ</code>. Rather than fit the residual, XGBoost Taylor-expands the loss around <code>Fᵢ</code> to second order: it needs the gradient <code>gᵢ = ∂l/∂F</code> and the Hessian <code>hᵢ = ∂²l/∂F²</code>. For squared error <code>hᵢ=1</code> always; for log-loss <code>hᵢ=pᵢ(1−pᵢ)</code> — the curvature down-weights points the model is already confident about.</p>
+        <div class="relative"><pre>import numpy as np
+
+def grad_hess(y, F, loss="logloss"):
+    if loss == "mse":                 # l = 1/2 (y - F)^2
+        g = F - y                     # dl/dF
+        h = np.ones_like(F)           # d2l/dF2  ==  1  (constant!)
+    else:                             # logistic:  l = log(1+e^F) - yF
+        p = 1.0 / (1.0 + np.exp(-F))  # current probability
+        g = p - y                     # dl/dF
+        h = p * (1.0 - p)             # d2l/dF2  ==  p(1-p)  (varies per point)
+    return g, h</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The leaf weight and the split gain — both in closed form</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Plug the Taylor approximation into the objective with an L2 penalty <code>½λΣw²</code> and the optimum for a leaf holding index set <code>I</code> is exactly <code>w* = −G/(H+λ)</code> with <code>G=Σgᵢ, H=Σhᵢ</code>. Its contribution to the objective (the "structure score") is <code>−½·G²/(H+λ)</code>. A split's <strong>gain</strong> is how much that score improves, minus a per-leaf cost <code>γ</code>.</p>
+        <div class="relative"><pre>def leaf_weight(G, H, lam):
+    return -G / (H + lam)                 # closed-form optimum, L2-shrunk
+
+def split_gain(GL, HL, GR, HR, lam, gamma):
+    G, H = GL + GR, HL + HR
+    sim  = lambda g, h: g*g / (h + lam)    # "similarity score" of a node
+    return 0.5 * (sim(GL, HL) + sim(GR, HR) - sim(G, H)) - gamma
+# gain is ALWAYS >= 0 before subtracting gamma; gamma is the bar it must clear</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Exact split finding — sweep every threshold</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Sort the points by the feature, then walk left to right accumulating <code>G<sub>L</sub>, H<sub>L</sub></code>; the right side is just the totals minus the left. Score each threshold with the gain formula and keep the best. This is the "exact greedy" algorithm — <code>O(#points)</code> per feature after the sort.</p>
+        <div class="relative"><pre>def best_split(g, h, x, lam, gamma):
+    order = np.argsort(x)
+    g, h, x = g[order], h[order], x[order]
+    G, H = g.sum(), h.sum()
+    GL = HL = 0.0
+    best = (0.0, None)                      # (gain, threshold)
+    for i in range(len(x) - 1):
+        GL += g[i]; HL += h[i]              # move point i to the left child
+        if x[i] == x[i+1]:                  # can't split between equal values
+            continue
+        gain = split_gain(GL, HL, G-GL, H-HL, lam, gamma)
+        if gain > best[0]:
+            best = (gain, 0.5*(x[i] + x[i+1]))
+    return best                             # best[0] <= 0  =>  don't split</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Grow the tree — split while it pays, else make a leaf</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Recurse: find the best split; if its gain is positive (it cleared <code>γ</code>) and we are under the depth limit, split and recurse on both children; otherwise stop and emit a leaf with weight <code>w* = −G/(H+λ)</code>. That single test — gain &gt; 0 — is where <code>γ</code> does its pruning.</p>
+        <div class="relative"><pre>def build(idx, g, h, x, depth, lam, gamma, max_depth=3):
+    G, H = g[idx].sum(), h[idx].sum()
+    gain, thr = best_split(g[idx], h[idx], x[idx], lam, gamma)
+    if depth >= max_depth or gain <= 0 or thr is None:
+        return {"leaf": leaf_weight(G, H, lam)}    # gamma pruned it -> leaf
+    left  = idx[x[idx] <  thr]
+    right = idx[x[idx] >= thr]
+    return {"thr": thr,
+            "L": build(left,  g, h, x, depth+1, lam, gamma, max_depth),
+            "R": build(right, g, h, x, depth+1, lam, gamma, max_depth)}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">The boosting round — and how plain GB differs</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Each round: compute <code>g, h</code> at the current predictions, grow one tree, and add its leaf outputs to <code>F</code> scaled by a learning rate <code>η</code> (shrinkage — yet another regularizer). Plain gradient boosting is the same loop with <code>h≡1</code>, <code>λ=γ=0</code>, so its leaf is the mean residual <code>−G/n</code> and it never prunes.</p>
+        <div class="relative"><pre>F = np.full(len(y), base_score)             # raw margin, starts flat
+for m in range(n_rounds):
+    g, h = grad_hess(y, F, loss)            # <-- 2nd order:  plain GB uses h = 1
+    tree = build(np.arange(len(y)), g, h, X, 0, lam, gamma)
+    F += eta * predict(tree, X)             # eta = learning-rate shrinkage
+
+# XGBoost leaf : w* = -G / (H + lam)        # curvature-weighted + L2 shrunk
+# plain-GB leaf: w  = -G / n                # 1st order, no lambda, no gamma
+#   -> identical ONLY for squared error with lam = gamma = 0 (there H == n)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">The systems tricks — histogram binning &amp; sparsity-aware splits</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Exact split finding sorts every feature every node. Real XGBoost instead <strong>bins</strong> each feature into ~256 buckets once, then a split search is a single pass summing <code>G,H</code> per bin — turning a sort into a histogram (this is the <code>hist</code> / <code>approx</code> tree method). And it is <strong>sparsity-aware</strong>: each node learns a <em>default direction</em> for missing values by trying both and keeping whichever gives more gain, so zeros and NaNs cost almost nothing.</p>
+        <div class="relative"><pre># histogram: bin once, then split search is a bin-wise cumulative sum
+bins = np.digitize(x, bin_edges)             # ~256 buckets, computed ONCE
+Gb = np.bincount(bins, weights=g)            # per-bin gradient sums
+Hb = np.bincount(bins, weights=h)            # per-bin hessian  sums
+# gain over thresholds = cumulative Gb/Hb from the left -- no re-sorting
+
+# sparsity-aware: send missing rows the way that maximises gain
+for direction in ("left", "right"):
+    gain = gain_with_missing_sent(direction)   # try both once
+best_default = argmax over direction           # store it in the node
+
+# libraries: xgboost, lightgbm (leaf-wise + GOSS), catboost (ordered boosting)
+# knobs: n_estimators, max_depth, eta, reg_lambda, gamma, subsample, colsample</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 40 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">You opened up the engine behind the algorithm that keeps winning tabular competitions. XGBoost keeps gradient boosting's shape but writes a <strong>regularized objective</strong> and approximates it with a <strong>second-order Taylor expansion</strong>, so every point carries a gradient <code>gᵢ</code> <em>and</em> a curvature <code>hᵢ</code>. From those, a leaf's best weight is closed-form <code>w* = −G/(H+λ)</code> and a split's value is <code>½[G<sub>L</sub>²/(H<sub>L</sub>+λ)+G<sub>R</sub>²/(H<sub>R</sub>+λ)−G²/(H+λ)] − γ</code>. <strong>λ</strong> shrinks leaf weights; <strong>γ</strong> is the bar a split must clear or it is pruned to a leaf. For squared error <code>hᵢ=1</code> and it collapses back to plain variance-reduction boosting — the Hessian only earns its keep on losses like log-loss where <code>hᵢ=pᵢ(1−pᵢ)</code>. Histogram binning and sparsity-aware default directions make it fast. <strong>👉 Tomorrow — Day 41: LightGBM — leaf-wise trees, histogram speed, GOSS &amp; EFB</strong> — the same gradient/Hessian machinery, but grown leaf-wise with gradient-based sampling and feature bundling to go faster still on big data.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= XGBoost math (all computed for real) =================
+// <<<ENGINE_START>>>
+function sigmoid(z){ return 1/(1+Math.exp(-z)); }
+function mean(a){ let s=0; for(const v of a) s+=v; return s/a.length; }
+
+// per-sample gradient g and Hessian h of the loss at the current raw prediction f
+//   squared error : l = 1/2 (y-F)^2  ->  g = F - y ,   h = 1
+//   log loss      : l = log(1+e^F)-yF ->  g = p - y ,  h = p(1-p),  p = sigmoid(F)
+function computeGH(){
+  return state.data.map(p=>{
+    if(state.loss==="mse"){ return { x:p.x, y:p.y, f:p.f, p:null, g:p.f-p.y, h:1 }; }
+    const pr=sigmoid(p.f);
+    return { x:p.x, y:p.y, f:p.f, p:pr, g:pr-p.y, h:pr*(1-pr) };
+  });
+}
+// candidate thresholds = midpoints between consecutive distinct sorted x
+function thresholds(pts){
+  const xs=pts.map(p=>p.x).slice().sort((a,b)=>a-b), t=[];
+  for(let i=0;i<xs.length-1;i++) if(xs[i]!==xs[i+1]) t.push((xs[i]+xs[i+1])/2);
+  return t;
+}
+// left = x < t , right = x >= t ; return the four group sums
+function splitStats(pts,t){
+  let GL=0,HL=0,GR=0,HR=0,nL=0,nR=0;
+  for(const p of pts){ if(p.x<t){GL+=p.g;HL+=p.h;nL++;} else {GR+=p.g;HR+=p.h;nR++;} }
+  return {GL,HL,GR,HR,nL,nR};
+}
+// the XGBoost split gain (BEFORE subtracting gamma) -- a similarity-score improvement, always >= 0
+function gainRaw(GL,HL,GR,HR,G,H,lam){
+  const sim=(g,h)=> g*g/(h+lam);
+  return 0.5*( sim(GL,HL) + sim(GR,HR) - sim(G,H) );
+}
+// closed-form optimal, L2-shrunk leaf weight
+function leafWeight(G,H,lam){ return -G/(H+lam); }
+// <<<ENGINE_END>>>
+
+// ================= scenarios =================
+// each point: x (feature), y (target), f (current raw prediction of the running ensemble)
+const SCEN = {
+  step:  { name:"Step · squared error", loss:"mse", pts:[
+    {x:1,y:2.2},{x:2,y:1.8},{x:3,y:2.5},{x:4,y:2.1},{x:5,y:2.4},
+    {x:6,y:7.6},{x:7,y:8.1},{x:8,y:7.4},{x:9,y:8.3},{x:10,y:7.9} ] },
+  stair: { name:"Staircase · squared error", loss:"mse", pts:[
+    {x:1,y:2.0},{x:2,y:2.4},{x:3,y:1.8},{x:4,y:5.1},{x:5,y:4.8},
+    {x:6,y:5.3},{x:7,y:8.4},{x:8,y:8.7},{x:9,y:8.2} ] },
+  sep:   { name:"Separable · log-loss", loss:"log", pts:[
+    {x:1,y:0,f:-1.5},{x:2,y:0,f:-1.0},{x:3,y:0,f:-0.2},{x:4,y:0,f:0.3},
+    {x:5,y:1,f:-0.3},{x:6,y:1,f:0.5},{x:7,y:1,f:1.2},{x:8,y:1,f:1.8} ] },
+  over:  { name:"Overlap · log-loss", loss:"log", pts:[
+    {x:1,y:0,f:-1.2},{x:2,y:0,f:-0.6},{x:3,y:1,f:0.1},{x:4,y:0,f:0.2},
+    {x:5,y:1,f:-0.1},{x:6,y:0,f:0.4},{x:7,y:1,f:0.7},{x:8,y:1,f:1.3} ] }
+};
+
+const COL={ curve:"#0ea5e9", gamma:"#f43f5e", best:"#eab308", leaf:"#16a34a", gb:"#f59e0b",
+            c0:"#f43f5e", c1:"#2563eb" };
+
+const state = {
+  scn:"sep", loss:"log", data:[], xLo:0, xHi:1,
+  lambda:1, gamma:0, candIdx:0, candFollow:true, showGB:false,
+  cur:null
+};
+
+function loadScenario(key){
+  const sc=SCEN[key]; state.scn=key; state.loss=sc.loss;
+  // deep-copy points; for MSE the current prediction f is the base = mean(y) (first tree)
+  const ys=sc.pts.map(p=>p.y);
+  const base = sc.loss==="mse" ? mean(ys) : 0;
+  state.data = sc.pts.map(p=> ({ x:p.x, y:p.y, f: sc.loss==="mse" ? base : p.f }) );
+  const xs=state.data.map(p=>p.x);
+  state.xLo=Math.min(...xs)-0.6; state.xHi=Math.max(...xs)+0.6;
+  // reset knobs; pick a gamma slider range that can actually prune this scenario
+  state.lambda=1; state.gamma=0; state.candFollow=true; state.candIdx=0;
+  // best gain at lambda=0 to scale the gamma slider
+  const pts=computeGH(); let G=0,H=0; pts.forEach(p=>{G+=p.g;H+=p.h;});
+  const ths=thresholds(pts); let bg=0;
+  for(const t of ths){ const s=splitStats(pts,t); bg=Math.max(bg, gainRaw(s.GL,s.HL,s.GR,s.HR,G,H,0)); }
+  const gMax=Math.max(4, Math.ceil(bg*1.35));
+  const cg=document.getElementById("cGam"); cg.max=gMax; cg.step=(gMax/40).toFixed(3); cg.value=0;
+  document.getElementById("cLam").value=1;
+  const cc=document.getElementById("cCand"); cc.max=Math.max(1,ths.length-1); cc.value=0;
+  // loss label
+  document.getElementById("lossLabel").textContent = sc.loss==="mse"
+    ? "Squared error · l = ½(y−F)²" : "Log-loss · l = log(1+e^F) − yF";
+  document.getElementById("lossFormula").innerHTML = sc.loss==="mse"
+    ? "gᵢ = Fᵢ − yᵢ &nbsp;·&nbsp; <b>hᵢ = 1</b> (constant) — here Fᵢ = base = mean(y). With h≡1 the gain is pure variance-reduction, so XGBoost with λ=γ=0 <b>equals plain GB</b>."
+    : "gᵢ = pᵢ − yᵢ &nbsp;·&nbsp; <b>hᵢ = pᵢ(1−pᵢ)</b> — pᵢ = σ(Fᵢ) from the running ensemble. The Hessian varies per point, so 2nd-order boosting genuinely diverges from plain GB.";
+  recompute(); draw();
+}
+
+// recompute everything for the current knobs
+function recompute(){
+  const pts=computeGH(); let G=0,H=0; pts.forEach(p=>{G+=p.g;H+=p.h;});
+  const ths=thresholds(pts), lam=state.lambda;
+  const gains=ths.map(t=>{ const s=splitStats(pts,t); return { t, ...s, gain:gainRaw(s.GL,s.HL,s.GR,s.HR,G,H,lam) }; });
+  let bestIdx=0; for(let i=1;i<gains.length;i++) if(gains[i].gain>gains[bestIdx].gain) bestIdx=i;
+  state.cur={pts,G,H,ths,gains,bestIdx};
+  if(state.candFollow) state.candIdx=bestIdx;
+  if(state.candIdx>=ths.length) state.candIdx=Math.max(0,ths.length-1);
+  document.getElementById("cCand").value=state.candIdx;
+}
+
+// ---------------- transforms ----------------
+function mkT(w,h,pad,xmin,xmax,ymin,ymax){
+  return { X:x=> pad + (x-xmin)/(xmax-xmin)*(w-2*pad),
+           Y:y=> (h-pad) - (y-ymin)/(ymax-ymin)*(h-2*pad) };
+}
+
+// ---------------- render: gain sweep (hero) ----------------
+function renderGain(){
+  const {ths,gains,bestIdx}=state.cur, gam=state.gamma, lam=state.lambda;
+  const W=540,H=250,PAD=46;
+  let gmax=Math.max(gam, 0.001); for(const g of gains) gmax=Math.max(gmax,g.gain); gmax*=1.12;
+  const T=mkT(W,H,PAD,state.xLo,state.xHi,0,gmax);
+  let g=`<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  // axes
+  g+=`<line x1="${PAD}" y1="${(H-PAD).toFixed(1)}" x2="${W-PAD}" y2="${(H-PAD).toFixed(1)}" stroke="#94a3b8" stroke-width="1"/>`;
+  g+=`<line x1="${PAD}" y1="${PAD-8}" x2="${PAD}" y2="${H-PAD}" stroke="#94a3b8" stroke-width="1"/>`;
+  // y gridlines
+  for(let f=0.25; f<1.0001; f+=0.25){ const y=T.Y(gmax*f);
+    g+=`<line x1="${PAD}" y1="${y.toFixed(1)}" x2="${W-PAD}" y2="${y.toFixed(1)}" stroke="#eef2f7" stroke-width="1"/>`;
+    g+=`<text x="${PAD-5}" y="${(y+3).toFixed(1)}" font-size="8.5" fill="#94a3b8" text-anchor="end">${(gmax*f).toFixed(1)}</text>`; }
+  // gamma bar
+  const yG=T.Y(gam);
+  g+=`<rect x="${PAD}" y="${PAD-8}" width="${W-2*PAD}" height="${(yG-(PAD-8)).toFixed(1)}" fill="#f43f5e" fill-opacity="0.05"/>`;
+  g+=`<line x1="${PAD}" y1="${yG.toFixed(1)}" x2="${W-PAD}" y2="${yG.toFixed(1)}" stroke="${COL.gamma}" stroke-width="1.8" stroke-dasharray="6 4"/>`;
+  g+=`<text x="${W-PAD}" y="${(yG-4).toFixed(1)}" font-size="9.5" font-weight="800" fill="${COL.gamma}" text-anchor="end">γ = ${gam.toFixed(2)}</text>`;
+  // gain curve + dots
+  let line="";
+  gains.forEach((gg,i)=>{ const X=T.X(gg.t).toFixed(1), Y=T.Y(gg.gain).toFixed(1); line+=`${i?'L':'M'} ${X} ${Y} `; });
+  g+=`<path d="${line}" fill="none" stroke="${COL.curve}" stroke-width="2.4"/>`;
+  gains.forEach((gg,i)=>{ const worth=gg.gain>gam;
+    g+=`<circle cx="${T.X(gg.t).toFixed(1)}" cy="${T.Y(gg.gain).toFixed(1)}" r="3" fill="${worth?COL.curve:'#cbd5e1'}"/>`; });
+  // best marker
+  const bg=gains[bestIdx];
+  g+=`<line x1="${T.X(bg.t).toFixed(1)}" y1="${PAD-8}" x2="${T.X(bg.t).toFixed(1)}" y2="${(H-PAD).toFixed(1)}" stroke="${COL.best}" stroke-width="1.4" stroke-dasharray="3 3" opacity="0.7"/>`;
+  g+=`<circle cx="${T.X(bg.t).toFixed(1)}" cy="${T.Y(bg.gain).toFixed(1)}" r="5.5" fill="${COL.best}" stroke="#fff" stroke-width="1.5"/>`;
+  g+=`<text x="${T.X(bg.t).toFixed(1)}" y="${(T.Y(bg.gain)-9).toFixed(1)}" font-size="10" font-weight="800" fill="#a16207" text-anchor="middle">★ ${bg.gain.toFixed(2)}</text>`;
+  // candidate marker
+  const cd=gains[state.candIdx];
+  if(cd){ g+=`<circle cx="${T.X(cd.t).toFixed(1)}" cy="${T.Y(cd.gain).toFixed(1)}" r="4" fill="none" stroke="#0f172a" stroke-width="2"/>`; }
+  // x ticks (thresholds)
+  gains.forEach(gg=>{ g+=`<text x="${T.X(gg.t).toFixed(1)}" y="${H-PAD+13}" font-size="8" fill="#94a3b8" text-anchor="middle">${gg.t.toFixed(1)}</text>`; });
+  g+=`<text x="${W-PAD}" y="${H-6}" font-size="9" fill="#94a3b8" text-anchor="end">split threshold (x &lt; t) →</text>`;
+  g+=`<text x="12" y="${PAD-2}" font-size="10" fill="${COL.curve}">gain</text>`;
+  document.getElementById("svgGain").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto">${g}</svg>`;
+  // candidate readout
+  if(cd){ const net=cd.gain-gam, worth=net>0;
+    document.getElementById("candTxt").innerHTML =
+      `<b>inspecting x &lt; ${cd.t.toFixed(1)}</b> → gain ${cd.gain.toFixed(3)} − γ ${gam.toFixed(2)} = <b style="color:${worth?'#16a34a':'#e11d48'}">${net.toFixed(3)}</b> ${worth?'✓ worth splitting':'✗ not worth it (pruned)'} · left w*=${leafWeight(cd.GL,cd.HL,lam).toFixed(3)}, right w*=${leafWeight(cd.GR,cd.HR,lam).toFixed(3)}`;
+  }
+}
+
+// ---------------- render: data + chosen split ----------------
+function renderData(){
+  const {pts,G,H:Htot,gains,bestIdx}=state.cur, lam=state.lambda, gam=state.gamma;
+  const best=gains[bestIdx], net=best.gain-gam, doSplit=net>0;
+  const W=500,H=230,PAD=40;
+  if(state.loss==="mse"){
+    const ys=pts.map(p=>p.y); let ymin=Math.min(...ys), ymax=Math.max(...ys);
+    const pad=(ymax-ymin)*0.15+0.2; ymin-=pad; ymax+=pad;
+    const T=mkT(W,H,PAD,state.xLo,state.xHi,ymin,ymax);
+    let g=`<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+    g+=`<line x1="${PAD}" y1="${(H-PAD).toFixed(1)}" x2="${W-PAD}" y2="${(H-PAD).toFixed(1)}" stroke="#94a3b8" stroke-width="1"/>`;
+    g+=`<line x1="${PAD}" y1="${PAD-6}" x2="${PAD}" y2="${H-PAD}" stroke="#94a3b8" stroke-width="1"/>`;
+    // base F0 line
+    const F0=pts[0].f;
+    g+=`<line x1="${PAD}" y1="${T.Y(F0).toFixed(1)}" x2="${W-PAD}" y2="${T.Y(F0).toFixed(1)}" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="2 3"/>`;
+    g+=`<text x="${W-PAD}" y="${(T.Y(F0)-3).toFixed(1)}" font-size="8.5" fill="#94a3b8" text-anchor="end">F₀ = mean(y) = ${F0.toFixed(2)}</text>`;
+    if(doSplit){
+      const t=best.t;
+      const wL=leafWeight(best.GL,best.HL,lam), wR=leafWeight(best.GR,best.HR,lam);
+      g+=`<line x1="${T.X(t).toFixed(1)}" y1="${PAD-6}" x2="${T.X(t).toFixed(1)}" y2="${H-PAD}" stroke="${COL.best}" stroke-width="2" stroke-dasharray="5 3"/>`;
+      // leaf prediction segments  F0 + w*
+      g+=`<line x1="${T.X(state.xLo).toFixed(1)}" y1="${T.Y(F0+wL).toFixed(1)}" x2="${T.X(t).toFixed(1)}" y2="${T.Y(F0+wL).toFixed(1)}" stroke="${COL.leaf}" stroke-width="2.6"/>`;
+      g+=`<line x1="${T.X(t).toFixed(1)}" y1="${T.Y(F0+wR).toFixed(1)}" x2="${T.X(state.xHi).toFixed(1)}" y2="${T.Y(F0+wR).toFixed(1)}" stroke="${COL.leaf}" stroke-width="2.6"/>`;
+    } else {
+      const w=leafWeight(G,Htot,lam);
+      g+=`<line x1="${T.X(state.xLo).toFixed(1)}" y1="${T.Y(F0+w).toFixed(1)}" x2="${T.X(state.xHi).toFixed(1)}" y2="${T.Y(F0+w).toFixed(1)}" stroke="${COL.leaf}" stroke-width="2.6" stroke-dasharray="6 3"/>`;
+    }
+    for(const p of pts){ g+=`<circle cx="${T.X(p.x).toFixed(1)}" cy="${T.Y(p.y).toFixed(1)}" r="4.5" fill="#6366f1" stroke="#fff" stroke-width="1.2"/>`; }
+    g+=`<text x="${W-PAD}" y="${H-6}" font-size="9" fill="#94a3b8" text-anchor="end">feature x →</text>`;
+    g+=`<text x="12" y="${PAD-2}" font-size="10" fill="#6366f1">y</text>`;
+    document.getElementById("svgData").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto">${g}</svg>`;
+    document.getElementById("dataCap").innerHTML = doSplit
+      ? `The <span style="color:#16a34a;font-weight:800">green step</span> is the tree's output F₀+w* on each side of the <span style="color:#eab308;font-weight:800">split</span>. Squared-error residual rᵢ = −gᵢ; a leaf's weight is the (λ-shrunk) mean residual.`
+      : `γ = ${gam.toFixed(2)} pruned the split — the tree is one flat leaf at F₀+w* (<span style="color:#16a34a;font-weight:800">dashed green</span>). Lower γ to let the split back in.`;
+  } else {
+    // logistic: probability space
+    const T=mkT(W,H,PAD,state.xLo,state.xHi,-0.05,1.05);
+    let g=`<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+    for(const lv of [0,0.5,1]){ g+=`<line x1="${PAD}" y1="${T.Y(lv).toFixed(1)}" x2="${W-PAD}" y2="${T.Y(lv).toFixed(1)}" stroke="${lv===0.5?'#cbd5e1':'#eef2f7'}" stroke-width="1" stroke-dasharray="${lv===0.5?'4 3':'0'}"/>`;
+      g+=`<text x="${PAD-5}" y="${(T.Y(lv)+3).toFixed(1)}" font-size="8.5" fill="#94a3b8" text-anchor="end">${lv.toFixed(1)}</text>`; }
+    g+=`<line x1="${PAD}" y1="${PAD-6}" x2="${PAD}" y2="${H-PAD}" stroke="#94a3b8" stroke-width="1"/>`;
+    if(doSplit){
+      const t=best.t, wL=leafWeight(best.GL,best.HL,lam), wR=leafWeight(best.GR,best.HR,lam);
+      g+=`<line x1="${T.X(t).toFixed(1)}" y1="${PAD-6}" x2="${T.X(t).toFixed(1)}" y2="${H-PAD}" stroke="${COL.best}" stroke-width="2" stroke-dasharray="5 3"/>`;
+      // new prediction markers: sigmoid(f + w)
+      for(const p of pts){ const w=(p.x<t)?wL:wR, np=sigmoid(p.f+w);
+        g+=`<line x1="${T.X(p.x).toFixed(1)}" y1="${T.Y(p.p).toFixed(1)}" x2="${T.X(p.x).toFixed(1)}" y2="${T.Y(np).toFixed(1)}" stroke="${COL.leaf}" stroke-width="1.4" opacity="0.6"/>`;
+        g+=`<circle cx="${T.X(p.x).toFixed(1)}" cy="${T.Y(np).toFixed(1)}" r="3.2" fill="none" stroke="${COL.leaf}" stroke-width="1.8"/>`; }
+    } else {
+      const w=leafWeight(G,Htot,lam);
+      for(const p of pts){ const np=sigmoid(p.f+w);
+        g+=`<circle cx="${T.X(p.x).toFixed(1)}" cy="${T.Y(np).toFixed(1)}" r="3.2" fill="none" stroke="${COL.leaf}" stroke-width="1.8" stroke-dasharray="2 2"/>`; }
+    }
+    for(const p of pts){ const c=p.y>0.5?COL.c1:COL.c0;
+      g+=`<circle cx="${T.X(p.x).toFixed(1)}" cy="${T.Y(p.p).toFixed(1)}" r="4.5" fill="${c}" stroke="#fff" stroke-width="1.2"/>`; }
+    g+=`<text x="${W-PAD}" y="${H-6}" font-size="9" fill="#94a3b8" text-anchor="end">feature x →</text>`;
+    g+=`<text x="12" y="${PAD-2}" font-size="10" fill="#475569">p = σ(F)</text>`;
+    g+=`<text x="${PAD+6}" y="${PAD+2}" font-size="9" font-weight="700" fill="${COL.c0}">● y=0</text>`;
+    g+=`<text x="${PAD+58}" y="${PAD+2}" font-size="9" font-weight="700" fill="${COL.c1}">● y=1</text>`;
+    document.getElementById("svgData").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto">${g}</svg>`;
+    document.getElementById("dataCap").innerHTML = doSplit
+      ? `Filled dots = current probability p=σ(F); <span style="color:#16a34a;font-weight:800">hollow dots</span> = the tree's new p=σ(F+w*), pushed down on the left leaf and up on the right. Hessian hᵢ=pᵢ(1−pᵢ) is largest near p=0.5.`
+      : `γ = ${gam.toFixed(2)} pruned the split — one leaf nudges every point by the same w*. Lower γ to re-enable the split.`;
+  }
+}
+
+// ---------------- render: per-sample g/h table ----------------
+function renderTable(){
+  const {pts,G,H,gains,bestIdx}=state.cur;
+  const best=gains[bestIdx], net=best.gain-state.gamma, doSplit=net>0, t=best.t;
+  const isMse=state.loss==="mse";
+  let h=`<table class="gh"><thead><tr><th class="lft">pt</th><th>x</th><th>y</th>`;
+  h+= isMse ? `<th>F</th>` : `<th>p=σ(F)</th>`;
+  h+=`<th>gᵢ</th><th>hᵢ</th></tr></thead><tbody>`;
+  for(const p of pts){
+    const side = doSplit ? (p.x<t?"L":"R") : "";
+    h+=`<tr class="${side?'side-'+side:''}"><td class="lft">x=${p.x}</td><td>${p.x}</td><td>${isMse?p.y.toFixed(1):p.y}</td>`;
+    h+= isMse ? `<td>${p.f.toFixed(2)}</td>` : `<td>${p.p.toFixed(3)}</td>`;
+    h+=`<td>${p.g.toFixed(3)}</td><td>${p.h.toFixed(3)}</td></tr>`;
+  }
+  h+=`<tr class="tot"><td class="lft">Σ = G , H</td><td></td><td></td><td></td><td>${G.toFixed(3)}</td><td>${H.toFixed(3)}</td></tr>`;
+  if(doSplit){
+    h+=`<tr class="side-L"><td class="lft">left  (x&lt;${t.toFixed(1)})</td><td></td><td></td><td></td><td>G<sub>L</sub>=${best.GL.toFixed(3)}</td><td>H<sub>L</sub>=${best.HL.toFixed(3)}</td></tr>`;
+    h+=`<tr class="side-R"><td class="lft">right (x≥${t.toFixed(1)})</td><td></td><td></td><td></td><td>G<sub>R</sub>=${best.GR.toFixed(3)}</td><td>H<sub>R</sub>=${best.HR.toFixed(3)}</td></tr>`;
+  }
+  h+=`</tbody></table>`;
+  document.getElementById("tblGH").innerHTML=h;
+}
+
+// ---------------- render: the tree ----------------
+function renderTree(){
+  const {G,H:Htot,gains,bestIdx}=state.cur, lam=state.lambda, gam=state.gamma;
+  const best=gains[bestIdx], net=best.gain-gam, doSplit=net>0;
+  const W=520,H=200;
+  const box=(x,y,w,hh,fill,stroke,lines)=>{
+    let s=`<rect x="${x}" y="${y}" width="${w}" height="${hh}" rx="10" fill="${fill}" stroke="${stroke}" stroke-width="1.6"/>`;
+    lines.forEach((ln,i)=> s+=`<text x="${x+w/2}" y="${y+18+i*15}" font-size="${i?11:12.5}" font-weight="${i?600:800}" fill="${i?'#334155':'#0f172a'}" text-anchor="middle">${ln}</text>`);
+    return s;
+  };
+  let g=`<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  if(doSplit){
+    const wL=leafWeight(best.GL,best.HL,lam), wR=leafWeight(best.GR,best.HR,lam);
+    const rx=W/2-80, ry=16, rw=160, rh=40;
+    g+=box(rx,ry,rw,rh,"#e0f2fe","#0ea5e9",[`x < ${best.t.toFixed(1)} ?`,`gain ${best.gain.toFixed(2)} − γ ${gam.toFixed(2)} = ${net.toFixed(2)} ✓`]);
+    // edges
+    const lx=70, rrx=W-70-200, ly=120;
+    g+=`<line x1="${W/2-30}" y1="${ry+rh}" x2="${lx+100}" y2="${ly}" stroke="#94a3b8" stroke-width="1.4"/>`;
+    g+=`<line x1="${W/2+30}" y1="${ry+rh}" x2="${rrx+100}" y2="${ly}" stroke="#94a3b8" stroke-width="1.4"/>`;
+    g+=`<text x="${(W/2-30+lx+100)/2-14}" y="${(ry+rh+ly)/2}" font-size="10" font-weight="700" fill="#e11d48">yes</text>`;
+    g+=`<text x="${(W/2+30+rrx+100)/2+6}" y="${(ry+rh+ly)/2}" font-size="10" font-weight="700" fill="#2563eb">no</text>`;
+    g+=box(lx,ly,200,64,"#fff1f2","#f43f5e",[`leaf · left`,`w* = −G<tspan font-size="8">L</tspan>/(H<tspan font-size="8">L</tspan>+λ) = ${wL.toFixed(3)}`,`G<tspan font-size="8">L</tspan>=${best.GL.toFixed(2)}  H<tspan font-size="8">L</tspan>=${best.HL.toFixed(2)}`]);
+    g+=box(rrx,ly,200,64,"#eff6ff","#3b82f6",[`leaf · right`,`w* = −G<tspan font-size="8">R</tspan>/(H<tspan font-size="8">R</tspan>+λ) = ${wR.toFixed(3)}`,`G<tspan font-size="8">R</tspan>=${best.GR.toFixed(2)}  H<tspan font-size="8">R</tspan>=${best.HR.toFixed(2)}`]);
+  } else {
+    const w=leafWeight(G,Htot,lam);
+    g+=box(W/2-120,60,240,80,"#f0fdf4","#16a34a",[`single leaf (split pruned by γ)`,`w* = −G/(H+λ) = ${w.toFixed(3)}`,`G=${G.toFixed(3)}  H=${Htot.toFixed(3)}  λ=${lam.toFixed(1)}`]);
+    g+=`<text x="${W/2}" y="30" font-size="11" font-weight="700" fill="#9a3412" text-anchor="middle">best gain ${best?best.gain.toFixed(2):'0'} ≤ γ ${gam.toFixed(2)} → no split is worth it</text>`;
+  }
+  document.getElementById("svgTree").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+
+// ---------------- render: plain-GB contrast ----------------
+function renderGB(){
+  const {G,H,gains,bestIdx}=state.cur, lam=state.lambda, gam=state.gamma;
+  const best=gains[bestIdx], net=best.gain-gam, doSplit=net>0;
+  const el=document.getElementById("gbBox");
+  const row=(label, xgb, gb, note)=> `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;align-items:center;padding:5px 0;border-bottom:1px solid #f1f5f9;">
+      <div style="font-size:11px;font-weight:700;color:#334155">${label}</div>
+      <div style="font-size:12px;font-weight:800;color:#0ea5e9;text-align:right;font-variant-numeric:tabular-nums">${xgb}</div>
+      <div style="font-size:12px;font-weight:800;color:#b45309;text-align:right;font-variant-numeric:tabular-nums">${gb}</div>
+    </div>${note?`<div style="font-size:10.5px;color:#94a3b8;padding-bottom:4px">${note}</div>`:''}`;
+  let h=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding-bottom:4px;border-bottom:2px solid #e2e8f0">
+      <div style="font-size:10px;font-weight:800;color:#64748b;text-transform:uppercase"></div>
+      <div style="font-size:10px;font-weight:800;color:#0ea5e9;text-align:right;text-transform:uppercase">XGBoost</div>
+      <div style="font-size:10px;font-weight:800;color:#b45309;text-align:right;text-transform:uppercase">Plain GB</div>
+    </div>`;
+  if(doSplit){
+    const wLx=leafWeight(best.GL,best.HL,lam), wRx=leafWeight(best.GR,best.HR,lam);
+    const wLg=-best.GL/best.nL, wRg=-best.GR/best.nR;
+    h+=row("left leaf weight", wLx.toFixed(3), wLg.toFixed(3), `XGBoost ÷ (H<sub>L</sub>+λ)=${(best.HL+lam).toFixed(2)} · plain GB ÷ n<sub>L</sub>=${best.nL}`);
+    h+=row("right leaf weight", wRx.toFixed(3), wRg.toFixed(3), `XGBoost ÷ (H<sub>R</sub>+λ)=${(best.HR+lam).toFixed(2)} · plain GB ÷ n<sub>R</sub>=${best.nR}`);
+    h+=row("prune this split?", "γ-gated: "+(net>0?"kept":"pruned"), "never — always splits", `plain GB has no γ; it greedily takes any variance-reducing split`);
+  } else {
+    const wx=leafWeight(G,H,lam), wg=-G/state.cur.pts.length;
+    h+=row("single leaf weight", wx.toFixed(3), wg.toFixed(3), `XGBoost ÷ (H+λ)=${(H+lam).toFixed(2)} · plain GB ÷ n=${state.cur.pts.length}`);
+    h+=row("split decision", "γ pruned it → leaf", "would still split", `plain GB keeps splitting; XGBoost stopped because gain ≤ γ`);
+  }
+  const same = state.loss==="mse" && lam===0 && gam===0;
+  h+=`<div style="margin-top:8px;font-size:11px;line-height:1.5;color:#475569" class="${same?'':''}">`;
+  h+= same
+    ? `<b style="color:#16a34a">Right now they are identical.</b> Squared error ⇒ h≡1 (so H=n), and with λ=γ=0 the two formulas coincide. This is the sense in which XGBoost <em>contains</em> plain gradient boosting.`
+    : (state.loss==="mse"
+        ? `Squared error ⇒ h≡1, so the only difference is <b>λ shrinkage</b> and <b>γ pruning</b>. Set λ=γ=0 to make them match exactly.`
+        : `Log-loss ⇒ h=p(1−p) varies, so XGBoost divides by curvature, not a raw count — it trusts high-curvature (uncertain, p≈0.5) points less. Plus λ shrinkage and γ pruning. They cannot coincide here.`);
+  h+=`</div>`;
+  el.innerHTML=h;
+}
+
+// ---------------- metrics + diagnosis ----------------
+function updateMetrics(){
+  const {G,H,gains,bestIdx}=state.cur, lam=state.lambda, gam=state.gamma;
+  const best=gains[bestIdx], net=best.gain-gam, doSplit=net>0;
+  document.getElementById("mG").textContent=G.toFixed(2);
+  document.getElementById("mH").textContent=H.toFixed(2);
+  document.getElementById("mSplit").textContent = doSplit ? "x<"+best.t.toFixed(1) : "PRUNED";
+  document.getElementById("mGain").textContent = net.toFixed(2);
+  if(doSplit){
+    document.getElementById("mWL").textContent=leafWeight(best.GL,best.HL,lam).toFixed(3);
+    document.getElementById("mWR").textContent=leafWeight(best.GR,best.HR,lam).toFixed(3);
+  } else {
+    document.getElementById("mWL").textContent=leafWeight(G,H,lam).toFixed(3);
+    document.getElementById("mWR").textContent="—";
+  }
+}
+function setDiag(){
+  const box=document.getElementById("diagBox");
+  const {G,H,gains,bestIdx}=state.cur, lam=state.lambda, gam=state.gamma;
+  const best=gains[bestIdx], net=best.gain-gam, doSplit=net>0;
+  const set=(cls,title,body)=>{ box.className="diag "+cls+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${title}</div><div class="text-sm font-medium leading-relaxed">${body}</div>`; };
+  if(!doSplit){
+    set("diag-warn","✂️ γ pruned the split — the tree is a single leaf",
+      `The best candidate split scores gain <strong>${best.gain.toFixed(2)}</strong>, but γ = <strong>${gam.toFixed(2)}</strong> demands more, so <code>gain − γ = ${net.toFixed(2)} ≤ 0</code> and XGBoost refuses to split. The whole node becomes one leaf with weight <code>w* = −G/(H+λ) = ${leafWeight(G,H,lam).toFixed(3)}</code>. This is <em>pre-pruning by a real penalty</em>, not a heuristic depth cap — lower γ and watch the split snap back in. Plain gradient boosting has no such gate; it would have split regardless.`);
+  } else if(state.loss==="mse" && lam===0 && gam===0){
+    set("diag-info","🟰 With squared error and λ=γ=0, this IS plain gradient boosting",
+      `For squared error the Hessian is <code>hᵢ=1</code> for every point, so <code>H</code> equals the count and the gain formula reduces to ordinary variance reduction. With no regularization the leaf weight <code>−G/(H+λ)</code> is exactly the mean residual plain GB would use. The split is at <strong>x&lt;${best.t.toFixed(1)}</strong>, gain <strong>${best.gain.toFixed(2)}</strong>. Now drag <strong>λ</strong> up — the XGBoost leaf shrinks while plain GB's does not — or switch to a <strong>log-loss</strong> scenario to see the Hessian actually vary.`);
+  } else if(lam>0.01 && state.loss==="mse"){
+    set("diag-good","🪢 λ is shrinking the leaf weights (L2 on the leaves)",
+      `Split at <strong>x&lt;${best.t.toFixed(1)}</strong>, net gain <strong>${net.toFixed(2)}</strong>. Each leaf weight is <code>−G/(H+λ)</code>; with λ = <strong>${lam.toFixed(1)}</strong> you are dividing by a larger denominator, so both leaves pull toward zero (left ${leafWeight(best.GL,best.HL,lam).toFixed(3)}, right ${leafWeight(best.GR,best.HR,lam).toFixed(3)}) — and the gain shrinks too. That is L2 regularization applied directly to the tree's outputs, keeping any single tree from over-committing. Open the plain-GB panel to see it ignores λ entirely.`);
+  } else {
+    set("diag-good","⚡ Second-order split: gains and weights use the Hessian",
+      `Log-loss ⇒ <code>hᵢ = pᵢ(1−pᵢ)</code>, so every point's influence is weighted by how uncertain the model is about it. The best split is <strong>x&lt;${best.t.toFixed(1)}</strong> with gain <strong>${best.gain.toFixed(2)}</strong> (net ${net.toFixed(2)} after γ), and leaf weights <code>−G/(H+λ)</code> come out to left ${leafWeight(best.GL,best.HL,lam).toFixed(3)}, right ${leafWeight(best.GR,best.HR,lam).toFixed(3)}. Because it divides by curvature <code>H+λ</code> rather than a raw count, XGBoost trims its steps where the loss is most curved — the essence of the Newton-style, second-order update that plain gradient boosting never sees. Drag <strong>γ</strong> up to prune the split, or <strong>λ</strong> to shrink the weights.`);
+  }
+}
+
+// ---------------- main draw ----------------
+function draw(){ renderGain(); renderData(); renderTable(); renderTree(); renderGB(); updateMetrics(); setDiag(); document.getElementById("vCand").textContent = state.cur.gains[state.candIdx] ? "x<"+state.cur.gains[state.candIdx].t.toFixed(1) : "—"; }
+
+// ---------------- controls ----------------
+function highlightScn(){ document.querySelectorAll("[data-scn]").forEach(b=> b.classList.toggle("on", b.dataset.scn===state.scn)); }
+document.querySelectorAll("[data-scn]").forEach(b=> b.onclick=()=>{ loadScenario(b.dataset.scn); highlightScn(); });
+document.getElementById("cLam").addEventListener("input", e=>{ state.lambda=+e.target.value;
+  document.getElementById("vLam").textContent="λ="+state.lambda.toFixed(1); recompute(); draw(); });
+document.getElementById("cGam").addEventListener("input", e=>{ state.gamma=+e.target.value;
+  document.getElementById("vGam").textContent="γ="+state.gamma.toFixed(2); recompute(); draw(); });
+document.getElementById("cCand").addEventListener("input", e=>{ state.candIdx=+e.target.value; state.candFollow=false; draw(); });
+document.getElementById("btnBest").onclick=()=>{ state.candFollow=true; recompute(); draw(); };
+document.getElementById("tGB").onclick=()=>{ state.showGB=!state.showGB;
+  document.getElementById("tGB").classList.toggle("on", state.showGB);
+  document.getElementById("gbBox").parentElement.style.opacity = state.showGB? "1":"0.55"; };
+document.getElementById("btnReset").onclick=()=>{ state.lambda=1; state.gamma=0; state.candFollow=true;
+  document.getElementById("cLam").value=1; document.getElementById("vLam").textContent="λ=1.0";
+  document.getElementById("cGam").value=0; document.getElementById("vGam").textContent="γ=0.00";
+  recompute(); draw(); };
+
+// ---------------- init ----------------
+document.getElementById("vLam").textContent="λ=1.0";
+document.getElementById("vGam").textContent="γ=0.00";
+loadScenario("sep"); highlightScn();
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. The regularized objective — where XGBoost begins", why:"Plain gradient boosting fits each new tree to the previous model's residuals and stops there. XGBoost instead writes down one explicit objective and optimises it directly: the sum of a differentiable loss over all samples, plus a regularizer on every tree it adds. The regularizer has two terms — γ times the number of leaves T, which charges a fixed price per leaf, and one-half λ times the sum of squared leaf weights, an L2 penalty that keeps leaf outputs small. That single line is the whole philosophy: don't just reduce training error, reduce training error while paying for model complexity. γ will become the pruning threshold and λ the leaf-weight shrinkage you drag in the demo. Everything that follows — the Taylor expansion, the closed-form leaf weight, the gain formula — is just the machinery for minimising this exact objective greedily, one tree and one split at a time.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">obj = Σᵢ l(yᵢ, ŷᵢ) &nbsp;+&nbsp; Σₖ Ω(fₖ)<br><br>Ω(f) = γ·T &nbsp;+&nbsp; ½·λ·Σⱼ wⱼ²<br><br>T = #leaves (γ prices each one)<br>wⱼ = leaf weights (λ = L2 shrinkage)<br><br>minimise loss AND complexity together</div>`, code:`# the objective XGBoost actually minimises, per added tree f:
+#   obj = sum_i loss(y_i, yhat_i)  +  gamma * T  +  0.5 * lam * sum_j w_j**2
+# gamma  -> cost per leaf   (pruning)
+# lam    -> L2 on leaf weights (shrinkage)
+# T      -> number of leaves in the tree` },
+ { title:"2. The second-order Taylor expansion — g and h", why:"To minimise that objective when the new prediction is the old one plus a small tree output, XGBoost expands each loss term as a Taylor series to second order around the current prediction. Two derivatives fall out per sample: the gradient g, the first derivative of the loss with respect to the raw prediction, and the Hessian h, the second derivative. This is the pivotal move. Ordinary gradient boosting is a first-order method — it uses only g (the residual direction). XGBoost is effectively doing Newton's method in function space: h tells it how curved the loss is, so it knows not just which way to step but how big a step the loss can absorb. After the expansion, the constant loss term drops out of the optimisation and each sample is fully summarised by just its (g, h) pair — the raw targets never appear again. That compression is why a leaf only ever needs the two sums G and H.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">l(y, F + f) ≈ l(y,F) + g·f + ½·h·f²<br><br>gᵢ = ∂l/∂F &nbsp;&nbsp;(gradient, 1st order)<br>hᵢ = ∂²l/∂F² &nbsp;(Hessian, 2nd order)<br><br>plain GB uses g only · XGBoost uses g AND h<br>⇒ a Newton step, not just a gradient step</div>`, code:`# expand each loss term to 2nd order around the current prediction F_i:
+#   l(y_i, F_i + f) ~= l(y_i,F_i) + g_i*f + 0.5*h_i*f**2
+g = dloss_dF(y, F)      # gradient  (1st derivative)
+h = d2loss_dF2(y, F)    # hessian   (2nd derivative)
+# the constant l(y_i,F_i) is irrelevant to the minimisation -> drop it` },
+ { title:"3. The optimal leaf weight — closed form", why:"Fix the tree's shape for a moment: which samples land in which leaf is decided. A leaf simply outputs one number w to every sample it holds. Substitute the Taylor approximation into the objective and, for a single leaf holding index set I, the objective becomes a simple quadratic in w: (sum of g over I) times w, plus one-half times (sum of h over I, plus λ) times w squared. A quadratic has a trivial minimum — set the derivative to zero — giving the optimal weight w* equal to minus G over (H plus λ), where G and H are the leaf's gradient and Hessian sums. Plug that optimum back in and the leaf's best achievable objective is minus one-half times G squared over (H plus λ). That quantity is called the structure score or similarity score: a single number saying how good this leaf is. No line search, no iteration — the second-order expansion makes the leaf value closed-form. Notice λ in the denominator: bigger λ shrinks every weight toward zero.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">leaf objective(w) = G·w + ½·(H+λ)·w²<br>&nbsp;&nbsp; G = Σᵢ∈leaf gᵢ &nbsp;·&nbsp; H = Σᵢ∈leaf hᵢ<br><br>minimise ⇒ &nbsp;<b>w* = −G / (H + λ)</b><br><br>best value = −½ · G² / (H + λ)&nbsp;&nbsp;("structure score")<br>bigger λ ⇒ weight shrinks toward 0</div>`, code:`def leaf_weight(G, H, lam):
+    return -G / (H + lam)            # closed-form optimum
+
+def structure_score(G, H, lam):
+    return -0.5 * G*G / (H + lam)    # best objective this leaf can reach
+# no gradient descent inside a leaf -- the quadratic is solved exactly` },
+ { title:"4. The split gain formula", why:"Now decide whether to split a leaf into two. Splitting replaces one leaf's structure score with the sum of the two children's scores — and adds one leaf, so it costs an extra γ. The gain of a split is therefore the improvement in structure score minus γ: one-half times [ G_left squared over (H_left plus λ), plus G_right squared over (H_right plus λ), minus G squared over (H plus λ) ], and then minus γ. Read it piece by piece: the first two terms are how well each child scores on its own, the third subtracts the parent's score, and the leading one-half comes from the structure-score formula. The bracket is always non-negative — splitting can only help the fit, exactly like variance reduction — so γ is the real gatekeeper. If the best split's bracketed gain does not exceed γ, XGBoost declines to split. This is the number the gain-sweep curve in the demo plots for every candidate threshold, and the γ line is drawn right across it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Gain = ½[ G<tspan>L</tspan>²/(H<tspan>L</tspan>+λ) + G<tspan>R</tspan>²/(H<tspan>R</tspan>+λ) − G²/(H+λ) ] − γ<br><br>bracket = child scores − parent score &nbsp;(≥ 0 always)<br>− γ = the price of the extra leaf<br><br>Gain ≤ 0 &nbsp;⇒&nbsp; don't split (γ pruned it)</div>`, code:`def split_gain(GL, HL, GR, HR, lam, gamma):
+    sim = lambda g, h: g*g / (h + lam)
+    G, H = GL + GR, HL + HR
+    return 0.5 * (sim(GL,HL) + sim(GR,HR) - sim(G,H)) - gamma
+# the bracket is >= 0; gamma decides if the split is worth an extra leaf` },
+ { title:"5. λ — L2 regularization on the leaf weights", why:"λ is the L2 penalty from the objective's Ω term, and it acts in exactly one place: the denominator H plus λ that appears in both the leaf weight and the gain. Turn λ up and every leaf weight minus G over (H plus λ) shrinks toward zero, because you are dividing the same numerator by a bigger number. That damps how aggressively any single tree can move a prediction, which — combined with the learning-rate shrinkage applied to whole trees — is what lets XGBoost stack hundreds of trees without wildly overfitting. λ also gently lowers every split's gain, so at high λ marginal splits quietly disappear even before γ gets involved. Crucially, plain gradient boosting has no λ at all: its leaf value is just the mean residual, minus G over n. Watch the plain-GB panel in the demo hold still while the XGBoost weights melt toward zero as you drag λ — that gap is the L2 regularizer doing its job.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">w* = −G / (H + <b style="color:#0ea5e9">λ</b>)<br><br>λ = 0 &nbsp;→ full-size weight (like plain GB when h=1)<br>λ ↑ &nbsp;&nbsp;→ denominator grows → weight shrinks → 0<br><br>also lowers every split's gain a little<br>= L2 penalty applied to the tree's outputs</div>`, code:`# lambda enters ONLY through the denominator (H + lam):
+w_lam0  = -G / (H + 0)      # unregularized (plain-GB-like when h==1)
+w_lam5  = -G / (H + 5)      # shrunk toward zero
+# larger lambda  ->  smaller |w|  ->  each tree commits less` },
+ { title:"6. γ — the minimum split gain (pruning)", why:"γ is the per-leaf cost from Ω, and it shows up as the flat amount subtracted at the end of the gain formula. Its job is pruning: a split is only made if its structure-score improvement exceeds γ. Because the bracketed improvement is always non-negative, with γ equal to zero XGBoost would happily keep splitting on any sliver of gain; raising γ sets a floor, and any candidate split whose gain falls under that floor is rejected and the node stays a leaf. This is genuine pre-pruning driven by the loss itself, not a crude cap like max-depth — a deep branch survives only where it keeps paying its way. In the demo, the γ line rides horizontally across the gain-sweep curve: whenever the curve's peak sits below the line, the split vanishes and the tree collapses to a single leaf. XGBoost also does a post-pruning pass, growing to max depth and then removing splits whose gain came out negative once γ is charged.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">split only if &nbsp; bracketed_gain &gt; <b style="color:#f43f5e">γ</b><br><br>γ = 0 &nbsp;→ split on any positive gain<br>γ ↑ &nbsp;&nbsp;→ raises the bar → weak splits pruned<br><br>peak of gain curve &lt; γ &nbsp;⇒&nbsp; node stays a leaf<br>real pre-pruning, not a depth heuristic</div>`, code:`gain, thr = best_split(g, h, x, lam, gamma)
+if gain <= 0:                 # best split failed to clear gamma
+    return leaf(G, H, lam)    # prune -> single leaf
+# equivalently: split only when structure-score gain > gamma` },
+ { title:"7. g and h for real losses — why the Hessian matters", why:"The abstract g and h become concrete once you pick a loss. For squared error, the loss is one-half times (y minus F) squared: its gradient is F minus y (the negative residual) and its Hessian is exactly 1 for every sample. So for regression the Hessian is a constant — H just counts the points — and XGBoost's gain collapses into ordinary variance reduction, identical to plain gradient boosting when λ and γ are zero. The Hessian earns its keep on other losses. For logistic log-loss the gradient is p minus y and the Hessian is p times (1 minus p), where p is the current predicted probability. That Hessian is largest near p equals one-half, where the model is most uncertain, and near zero when the model is confident. Dividing by H plus λ therefore takes smaller, safer steps on the points the model is least sure about — a self-calibrating step size that first-order boosting simply cannot express. This is the single clearest reason XGBoost's second-order updates converge faster and generalise better than plain gradient boosting.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">squared error: g = F − y &nbsp;·&nbsp; <b>h = 1</b> (constant)<br>&nbsp;&nbsp;→ gain = variance reduction = plain GB (λ=γ=0)<br><br>log-loss: g = p − y &nbsp;·&nbsp; <b>h = p(1−p)</b> (varies)<br>&nbsp;&nbsp;→ big h near p≈0.5 → smaller, safer steps there<br><br>the Hessian is what plain GB throws away</div>`, code:`# squared error  l = 1/2 (y-F)^2
+g = F - y ;            h = 1                       # Hessian constant
+
+# logistic       l = log(1+e^F) - yF
+p = 1/(1+np.exp(-F)) ; g = p - y ; h = p*(1-p)     # Hessian varies
+# h large where uncertain (p~0.5) -> XGBoost steps cautiously there` },
+ { title:"8. Histogram-based split finding — the speed trick", why:"Everything so far describes the exact greedy algorithm: to score splits on a feature you sort its values and sweep, which is order n log n per feature per node — fine for a demo, punishing on millions of rows. XGBoost's fast path bins each feature into a fixed number of buckets, usually around 256, once up front. Finding a split is then a single pass that accumulates the gradient and Hessian sums per bin and reads off the best boundary from the running cumulative totals — a histogram instead of a sort, and the candidate thresholds are just the bin edges. Building a child's histogram is cheaper still via the subtraction trick: a parent's histogram minus one child's gives the sibling's for free. This is the hist tree method (and the related approx method with weighted quantile sketch for choosing bin edges). It trades a hair of precision in the split point for a large constant-factor speed-up and much lower memory, and it is what makes gradient boosting practical at scale; LightGBM later pushed the same idea even harder.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">exact: sort each feature every node → O(n log n)<br><br>hist: bin once (~256 buckets), then split search =<br>&nbsp;&nbsp; one pass of cumulative Σg, Σh over bins<br><br>child histogram = parent − sibling &nbsp;(free)<br>⇒ big speed-up, tiny accuracy cost</div>`, code:`# bin each feature ONCE, then a split search is a bin-wise cumsum
+bins = np.digitize(x, bin_edges)         # ~256 buckets
+Gb = np.bincount(bins, weights=g)        # per-bin gradient sums
+Hb = np.bincount(bins, weights=h)        # per-bin hessian  sums
+# sweep cumulative Gb, Hb from the left -> best bin boundary, no re-sort
+# subtraction trick: child_hist = parent_hist - other_child_hist` },
+ { title:"9. Sparsity-aware splits — and where XGBoost goes next", why:"Real feature matrices are full of holes: missing values, one-hot zeros, absent counts. XGBoost handles them with a sparsity-aware split finder. At every node it learns a single default direction — for each candidate split it tries sending all the missing (or zero) rows left, then right, and keeps whichever gives more gain — and stores that direction in the node. At prediction time a missing value simply follows the default branch. The split search only iterates over the present values, so the cost is proportional to the number of non-missing entries, not the full matrix; sparse data becomes an advantage rather than a burden. Put the whole picture together — a regularized objective, second-order gradient and Hessian statistics, closed-form leaf weights, γ-gated gains, histogram binning, and sparsity awareness, wrapped in learning-rate shrinkage, row subsampling, and column subsampling — and you have the algorithm that has dominated tabular machine learning. From here the lineage continues: LightGBM grows trees leaf-wise with gradient-based sampling and feature bundling, and CatBoost adds ordered boosting and native categorical handling. That is exactly where Day 41 goes.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">missing / zero values → learn a DEFAULT direction<br>&nbsp;&nbsp; try sending them left vs right, keep the higher-gain side<br><br>split search skips missing entries → O(#non-missing)<br><br>full stack: reg objective + g,h + w* + γ + hist + sparsity<br>+ eta shrinkage + row/col subsample → the tabular workhorse</div>`, code:`# sparsity-aware: pick the default branch that maximises gain
+for direction in ("left", "right"):
+    gain[direction] = gain_sending_missing(direction)
+node.default = argmax(gain)          # missing values follow this at predict
+
+# next up (Day 41): LightGBM -> leaf-wise growth + GOSS + EFB
+#                    CatBoost -> ordered boosting + categorical features` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>

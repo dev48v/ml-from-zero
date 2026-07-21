@@ -46,6 +46,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 37 — Gaussian Processes](https://dev48v.infy.uk/ml/day37-gaussian-processes.html) — `day37-gaussian-processes.html`
 - [MachineLearningFromZero · Day 38 — Bayesian Optimization](https://dev48v.infy.uk/ml/day38-bayesian-optimization.html) — `day38-bayesian-optimization.html`
 - [MachineLearningFromZero · Day 39 — Multi-Armed Bandits](https://dev48v.infy.uk/ml/day39-multi-armed-bandits.html) — `day39-multi-armed-bandits.html`
+- [MachineLearningFromZero · Day 40 — XGBoost Internals](https://dev48v.infy.uk/ml/day40-xgboost-internals.html) — `day40-xgboost-internals.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
