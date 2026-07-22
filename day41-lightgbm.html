@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 41 — LightGBM</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:172px 1fr 74px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-band { display:inline-block; width:16px; height:11px; border-radius:3px; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .kbtn { border:1px solid #e2e8f0; background:#fff; }
+  .kbtn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .objbtn { border:1px solid #e2e8f0; }
+  .objbtn:hover { border-color:#38bdf8; }
+  .objbtn.on { border-color:#0ea5e9; background:#e0f2fe; color:#075985; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  table.gh { width:100%; border-collapse:collapse; font-size:11.5px; font-variant-numeric:tabular-nums; }
+  table.gh th { color:#64748b; font-weight:800; text-transform:uppercase; letter-spacing:.03em; font-size:9.5px; padding:3px 5px; text-align:right; border-bottom:1px solid #e2e8f0; }
+  table.gh td { padding:3px 5px; text-align:right; border-bottom:1px solid #f1f5f9; }
+  table.gh td.lft { text-align:left; font-weight:700; color:#334155; }
+  .efb-cell { width:26px; height:26px; border-radius:5px; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; color:#fff; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 41</div>
+      <h1 class="text-xl font-bold">🌿 LightGBM — Same Gradient/Hessian Boosting as XGBoost, Grown to be <em>Fast</em>: <em>Leaf-Wise</em> Best-First Trees, <em>Histogram</em> Split-Finding, <em>GOSS</em> Sampling &amp; <em>EFB</em> Feature Bundling</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>Day 40 opened up XGBoost's engine: a regularized objective, second-order gradient <code>gᵢ</code> and Hessian <code>hᵢ</code>, closed-form leaf weights and γ-gated gains. LightGBM keeps that exact math — every leaf is still <code>w*=−G/(H+λ)</code> and every split is scored by the same gain — and rebuilds the parts that make it <em>fast on big data</em>.</strong> Four ideas do the work, and all four are computed for real below. It grows trees <strong>leaf-wise</strong> (split the single leaf with the largest loss reduction, not a whole level), finds splits on a <strong>histogram</strong> of ~k bins instead of every sorted value, throws away most low-gradient rows with <strong>GOSS</strong> while amplifying the survivors, and squeezes sparse one-hot columns together with <strong>EFB</strong>.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a mechanism below. <strong>Leaf-wise vs level-wise</strong> grows two trees on the same data one split at a time — leaf-wise always spends its next split where the loss drops most, so it reaches a lower training loss for the same number of leaves, but the tree goes deeper and lopsided (the overfitting risk a <code>max_depth</code> guard fights). <strong>Histogram</strong> bins a feature and scores the gain only at the ~k bin edges instead of the n−1 exact midpoints — drag the bin count and watch the coarse gain curve snap toward the exact one. <strong>GOSS</strong> keeps every large-gradient sample and randomly subsamples the small-gradient ones (amplified by (1−a)/b so the sums stay unbiased) — and its split-gain estimate beats plain uniform sampling on the same budget. <strong>EFB</strong> bundles features that are never nonzero together into one column. Everything is real JS math, no library.</p>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="growth" class="subnav-btn px-4 py-2 rounded-lg text-sm">🌿 Leaf-wise vs Level-wise</button>
+        <button data-mod="hist"   class="subnav-btn px-4 py-2 rounded-lg text-sm">📊 Histogram split-finding</button>
+        <button data-mod="goss"   class="subnav-btn px-4 py-2 rounded-lg text-sm">🎯 GOSS sampling</button>
+        <button data-mod="efb"    class="subnav-btn px-4 py-2 rounded-lg text-sm">🧵 EFB feature bundling</button>
+      </div>
+
+      <!-- ============ MODULE: GROWTH ============ -->
+      <div id="mod-growth" class="mod">
+        <div class="grid grid-cols-3 md:grid-cols-6 gap-2 max-w-4xl mx-auto mb-4">
+          <div class="metric-pill"><div class="v" id="gwLeaves" style="color:#0f172a">—</div><div class="k">leaves (each)</div></div>
+          <div class="metric-pill"><div class="v" id="gwSseLeaf" style="color:#16a34a">—</div><div class="k">leaf-wise loss</div></div>
+          <div class="metric-pill"><div class="v" id="gwSseLevel" style="color:#b45309">—</div><div class="k">level-wise loss</div></div>
+          <div class="metric-pill"><div class="v" id="gwGap" style="color:#0ea5e9">—</div><div class="k">loss saved</div></div>
+          <div class="metric-pill"><div class="v" id="gwDLeaf" style="color:#16a34a">—</div><div class="k">leaf-wise depth</div></div>
+          <div class="metric-pill"><div class="v" id="gwDLevel" style="color:#b45309">—</div><div class="k">level-wise depth</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">DATASET — pick a fit problem</div>
+            <div class="flex flex-wrap gap-2 mb-3">
+              <button data-gwd="asym"  class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">🪜 Flat + staircase</button>
+              <button data-gwd="spike" class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">⛰️ Local spike</button>
+              <button data-gwd="even"  class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">〰️ Even wiggle</button>
+            </div>
+            <div class="ctl-row">
+              <div class="ctl-name">🍃 num_leaves budget</div>
+              <input type="range" id="gwLeafTgt" min="2" max="14" step="1" value="8">
+              <div class="ctl-val" id="gwLeafTgtV">8</div>
+            </div>
+            <div class="ctl-row">
+              <div class="ctl-name">🛡️ max_depth guard</div>
+              <input type="range" id="gwMaxD" min="1" max="8" step="1" value="8">
+              <div class="ctl-val" id="gwMaxDV">off</div>
+            </div>
+            <div class="text-[11px] text-slate-400 -mt-1 mb-2">the guard only bites the <strong>leaf-wise</strong> tree: it refuses to split any leaf already at this depth, forcing it to spend the split elsewhere. That is exactly how LightGBM tames leaf-wise overfitting.</div>
+            <div class="mt-1 flex items-center gap-2 flex-wrap">
+              <button id="gwStep" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">＋ grow one split</button>
+              <button id="gwAuto" class="kbtn px-2.5 py-1 rounded-lg font-semibold text-xs">▶ auto-grow</button>
+              <button id="gwReset" class="ml-auto bg-rose-100 text-rose-700 px-3 py-1.5 rounded-lg font-semibold text-xs hover:bg-rose-200">↺ reset</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              Both trees add <strong>one leaf per step</strong>. <span style="color:#16a34a;font-weight:800">Leaf-wise</span> splits the leaf whose split drops training loss the most (best-first). <span style="color:#b45309;font-weight:800">Level-wise</span> fills each depth level left-to-right before descending (breadth-first) — XGBoost's default. Same leaf count, so compare the loss and the depth directly.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:540px; max-width:100%;">
+            <div class="flex justify-between items-center mb-1">
+              <span class="text-sm font-bold text-sky-700">📉 Training loss vs number of leaves</span>
+              <span class="text-xs font-bold text-slate-400">lower &amp; earlier = better</span>
+            </div>
+            <div id="gwSvgLoss"></div>
+            <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#16a34a;border-top-style:solid"></span> leaf-wise (best-first)</span>
+              <span><span class="swatch-line" style="border-color:#f59e0b;border-top-style:dashed"></span> level-wise (breadth-first)</span>
+              <span class="text-slate-400">SSE = Σ(y − leaf mean)²</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:520px; max-width:100%;">
+            <div class="text-xs font-bold mb-1" style="color:#166534">▮ LEAF-WISE TREE (LightGBM) — deeper where it pays</div>
+            <div id="gwSvgTreeLeaf"></div>
+          </div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:520px; max-width:100%;">
+            <div class="text-xs font-bold mb-1" style="color:#b45309">▮ LEVEL-WISE TREE (XGBoost default) — balanced</div>
+            <div id="gwSvgTreeLevel"></div>
+          </div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:640px; max-width:100%;">
+            <div class="text-xs font-bold mb-1" style="color:#0f172a">▮ THE FIT — leaf-wise vs level-wise step functions on the data</div>
+            <div id="gwSvgData"></div>
+            <div class="text-[11px] text-slate-400 leading-relaxed mt-1">Each leaf predicts its region's mean <code>y</code>. The <span style="color:#16a34a;font-weight:800">green</span> steps (leaf-wise) hug the busy region with more, finer pieces; the <span style="color:#b45309;font-weight:800">amber</span> steps (level-wise) spread the same budget evenly, wasting resolution on flat regions.</div>
+          </div>
+        </div>
+        <div id="gwDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+      <!-- ============ MODULE: HISTOGRAM ============ -->
+      <div id="mod-hist" class="mod hidden">
+        <div class="grid grid-cols-3 md:grid-cols-6 gap-2 max-w-4xl mx-auto mb-4">
+          <div class="metric-pill"><div class="v" id="hsExactN" style="color:#0f172a">—</div><div class="k">exact evals (n−1)</div></div>
+          <div class="metric-pill"><div class="v" id="hsBinN" style="color:#0ea5e9">—</div><div class="k">hist evals (k−1)</div></div>
+          <div class="metric-pill"><div class="v" id="hsSpeed" style="color:#16a34a">—</div><div class="k">fewer evals</div></div>
+          <div class="metric-pill"><div class="v" id="hsExactG" style="color:#0f172a">—</div><div class="k">exact best gain</div></div>
+          <div class="metric-pill"><div class="v" id="hsBinG" style="color:#0ea5e9">—</div><div class="k">hist best gain</div></div>
+          <div class="metric-pill"><div class="v" id="hsGap" style="color:#b45309">—</div><div class="k">gain lost</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">DATASET</div>
+            <div class="flex flex-wrap gap-2 mb-3">
+              <button data-hsd="0" class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">🎲 Sample A</button>
+              <button data-hsd="1" class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">🎲 Sample B</button>
+              <button data-hsd="2" class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">🎲 Sample C</button>
+            </div>
+            <div class="ctl-row">
+              <div class="ctl-name">🗄️ bin count k</div>
+              <input type="range" id="hsBins" min="2" max="40" step="1" value="8">
+              <div class="ctl-val" id="hsBinsV">8</div>
+            </div>
+            <div class="text-[11px] text-slate-400 -mt-1 mb-2">More bins ⇒ the histogram gain curve approaches the exact one, but the split search costs more. LightGBM defaults to 255 bins — a near-exact split at a fraction of the work.</div>
+            <div class="ctl-row">
+              <div class="ctl-name">📐 binning</div>
+              <div></div>
+              <div></div>
+            </div>
+            <div class="-mt-3 flex gap-2">
+              <button id="hsModeW" class="kbtn on px-2.5 py-1 rounded-lg font-semibold text-xs">equal-width</button>
+              <button id="hsModeF" class="kbtn px-2.5 py-1 rounded-lg font-semibold text-xs">equal-frequency</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              Exact split-finding scores the gain at every one of the <strong>n−1</strong> midpoints between sorted values. The histogram bins the feature <strong>once</strong>, sums <code>G</code> and <code>H</code> per bin, then scores gain only at the <strong>k−1</strong> bin edges via a running cumulative sum — turning a sort into a single pass.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:560px; max-width:100%;">
+            <div class="flex justify-between items-center mb-1">
+              <span class="text-sm font-bold text-sky-700">📊 Gain over thresholds — exact curve vs histogram bin-edges</span>
+            </div>
+            <div id="hsSvgGain"></div>
+            <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#94a3b8;border-top-style:solid"></span> exact gain (every midpoint)</span>
+              <span><span class="swatch" style="background:#0ea5e9"></span> histogram bin-edge gain</span>
+              <span style="color:#eab308;font-weight:800">★ hist best</span>
+            </div>
+          </div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start mt-6">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:640px; max-width:100%;">
+            <div class="text-xs font-bold mb-1" style="color:#0f172a">▮ THE FEATURE, BINNED — points dropped into k buckets</div>
+            <div id="hsSvgBins"></div>
+            <div class="text-[11px] text-slate-400 leading-relaxed mt-1">Bars show how many points land in each bin; dashed lines are the <strong>bin edges</strong> — the only thresholds the histogram method ever tries. The best histogram split sits on one of these edges.</div>
+          </div>
+        </div>
+        <div id="hsDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+      <!-- ============ MODULE: GOSS ============ -->
+      <div id="mod-goss" class="mod hidden">
+        <div class="grid grid-cols-3 md:grid-cols-6 gap-2 max-w-4xl mx-auto mb-4">
+          <div class="metric-pill"><div class="v" id="goKept" style="color:#dc2626">—</div><div class="k">kept (large |g|)</div></div>
+          <div class="metric-pill"><div class="v" id="goSamp" style="color:#0ea5e9">—</div><div class="k">sampled (small |g|)</div></div>
+          <div class="metric-pill"><div class="v" id="goUse" style="color:#0f172a">—</div><div class="k">rows used / total</div></div>
+          <div class="metric-pill"><div class="v" id="goAmp" style="color:#7c3aed">—</div><div class="k">amplify (1−a)/b</div></div>
+          <div class="metric-pill"><div class="v" id="goErrG" style="color:#16a34a">—</div><div class="k">GOSS gain error</div></div>
+          <div class="metric-pill"><div class="v" id="goErrU" style="color:#b45309">—</div><div class="k">uniform gain error</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="ctl-row">
+              <div class="ctl-name">🔝 a — top |g| kept</div>
+              <input type="range" id="goA" min="0.05" max="0.5" step="0.05" value="0.2">
+              <div class="ctl-val" id="goAV">0.20</div>
+            </div>
+            <div class="ctl-row">
+              <div class="ctl-name">🎲 b — small |g| sampled</div>
+              <input type="range" id="goB" min="0.05" max="0.5" step="0.05" value="0.2">
+              <div class="ctl-val" id="goBV">0.20</div>
+            </div>
+            <div class="text-[11px] text-slate-400 -mt-1 mb-2">Keep the top <code>a·N</code> rows by gradient magnitude, then randomly keep <code>b·N</code> of the rest. To stay unbiased, the sampled small-gradient rows are up-weighted by <code>(1−a)/b</code> when the sums are formed.</div>
+            <div class="mt-1 flex items-center gap-2 flex-wrap">
+              <button id="goShuffle" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">🎲 re-draw sample</button>
+              <button id="goView" class="kbtn on px-2.5 py-1 rounded-lg font-semibold text-xs">show GOSS</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              A sample's gradient magnitude <code>|gᵢ|</code> measures how under-trained it still is. GOSS spends its budget on the rows that matter and keeps the rest cheaply. The <strong>gain error</strong> pills average |estimated − true| best-split gain over 400 random draws — GOSS's estimate is consistently tighter than uniform sampling on the <em>same</em> number of rows.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:560px; max-width:100%;">
+            <div class="flex justify-between items-center mb-1">
+              <span class="text-sm font-bold text-sky-700">🎯 Rows sorted by |gradient| — who is kept, sampled, dropped</span>
+            </div>
+            <div id="goSvg"></div>
+            <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#dc2626"></span> kept (large |g|)</span>
+              <span><span class="swatch" style="background:#0ea5e9"></span> sampled + amplified</span>
+              <span><span class="swatch" style="background:#e2e8f0"></span> dropped this round</span>
+            </div>
+          </div>
+        </div>
+        <div id="goDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+      <!-- ============ MODULE: EFB ============ -->
+      <div id="mod-efb" class="mod hidden">
+        <div class="grid grid-cols-3 md:grid-cols-6 gap-2 max-w-4xl mx-auto mb-4">
+          <div class="metric-pill"><div class="v" id="efFeat" style="color:#0f172a">6</div><div class="k">sparse features</div></div>
+          <div class="metric-pill"><div class="v" id="efBund" style="color:#0ea5e9">—</div><div class="k">bundles after EFB</div></div>
+          <div class="metric-pill"><div class="v" id="efCut" style="color:#16a34a">—</div><div class="k">columns cut</div></div>
+          <div class="metric-pill"><div class="v" id="efConf" style="color:#b45309">—</div><div class="k">conflict rows</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="ctl-row">
+              <div class="ctl-name">⚖️ conflict tolerance</div>
+              <input type="range" id="efTol" min="0" max="4" step="1" value="0">
+              <div class="ctl-val" id="efTolV">0</div>
+            </div>
+            <div class="text-[11px] text-slate-400 -mt-1 mb-2">Two features <em>conflict</em> when they are nonzero in the same row (they would collide inside one bundle). Tolerance = how many conflict rows you will tolerate to still bundle two features — raise it to merge more aggressively.</div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              One-hot and count features are mostly zero and rarely fire together. EFB builds a <strong>conflict graph</strong> (an edge between features that clash) and greedily colours it — each colour becomes one bundle. Bundled features get disjoint value ranges via an <strong>offset</strong>, so a single column carries all of them without losing information.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:560px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🧵 Sparse matrix → bundles (each colour = one bundle)</div>
+            <div id="efMatrix"></div>
+            <div id="efBundleText" class="text-[11px] text-slate-600 mt-3 leading-relaxed"></div>
+          </div>
+        </div>
+        <div id="efDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">Same boosting math — engineered to fly on big data</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">LightGBM reuses Day 40's leaf weight and gain verbatim — so we start from those two functions and only add the four accelerators. Here is a runnable from-scratch core: the shared gain, an exact best-split, the <strong>leaf-wise</strong> grower (a priority queue on gain, capped by <code>num_leaves</code> and a <code>max_depth</code> guard) next to the level-wise one for contrast, <strong>histogram</strong> split-finding, <strong>GOSS</strong> sampling, and <strong>EFB</strong> bundling. Everything the LOOK tab computes lives in these snippets.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The shared core — same gain &amp; leaf weight as XGBoost</h3></div>
+        <p class="text-sm text-slate-600 mb-3">LightGBM is gradient boosting with the identical second-order objective. A leaf's optimal weight is <code>−G/(H+λ)</code> and a split's gain is the same structure-score improvement. Nothing here is new — it is the foundation the four tricks accelerate.</p>
+        <div class="relative"><pre>import numpy as np
+
+def grad_hess(y, F, loss="mse"):
+    if loss == "mse":                       # l = 1/2 (y - F)^2
+        return F - y, np.ones_like(F)       # g = F - y ,  h = 1
+    p = 1/(1+np.exp(-F))                     # logistic
+    return p - y, p*(1-p)                    # g = p - y ,  h = p(1-p)
+
+def leaf_weight(G, H, lam):
+    return -G / (H + lam)                    # closed-form, L2-shrunk
+
+def split_gain(GL, HL, GR, HR, lam=0.0, gamma=0.0):
+    sim = lambda g, h: g*g / (h + lam)
+    G, H = GL+GR, HL+HR
+    return 0.5*(sim(GL,HL) + sim(GR,HR) - sim(G,H)) - gamma</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Best split on a node — the gain each candidate leaf carries</h3></div>
+        <p class="text-sm text-slate-600 mb-3">For every leaf we score its best possible split by sweeping thresholds. Leaf-wise growth needs this <em>gain</em> as the priority key: the leaf with the largest gain gets split next.</p>
+        <div class="relative"><pre>def best_split(g, h, x, lam=0.0):
+    order = np.argsort(x); g, h, x = g[order], h[order], x[order]
+    G, H = g.sum(), h.sum()
+    GL = HL = 0.0
+    best = (-1.0, None)                       # (gain, threshold)
+    for i in range(len(x) - 1):
+        GL += g[i]; HL += h[i]
+        if x[i] == x[i+1]:
+            continue
+        gain = split_gain(GL, HL, G-GL, H-HL, lam)
+        if gain > best[0]:
+            best = (gain, 0.5*(x[i]+x[i+1]))
+    return best                                # gain, threshold (or None)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Leaf-wise growth — split the best leaf, capped by num_leaves &amp; max_depth</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This is LightGBM's signature. Keep a priority queue of leaves keyed by their best-split gain; pop the max, split it, push its two children, repeat until <code>num_leaves</code> is hit. The <code>max_depth</code> guard skips leaves that are already too deep — that is what stops best-first growth from overfitting into a thin, deep tree.</p>
+        <div class="relative"><pre>import heapq
+def grow_leafwise(g, h, x, num_leaves=31, max_depth=-1, lam=0.0):
+    root = {"idx": np.arange(len(x)), "depth": 0}
+    def push(pq, leaf):
+        gain, thr = best_split(g[leaf["idx"]], h[leaf["idx"]], x[leaf["idx"]], lam)
+        deep = max_depth >= 0 and leaf["depth"] >= max_depth
+        if thr is not None and gain > 0 and not deep:
+            heapq.heappush(pq, (-gain, id(leaf), leaf, gain, thr))  # -gain = max-heap
+    pq = []; leaves = [root]; push(pq, root)
+    while pq and len(leaves) < num_leaves:
+        _, _, leaf, gain, thr = heapq.heappop(pq)        # the single best leaf
+        li = leaf["idx"][x[leaf["idx"]] <  thr]
+        ri = leaf["idx"][x[leaf["idx"]] >= thr]
+        L = {"idx": li, "depth": leaf["depth"]+1}
+        R = {"idx": ri, "depth": leaf["depth"]+1}
+        leaves.remove(leaf); leaves += [L, R]
+        push(pq, L); push(pq, R)
+    return leaves      # deeper, imbalanced -> lower train loss per leaf</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-amber-500 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Level-wise growth — XGBoost's default, for contrast</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Same splits, different order: a plain FIFO queue splits leaves breadth-first, filling each depth level before descending. The tree stays balanced, but the same leaf budget buys a higher training loss because splits are spent on regions that barely needed them.</p>
+        <div class="relative"><pre>from collections import deque
+def grow_levelwise(g, h, x, num_leaves=31, lam=0.0):
+    root = {"idx": np.arange(len(x)), "depth": 0}
+    q = deque([root]); leaves = [root]
+    while q and len(leaves) < num_leaves:
+        leaf = q.popleft()                                # FIFO = breadth-first
+        gain, thr = best_split(g[leaf["idx"]], h[leaf["idx"]], x[leaf["idx"]], lam)
+        if thr is None or gain <= 0:
+            continue
+        li = leaf["idx"][x[leaf["idx"]] <  thr]
+        ri = leaf["idx"][x[leaf["idx"]] >= thr]
+        L = {"idx": li, "depth": leaf["depth"]+1}
+        R = {"idx": ri, "depth": leaf["depth"]+1}
+        leaves.remove(leaf); leaves += [L, R]; q += [L, R]
+    return leaves</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Histogram split-finding — bin once, sum per bin, sweep the edges</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Instead of sorting a feature at every node, bin it once into ~255 buckets and accumulate <code>G,H</code> per bin. A split search is then a single cumulative pass over the bin edges — O(#bins) instead of O(#rows). The subtraction trick builds a child histogram as parent minus sibling, for free.</p>
+        <div class="relative"><pre>def hist_best_split(g, h, x, max_bins=255, lam=0.0):
+    edges = np.quantile(x, np.linspace(0, 1, max_bins+1))   # bin ONCE
+    edges = np.unique(edges)
+    b = np.clip(np.digitize(x, edges[1:-1]), 0, len(edges)-2)
+    Gb = np.bincount(b, weights=g, minlength=len(edges)-1)  # per-bin sums
+    Hb = np.bincount(b, weights=h, minlength=len(edges)-1)
+    G, H = Gb.sum(), Hb.sum()
+    GL = HL = 0.0; best = (-1.0, None)
+    for k in range(len(Gb) - 1):                            # only k-1 edges
+        GL += Gb[k]; HL += Hb[k]
+        gain = split_gain(GL, HL, G-GL, H-HL, lam)
+        if gain > best[0]:
+            best = (gain, edges[k+1])
+    return best        # child_hist = parent_hist - sibling_hist  (free)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">GOSS &amp; EFB — sample rows, bundle columns</h3></div>
+        <p class="text-sm text-slate-600 mb-3">GOSS keeps every large-gradient row and randomly subsamples the small-gradient rest, amplifying those survivors by <code>(1−a)/b</code> so the gradient sums stay unbiased. EFB packs mutually-exclusive sparse features into one column by greedily colouring a conflict graph and offsetting value ranges. Together they shrink the data both ways before a single tree is grown.</p>
+        <div class="relative"><pre># ---- GOSS: gradient-based one-side sampling ----
+def goss_subset(g, h, a=0.2, b=0.2):
+    n = len(g); top = int(a*n); rest = int(b*n)
+    order = np.argsort(-np.abs(g))            # big |gradient| first
+    keep  = order[:top]                       # keep ALL large-gradient rows
+    small = order[top:]
+    samp  = np.random.choice(small, rest, replace=False)
+    amp   = (1 - a) / b                        # up-weight the survivors
+    idx   = np.concatenate([keep, samp])
+    w     = np.ones(n); w[samp] = amp          # unbiased gradient sums
+    return idx, w                              # gain uses g*w, h*w on idx
+
+# ---- EFB: exclusive feature bundling ----
+def efb_bundle(X, max_conflict=0):
+    F = X.shape[1]
+    conflict = [[int(np.sum((X[:,i]!=0) & (X[:,j]!=0)))       # shared nonzeros
+                 for j in range(F)] for i in range(F)]
+    color = [-1]*F                              # greedy graph colouring
+    for i in range(F):
+        used = {color[j] for j in range(F)
+                if color[j] >= 0 and conflict[i][j] > max_conflict}
+        c = 0
+        while c in used: c += 1
+        color[i] = c
+    return color        # features sharing a colour merge into one bundle</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 41 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">LightGBM keeps XGBoost's exact second-order engine — leaf weight <code>−G/(H+λ)</code>, the same gain — and speeds it up four ways. It grows <strong>leaf-wise</strong> (split the leaf with the biggest loss reduction, so it reaches lower training loss per leaf but goes deeper, held in check by <code>num_leaves</code> and a <code>max_depth</code> guard), finds splits on a <strong>histogram</strong> of ~255 bins in O(#bins) with a free subtraction trick, drops most low-gradient rows via <strong>GOSS</strong> while amplifying the survivors to stay unbiased, and squeezes sparse features together with <strong>EFB</strong>. Same math as Day 40, far less work per tree. <strong>👉 Tomorrow — Day 42: CatBoost — ordered boosting, native categorical features &amp; symmetric (oblivious) trees</strong> — the third great gradient-boosting library, built to kill the target leakage that ordinary boosting hides.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+function mean(a){ let s=0; for(const v of a) s+=v; return a.length?s/a.length:0; }
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function fmt(x,d){ return (Math.round(x*Math.pow(10,d))/Math.pow(10,d)).toFixed(d); }
+const COL = { leaf:"#16a34a", level:"#f59e0b", sky:"#0ea5e9", best:"#eab308", exact:"#94a3b8", big:"#dc2626", drop:"#e2e8f0", amp:"#7c3aed" };
+
+// the shared second-order gain (lambda=0 here => gain = 1/2 * SSE reduction) <<<ENGINE_START>>>
+function gainVR(GL,HL,GR,HR){ const s=(g,h)=> h>0 ? g*g/h : 0; return 0.5*(s(GL,HL)+s(GR,HR)-s(GL+GR,HL+HR)); }
+// best split over a set of {x,g,h}; returns {gain,thr,GL,HL,GR,HR}
+function bestSplit(pts){
+  if(pts.length<2) return {gain:-1,thr:null};
+  const s=pts.slice().sort((a,b)=>a.x-b.x);
+  let G=0,H=0; for(const p of s){ G+=p.g; H+=p.h; }
+  let GL=0,HL=0,best={gain:-1,thr:null};
+  for(let i=0;i<s.length-1;i++){
+    GL+=s[i].g; HL+=s[i].h;
+    if(s[i].x===s[i+1].x) continue;
+    const g=gainVR(GL,HL,G-GL,H-HL);
+    if(g>best.gain) best={gain:g,thr:(s[i].x+s[i+1].x)/2,GL,HL,GR:G-GL,HR:H-HL};
+  }
+  return best;
+}
+// <<<ENGINE_END>>>
+function leafSSE(pts){ const m=mean(pts.map(p=>p.y)); let s=0; for(const p of pts) s+=(p.y-m)*(p.y-m); return s; }
+
+// coordinate transform
+function mkT(w,h,pad,xmin,xmax,ymin,ymax){
+  return { X:x=> pad + (xmax===xmin?0.5:(x-xmin)/(xmax-xmin))*(w-2*pad),
+           Y:y=> (h-pad) - (ymax===ymin?0.5:(y-ymin)/(ymax-ymin))*(h-2*pad) };
+}
+
+// ================= MODULE 1: leaf-wise vs level-wise =================
+const GW_DATA = {
+  asym: (()=>{ const p=[]; for(let x=1;x<=6;x++) p.push({x,y:2+((x*37)%7-3)*0.05});
+    const stair=[3,4.2,5.1,6.3,7.0,8.4,9.1,10.5,11.2,12.4]; for(let i=0;i<stair.length;i++) p.push({x:7+i,y:stair[i]}); return p; })(),
+  spike: (()=>{ const p=[]; for(let x=1;x<=16;x++){ let y=2+((x*53)%5-2)*0.04; if(x>=7&&x<=10){ y=2+[6,11,10,5][x-7]; } p.push({x,y}); } return p; })(),
+  even: (()=>{ const p=[]; for(let x=1;x<=16;x++) p.push({x,y:6+3*Math.sin(x*0.9)+((x*29)%5-2)*0.05}); return p; })()
+};
+const gw = { key:"asym", target:8, maxD:8, leaf:null, level:null, histLeaf:[], histLevel:[], auto:null };
+
+function gwMakePts(key){ const F0=mean(GW_DATA[key].map(p=>p.y)); return GW_DATA[key].map(p=>({x:p.x,y:p.y,g:F0-p.y,h:1})); }
+function gwMakeTree(pts){ const root={pts:pts.slice(),depth:0,left:null,right:null,thr:null}; root.best=bestSplit(root.pts);
+  return {root, frontier:[root], all:[root]}; }
+function gwSplit(tree,node){
+  const t=node.best.thr; const L={pts:node.pts.filter(p=>p.x<t),depth:node.depth+1,left:null,right:null,thr:null};
+  const R={pts:node.pts.filter(p=>p.x>=t),depth:node.depth+1,left:null,right:null,thr:null};
+  L.best=bestSplit(L.pts); R.best=bestSplit(R.pts);
+  node.left=L; node.right=R; node.thr=t;
+  tree.frontier=tree.frontier.filter(n=>n!==node); tree.frontier.push(L,R); tree.all.push(L,R);
+}
+function gwTotalSSE(tree){ let s=0; for(const l of tree.frontier) s+=leafSSE(l.pts); return s; }
+function gwMaxDepth(tree){ let d=0; for(const l of tree.frontier) d=Math.max(d,l.depth); return d; }
+function gwValid(node,capDepth){ return node.pts.length>1 && node.best && node.best.thr!==null && node.best.gain>1e-9 && node.depth<capDepth; }
+
+function gwGrowLeafwise(){ const cap=gw.maxD; let pick=null;
+  for(const n of gw.leaf.frontier){ if(!gwValid(n,cap)) continue; if(!pick||n.best.gain>pick.best.gain) pick=n; }
+  if(!pick) return false; gwSplit(gw.leaf,pick); return true; }
+function gwGrowLevelwise(){ const cap=99; let pick=null; // level-wise not depth-capped; pick shallowest, then leftmost x
+  for(const n of gw.level.frontier){ if(!gwValid(n,cap)) continue;
+    if(!pick || n.depth<pick.depth || (n.depth===pick.depth && n.pts[0].x<pick.pts[0].x)) pick=n; }
+  if(!pick) return false; gwSplit(gw.level,pick); return true; }
+
+function gwReset(){
+  if(gw.auto){ clearInterval(gw.auto); gw.auto=null; document.getElementById("gwAuto").textContent="▶ auto-grow"; document.getElementById("gwAuto").classList.remove("on"); }
+  gw.leaf=gwMakeTree(gwMakePts(gw.key)); gw.level=gwMakeTree(gwMakePts(gw.key));
+  gw.histLeaf=[{n:1,sse:gwTotalSSE(gw.leaf)}]; gw.histLevel=[{n:1,sse:gwTotalSSE(gw.level)}];
+  gwDraw();
+}
+function gwStep(){
+  let grew=false;
+  if(gw.leaf.frontier.length<gw.target && gwGrowLeafwise()){ gw.histLeaf.push({n:gw.leaf.frontier.length,sse:gwTotalSSE(gw.leaf)}); grew=true; }
+  if(gw.level.frontier.length<gw.target && gwGrowLevelwise()){ gw.histLevel.push({n:gw.level.frontier.length,sse:gwTotalSSE(gw.level)}); grew=true; }
+  gwDraw();
+  return grew;
+}
+
+// layout + draw a tree
+function gwLayoutTree(tree){ let slot=0,maxD=0; (function rec(n){ maxD=Math.max(maxD,n.depth);
+  if(!n.left){ n._x=slot++; return; } rec(n.left); rec(n.right); n._x=(n.left._x+n.right._x)/2; })(tree.root);
+  return {nLeaves:Math.max(1,slot),maxD}; }
+function gwDrawTree(tree,elId,color){
+  const {nLeaves,maxD}=gwLayoutTree(tree);
+  const W=500,H=40+Math.max(1,maxD)*54,PAD=26;
+  const sx=x=> nLeaves<=1 ? W/2 : PAD + x/(nLeaves-1)*(W-2*PAD);
+  const sy=d=> 26 + d*54;
+  let g=`<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  // edges
+  for(const n of tree.all){ if(n.left){ const x0=sx(n._x),y0=sy(n.depth);
+    for(const c of [n.left,n.right]){ g+=`<line x1="${x0.toFixed(1)}" y1="${(y0+6).toFixed(1)}" x2="${sx(c._x).toFixed(1)}" y2="${(sy(c.depth)-6).toFixed(1)}" stroke="#cbd5e1" stroke-width="1.4"/>`; } } }
+  // nodes
+  for(const n of tree.all){ const x=sx(n._x),y=sy(n.depth);
+    if(n.left){ g+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="12" fill="#e0f2fe" stroke="${COL.sky}" stroke-width="1.6"/>`;
+      g+=`<text x="${x.toFixed(1)}" y="${(y+3).toFixed(1)}" font-size="8" font-weight="800" fill="#075985" text-anchor="middle">x&lt;${n.thr.toFixed(1)}</text>`; }
+    else { const m=mean(n.pts.map(p=>p.y)); g+=`<rect x="${(x-15).toFixed(1)}" y="${(y-11).toFixed(1)}" width="30" height="22" rx="6" fill="${color}22" stroke="${color}" stroke-width="1.6"/>`;
+      g+=`<text x="${x.toFixed(1)}" y="${(y-1).toFixed(1)}" font-size="8" font-weight="800" fill="${color}" text-anchor="middle">n=${n.pts.length}</text>`;
+      g+=`<text x="${x.toFixed(1)}" y="${(y+8).toFixed(1)}" font-size="7.5" fill="#475569" text-anchor="middle">ȳ=${m.toFixed(1)}</text>`; } }
+  document.getElementById(elId).innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+function gwLeavesSorted(tree){ return tree.frontier.slice().sort((a,b)=> Math.min(...a.pts.map(p=>p.x))-Math.min(...b.pts.map(p=>p.x))); }
+function gwDrawData(){
+  const pts=gw.leaf.root.pts; const W=640,H=250,PAD=40;
+  const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y);
+  const xLo=Math.min(...xs)-0.6,xHi=Math.max(...xs)+0.6; let yLo=Math.min(...ys),yHi=Math.max(...ys); const pad=(yHi-yLo)*0.12+0.3; yLo-=pad; yHi+=pad;
+  const T=mkT(W,H,PAD,xLo,xHi,yLo,yHi);
+  let g=`<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g+=`<line x1="${PAD}" y1="${(H-PAD).toFixed(1)}" x2="${W-PAD}" y2="${(H-PAD).toFixed(1)}" stroke="#94a3b8" stroke-width="1"/>`;
+  g+=`<line x1="${PAD}" y1="${PAD-6}" x2="${PAD}" y2="${H-PAD}" stroke="#94a3b8" stroke-width="1"/>`;
+  const stepPath=(tree,color,dash)=>{ const ls=gwLeavesSorted(tree); let s="";
+    for(const l of ls){ const lx=Math.min(...l.pts.map(p=>p.x)),hx=Math.max(...l.pts.map(p=>p.x)),m=mean(l.pts.map(p=>p.y));
+      s+=`<line x1="${T.X(lx-0.45).toFixed(1)}" y1="${T.Y(m).toFixed(1)}" x2="${T.X(hx+0.45).toFixed(1)}" y2="${T.Y(m).toFixed(1)}" stroke="${color}" stroke-width="2.4" ${dash?`stroke-dasharray="${dash}"`:''}/>`; }
+    return s; };
+  g+=stepPath(gw.level,COL.level,"6 3");
+  g+=stepPath(gw.leaf,COL.leaf,"");
+  for(const p of pts) g+=`<circle cx="${T.X(p.x).toFixed(1)}" cy="${T.Y(p.y).toFixed(1)}" r="4" fill="#6366f1" stroke="#fff" stroke-width="1"/>`;
+  g+=`<text x="${W-PAD}" y="${H-6}" font-size="9" fill="#94a3b8" text-anchor="end">feature x →</text>`;
+  g+=`<text x="12" y="${PAD-2}" font-size="10" fill="#6366f1">y</text>`;
+  document.getElementById("gwSvgData").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+function gwDrawLoss(){
+  const W=540,H=250,PAD=44;
+  const all=gw.histLeaf.concat(gw.histLevel); const nMax=Math.max(2,...all.map(p=>p.n)); const sMax=Math.max(...all.map(p=>p.sse),0.001);
+  const T=mkT(W,H,PAD,1,nMax,0,sMax*1.05);
+  let g=`<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g+=`<line x1="${PAD}" y1="${(H-PAD).toFixed(1)}" x2="${W-PAD}" y2="${(H-PAD).toFixed(1)}" stroke="#94a3b8" stroke-width="1"/>`;
+  g+=`<line x1="${PAD}" y1="${PAD-6}" x2="${PAD}" y2="${H-PAD}" stroke="#94a3b8" stroke-width="1"/>`;
+  for(let f=0.25;f<1.001;f+=0.25){ const y=T.Y(sMax*1.05*f); g+=`<line x1="${PAD}" y1="${y.toFixed(1)}" x2="${W-PAD}" y2="${y.toFixed(1)}" stroke="#eef2f7"/>`;
+    g+=`<text x="${PAD-5}" y="${(y+3).toFixed(1)}" font-size="8.5" fill="#94a3b8" text-anchor="end">${(sMax*1.05*f).toFixed(1)}</text>`; }
+  const path=(hist,color,dash)=>{ let s=""; hist.forEach((p,i)=>{ s+=`${i?'L':'M'} ${T.X(p.n).toFixed(1)} ${T.Y(p.sse).toFixed(1)} `; });
+    let out=`<path d="${s}" fill="none" stroke="${color}" stroke-width="2.6" ${dash?`stroke-dasharray="${dash}"`:''}/>`;
+    hist.forEach(p=>{ out+=`<circle cx="${T.X(p.n).toFixed(1)}" cy="${T.Y(p.sse).toFixed(1)}" r="3" fill="${color}"/>`; }); return out; };
+  g+=path(gw.histLevel,COL.level,"6 3");
+  g+=path(gw.histLeaf,COL.leaf,"");
+  g+=`<text x="${W-PAD}" y="${H-6}" font-size="9" fill="#94a3b8" text-anchor="end">number of leaves →</text>`;
+  g+=`<text x="12" y="${PAD-2}" font-size="10" fill="#475569">train SSE</text>`;
+  document.getElementById("gwSvgLoss").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto">${g}</svg>`;
+}
+function gwDraw(){
+  gwDrawTree(gw.leaf,"gwSvgTreeLeaf",COL.leaf);
+  gwDrawTree(gw.level,"gwSvgTreeLevel",COL.level);
+  gwDrawData(); gwDrawLoss();
+  const nL=gw.leaf.frontier.length, nV=gw.level.frontier.length;
+  const sL=gwTotalSSE(gw.leaf), sV=gwTotalSSE(gw.level);
+  document.getElementById("gwLeaves").textContent = nL===nV ? nL : nL+"/"+nV;
+  document.getElementById("gwSseLeaf").textContent=sL.toFixed(1);
+  document.getElementById("gwSseLevel").textContent=sV.toFixed(1);
+  document.getElementById("gwGap").textContent=(sV-sL).toFixed(1);
+  document.getElementById("gwDLeaf").textContent=gwMaxDepth(gw.leaf);
+  document.getElementById("gwDLevel").textContent=gwMaxDepth(gw.level);
+  // diagnosis
+  const box=document.getElementById("gwDiag");
+  const set=(c,t,b)=>{ box.className="diag "+c+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; };
+  if(nL<=1){ set("diag-info","🌿 Two trees, one dataset — press ＋ grow one split",
+      `Both trees start as a single leaf predicting the global mean. Each step adds one leaf to each. <b>Leaf-wise</b> will split the leaf with the largest loss reduction; <b>level-wise</b> fills each depth level first. Watch the loss curves and the depths diverge.`); }
+  else if(sV-sL>0.05){ const guard=gw.maxD<8 ? ` The <b>max_depth guard = ${gw.maxD}</b> is forcing leaf-wise to spread out instead of tunnelling — trading a little training loss for a shallower, less overfit tree.` : "";
+    set("diag-good","🌿 Leaf-wise reaches lower loss for the same leaves — and it is deeper",
+      `At ${nL===nV?nL+" leaves each":nL+" vs "+nV+" leaves"} the leaf-wise tree sits at SSE <b>${sL.toFixed(1)}</b> versus level-wise <b>${sV.toFixed(1)}</b> — it saved <b>${(sV-sL).toFixed(1)}</b> by always spending its next split where the loss drops most. The price: depth <b>${gwMaxDepth(gw.leaf)}</b> vs <b>${gwMaxDepth(gw.level)}</b> — a thin, lopsided tree that can overfit noisy data.${guard}`); }
+  else { set("diag-info","≈ On evenly-spread structure the two nearly tie",
+      `Here every region carries similar loss, so best-first and breadth-first pick almost the same splits: SSE ${sL.toFixed(1)} vs ${sV.toFixed(1)}. Leaf-wise's edge shows up when the target is <em>lumpy</em> — try the “Flat + staircase” or “Local spike” datasets.`); }
+}
+
+// ================= MODULE 2: histogram =================
+const hs = { seed:0, k:8, mode:"width", data:[] };
+function hsGen(seed){ const rng=mulberry32(seed*97+13); const n=52; const pts=[];
+  const f=x=> x<3.2?2 : x<6.5?6.2 : 3.8;
+  for(let i=0;i<n;i++){ const x=rng()*10; const y=f(x)+(rng()-0.5)*2.2; pts.push({x,y}); }
+  const F0=mean(pts.map(p=>p.y)); pts.forEach(p=>{ p.g=F0-p.y; p.h=1; }); return pts.sort((a,b)=>a.x-b.x); }
+function hsExactGains(pts){ // gain at every midpoint
+  let G=0,H=0; for(const p of pts){G+=p.g;H+=p.h;} let GL=0,HL=0,out=[];
+  for(let i=0;i<pts.length-1;i++){ GL+=pts[i].g; HL+=pts[i].h; if(pts[i].x===pts[i+1].x) continue;
+    out.push({t:(pts[i].x+pts[i+1].x)/2, gain:gainVR(GL,HL,G-GL,H-HL)}); }
+  return out; }
+function hsEdges(pts,k,mode){ const xs=pts.map(p=>p.x); const lo=Math.min(...xs),hi=Math.max(...xs); const e=[lo];
+  if(mode==="width"){ for(let i=1;i<k;i++) e.push(lo+(hi-lo)*i/k); }
+  else { for(let i=1;i<k;i++){ const q=(i/k)*(pts.length-1); const j=Math.floor(q); const frac=q-j;
+    const v=j+1<pts.length ? xs[j]*(1-frac)+xs[j+1]*frac : xs[j]; e.push(v); } }
+  e.push(hi); const u=[...new Set(e.map(v=>+v.toFixed(6)))].sort((a,b)=>a-b); return u; }
+function hsBinGains(pts,edges){ // sums per bin, gain at internal edges
+  const nb=edges.length-1; const Gb=new Array(nb).fill(0),Hb=new Array(nb).fill(0),Cb=new Array(nb).fill(0);
+  for(const p of pts){ let b=nb-1; for(let k=0;k<nb;k++){ if(p.x<edges[k+1]){ b=k; break; } } Gb[b]+=p.g; Hb[b]+=p.h; Cb[b]++; }
+  let G=0,H=0; for(let k=0;k<nb;k++){ G+=Gb[k]; H+=Hb[k]; }
+  let GL=0,HL=0,out=[];
+  for(let k=0;k<nb-1;k++){ GL+=Gb[k]; HL+=Hb[k]; out.push({t:edges[k+1], gain:gainVR(GL,HL,G-GL,H-HL)}); }
+  return {gains:out,Cb,edges}; }
+function hsDraw(){
+  const pts=hs.data; const ex=hsExactGains(pts); const edges=hsEdges(pts,hs.k,hs.mode); const bin=hsBinGains(pts,edges);
+  const xs=pts.map(p=>p.x); const xLo=Math.min(...xs)-0.3,xHi=Math.max(...xs)+0.3;
+  let gmax=0; for(const e of ex) gmax=Math.max(gmax,e.gain); for(const b of bin.gains) gmax=Math.max(gmax,b.gain); gmax=Math.max(gmax,0.001)*1.12;
+  // gain chart
+  const W=560,H=250,PAD=44; const T=mkT(W,H,PAD,xLo,xHi,0,gmax);
+  let g=`<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g+=`<line x1="${PAD}" y1="${(H-PAD).toFixed(1)}" x2="${W-PAD}" y2="${(H-PAD).toFixed(1)}" stroke="#94a3b8"/>`;
+  g+=`<line x1="${PAD}" y1="${PAD-6}" x2="${PAD}" y2="${H-PAD}" stroke="#94a3b8"/>`;
+  for(let f=0.25;f<1.001;f+=0.25){ const y=T.Y(gmax*f); g+=`<line x1="${PAD}" y1="${y.toFixed(1)}" x2="${W-PAD}" y2="${y.toFixed(1)}" stroke="#eef2f7"/>`;
+    g+=`<text x="${PAD-5}" y="${(y+3).toFixed(1)}" font-size="8.5" fill="#94a3b8" text-anchor="end">${(gmax*f).toFixed(1)}</text>`; }
+  // exact curve
+  let line=""; ex.forEach((e,i)=>{ line+=`${i?'L':'M'} ${T.X(e.t).toFixed(1)} ${T.Y(e.gain).toFixed(1)} `; });
+  g+=`<path d="${line}" fill="none" stroke="${COL.exact}" stroke-width="2"/>`;
+  // exact best
+  let eb=ex[0]; for(const e of ex) if(e.gain>eb.gain) eb=e;
+  g+=`<circle cx="${T.X(eb.t).toFixed(1)}" cy="${T.Y(eb.gain).toFixed(1)}" r="4" fill="none" stroke="#475569" stroke-width="1.6"/>`;
+  // bin-edge dots
+  let bb=bin.gains.length?bin.gains[0]:{t:0,gain:0}; for(const b of bin.gains) if(b.gain>bb.gain) bb=b;
+  for(const b of bin.gains){ g+=`<line x1="${T.X(b.t).toFixed(1)}" y1="${PAD-6}" x2="${T.X(b.t).toFixed(1)}" y2="${H-PAD}" stroke="#e2e8f0" stroke-dasharray="2 3"/>`;
+    g+=`<circle cx="${T.X(b.t).toFixed(1)}" cy="${T.Y(b.gain).toFixed(1)}" r="3.4" fill="${COL.sky}"/>`; }
+  if(bin.gains.length){ g+=`<circle cx="${T.X(bb.t).toFixed(1)}" cy="${T.Y(bb.gain).toFixed(1)}" r="5.5" fill="${COL.best}" stroke="#fff" stroke-width="1.5"/>`;
+    g+=`<text x="${T.X(bb.t).toFixed(1)}" y="${(T.Y(bb.gain)-9).toFixed(1)}" font-size="10" font-weight="800" fill="#a16207" text-anchor="middle">★ ${bb.gain.toFixed(2)}</text>`; }
+  g+=`<text x="${W-PAD}" y="${H-6}" font-size="9" fill="#94a3b8" text-anchor="end">split threshold →</text>`;
+  g+=`<text x="12" y="${PAD-2}" font-size="10" fill="#475569">gain</text>`;
+  document.getElementById("hsSvgGain").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto">${g}</svg>`;
+  // bins chart (counts)
+  const W2=640,H2=180,PAD2=36; const cMax=Math.max(...bin.Cb,1);
+  const T2=mkT(W2,H2,PAD2,xLo,xHi,0,cMax*1.1);
+  let g2=`<rect x="1" y="1" width="${W2-2}" height="${H2-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g2+=`<line x1="${PAD2}" y1="${(H2-PAD2).toFixed(1)}" x2="${W2-PAD2}" y2="${(H2-PAD2).toFixed(1)}" stroke="#94a3b8"/>`;
+  for(let k=0;k<bin.Cb.length;k++){ const x0=T2.X(edges[k]),x1=T2.X(edges[k+1]);
+    g2+=`<rect x="${(x0+1).toFixed(1)}" y="${T2.Y(bin.Cb[k]).toFixed(1)}" width="${Math.max(1,x1-x0-2).toFixed(1)}" height="${(T2.Y(0)-T2.Y(bin.Cb[k])).toFixed(1)}" fill="${COL.sky}33" stroke="${COL.sky}" stroke-width="1"/>`;
+    g2+=`<text x="${((x0+x1)/2).toFixed(1)}" y="${(T2.Y(bin.Cb[k])-3).toFixed(1)}" font-size="8" fill="#0369a1" text-anchor="middle">${bin.Cb[k]}</text>`; }
+  for(const e of edges) g2+=`<line x1="${T2.X(e).toFixed(1)}" y1="${PAD2-4}" x2="${T2.X(e).toFixed(1)}" y2="${H2-PAD2}" stroke="#cbd5e1" stroke-dasharray="3 3"/>`;
+  for(const p of pts) g2+=`<circle cx="${T2.X(p.x).toFixed(1)}" cy="${(H2-PAD2+8).toFixed(1)}" r="2.2" fill="#6366f1"/>`;
+  g2+=`<text x="${W2-PAD2}" y="${H2-4}" font-size="9" fill="#94a3b8" text-anchor="end">feature x (dots = samples) →</text>`;
+  g2+=`<text x="12" y="${PAD2-2}" font-size="10" fill="#0369a1">count</text>`;
+  document.getElementById("hsSvgBins").innerHTML=`<svg viewBox="0 0 ${W2} ${H2}" width="100%" style="display:block;height:auto">${g2}</svg>`;
+  // metrics
+  const exN=ex.length, binN=Math.max(0,bin.gains.length);
+  document.getElementById("hsExactN").textContent=exN;
+  document.getElementById("hsBinN").textContent=binN;
+  document.getElementById("hsSpeed").textContent = binN>0 ? (exN/binN).toFixed(1)+"×" : "—";
+  document.getElementById("hsExactG").textContent=eb.gain.toFixed(2);
+  document.getElementById("hsBinG").textContent=bin.gains.length?bb.gain.toFixed(2):"—";
+  document.getElementById("hsGap").textContent=bin.gains.length?(eb.gain-bb.gain).toFixed(2):"—";
+  const box=document.getElementById("hsDiag");
+  const gap=bin.gains.length?(eb.gain-bb.gain):eb.gain; const cls=gap<0.05?"diag-good":gap<0.3?"diag-info":"diag-warn";
+  box.className="diag "+cls+" mt-6 max-w-4xl mx-auto text-left";
+  box.innerHTML=`<div class="text-base font-extrabold mb-1">📊 ${hs.k} bins → ${binN} candidate splits instead of ${exN}</div><div class="text-sm font-medium leading-relaxed">The histogram scores gain at only the <b>${binN} bin edges</b>, roughly <b>${binN>0?(exN/binN).toFixed(1):'∞'}×</b> fewer evaluations than exact split-finding's ${exN} midpoints. Its best split scores <b>${bin.gains.length?bb.gain.toFixed(2):'—'}</b> against the exact optimum <b>${eb.gain.toFixed(2)}</b> — a gap of just <b>${gap.toFixed(2)}</b>. ${gap<0.05?'Effectively exact.':'Raise the bin count to close the gap; LightGBM uses 255 bins where this gap all but vanishes.'} The one-time cost of binning is repaid at every node, and child histograms come free via subtraction.</div>`;
+}
+
+// ================= MODULE 3: GOSS =================
+const go = { a:0.2, b:0.2, seed:1, showGoss:true, data:[], truth:null };
+function goGen(){ const rng=mulberry32(7); const n=40; const pts=[];
+  for(let i=0;i<n;i++){ const x=rng()*10; const y=(x<5?1:0)+ (rng()-0.5)*0.6 + (x>5?0.9:0); pts.push({x,y}); }
+  const F0=mean(pts.map(p=>p.y)); pts.forEach(p=>{ p.g=F0-p.y; p.h=1; });
+  return pts; }
+function goTrueGain(pts){ let G=0,H=0; for(const p of pts){G+=p.g;H+=p.h;} const s=pts.slice().sort((a,b)=>a.x-b.x);
+  let GL=0,HL=0,best=-1; for(let i=0;i<s.length-1;i++){ GL+=s[i].g;HL+=s[i].h; if(s[i].x===s[i+1].x) continue;
+    best=Math.max(best,gainVR(GL,HL,G-GL,H-HL)); } return best; }
+// estimate best gain from a weighted subset (pts carry .w); split thresholds from subset
+function goEstGain(sub){ let G=0,H=0; for(const p of sub){G+=p.g*p.w;H+=p.h*p.w;} const s=sub.slice().sort((a,b)=>a.x-b.x);
+  let GL=0,HL=0,best=-1; for(let i=0;i<s.length-1;i++){ GL+=s[i].g*s[i].w;HL+=s[i].h*s[i].w; if(s[i].x===s[i+1].x) continue;
+    best=Math.max(best,gainVR(GL,HL,G-GL,H-HL)); } return best; }
+function goSampleGoss(pts,rng){ const n=pts.length; const top=Math.max(1,Math.round(go.a*n)); const restCt=Math.max(1,Math.round(go.b*n));
+  const order=pts.map((p,i)=>i).sort((i,j)=>Math.abs(pts[j].g)-Math.abs(pts[i].g));
+  const keep=order.slice(0,top); const rest=order.slice(top);
+  // random sample restCt of rest
+  const restCopy=rest.slice(); for(let i=restCopy.length-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); [restCopy[i],restCopy[j]]=[restCopy[j],restCopy[i]]; }
+  const samp=restCopy.slice(0,Math.min(restCt,restCopy.length));
+  const amp=(1-go.a)/go.b; const sub=[]; const role={};
+  for(const i of keep){ sub.push({...pts[i],w:1}); role[i]="keep"; }
+  for(const i of samp){ sub.push({...pts[i],w:amp}); role[i]="samp"; }
+  return {sub,role,amp}; }
+function goSampleUniform(pts,rng){ const n=pts.length; const ct=Math.max(2,Math.round((go.a+go.b)*n));
+  const idx=pts.map((p,i)=>i); for(let i=idx.length-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); [idx[i],idx[j]]=[idx[j],idx[i]]; }
+  const pick=idx.slice(0,ct); const inv=1/((go.a+go.b)); const sub=pick.map(i=>({...pts[i],w:inv})); return {sub}; }
+function goMonteCarlo(){ const R=400; let eg=0,eu=0; const rng=mulberry32(999);
+  for(let r=0;r<R;r++){ const gg=goSampleGoss(go.data,rng).sub; const uu=goSampleUniform(go.data,rng).sub;
+    eg+=Math.abs(goEstGain(gg)-go.truth); eu+=Math.abs(goEstGain(uu)-go.truth); }
+  return {eg:eg/R,eu:eu/R}; }
+function goDraw(){
+  const rng=mulberry32(go.seed); const {sub,role,amp}=goSampleGoss(go.data,rng);
+  const n=go.data.length; const top=Math.max(1,Math.round(go.a*n)); const restCt=Math.max(1,Math.round(go.b*n));
+  // sort rows by |g| desc for the display
+  const order=go.data.map((p,i)=>i).sort((i,j)=>Math.abs(go.data[j].g)-Math.abs(go.data[i].g));
+  const W=560,H=250,PAD=40; const gMax=Math.max(...go.data.map(p=>Math.abs(p.g)),0.01);
+  const bw=(W-2*PAD)/n; const T=mkT(W,H,PAD,0,1,0,gMax*1.1);
+  let g=`<rect x="1" y="1" width="${W-2}" height="${H-2}" rx="10" fill="#fbfdff" stroke="#e2e8f0"/>`;
+  g+=`<line x1="${PAD}" y1="${(H-PAD).toFixed(1)}" x2="${W-PAD}" y2="${(H-PAD).toFixed(1)}" stroke="#94a3b8"/>`;
+  g+=`<line x1="${PAD}" y1="${PAD-6}" x2="${PAD}" y2="${H-PAD}" stroke="#94a3b8"/>`;
+  order.forEach((idx,rank)=>{ const p=go.data[idx]; const x=PAD+rank*bw; const hgt=(T.Y(0)-T.Y(Math.abs(p.g)));
+    let color=COL.drop; if(go.showGoss){ color = role[idx]==="keep"?COL.big : role[idx]==="samp"?COL.sky : COL.drop; } else { color = rank< Math.round((go.a+go.b)*n)?COL.sky:COL.drop; }
+    g+=`<rect x="${(x+0.5).toFixed(1)}" y="${T.Y(Math.abs(p.g)).toFixed(1)}" width="${Math.max(1,bw-1).toFixed(1)}" height="${hgt.toFixed(1)}" fill="${color}" ${color===COL.drop?'opacity="0.5"':''}/>`;
+    if(go.showGoss && role[idx]==="samp"){ const ah=(T.Y(0)-T.Y(Math.abs(p.g)*amp)); g+=`<rect x="${(x+0.5).toFixed(1)}" y="${T.Y(Math.abs(p.g)*amp).toFixed(1)}" width="${Math.max(1,bw-1).toFixed(1)}" height="${(T.Y(Math.abs(p.g))-T.Y(Math.abs(p.g)*amp)).toFixed(1)}" fill="${COL.sky}" opacity="0.28"/>`; }
+  });
+  // divider between top-a and rest
+  const divX=PAD+top*bw; g+=`<line x1="${divX.toFixed(1)}" y1="${PAD-6}" x2="${divX.toFixed(1)}" y2="${H-PAD}" stroke="${COL.big}" stroke-width="1.6" stroke-dasharray="4 3"/>`;
+  g+=`<text x="${(divX).toFixed(1)}" y="${PAD-8}" font-size="9" font-weight="800" fill="${COL.big}" text-anchor="middle">top a=${(go.a).toFixed(2)}</text>`;
+  g+=`<text x="${W-PAD}" y="${H-6}" font-size="9" fill="#94a3b8" text-anchor="end">rows sorted by |gradient| →</text>`;
+  g+=`<text x="12" y="${PAD-2}" font-size="10" fill="#475569">|g|</text>`;
+  if(go.showGoss) g+=`<text x="${(divX+8).toFixed(1)}" y="${(PAD+8).toFixed(1)}" font-size="9" fill="${COL.amp}" font-weight="700">faint = ×${amp.toFixed(1)} amplified</text>`;
+  document.getElementById("goSvg").innerHTML=`<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;height:auto">${g}</svg>`;
+  // metrics
+  const use=top+restCt; const mc=goMonteCarlo();
+  document.getElementById("goKept").textContent=top;
+  document.getElementById("goSamp").textContent=restCt;
+  document.getElementById("goUse").textContent=use+"/"+n;
+  document.getElementById("goAmp").textContent="×"+amp.toFixed(2);
+  document.getElementById("goErrG").textContent=mc.eg.toFixed(3);
+  document.getElementById("goErrU").textContent=mc.eu.toFixed(3);
+  document.getElementById("goView").textContent = go.showGoss ? "show GOSS" : "show uniform";
+  document.getElementById("goView").classList.toggle("on", go.showGoss);
+  const box=document.getElementById("goDiag"); const better=mc.eg<mc.eu;
+  box.className="diag "+(better?"diag-good":"diag-info")+" mt-6 max-w-4xl mx-auto text-left";
+  box.innerHTML=`<div class="text-base font-extrabold mb-1">🎯 Same ${use} rows, ${better?'a tighter':'a comparable'} gain estimate</div><div class="text-sm font-medium leading-relaxed">GOSS keeps all <b>${top}</b> large-gradient rows and samples <b>${restCt}</b> of the ${n-top} small-gradient ones, amplifying them by <code>(1−a)/b = ×${amp.toFixed(2)}</code> so the gradient sums stay unbiased. Averaged over 400 random draws its best-split gain error is <b style="color:#16a34a">${mc.eg.toFixed(3)}</b>, versus uniform sampling's <b style="color:#b45309">${mc.eu.toFixed(3)}</b> on the same budget${better?` — GOSS is ${(mc.eu/Math.max(mc.eg,1e-6)).toFixed(2)}× more accurate`:''}. The informative rows — the ones the model still gets wrong — never get thrown away.</div>`;
+}
+
+// ================= MODULE 4: EFB =================
+const EFB_FEAT = [ // each = rows where feature is nonzero (10 rows total)
+  {name:"f0", rows:[0,3]},
+  {name:"f1", rows:[1,4]},
+  {name:"f2", rows:[2,5]},
+  {name:"f3", rows:[0,1,2]},
+  {name:"f4", rows:[6,7]},
+  {name:"f5", rows:[8,9]}
+];
+const EFB_ROWS=10; const efb={ tol:0 };
+const EFB_PALETTE=["#0ea5e9","#16a34a","#f59e0b","#8b5cf6","#ec4899","#ef4444"];
+function efbConflict(i,j){ const a=new Set(EFB_FEAT[i].rows); let c=0; for(const r of EFB_FEAT[j].rows) if(a.has(r)) c++; return c; }
+function efbBundle(){ const F=EFB_FEAT.length; const color=new Array(F).fill(-1);
+  for(let i=0;i<F;i++){ const used=new Set(); for(let j=0;j<F;j++){ if(color[j]>=0 && efbConflict(i,j)>efb.tol) used.add(color[j]); }
+    let c=0; while(used.has(c)) c++; color[i]=c; }
+  return color; }
+function efbDraw(){
+  const color=efbBundle(); const nBund=new Set(color).size;
+  // build matrix
+  const grid=Array.from({length:EFB_ROWS},()=>new Array(EFB_FEAT.length).fill(0));
+  EFB_FEAT.forEach((f,c)=> f.rows.forEach(r=> grid[r][c]=1));
+  let html=`<div style="overflow:auto"><table style="border-collapse:separate;border-spacing:3px;margin:auto"><thead><tr><th style="font-size:9px;color:#94a3b8">row</th>`;
+  EFB_FEAT.forEach((f,c)=> html+=`<th style="font-size:10px;font-weight:800;color:${EFB_PALETTE[color[c]]}">${f.name}</th>`);
+  html+=`<th style="font-size:9px;color:#94a3b8;padding-left:8px">bundle val</th></tr></thead><tbody>`;
+  for(let r=0;r<EFB_ROWS;r++){ html+=`<tr><td style="font-size:9px;color:#94a3b8;text-align:right">${r}</td>`;
+    // bundle value per row: for the first bundle (colour 0), offset-encode
+    let bundleVal="·";
+    EFB_FEAT.forEach((f,c)=>{ const on=grid[r][c]; const col=EFB_PALETTE[color[c]];
+      html+=`<td><div class="efb-cell" style="background:${on?col:'#f1f5f9'};color:${on?'#fff':'#cbd5e1'}">${on?'1':'0'}</div></td>`; });
+    // compute bundle-0 offset value for display
+    const b0=EFB_FEAT.map((f,c)=>color[c]===0&&grid[r][c]?c:-1).filter(v=>v>=0);
+    if(b0.length===1) bundleVal = "f"+b0[0];
+    else if(b0.length>1) bundleVal = "⚠"+b0.map(v=>"f"+v).join("+");
+    html+=`<td style="font-size:9px;font-weight:700;color:${b0.length>1?'#dc2626':'#0369a1'};padding-left:8px">${bundleVal}</td></tr>`; }
+  html+=`</tbody></table></div>`;
+  document.getElementById("efMatrix").innerHTML=html;
+  // bundle text
+  const bundles={}; color.forEach((c,i)=>{ (bundles[c]=bundles[c]||[]).push(EFB_FEAT[i].name); });
+  let bt=""; Object.keys(bundles).sort().forEach(c=>{ bt+=`<span style="display:inline-block;margin:2px 6px 2px 0;padding:3px 8px;border-radius:8px;background:${EFB_PALETTE[c]}22;border:1px solid ${EFB_PALETTE[c]};color:${EFB_PALETTE[c]};font-weight:800">bundle ${c}: ${bundles[c].join(" + ")}</span>`; });
+  document.getElementById("efBundleText").innerHTML = bt + `<div class="mt-2 text-slate-500">Features in one bundle occupy disjoint value ranges via an offset, so a single stored column reconstructs each original feature — the split-finder sees ${nBund} column${nBund>1?'s':''} instead of ${EFB_FEAT.length}.</div>`;
+  // conflicts count (edges above tol among placed)
+  let confRows=0; for(let i=0;i<EFB_FEAT.length;i++) for(let j=i+1;j<EFB_FEAT.length;j++) if(color[i]===color[j]) confRows+=efbConflict(i,j);
+  document.getElementById("efFeat").textContent=EFB_FEAT.length;
+  document.getElementById("efBund").textContent=nBund;
+  document.getElementById("efCut").textContent=(EFB_FEAT.length-nBund);
+  document.getElementById("efConf").textContent=confRows;
+  const box=document.getElementById("efDiag");
+  box.className="diag "+(confRows===0?"diag-good":"diag-warn")+" mt-6 max-w-4xl mx-auto text-left";
+  box.innerHTML=`<div class="text-base font-extrabold mb-1">🧵 ${EFB_FEAT.length} sparse features → ${nBund} bundle${nBund>1?'s':''}</div><div class="text-sm font-medium leading-relaxed">${EFB_FEAT.length-nBund} column${EFB_FEAT.length-nBund===1?'':'s'} eliminated. Features <b>f0, f1, f2, f4, f5</b> never fire in the same row, so they collapse into one bundle; <b>f3</b> collides with f0/f1/f2 (rows 0,1,2) and needs its own. ${confRows>0?`With tolerance ${efb.tol} the greedy colouring now allows <b>${confRows}</b> in-bundle conflict row(s) — LightGBM permits a small conflict rate to bundle even more aggressively, treating the rare collisions as noise.`:'At tolerance 0 no two features in a bundle ever collide — the encoding is lossless. Raise the tolerance to fold f3 in too.'} A histogram over ${nBund} bundled feature${nBund>1?'s':''} costs far less to build than over ${EFB_FEAT.length}.</div>`;
+}
+
+// ================= sub-nav wiring =================
+const subBtns=document.querySelectorAll("#subnav [data-mod]");
+function showMod(m){ document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden")); document.getElementById("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m)); }
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+// growth controls
+document.querySelectorAll("[data-gwd]").forEach(b=> b.onclick=()=>{ gw.key=b.dataset.gwd; document.querySelectorAll("[data-gwd]").forEach(x=>x.classList.toggle("on",x===b)); gwReset(); });
+document.getElementById("gwLeafTgt").addEventListener("input",e=>{ gw.target=+e.target.value; document.getElementById("gwLeafTgtV").textContent=gw.target; });
+document.getElementById("gwMaxD").addEventListener("input",e=>{ gw.maxD=+e.target.value; document.getElementById("gwMaxDV").textContent=gw.maxD>=8?"off":gw.maxD; });
+document.getElementById("gwStep").onclick=()=>gwStep();
+document.getElementById("gwReset").onclick=()=>gwReset();
+document.getElementById("gwAuto").onclick=()=>{ const btn=document.getElementById("gwAuto");
+  if(gw.auto){ clearInterval(gw.auto); gw.auto=null; btn.textContent="▶ auto-grow"; btn.classList.remove("on"); return; }
+  btn.textContent="⏸ pause"; btn.classList.add("on");
+  gw.auto=setInterval(()=>{ const more=gwStep(); if((gw.leaf.frontier.length>=gw.target)&&(gw.level.frontier.length>=gw.target)||!more){ clearInterval(gw.auto); gw.auto=null; btn.textContent="▶ auto-grow"; btn.classList.remove("on"); } },700); };
+
+// hist controls
+document.querySelectorAll("[data-hsd]").forEach(b=> b.onclick=()=>{ hs.seed=+b.dataset.hsd; document.querySelectorAll("[data-hsd]").forEach(x=>x.classList.toggle("on",x===b)); hs.data=hsGen(hs.seed); hsDraw(); });
+document.getElementById("hsBins").addEventListener("input",e=>{ hs.k=+e.target.value; document.getElementById("hsBinsV").textContent=hs.k; hsDraw(); });
+document.getElementById("hsModeW").onclick=()=>{ hs.mode="width"; document.getElementById("hsModeW").classList.add("on"); document.getElementById("hsModeF").classList.remove("on"); hsDraw(); };
+document.getElementById("hsModeF").onclick=()=>{ hs.mode="freq"; document.getElementById("hsModeF").classList.add("on"); document.getElementById("hsModeW").classList.remove("on"); hsDraw(); };
+
+// goss controls
+document.getElementById("goA").addEventListener("input",e=>{ go.a=+e.target.value; document.getElementById("goAV").textContent=go.a.toFixed(2); goDraw(); });
+document.getElementById("goB").addEventListener("input",e=>{ go.b=+e.target.value; document.getElementById("goBV").textContent=go.b.toFixed(2); goDraw(); });
+document.getElementById("goShuffle").onclick=()=>{ go.seed=(go.seed*1103515245+12345)>>>0; goDraw(); };
+document.getElementById("goView").onclick=()=>{ go.showGoss=!go.showGoss; goDraw(); };
+
+// efb controls
+document.getElementById("efTol").addEventListener("input",e=>{ efb.tol=+e.target.value; document.getElementById("efTolV").textContent=efb.tol; efbDraw(); });
+
+// ================= init modules =================
+document.querySelector('[data-gwd="asym"]').classList.add("on");
+gwReset();
+document.querySelector('[data-hsd="0"]').classList.add("on"); hs.data=hsGen(0); hsDraw();
+go.data=goGen(); go.truth=goTrueGain(go.data); goDraw();
+efbDraw();
+showMod("growth");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. Start from XGBoost — LightGBM changes the engineering, not the math", why:"LightGBM is a gradient boosting machine that inherits Day 40's objective wholesale. Each round it still Taylor-expands the loss to second order to get a gradient g and a Hessian h per sample; a leaf's optimal output is still the closed-form w* = −G/(H+λ) with G=Σg and H=Σh; and a candidate split is still scored by the same structure-score gain, ½[G_L²/(H_L+λ)+G_R²/(H_R+λ)−G²/(H+λ)]. If you understand XGBoost's leaf and gain, you already understand LightGBM's arithmetic. What LightGBM asks is a different question: given millions of rows and thousands of sparse columns, how do we compute those same sums far faster and with far less memory? Its answer is four engineering tricks — leaf-wise growth, histogram split-finding, GOSS, and EFB — none of which change the loss being minimised. That framing matters: LightGBM is not a new theory of boosting, it is a faster machine for the boosting we already have.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">same objective as Day 40:<br><br>w* = −G / (H + λ)<br>gain = ½[ G<tspan>L</tspan>²/(H<tspan>L</tspan>+λ)+G<tspan>R</tspan>²/(H<tspan>R</tspan>+λ)−G²/(H+λ) ]<br><br>LightGBM changes HOW we compute these,<br>on big data — not WHAT they are</div>`, code:`# identical to XGBoost's core:
+def grad_hess(y, F, loss="mse"):
+    if loss == "mse": return F - y, np.ones_like(F)
+    p = 1/(1+np.exp(-F)); return p - y, p*(1-p)
+def leaf_weight(G, H, lam): return -G/(H+lam)
+# LightGBM's contribution is speed: leaf-wise growth, histograms, GOSS, EFB` },
+ { title:"2. Leaf-wise (best-first) growth — split where it helps most", why:"XGBoost grows trees level-wise: it splits every node at the current depth before descending, producing a balanced tree. LightGBM grows leaf-wise: among all current leaves, it finds the single one whose best split reduces the loss the most and splits only that one, then repeats. Concretely it keeps a priority queue of leaves keyed by their best-split gain, pops the maximum, splits it, and pushes the two children back. For a fixed budget of leaves this is provably better at reducing training loss — every split is spent where the payoff is largest, instead of being forced onto nodes that barely needed splitting. In the LOOK demo, on the flat-plus-staircase data, leaf-wise keeps drilling into the busy staircase region while level-wise wastes early splits on the already-flat left side, so the green loss curve sits below the amber one at every leaf count. The cost is shape: the leaf-wise tree grows deep and lopsided.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">level-wise: split ALL leaves at depth d, then d+1<br>&nbsp;&nbsp;→ balanced tree (XGBoost default)<br><br>leaf-wise: split the ONE leaf with max gain<br>&nbsp;&nbsp;→ deeper, imbalanced, lower loss per leaf<br><br>priority queue keyed by best-split gain</div>`, code:`import heapq
+pq = []                                  # max-heap on gain
+push(pq, root)                           # (best gain, leaf, threshold)
+while pq and n_leaves < num_leaves:
+    leaf = pop_max_gain(pq)              # <-- the ONE best leaf
+    L, R = split(leaf)
+    push(pq, L); push(pq, R)
+# every split spent where the loss drops most` },
+ { title:"3. The overfitting risk — and the num_leaves / max_depth guard", why:"Best-first growth is greedy about training loss, and that is exactly why it can overfit. A leaf-wise tree will happily grow a long, thin branch that carves out a handful of noisy points if that lowers training loss, producing a very deep tree with almost no counterbalancing breadth. LightGBM controls this with two knobs. num_leaves is the primary complexity control — because the tree is leaf-wise, the number of leaves, not the depth, is the natural size limit, and it is usually set well below 2^max_depth. A max_depth guard is layered on top: the grower simply refuses to split any leaf that has already reached the maximum depth, forcing the budget elsewhere. In the demo, lowering the max_depth guard visibly shallows the green tree and nudges its loss curve up toward level-wise — you are trading a little training fit for a model that will generalise better. This pair, plus learning-rate shrinkage and sampling, is how leaf-wise trees stay honest.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">leaf-wise + no limits → deep thin branch → overfit<br><br>num_leaves : primary size cap (≪ 2^max_depth)<br>max_depth : hard guard, skip too-deep leaves<br>+ learning_rate, min_data_in_leaf, subsampling<br><br>trade a little train loss for generalisation</div>`, code:`def can_split(leaf, max_depth):
+    return max_depth < 0 or leaf["depth"] < max_depth
+# in the grower's priority queue, skip leaves that fail can_split
+# num_leaves caps the TOTAL leaves (the real complexity knob)
+# rule of thumb: num_leaves = 2^max_depth is already too big` },
+ { title:"4. Histogram split-finding — bin the feature, then sweep bin edges", why:"Exact split-finding, the algorithm from Day 40, sorts each feature at each node and evaluates the gain at every one of the n−1 midpoints — accurate but expensive when n is large. LightGBM instead discretises each feature once into a fixed number of bins (255 by default), typically at quantile boundaries so each bin holds a similar count. Finding a split then means accumulating per-bin gradient sums Gb and Hessian sums Hb in a single pass and reading off the best boundary from the running cumulative totals — the candidate thresholds are just the bin edges, so the search is O(#bins) rather than O(#rows). Two further wins compound this: histograms are tiny and cache-friendly, and a child's histogram is computed as the parent's minus its sibling's, so only one of the two children is ever scanned. In the LOOK demo, dragging the bin count shows the coarse histogram gain curve snapping toward the exact one; even a couple dozen bins usually land on essentially the exact best split.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">exact: sort every node, test n−1 midpoints<br><br>histogram: bin ONCE (~255 bins), then<br>&nbsp;&nbsp;Gb, Hb per bin → cumulative sweep of k−1 edges<br>&nbsp;&nbsp;= O(#bins), not O(#rows)<br><br>child_hist = parent_hist − sibling_hist &nbsp;(free)</div>`, code:`edges = np.quantile(x, np.linspace(0,1,256))   # bin once
+b  = np.digitize(x, edges[1:-1])
+Gb = np.bincount(b, weights=g)                 # per-bin gradient
+Hb = np.bincount(b, weights=h)                 # per-bin hessian
+# sweep cumulative Gb, Hb over the ~255 edges -> best split, no re-sort
+# subtraction trick halves the histogram cost at every node` },
+ { title:"5. GOSS — Gradient-based One-Side Sampling", why:"Most rows in a well-trained boosting model have small gradients: the model already fits them, so they contribute little new information to the next tree. GOSS exploits this. It sorts rows by gradient magnitude, keeps the top fraction a of large-gradient rows in full, and from the remaining small-gradient rows randomly keeps only a fraction b. The catch is that dropping most small-gradient rows would bias the gradient sums, so GOSS multiplies the sampled small-gradient rows by the amplification factor (1−a)/b, which restores their expected contribution and keeps the split-gain estimates unbiased. The result is a training set a small fraction of the original size that still contains every hard, informative example — so each tree is built on far less data with little accuracy loss. In the LOOK demo the Monte-Carlo panel makes the payoff concrete: averaged over hundreds of random draws, GOSS's best-split gain estimate is consistently closer to the full-data truth than uniform sampling using the same number of rows, because uniform sampling keeps throwing away the very rows that decide the split.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">keep top a·N rows by |gradient| (all of them)<br>sample b·N of the small-gradient rest<br>amplify sampled rows by (1−a)/b → unbiased<br><br>small |g| = already-fit = expendable<br>large |g| = under-trained = never dropped</div>`, code:`order = np.argsort(-np.abs(g))          # big |gradient| first
+keep  = order[:int(a*n)]                # keep ALL large-gradient rows
+samp  = np.random.choice(order[int(a*n):], int(b*n), replace=False)
+w = np.ones(n); w[samp] = (1-a)/b       # amplify to stay unbiased
+idx = np.concatenate([keep, samp])      # train on a fraction of rows
+# gain uses g*w, h*w -> same expected sums as full data` },
+ { title:"6. EFB — Exclusive Feature Bundling", why:"High-dimensional data is usually sparse: one-hot encodings, bag-of-words counts, and interaction flags are mostly zero, and crucially many of them are mutually exclusive — they are almost never nonzero in the same row. EFB packs such features into a single bundle. It builds a conflict graph with an edge between any two features that are nonzero together too often, then greedily colours the graph so that no two conflicting features share a colour; each colour becomes one bundle. Within a bundle, features are given disjoint value ranges via an offset, so a single stored column faithfully reconstructs each original feature and a histogram built over the bundle carries all of their information. Because histogram construction cost scales with the number of features, folding thousands of sparse columns into a few hundred bundles is a large, direct speed-up with essentially no accuracy cost. LightGBM even tolerates a small conflict rate — a handful of collisions per bundle is treated as noise — to bundle still more aggressively. In the LOOK demo the greedy colouring runs live on a small sparse matrix; five mutually-exclusive features collapse into one bundle while the one clashing feature keeps its own.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">sparse features rarely nonzero together<br><br>conflict graph: edge if two features clash<br>greedy colouring → each colour = one bundle<br>offset ranges → one column holds them all<br><br>#features ↓↓ → histogram build ↓↓, ~0 accuracy cost</div>`, code:`conflict = shared_nonzero_rows(i, j)    # build the conflict graph
+color = [-1]*F                          # greedy graph colouring
+for i in range(F):
+    used = {color[j] for j in range(F)
+            if color[j]>=0 and conflict[i][j] > max_conflict}
+    color[i] = smallest_int_not_in(used)
+# features sharing a colour -> one bundle, offset into disjoint ranges` },
+ { title:"7. LightGBM vs XGBoost — the same boosting, tuned differently", why:"Put side by side, the two libraries share a spine and differ in strategy. Both minimise a regularized second-order objective with gradients and Hessians, both support histogram binning, and both offer row and column subsampling and learning-rate shrinkage. XGBoost's defaults grow level-wise (balanced, depth-controlled) and it pioneered sparsity-aware split finding with learned default directions for missing values. LightGBM's defaults grow leaf-wise (num_leaves-controlled) and add GOSS row sampling and EFB feature bundling, which together make it markedly faster and lighter on large, wide, sparse datasets — often the reason practitioners reach for it first at scale. Neither is universally better: leaf-wise can overfit small or noisy datasets where XGBoost's level-wise balance is safer, and careful tuning narrows most accuracy gaps. The practical read is that LightGBM trades a little robustness for a lot of speed by being greedier about where it spends each split and more aggressive about shrinking the data before it starts. Day 42 completes the trio with CatBoost, whose ordered boosting attacks a different problem: the subtle target leakage that both of these can hide.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">shared: g,h objective · histograms · subsampling · shrinkage<br><br>XGBoost: level-wise · sparsity-aware default dirs<br>LightGBM: leaf-wise · GOSS rows · EFB columns<br><br>LightGBM = faster/lighter at scale<br>XGBoost = often safer on small/noisy data</div>`, code:`# XGBoost  : tree_method='hist', grow_policy='depthwise' (level-wise)
+#            + sparsity-aware missing-value default directions
+# LightGBM : num_leaves control, leaf-wise growth,
+#            boosting='goss', enable_bundle (EFB) for sparse features
+# both     : reg_lambda, learning_rate, subsample, colsample
+# next (Day 42): CatBoost -> ordered boosting kills target leakage` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },3600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
