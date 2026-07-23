@@ -48,6 +48,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 39 — Multi-Armed Bandits](https://dev48v.infy.uk/ml/day39-multi-armed-bandits.html) — `day39-multi-armed-bandits.html`
 - [MachineLearningFromZero · Day 40 — XGBoost Internals](https://dev48v.infy.uk/ml/day40-xgboost-internals.html) — `day40-xgboost-internals.html`
 - [MachineLearningFromZero · Day 41 — LightGBM](https://dev48v.infy.uk/ml/day41-lightgbm.html) — `day41-lightgbm.html`
+- [MachineLearningFromZero · Day 42 — The Kernel Trick](https://dev48v.infy.uk/ml/day42-kernel-trick.html) — `day42-kernel-trick.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

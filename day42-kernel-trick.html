@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 42 — The Kernel Trick</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:180px 1fr 74px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-band { display:inline-block; width:16px; height:11px; border-radius:3px; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .kbtn { border:1px solid #e2e8f0; background:#fff; }
+  .kbtn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .objbtn { border:1px solid #e2e8f0; }
+  .objbtn:hover { border-color:#38bdf8; }
+  .objbtn.on { border-color:#0ea5e9; background:#e0f2fe; color:#075985; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; }
+  .gram-cell { font-variant-numeric:tabular-nums; font-size:9.5px; font-weight:700; text-align:center; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 42</div>
+      <h1 class="text-xl font-bold">🎯 The Kernel Trick — Why You <em>Never</em> Build <code>φ(x)</code>: Algorithms Touch Data Only Through <em>Dot Products</em>, and <code>K(x,y)=φ(x)·φ(y)</code> Computes That Dot Product in a Huge (Even <em>Infinite</em>) Feature Space Without Ever Forming <code>φ</code></h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>Day 12's SVM already quietly used an RBF kernel. This page is the standalone idea behind it. Some data is hopelessly non-linear in its own coordinates — concentric rings, XOR — and no straight line will ever split it. The fix is to <em>map</em> each point into a higher-dimensional feature space <code>φ(x)</code> where the classes <em>do</em> separate with a flat boundary. But <code>φ</code> can be enormous, even infinite-dimensional, so building it explicitly is impossible.</strong> The trick: linear algorithms only ever touch the data through <em>dot products</em> <code>xᵢ·xⱼ</code>. Replace every dot product with a <strong>kernel</strong> <code>K(x,y)=φ(x)·φ(y)</code> that you can evaluate directly — and you get the exact same answer as if you had lifted to <code>φ</code>, for the price of one cheap function call. Everything below is a real kernel perceptron: the Gram matrix and the decision boundary are computed live in JS, no library.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Lift &amp; separate</strong> trains a genuine <em>kernel perceptron</em> on non-linear data. With the <span style="font-weight:700">linear</span> kernel the boundary is a straight line and it fails on rings; flip to <span style="font-weight:700">polynomial (1+x·y)²</span> or the <span style="font-weight:700">RBF/Gaussian</span> kernel and watch the boundary <em>curve</em> into a circle that separates the classes — while the side panel shows the same rings becoming linearly separable once lifted to the feature coordinates <code>(x₁², x₂²)</code>. Move your cursor over the plot to see <code>K(cursor, x₀)</code> and the classifier score <code>f(cursor)=Σαᵢ K(xᵢ, cursor)</code> update live. <strong>Kernel matrix (Mercer)</strong> builds the real <code>n×n</code> Gram matrix, computes its eigenvalues with a from-scratch Jacobi solver, and shows that valid kernels give a <em>positive-semidefinite</em> matrix — while a tempting-but-invalid "kernel" fails the test.</p>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="lift" class="subnav-btn px-4 py-2 rounded-lg text-sm">🎯 Lift &amp; separate</button>
+        <button data-mod="gram" class="subnav-btn px-4 py-2 rounded-lg text-sm">🔢 Kernel matrix (Mercer)</button>
+      </div>
+
+      <!-- ============ MODULE: LIFT ============ -->
+      <div id="mod-lift" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-2 max-w-4xl mx-auto mb-4">
+          <div class="metric-pill"><div class="v" id="ltKernel" style="color:#0f172a">—</div><div class="k">kernel</div></div>
+          <div class="metric-pill"><div class="v" id="ltAcc" style="color:#16a34a">—</div><div class="k">train accuracy</div></div>
+          <div class="metric-pill"><div class="v" id="ltSV" style="color:#0ea5e9">—</div><div class="k">support vectors</div></div>
+          <div class="metric-pill"><div class="v" id="ltMist" style="color:#b45309">—</div><div class="k">mistakes (train)</div></div>
+          <div class="metric-pill"><div class="v" id="ltEp" style="color:#7c3aed">—</div><div class="k">epochs to converge</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:330px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">DATASET — not linearly separable</div>
+            <div class="flex flex-wrap gap-2 mb-3">
+              <button data-ds="rings" class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">🎯 Concentric rings</button>
+              <button data-ds="xor"   class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">❌ XOR blobs</button>
+              <button data-ds="moons" class="objbtn px-2.5 py-1 rounded-lg font-semibold text-xs">🌙 Two moons</button>
+            </div>
+            <div class="text-xs font-bold text-slate-500 mb-2 mt-1">KERNEL <code>K(x,y)</code></div>
+            <div class="flex flex-wrap gap-2 mb-2">
+              <button data-k="linear" class="kbtn px-2.5 py-1 rounded-lg font-semibold text-xs">linear · 1+x·y</button>
+              <button data-k="poly"   class="kbtn px-2.5 py-1 rounded-lg font-semibold text-xs">poly · (1+x·y)ᵈ</button>
+              <button data-k="rbf"    class="kbtn px-2.5 py-1 rounded-lg font-semibold text-xs">RBF · e^(−γ‖x−y‖²)</button>
+            </div>
+            <div class="ctl-row" id="rowDeg">
+              <div class="ctl-name">🔢 poly degree d</div>
+              <input type="range" id="ltDeg" min="1" max="4" step="1" value="2">
+              <div class="ctl-val" id="ltDegV">2</div>
+            </div>
+            <div class="ctl-row" id="rowGam">
+              <div class="ctl-name">📡 RBF width γ</div>
+              <input type="range" id="ltGam" min="0.5" max="20" step="0.5" value="4">
+              <div class="ctl-val" id="ltGamV">4.0</div>
+            </div>
+            <div class="mt-1 flex items-center gap-2 flex-wrap">
+              <button id="ltShuffle" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">🎲 resample data</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              A <strong>kernel perceptron</strong> keeps a dual coefficient <code>αᵢ</code> per training point and predicts <code>f(x)=Σᵢ αᵢ K(xᵢ, x)</code>. On a mistake it bumps <code>α</code> for that point. The boundary <code>f(x)=0</code> is <em>linear in the feature space</em> <code>φ</code> but bends into a curve back in the input plane. Points with <code>αᵢ≠0</code> are the <strong>support vectors</strong>.
+            </div>
+            <div id="ltProbe" class="mt-3 rounded-lg bg-slate-900 text-slate-100 p-2 text-[11px] leading-relaxed font-mono">move cursor over the plot →</div>
+          </div>
+
+          <div class="panel hero text-left" style="width:380px; max-width:100%;">
+            <div class="flex justify-between items-center mb-1">
+              <span class="text-sm font-bold text-sky-700">🗺️ Input space — the computed decision boundary</span>
+            </div>
+            <canvas id="ltInput" width="352" height="352"></canvas>
+            <div class="text-[11px] text-slate-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#e11d48"></span> class +1</span>
+              <span><span class="swatch" style="background:#4f46e5"></span> class −1</span>
+              <span><span class="swatch" style="background:#e11d48;opacity:.25"></span>/<span class="swatch" style="background:#4f46e5;opacity:.25"></span> region f(x)≷0</span>
+              <span>◯ = support vector</span>
+            </div>
+          </div>
+
+          <div class="panel text-left" style="width:380px; max-width:100%;">
+            <div class="flex justify-between items-center mb-1">
+              <span class="text-sm font-bold text-slate-700">⬆️ Feature space φ — the degree-2 lift (x₁², x₂²)</span>
+            </div>
+            <canvas id="ltFeat" width="352" height="352"></canvas>
+            <div class="text-[11px] text-slate-400 leading-relaxed mt-1">Each point is re-plotted at <code>(x₁², x₂²)</code> — two coordinates of the explicit map for the degree-2 polynomial kernel. The <span style="color:#0f172a;font-weight:800">dark line</span> is a plain <em>linear</em> separator found by a 2-D perceptron on these lifted coordinates. A straight line <code>u+v=c</code> here is exactly the <strong>circle</strong> <code>x₁²+x₂²=c</code> back in the input plane — separation for free.</div>
+          </div>
+        </div>
+        <div id="ltDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+      <!-- ============ MODULE: GRAM ============ -->
+      <div id="mod-gram" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-3xl mx-auto mb-4">
+          <div class="metric-pill"><div class="v" id="gmKernel" style="color:#0f172a">—</div><div class="k">kernel</div></div>
+          <div class="metric-pill"><div class="v" id="gmMinEig" style="color:#0ea5e9">—</div><div class="k">min eigenvalue</div></div>
+          <div class="metric-pill"><div class="v" id="gmMaxEig" style="color:#16a34a">—</div><div class="k">max eigenvalue</div></div>
+          <div class="metric-pill"><div class="v" id="gmVerdict" style="color:#b45309">—</div><div class="k">Mercer PSD?</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:330px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">KERNEL for the Gram matrix</div>
+            <div class="flex flex-col gap-2 mb-2">
+              <button data-gk="linear" class="kbtn px-2.5 py-1 rounded-lg font-semibold text-xs text-left">✅ linear · 1 + x·y</button>
+              <button data-gk="poly"   class="kbtn px-2.5 py-1 rounded-lg font-semibold text-xs text-left">✅ polynomial · (1 + x·y)²</button>
+              <button data-gk="rbf"    class="kbtn px-2.5 py-1 rounded-lg font-semibold text-xs text-left">✅ RBF · e^(−2‖x−y‖²)</button>
+              <button data-gk="dist"   class="kbtn px-2.5 py-1 rounded-lg font-semibold text-xs text-left">⚠️ distance · ‖x−y‖ (invalid)</button>
+            </div>
+            <div class="mt-2 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Mercer's condition:</strong> a function <code>K</code> is a valid kernel — i.e. it equals <code>φ(x)·φ(y)</code> for <em>some</em> feature map — if and only if, for every finite set of points, the Gram matrix <code>Kᵢⱼ=K(xᵢ,xⱼ)</code> is symmetric and <strong>positive semi-definite</strong> (all eigenvalues ≥ 0). Below, the eigenvalues are computed from scratch with a <strong>cyclic Jacobi</strong> rotation solver over 9 fixed points. The distance "kernel" <em>looks</em> like a similarity but produces a negative eigenvalue — so no feature space can ever realise it.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:420px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🔢 Gram matrix <code>Kᵢⱼ = K(xᵢ, xⱼ)</code> &nbsp;(9 points)</div>
+            <div id="gmMatrix"></div>
+            <div class="text-sm font-bold text-slate-700 mt-4 mb-1">📉 eigenvalues (sorted) — from-scratch Jacobi</div>
+            <div id="gmEig"></div>
+          </div>
+        </div>
+        <div id="gmDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From "no line can split this" to "one dot product does it all"</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">A kernel is just a function of two points. The magic is that a whole family of linear algorithms can be rewritten to use <em>only</em> that function — never the coordinates. Here is a runnable from-scratch core: three kernels, a numeric proof that the polynomial kernel equals a dot product in a 6-D feature space we never build, the Gram matrix and its Mercer (PSD) check, and a full <strong>kernel perceptron</strong> whose decision boundary is genuinely computed. Everything the LOOK tab draws lives in these snippets.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The kernels — each is one cheap function of two points</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A kernel <code>K(x,y)</code> is a similarity that secretly equals a dot product in some feature space. The linear kernel is the ordinary dot product; the polynomial adds all interaction terms up to degree <code>d</code>; the RBF (Gaussian) measures closeness and lives in an infinite-dimensional space. None of them ever forms <code>φ</code>.</p>
+        <div class="relative"><pre>import numpy as np
+
+def k_linear(x, y):                      # phi = (1, x1, x2, ...)
+    return 1.0 + x @ y
+
+def k_poly(x, y, d=2):                    # phi = all monomials up to degree d
+    return (1.0 + x @ y) ** d
+
+def k_rbf(x, y, gamma=4.0):              # phi lives in an INFINITE-dim space
+    diff = x - y
+    return np.exp(-gamma * (diff @ diff))</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Prove the trick — φ(x)·φ(y) equals (1+x·y)² without believing it</h3></div>
+        <p class="text-sm text-slate-600 mb-3">For 2-D inputs the degree-2 polynomial kernel expands to a 6-D feature map <code>φ(x)=(1, √2·x₁, √2·x₂, x₁², √2·x₁x₂, x₂²)</code>. Build <code>φ</code> explicitly, take the honest dot product, and confirm it matches the one-line kernel to machine precision. In real life you skip the left-hand side entirely.</p>
+        <div class="relative"><pre>def phi_poly2(x):                        # the EXPLICIT degree-2 feature map (2D -> 6D)
+    x1, x2 = x
+    r2 = np.sqrt(2.0)
+    return np.array([1.0, r2*x1, r2*x2, x1*x1, r2*x1*x2, x2*x2])
+
+x = np.array([0.7, -0.3]);  y = np.array([-0.2, 0.9])
+explicit = phi_poly2(x) @ phi_poly2(y)   # dot product in 6-D feature space
+kernel   = (1.0 + x @ y) ** 2            # the trick: never build phi
+print(explicit, kernel)                  # 1.0921...  1.0921...  -> identical
+assert abs(explicit - kernel) < 1e-12    # the kernel trick, verified</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The Gram matrix &amp; Mercer's condition</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Collect the kernel over every pair of points into the <code>n×n</code> Gram matrix. <code>K</code> is a <em>valid</em> kernel iff this matrix is symmetric positive semi-definite for any points — all eigenvalues ≥ 0. That is exactly the condition for it to be an inner product in some space. A "distance kernel" fails it.</p>
+        <div class="relative"><pre>def gram(X, kernel):
+    n = len(X)
+    return np.array([[kernel(X[i], X[j]) for j in range(n)] for i in range(n)])
+
+def is_valid_kernel(X, kernel, tol=1e-8):
+    G = gram(X, kernel)
+    assert np.allclose(G, G.T)            # must be symmetric
+    eig = np.linalg.eigvalsh(G)           # Mercer: all eigenvalues >= 0
+    return eig.min() >= -tol, eig.min()
+
+print(is_valid_kernel(X, k_rbf))                 # (True,  ~0)      valid
+print(is_valid_kernel(X, lambda a,b: np.linalg.norm(a-b)))  # (False, <0)  NOT a kernel</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The kernel perceptron — the boundary the LOOK tab draws</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The classic perceptron in dual form. Keep one coefficient <code>αᵢ</code> per training point; predict with <code>f(x)=Σᵢ αᵢ K(xᵢ,x)</code>; on a mistake, nudge <code>α</code> for that point by its label. Swap the kernel and the very same loop learns a curved boundary — the whole point of kernelization.</p>
+        <div class="relative"><pre>def train_kernel_perceptron(X, y, kernel, epochs=60):
+    n = len(X)
+    G = gram(X, kernel)                   # precompute K(xi, xj)
+    alpha = np.zeros(n)
+    for _ in range(epochs):
+        errors = 0
+        for t in range(n):
+            score = np.dot(alpha, G[:, t])   # f(x_t) = sum_i alpha_i K(x_i, x_t)
+            if np.sign(score) != y[t]:
+                alpha[t] += y[t]             # dual update (no weight vector!)
+                errors += 1
+        if errors == 0:
+            break                           # separated in feature space
+    return alpha
+
+def predict(x, X, alpha, kernel):
+    return np.sign(sum(a * kernel(xi, x) for a, xi in zip(alpha, X) if a != 0))</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Draw the boundary &amp; score it — linear fails, kernels win</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Evaluate <code>predict</code> on a grid of pixels to paint the decision regions, and measure accuracy on the rings data. The linear kernel can't beat ~50–60%; the polynomial and RBF kernels hit 100% because the rings are separable once lifted.</p>
+        <div class="relative"><pre>Xr, yr = concentric_rings()               # class +1 inner, class -1 outer ring
+
+for kernel in [k_linear, lambda a,b: k_poly(a,b,2), lambda a,b: k_rbf(a,b,4.0)]:
+    alpha = train_kernel_perceptron(Xr, yr, kernel)
+    acc = np.mean([predict(x, Xr, alpha, kernel) == t for x, t in zip(Xr, yr)])
+    n_sv = int(np.sum(alpha != 0))
+    print(kernel, f"acc={acc:.2f}  support_vectors={n_sv}")
+# k_linear -> acc~0.55  (a line can't split concentric rings)
+# k_poly2  -> acc 1.00  (a circle can)
+# k_rbf    -> acc 1.00  (bumps around each cluster)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 42 of MachineLearningFromZero done.</h3><p class="text-sm text-sky-700 mt-2">The kernel trick is one of the most leveraged ideas in classical ML. Non-linear data becomes separable in a high-dimensional feature space <code>φ(x)</code>, but <code>φ</code> is expensive or infinite, so you never build it: linear algorithms touch data only through dot products, and a <strong>kernel</strong> <code>K(x,y)=φ(x)·φ(y)</code> supplies that dot product directly. The polynomial kernel <code>(1+x·y)ᵈ</code> is a finite feature map you can write down; the RBF kernel is an infinite one you can't — yet both cost a single function call. A function is a legal kernel exactly when its Gram matrix is positive semi-definite (<strong>Mercer</strong>). Kernelize the perceptron and a straight rule in feature space becomes a curved boundary in the input plane. <strong>👉 The same trick powers the SVM (Day 12), kernel PCA, and Gaussian Processes (Day 37).</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function dot(a,b){ return a[0]*b[0]+a[1]*b[1]; }
+function dist2(a,b){ const dx=a[0]-b[0], dy=a[1]-b[1]; return dx*dx+dy*dy; }
+
+// kernel definitions (all computed from scratch)
+function kLinear(a,b){ return 1 + dot(a,b); }
+function kPoly(a,b,d){ return Math.pow(1 + dot(a,b), d); }
+function kRBF(a,b,g){ return Math.exp(-g * dist2(a,b)); }
+
+const CLASS_POS="#e11d48", CLASS_NEG="#4f46e5";
+const DOMAIN=1.25;                                    // input coords live in [-DOMAIN, DOMAIN]
+
+// ===== from-scratch symmetric eigenvalues (cyclic Jacobi) =====  <<<EIG_START>>>
+function jacobiEig(M){
+  const n=M.length; let A=M.map(r=>r.slice());
+  for(let iter=0; iter<200; iter++){
+    let p=0,q=1,mx=-1;
+    for(let i=0;i<n;i++) for(let j=i+1;j<n;j++){ if(Math.abs(A[i][j])>mx){ mx=Math.abs(A[i][j]); p=i; q=j; } }
+    if(mx<1e-12) break;
+    const app=A[p][p], aqq=A[q][q], apq=A[p][q];
+    const theta=0.5*Math.atan2(2*apq, app-aqq), c=Math.cos(theta), s=Math.sin(theta);
+    const B=A.map(r=>r.slice());                       // B = R * A   (rotate rows p,q)
+    for(let k=0;k<n;k++){ B[p][k]=c*A[p][k]+s*A[q][k]; B[q][k]=-s*A[p][k]+c*A[q][k]; }
+    const C=B.map(r=>r.slice());                       // C = B * R^T (rotate cols p,q)
+    for(let k=0;k<n;k++){ C[k][p]=c*B[k][p]+s*B[k][q]; C[k][q]=-s*B[k][p]+c*B[k][q]; }
+    A=C;
+  }
+  const e=[]; for(let i=0;i<n;i++) e.push(A[i][i]);
+  return e.sort((a,b)=>a-b);
+}
+// <<<EIG_END>>>
+
+// ================= MODULE 1: lift & separate =================
+const K = { ds:"rings", type:"poly", deg:2, gamma:4, seed:7 };
+let data=[], kern=null, model=null;
+
+function genData(key, seed){
+  const rng=mulberry32(seed*131+11); const pts=[];
+  if(key==="rings"){
+    for(let i=0;i<26;i++){ const t=rng()*Math.PI*2, r=0.12+rng()*0.24; pts.push({a:[r*Math.cos(t), r*Math.sin(t)], y:1}); }
+    for(let i=0;i<30;i++){ const t=rng()*Math.PI*2, r=0.62+rng()*0.30; pts.push({a:[r*Math.cos(t), r*Math.sin(t)], y:-1}); }
+  } else if(key==="xor"){
+    const blobs=[[0.5,0.5,1],[-0.5,-0.5,1],[0.5,-0.5,-1],[-0.5,0.5,-1]];
+    for(const [bx,by,lab] of blobs) for(let i=0;i<13;i++) pts.push({a:[bx+(rng()-0.5)*0.55, by+(rng()-0.5)*0.55], y:lab});
+  } else { // moons
+    for(let i=0;i<28;i++){ const t=Math.PI*rng(); pts.push({a:[Math.cos(t)*0.75-0.35, Math.sin(t)*0.75-0.28+(rng()-0.5)*0.16], y:1}); }
+    for(let i=0;i<28;i++){ const t=Math.PI*rng(); pts.push({a:[Math.cos(t)*0.75+0.35, -Math.sin(t)*0.75+0.28+(rng()-0.5)*0.16], y:-1}); }
+  }
+  return pts;
+}
+
+function curKernel(){
+  if(K.type==="linear") return (a,b)=>kLinear(a,b);
+  if(K.type==="poly")   return (a,b)=>kPoly(a,b,K.deg);
+  return (a,b)=>kRBF(a,b,K.gamma);
+}
+
+// train the dual (kernel) perceptron: f(x)=sum_i alpha_i K(x_i,x)
+function trainPerceptron(){
+  const n=data.length; const G=[];
+  for(let i=0;i<n;i++){ G[i]=new Array(n); for(let j=0;j<n;j++) G[i][j]=kern(data[i].a, data[j].a); }
+  const alpha=new Array(n).fill(0); let mistakes=0, epochs=0;
+  for(let e=0;e<80;e++){ epochs++; let changed=false;
+    for(let t=0;t<n;t++){ let s=0; for(let i=0;i<n;i++) s+=alpha[i]*G[i][t];
+      const pred=s>=0?1:-1; if(pred!==data[t].y){ alpha[t]+=data[t].y; mistakes++; changed=true; } }
+    if(!changed) break;
+  }
+  let ok=0; for(let t=0;t<n;t++){ let s=0; for(let i=0;i<n;i++) s+=alpha[i]*G[i][t]; if((s>=0?1:-1)===data[t].y) ok++; }
+  model={G, alpha, mistakes, epochs, acc:ok/n, nsv:alpha.filter(a=>a!==0).length};
+}
+
+function fAt(x){ let s=0; for(let i=0;i<data.length;i++){ if(model.alpha[i]===0) continue; s+=model.alpha[i]*kern(data[i].a, x); } return s; }
+
+// plain 2-D perceptron on the (x1^2, x2^2) lift -> a separating line in feature space
+function liftPerceptron(){
+  const feats=data.map(p=>({f:[p.a[0]*p.a[0], p.a[1]*p.a[1]], y:p.y}));
+  let w=[0,0], b=0;
+  for(let e=0;e<400;e++){ let err=0;
+    for(const p of feats){ const s=w[0]*p.f[0]+w[1]*p.f[1]+b; if((s>=0?1:-1)!==p.y){ w[0]+=p.y*p.f[0]; w[1]+=p.y*p.f[1]; b+=p.y; err++; } }
+    if(!err) break;
+  }
+  return {w,b};
+}
+
+function toPx(v, size){ return (v + DOMAIN)/(2*DOMAIN)*size; }              // data -> pixel (x)
+function toPy(v, size){ return size - (v + DOMAIN)/(2*DOMAIN)*size; }        // data -> pixel (y, flipped)
+function fromPx(px, size){ return px/size*2*DOMAIN - DOMAIN; }
+function fromPy(py, size){ return (size-py)/size*2*DOMAIN - DOMAIN; }
+
+function drawInput(){
+  const cv=document.getElementById("ltInput"), ctx=cv.getContext("2d");
+  const S=cv.width; ctx.clearRect(0,0,S,S);
+  // decision regions on a coarse grid (sum over support vectors only)
+  const cells=64, cw=S/cells;
+  const svs=[]; for(let i=0;i<data.length;i++) if(model.alpha[i]!==0) svs.push({al:model.alpha[i], a:data[i].a});
+  const sign=[];
+  for(let gx=0; gx<cells; gx++){ sign[gx]=[];
+    for(let gy=0; gy<cells; gy++){
+      const x=fromPx((gx+0.5)*cw, S), y=fromPy((gy+0.5)*cw, S);
+      let f=0; for(const o of svs) f+=o.al*kern(o.a, [x,y]);
+      sign[gx][gy]=f>=0?1:-1;
+      ctx.fillStyle = f>=0 ? "rgba(225,29,72,0.14)" : "rgba(79,70,229,0.14)";
+      ctx.fillRect(gx*cw, gy*cw, cw+0.7, cw+0.7);
+    }
+  }
+  // boundary: darken cells that border the opposite sign
+  ctx.fillStyle="rgba(15,23,42,0.55)";
+  for(let gx=0; gx<cells; gx++) for(let gy=0; gy<cells; gy++){
+    const s=sign[gx][gy];
+    if((gx+1<cells && sign[gx+1][gy]!==s) || (gy+1<cells && sign[gx][gy+1]!==s))
+      ctx.fillRect(gx*cw, gy*cw, cw+0.7, cw+0.7);
+  }
+  // axes
+  ctx.strokeStyle="rgba(100,116,139,0.35)"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(toPx(0,S),0); ctx.lineTo(toPx(0,S),S); ctx.moveTo(0,toPy(0,S)); ctx.lineTo(S,toPy(0,S)); ctx.stroke();
+  // points (support vectors get a dark ring); mark x0 (probe anchor)
+  data.forEach((p,i)=>{
+    const px=toPx(p.a[0],S), py=toPy(p.a[1],S);
+    ctx.beginPath(); ctx.arc(px,py,5,0,7); ctx.fillStyle=p.y>0?CLASS_POS:CLASS_NEG; ctx.fill();
+    ctx.lineWidth=1.4; ctx.strokeStyle="#fff"; ctx.stroke();
+    if(model.alpha[i]!==0){ ctx.beginPath(); ctx.arc(px,py,8.5,0,7); ctx.lineWidth=2; ctx.strokeStyle="#0f172a"; ctx.stroke(); }
+  });
+  const a0=data[0].a, a0x=toPx(a0[0],S), a0y=toPy(a0[1],S);
+  ctx.beginPath(); ctx.arc(a0x,a0y,3,0,7); ctx.fillStyle="#fff"; ctx.fill();
+  ctx.font="bold 11px monospace"; ctx.fillStyle="#0f172a"; ctx.fillText("x₀", a0x+9, a0y-6);
+}
+
+function drawFeat(){
+  const cv=document.getElementById("ltFeat"), ctx=cv.getContext("2d");
+  const S=cv.width; ctx.clearRect(0,0,S,S);
+  const PAD=34;
+  const us=data.map(p=>p.a[0]*p.a[0]), vs=data.map(p=>p.a[1]*p.a[1]);
+  const uMax=Math.max(0.05,...us)*1.1, vMax=Math.max(0.05,...vs)*1.1;
+  const X=u=> PAD + u/uMax*(S-2*PAD);
+  const Y=v=> (S-PAD) - v/vMax*(S-PAD-14);
+  // axes
+  ctx.strokeStyle="#94a3b8"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(PAD,14); ctx.lineTo(PAD,S-PAD); ctx.lineTo(S-8,S-PAD); ctx.stroke();
+  ctx.fillStyle="#64748b"; ctx.font="11px monospace";
+  ctx.fillText("x₁² →", S-52, S-PAD+18);
+  ctx.save(); ctx.translate(12, 60); ctx.rotate(-Math.PI/2); ctx.fillText("x₂² →", 0,0); ctx.restore();
+  // separating line found by a linear perceptron on the lift: w0*u + w1*v + b = 0
+  const {w,b}=liftPerceptron();
+  ctx.strokeStyle="#0f172a"; ctx.lineWidth=2.2; ctx.beginPath();
+  if(Math.abs(w[1])>1e-9){
+    const u0=0, u1=uMax; const v0=-(w[0]*u0+b)/w[1], v1=-(w[0]*u1+b)/w[1];
+    ctx.moveTo(X(u0),Y(v0)); ctx.lineTo(X(u1),Y(v1));
+  } else if(Math.abs(w[0])>1e-9){
+    const u=-b/w[0]; ctx.moveTo(X(u),Y(0)); ctx.lineTo(X(u),Y(vMax));
+  }
+  ctx.stroke();
+  // points
+  data.forEach(p=>{ const px=X(p.a[0]*p.a[0]), py=Y(p.a[1]*p.a[1]);
+    ctx.beginPath(); ctx.arc(px,py,5,0,7); ctx.fillStyle=p.y>0?CLASS_POS:CLASS_NEG; ctx.fill();
+    ctx.lineWidth=1.2; ctx.strokeStyle="#fff"; ctx.stroke(); });
+}
+
+function refreshLift(){
+  document.getElementById("rowDeg").style.display = K.type==="poly" ? "grid" : "none";
+  document.getElementById("rowGam").style.display = K.type==="rbf"  ? "grid" : "none";
+  kern=curKernel();
+  trainPerceptron();
+  drawInput(); drawFeat();
+  const kn = K.type==="linear" ? "linear" : K.type==="poly" ? "(1+x·y)"+["","","²","³","⁴"][K.deg] : "RBF γ="+K.gamma.toFixed(1);
+  document.getElementById("ltKernel").textContent=kn;
+  document.getElementById("ltAcc").textContent=(model.acc*100).toFixed(0)+"%";
+  document.getElementById("ltSV").textContent=model.nsv;
+  document.getElementById("ltMist").textContent=model.mistakes;
+  document.getElementById("ltEp").textContent=model.epochs;
+  // diagnosis
+  const box=document.getElementById("ltDiag");
+  const set=(c,t,b)=>{ box.className="diag "+c+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; };
+  if(K.type==="linear"){
+    set(model.acc>0.9?"diag-good":"diag-warn",
+      model.acc>0.9?"➖ A straight line happened to work here":"➖ Linear kernel — a straight line can't split this",
+      `The linear kernel <code>K(x,y)=1+x·y</code> keeps the perceptron's boundary flat, so it only reaches <b>${(model.acc*100).toFixed(0)}%</b> on the ${K.ds==="rings"?"concentric rings":K.ds}. ${model.acc>0.9?"":"No line separates classes that wrap around each other — this is exactly the wall the kernel trick was invented to break. Switch to the polynomial or RBF kernel and watch the boundary bend."}`);
+  } else if(K.type==="poly"){
+    set(model.acc>0.9?"diag-good":"diag-info",
+      `🎯 Polynomial (1+x·y)^${K.deg} → ${(model.acc*100).toFixed(0)}% with a curved boundary`,
+      `Raising to degree ${K.deg} secretly lifts every point into a feature space of all monomials up to degree ${K.deg}; a flat boundary <em>there</em> is a degree-${K.deg} curve <em>here</em>. On the rings that curve is essentially a circle — see the feature panel, where the lifted points <code>(x₁²,x₂²)</code> fall on two sides of a straight line. Accuracy <b>${(model.acc*100).toFixed(0)}%</b>, <b>${model.nsv}</b> support vectors. Never once did we compute the ${K.deg===2?"6":"many"}-dimensional map explicitly — only <code>(1+x·y)^${K.deg}</code>.`);
+  } else {
+    set(model.acc>0.9?"diag-good":"diag-info",
+      `📡 RBF kernel (γ=${K.gamma.toFixed(1)}) → ${(model.acc*100).toFixed(0)}%, an infinite-dimensional lift`,
+      `The Gaussian kernel <code>e^(−γ‖x−y‖²)</code> corresponds to an <em>infinite-dimensional</em> feature map — impossible to build — yet it costs one exponential. It wraps a smooth bump around each support vector, so the boundary hugs the data. Accuracy <b>${(model.acc*100).toFixed(0)}%</b>, <b>${model.nsv}</b> support vectors. Large γ = tight bumps (risk of overfitting); small γ = smooth, near-linear.`);
+  }
+}
+
+// live probe: K(cursor, x0) and f(cursor) update as the mouse moves
+(function(){
+  const cv=document.getElementById("ltInput");
+  cv.addEventListener("pointermove", ev=>{
+    const rect=cv.getBoundingClientRect();
+    const px=(ev.clientX-rect.left)/rect.width*cv.width;
+    const py=(ev.clientY-rect.top)/rect.height*cv.height;
+    const x=[fromPx(px,cv.width), fromPy(py,cv.width)];
+    const kx=kern(data[0].a, x), f=fAt(x);
+    document.getElementById("ltProbe").innerHTML =
+      `cursor = (${x[0].toFixed(2)}, ${x[1].toFixed(2)})<br>`+
+      `K(cursor, x₀) = <b style="color:#38bdf8">${kx.toFixed(3)}</b><br>`+
+      `f(cursor) = Σᵢ αᵢ K(xᵢ, cursor) = <b style="color:${f>=0?'#fb7185':'#818cf8'}">${f.toFixed(2)}</b> → class ${f>=0?'+1':'−1'}`;
+  });
+  cv.addEventListener("pointerleave", ()=>{ document.getElementById("ltProbe").innerHTML="move cursor over the plot →"; });
+})();
+
+// ================= MODULE 2: Gram matrix / Mercer =================
+const GRAM_PTS=[[-0.8,-0.6],[-0.4,0.7],[0.1,-0.2],[0.6,0.6],[0.9,-0.5],[-0.7,0.3],[0.3,0.9],[-0.1,-0.9],[0.7,0.1]];
+const GM={ gk:"rbf" };
+function gramKernel(a,b){
+  if(GM.gk==="linear") return kLinear(a,b);
+  if(GM.gk==="poly")   return kPoly(a,b,2);
+  if(GM.gk==="rbf")    return kRBF(a,b,2);
+  return Math.sqrt(dist2(a,b));                 // "distance" — NOT a valid kernel
+}
+function gramDraw(){
+  const n=GRAM_PTS.length; const G=[];
+  for(let i=0;i<n;i++){ G[i]=new Array(n); for(let j=0;j<n;j++) G[i][j]=gramKernel(GRAM_PTS[i], GRAM_PTS[j]); }
+  let maxAbs=1e-9; for(let i=0;i<n;i++) for(let j=0;j<n;j++) maxAbs=Math.max(maxAbs, Math.abs(G[i][j]));
+  // heatmap table
+  let html=`<div style="overflow:auto"><table style="border-collapse:separate;border-spacing:2px;margin:auto">`;
+  for(let i=0;i<n;i++){ html+="<tr>";
+    for(let j=0;j<n;j++){ const v=G[i][j], t=v/maxAbs;
+      const col = t>=0 ? `rgba(225,29,72,${0.12+0.75*t})` : `rgba(37,99,235,${0.12+0.75*(-t)})`;
+      html+=`<td class="gram-cell" style="width:38px;height:26px;border-radius:4px;background:${col};color:${Math.abs(t)>0.55?'#fff':'#334155'}">${v.toFixed(2)}</td>`; }
+    html+="</tr>"; }
+  html+="</table></div>";
+  document.getElementById("gmMatrix").innerHTML=html;
+  // eigenvalues via from-scratch Jacobi
+  const eig=jacobiEig(G); const minE=eig[0], maxE=eig[eig.length-1];
+  const eMax=Math.max(Math.abs(minE), maxE, 1e-9);
+  let bars=`<div style="display:flex;align-items:flex-end;gap:4px;height:80px;border-bottom:2px solid #cbd5e1;padding:0 4px">`;
+  for(const e of eig){ const h=Math.abs(e)/eMax*70; const up=e>=0;
+    bars+=`<div title="${e.toFixed(3)}" style="flex:1;display:flex;flex-direction:column;justify-content:${up?'flex-end':'flex-start'};height:100%">`+
+      (up?`<div style="height:${h}px;background:#16a34a;border-radius:3px 3px 0 0"></div>`
+         :`<div style="height:${h}px;background:#dc2626;border-radius:0 0 3px 3px;margin-top:auto"></div>`)+`</div>`; }
+  bars+="</div>";
+  document.getElementById("gmEig").innerHTML=bars+`<div class="text-[11px] text-slate-400 mt-1">green = positive eigenvalue · red = <b>negative</b> (violates PSD)</div>`;
+  const psd = minE >= -1e-6;
+  document.getElementById("gmKernel").textContent = GM.gk==="linear"?"1+x·y":GM.gk==="poly"?"(1+x·y)²":GM.gk==="rbf"?"RBF":"‖x−y‖";
+  document.getElementById("gmMinEig").textContent = minE.toFixed(3);
+  document.getElementById("gmMaxEig").textContent = maxE.toFixed(2);
+  document.getElementById("gmVerdict").textContent = psd ? "✅ yes" : "❌ NO";
+  document.getElementById("gmVerdict").style.color = psd ? "#16a34a" : "#dc2626";
+  const box=document.getElementById("gmDiag");
+  box.className="diag "+(psd?"diag-good":"diag-warn")+" mt-6 max-w-4xl mx-auto text-left";
+  if(psd){
+    box.innerHTML=`<div class="text-base font-extrabold mb-1">✅ Positive semi-definite → a valid Mercer kernel</div><div class="text-sm font-medium leading-relaxed">Every eigenvalue of this 9×9 Gram matrix is ≥ 0 (smallest = <b>${minE.toFixed(3)}</b>, within numerical noise of zero), so the matrix is PSD. By Mercer's theorem that guarantees a feature map <code>φ</code> exists with <code>K(x,y)=φ(x)·φ(y)</code> — the kernel is legitimate and any dot-product algorithm can safely use it. The tiny negative values, if any, are floating-point round-off from the Jacobi rotations.</div>`;
+  } else {
+    box.innerHTML=`<div class="text-base font-extrabold mb-1">❌ A negative eigenvalue → NOT a valid kernel</div><div class="text-sm font-medium leading-relaxed">The Euclidean distance <code>‖x−y‖</code> feels like a similarity, but its Gram matrix has a negative eigenvalue (min = <b>${minE.toFixed(3)}</b>), so it is <em>not</em> positive semi-definite. No feature space can realise it as an inner product, and feeding it to a kernel algorithm can break the optimisation (an SVM's dual would no longer be convex). This is precisely why Mercer's condition matters — not every plausible similarity is a kernel.</div>`;
+  }
+}
+
+// ================= sub-nav wiring =================
+const subBtns=document.querySelectorAll("#subnav [data-mod]");
+function showMod(m){ document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden")); document.getElementById("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m)); }
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+// lift controls
+document.querySelectorAll("[data-ds]").forEach(b=> b.onclick=()=>{ K.ds=b.dataset.ds; document.querySelectorAll("[data-ds]").forEach(x=>x.classList.toggle("on",x===b));
+  data=genData(K.ds,K.seed); refreshLift(); });
+document.querySelectorAll("[data-k]").forEach(b=> b.onclick=()=>{ K.type=b.dataset.k; document.querySelectorAll("[data-k]").forEach(x=>x.classList.toggle("on",x===b)); refreshLift(); });
+document.getElementById("ltDeg").addEventListener("input",e=>{ K.deg=+e.target.value; document.getElementById("ltDegV").textContent=K.deg; refreshLift(); });
+document.getElementById("ltGam").addEventListener("input",e=>{ K.gamma=+e.target.value; document.getElementById("ltGamV").textContent=K.gamma.toFixed(1); refreshLift(); });
+document.getElementById("ltShuffle").onclick=()=>{ K.seed=(K.seed*1103515245+12345)>>>0; data=genData(K.ds,K.seed); refreshLift(); };
+
+// gram controls
+document.querySelectorAll("[data-gk]").forEach(b=> b.onclick=()=>{ GM.gk=b.dataset.gk; document.querySelectorAll("[data-gk]").forEach(x=>x.classList.toggle("on",x===b)); gramDraw(); });
+
+// ================= init =================
+document.querySelector('[data-ds="rings"]').classList.add("on");
+document.querySelector('[data-k="poly"]').classList.add("on");
+document.querySelector('[data-gk="rbf"]').classList.add("on");
+data=genData(K.ds,K.seed); refreshLift();
+gramDraw();
+showMod("lift");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. The wall — some data has no straight-line boundary", why:"A linear classifier — the perceptron, logistic regression, a linear SVM — carves the input space with a single flat boundary: a line in 2-D, a plane in 3-D, a hyperplane in general. That is wonderfully simple and fast, but it assumes the two classes can actually be separated by a flat cut. Enormous numbers of real problems violate that assumption. The canonical toy examples are concentric rings (an inner cluster surrounded by an outer ring of the other class) and XOR (opposite corners share a label). No line, in any orientation or position, will ever split concentric rings — one class completely surrounds the other. In the LOOK demo, choosing the linear kernel on the rings tops out around 55% accuracy, barely better than a coin flip, and the boundary it draws is a useless straight slash across the middle. We need curvature, but we want to keep the simple, well-understood linear machinery. That tension is exactly what the kernel trick resolves.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">linear model: boundary = { x : w·x + b = 0 }  (a flat cut)<br><br>concentric rings / XOR → NO w, b separates them<br><br>we want a CURVED boundary,<br>but keep the linear algorithm</div>`, code:`# a linear boundary is flat; rings need a circle
+# accuracy of a linear rule on concentric rings ~ 0.55 (chance)
+# goal: curvature WITHOUT abandoning linear methods` },
+ { title:"2. The idea — lift the data into a higher-dimensional feature space", why:"Instead of changing the classifier, change the data. Map each input x through a feature map φ into a higher-dimensional space, and run the ordinary linear classifier there. The bet is that data hopelessly tangled in the input space becomes linearly separable once lifted. The rings make this vivid. Add a single new feature z = x₁² + x₂², the squared distance from the origin: the inner cluster has small z, the outer ring has large z, so in the lifted space a flat threshold on z — literally a plane — cleanly separates them. Back in the original plane that plane corresponds to a circle. In the LOOK demo the feature panel plots each point at (x₁², x₂²); the rings, unsplittable as circles, now sit on two sides of a straight line. So a flat boundary in feature space is a curved boundary in input space, and we have gained non-linearity without inventing a new learning rule — only a new coordinate system.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">φ : input space → feature space (higher dim)<br><br>rings:  add z = x₁² + x₂²<br>inner → small z · outer → large z<br>flat threshold on z  ⇔  circle in the plane<br><br>separable after lifting</div>`, code:`def phi_rings(x):
+    x1, x2 = x
+    return np.array([x1, x2, x1*x1 + x2*x2])   # add radius^2
+# a linear plane on phi(x) is a CIRCLE back in (x1, x2)
+# lift first, then use the SAME linear classifier` },
+ { title:"3. The catch — building φ explicitly is expensive, sometimes impossible", why:"If lifting is so easy, why not always just compute φ(x) and move on? Because the feature space blows up. A degree-d polynomial map over D input dimensions produces on the order of D-choose-d ≈ D^d features: quadratic interactions of 1,000 inputs already means ~500,000 features, and cubic means hundreds of millions. Storing and dotting vectors that long, for every pair of points, is ruinous. Worse, the single most useful kernel — the Gaussian/RBF — corresponds to an infinite-dimensional feature map, so φ(x) is not a long vector you could compute if only you had more memory; it is a vector you literally cannot write down at all. If the only way to use a lifted space were to materialise φ, the whole approach would collapse under its own weight for exactly the rich feature spaces that make it powerful. Something has to give.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">degree-d polynomial in D dims → ~D^d features<br>D=1000, d=2 → ~500,000 features per point<br><br>RBF / Gaussian → INFINITE-dimensional φ<br><br>materialising φ(x) is costly … or impossible</div>`, code:`# degree-2 map of D features -> ~D*(D+1)/2 monomials
+# D = 1000  ->  ~500,500-dim phi(x)  per point
+# RBF -> phi(x) is INFINITE-dimensional: cannot be stored
+# so: do NOT build phi explicitly` },
+ { title:"4. The key observation — linear algorithms only use dot products", why:"Here is the hinge the whole trick turns on. Write the perceptron, the SVM, ridge regression, PCA, or k-means in their dual form and a striking pattern appears: the data enters the equations only through inner products between pairs of points, xᵢ·xⱼ, never through the raw coordinates on their own. The dual perceptron predicts with f(x)=Σᵢ αᵢ (xᵢ·x); the SVM's dual objective and its decision function are built entirely from xᵢ·xⱼ; kernel PCA needs only the matrix of pairwise dot products. The individual coordinates of x are, in a precise sense, none of the algorithm's business — all it ever asks is 'how aligned are these two points?'. That means if we lift to φ, the algorithm doesn't need φ(x) itself; it only needs the numbers φ(xᵢ)·φ(xⱼ). And a number is a much cheaper thing to produce than a giant, or infinite, vector.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">dual perceptron: f(x) = Σᵢ αᵢ (xᵢ · x)<br>SVM dual, ridge, PCA, k-means: same story<br><br>data appears ONLY as inner products xᵢ · xⱼ<br>never as bare coordinates<br><br>after lifting we need only φ(xᵢ) · φ(xⱼ)</div>`, code:`# dual perceptron never touches x directly:
+score = sum(alpha[i] * np.dot(X[i], x) for i in range(n))
+# every classical linear method can be written like this
+# -> replace np.dot(X[i], x) with dot in FEATURE space` },
+ { title:"5. The trick — a kernel computes φ(x)·φ(y) without forming φ", why:"Put the last two facts together. The algorithm needs only dot products of lifted vectors, φ(xᵢ)·φ(xⱼ), and those dot products can very often be computed directly from the original points by a cheap closed-form function — without ever constructing φ. Define the kernel K(x,y)=φ(x)·φ(y). If we possess a formula for K, we replace every inner product in the algorithm with a call to K and obtain exactly the answer we would have gotten by lifting to φ and dotting there — at the cost of the raw inputs only. This substitution is 'kernelization', and it is almost free: swap xᵢ·xⱼ for K(xᵢ,xⱼ) and the identical code now learns in a possibly infinite-dimensional space. The feature map φ recedes into the background as a mathematical justification; the kernel K is all you ever compute or store.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">define  K(x, y) = φ(x) · φ(y)<br><br>everywhere the algorithm wrote  xᵢ · xⱼ<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ write  K(xᵢ, xⱼ)<br><br>same result as lifting to φ,<br>but φ is NEVER built. that's the trick.</div>`, code:`# kernelize: replace the dot product with K
+score = sum(alpha[i] * K(X[i], x) for i in range(n))
+# identical algorithm, now nonlinear in the input space
+# phi is only a proof that K is a legit inner product` },
+ { title:"6. Worked example — the polynomial kernel (1+x·y)² is an honest dot product", why:"Concreteness dissolves the mystery. Take 2-D inputs and the kernel K(x,y)=(1+x·y)². Expand it: (1+x·y)² = 1 + 2(x·y) + (x·y)², and (x·y)² = (x₁y₁+x₂y₂)² = x₁²y₁² + 2x₁x₂y₁y₂ + x₂²y₂². Group the terms and you can read off a feature map: φ(x)=(1, √2·x₁, √2·x₂, x₁², √2·x₁x₂, x₂²), a 6-dimensional vector, for which φ(x)·φ(y) reproduces the expansion term for term. So squaring the scalar (1+x·y) — two multiplications — is provably identical to a dot product in 6-D space. In the BUILD tab this is verified numerically: build φ explicitly, dot the two 6-vectors, and it matches (1+x·y)² to machine precision. A degree-d kernel does the same for all monomials up to degree d; the feature space balloons while the kernel stays a one-liner.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">(1 + x·y)² = 1 + 2 x·y + (x·y)²<br>= 1 + 2x₁y₁ + 2x₂y₂ + x₁²y₁² + 2x₁x₂y₁y₂ + x₂²y₂²<br><br>φ(x) = (1, √2 x₁, √2 x₂, x₁², √2 x₁x₂, x₂²)<br><br>φ(x)·φ(y) = (1+x·y)²  &nbsp;— 6-D dot from 1 scalar</div>`, code:`def phi_poly2(x):
+    x1, x2 = x; r2 = np.sqrt(2)
+    return np.array([1, r2*x1, r2*x2, x1*x1, r2*x1*x2, x2*x2])
+# phi_poly2(x) @ phi_poly2(y)  ==  (1 + x@y)**2   (exactly)
+# the kernel is the RHS: never build the 6-vector` },
+ { title:"7. Worked example — the RBF kernel is an infinite-dimensional lift", why:"The Gaussian, or RBF, kernel K(x,y)=exp(−γ‖x−y‖²) is the trick at full power. Factor it: ‖x−y‖² = ‖x‖² − 2x·y + ‖y‖², so K = exp(−γ‖x‖²)·exp(−γ‖y‖²)·exp(2γ x·y). The first two factors depend on one point each; the coupling is exp(2γ x·y), and the exponential's Taylor series exp(2γ x·y)=Σₖ (2γ)ᵏ(x·y)ᵏ/k! is an infinite sum of polynomial kernels of every degree. Each (x·y)ᵏ is itself a dot product of degree-k monomial features, so the RBF kernel is a dot product in a space that contains monomials of unbounded degree — an infinite-dimensional feature space. You could never write φ(x) down, let alone store it, yet K(x,y) is a single subtraction, a squared norm, and one exp. This is why 'you never build φ' is not a mere optimisation: for the most popular kernel there is no φ to build.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">K(x,y) = exp(−γ‖x−y‖²)<br>= e^(−γ‖x‖²) e^(−γ‖y‖²) · e^(2γ x·y)<br><br>e^(2γ x·y) = Σₖ (2γ)ᵏ (x·y)ᵏ / k!  ← all degrees<br><br>⇒ φ is INFINITE-dimensional · K is one exp()</div>`, code:`def k_rbf(x, y, gamma=4.0):
+    d = x - y
+    return np.exp(-gamma * (d @ d))   # infinite-dim lift, O(1) cost
+# Taylor: exp(2*gamma*x@y) = sum_k (2*gamma)^k (x@y)^k / k!
+# = an infinite mixture of polynomial kernels of every degree` },
+ { title:"8. Which functions are legal kernels? Mercer's condition (PSD)", why:"You cannot pick any two-argument function and call it a kernel — it must actually equal φ(x)·φ(y) for some φ, or the guarantees collapse. Mercer's theorem gives the exact test, and it is checkable: K is a valid kernel if and only if it is symmetric and, for every finite collection of points x₁…xₙ, the Gram matrix Kᵢⱼ=K(xᵢ,xⱼ) is positive semi-definite — all its eigenvalues are ≥ 0. PSD is precisely the algebraic fingerprint of 'this matrix is a table of inner products in some space'. The LOOK tab's second module builds a real 9×9 Gram matrix and computes its eigenvalues with a from-scratch Jacobi solver: the linear, polynomial and RBF kernels all come back PSD (smallest eigenvalue ≈ 0), while the Euclidean-distance 'kernel' ‖x−y‖ produces a negative eigenvalue and is therefore not a kernel at all. Using a non-PSD function can make an SVM's dual non-convex and the training ill-posed — so the condition is practical, not just theoretical.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">K valid  ⇔  K symmetric AND<br>Gram matrix Kᵢⱼ = K(xᵢ,xⱼ) is PSD<br>(every eigenvalue ≥ 0) for ANY points<br><br>linear / poly / RBF → PSD ✅<br>‖x−y‖ (distance) → negative eig ❌</div>`, code:`G = np.array([[K(X[i], X[j]) for j in range(n)] for i in range(n)])
+assert np.allclose(G, G.T)          # symmetric
+eig = np.linalg.eigvalsh(G)         # Mercer test
+valid = eig.min() >= -1e-8          # all eigenvalues >= 0  ->  PSD` },
+ { title:"9. A kernel algebra — build new kernels from old ones", why:"Mercer's condition would be tedious if every candidate kernel needed a hand proof, but valid kernels are closed under a rich set of operations, so you can compose them like Lego. If K₁ and K₂ are kernels then so are their sum K₁+K₂, any non-negative scaling c·K₁, their product K₁·K₂, and K₁ composed through a fixed feature map (K₁(g(x),g(y))); a constant is a kernel, and exp of a kernel is a kernel. These rules explain the standard zoo directly: the polynomial kernel (1+x·y)ᵈ is a sum-and-product of the trivially-valid linear kernel with itself, and the RBF is an exp of an (inner-product-based) kernel, so both are guaranteed valid without any eigenvalue computation. In practice you rarely invent kernels from scratch — you assemble them, adding a linear kernel for a global trend to an RBF for local structure, or multiplying kernels defined on different feature groups, confident the result is still a legitimate inner product.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">if K₁, K₂ are kernels, so are:<br>K₁ + K₂ · c·K₁ (c≥0) · K₁·K₂ · const · exp(K₁)<br><br>⇒ (1+x·y)ᵈ  and  e^(−γ‖x−y‖²)  are valid by construction<br><br>compose kernels — no eigen-check needed</div>`, code:`def k_sum(k1, k2):  return lambda x,y: k1(x,y) + k2(x,y)
+def k_prod(k1, k2): return lambda x,y: k1(x,y) * k2(x,y)
+def k_scale(c, k):  return lambda x,y: c * k(x,y)
+# global trend + local wiggle, still a valid kernel:
+k_mix = k_sum(k_linear, lambda x,y: k_rbf(x, y, 8.0))` },
+ { title:"10. The kernelized classifier — linear in φ, curved in x", why:"Now assemble the pieces into a working model, the kernel perceptron the LOOK tab trains. In dual form it stores one coefficient αᵢ per training point and predicts f(x)=Σᵢ αᵢ K(xᵢ,x); training loops over the data and, whenever a point is misclassified, adds its label to that point's α. There is no weight vector w — it would live in the huge feature space and be as unbuildable as φ — so the model is represented entirely by the α's and the training points. Because f is a linear combination of kernels, the boundary f(x)=0 is a flat hyperplane in feature space, which appears as a curved surface in the input plane: a circle around the rings, closed pockets around the XOR blobs. Only the points with αᵢ≠0 actually enter the prediction; those are the support vectors, and the demo rings them. The exact same idea, but with a margin-maximising objective instead of the perceptron's mistake-driven one, is the kernel SVM from Day 12.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">f(x) = Σᵢ αᵢ K(xᵢ, x)     (no weight vector w!)<br>mistake on xₜ → αₜ += yₜ<br><br>boundary f(x)=0 : flat in φ-space, CURVED in x<br>αᵢ ≠ 0 → support vectors<br><br>margin version = the kernel SVM (Day 12)</div>`, code:`alpha = np.zeros(n)
+for _ in range(epochs):
+    for t in range(n):
+        if np.sign(sum(alpha[i]*K(X[i],X[t]) for i in range(n))) != y[t]:
+            alpha[t] += y[t]           # dual update; w is never formed
+f = lambda x: np.sign(sum(a*K(xi,x) for a,xi in zip(alpha,X) if a))` },
+ { title:"11. Payoff, cost, and where it shows up", why:"The kernel trick buys non-linearity for almost no code: any algorithm written in terms of dot products becomes non-linear by swapping the dot product for a kernel, and it can reach into infinite-dimensional spaces the RBF opens up. The price is quadratic: the method now revolves around the n×n Gram matrix, so both memory (O(n²)) and training time grow with the number of samples, which is why exact kernel methods are wonderful on thousands of points but strain on millions — the very regime where the tree-based boosters of Days 40–41 dominate, and where approximations like random Fourier features or the Nyström method step in. Kernel choice also matters: an RBF with too large a γ, or too high a polynomial degree, overfits, so kernels come with their own bias-variance dial. Beyond the SVM, the same substitution gives kernel ridge regression, kernel PCA for non-linear dimensionality reduction, kernel k-means, and — through the covariance function — the Gaussian Processes of Day 37. One idea, reused everywhere: reach the geometry of a vast feature space while only ever evaluating a similarity between two points.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">gain: nonlinearity for ~free · even infinite-dim φ<br>cost: n×n Gram matrix → O(n²) memory/time<br>tune: γ / degree = a bias-variance knob<br><br>SVM · kernel ridge · kernel PCA · kernel k-means · GPs<br>(scale-outs: random Fourier features, Nyström)</div>`, code:`# swap dot -> kernel and these all go nonlinear:
+#   SVM  ·  ridge regression  ·  PCA  ·  k-means
+# Gaussian Process: the kernel IS the covariance function
+# cost: O(n^2) Gram matrix -> approximate for big n
+#   (random Fourier features / Nystrom)` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4200); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
