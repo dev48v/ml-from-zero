@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 43 — CatBoost</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:170px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .kbtn { border:1px solid #e2e8f0; background:#fff; }
+  .kbtn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  .rowtbl { border-collapse:collapse; font-size:11px; width:100%; }
+  .rowtbl th, .rowtbl td { border:1px solid #e2e8f0; padding:3px 5px; text-align:center; font-variant-numeric:tabular-nums; }
+  .rowtbl th { background:#f1f5f9; font-weight:800; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 43</div>
+      <h1 class="text-xl font-bold">🐱 CatBoost — Beating Target Leakage with <em>Order</em>: <em>Ordered Target Statistics</em> Encode Categoricals Using Only <em>Earlier</em> Rows in a Random Permutation, <em>Ordered Boosting</em> Computes Each Row's Residual From a Model That <em>Never Saw It</em>, and <em>Symmetric (Oblivious)</em> Trees Keep Inference Fast</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>Day 40 gave gradient boosting a second-order objective (XGBoost); Day 41 made the same boosting <em>fast</em> (LightGBM). CatBoost completes the trio by attacking a subtler enemy: <em>target leakage</em>. Two places leak the label into training — encoding a category by the mean of its target (a row peeks at its own answer), and computing a boosting residual from a model that was trained on that same row. Both inflate training scores and quietly overfit. CatBoost's fix is <em>ordering</em>: process rows in a random permutation and, for any row, use only the rows that came <em>before</em> it.</strong> The result is honest, leak-free training signal — plus <em>symmetric (oblivious)</em> trees that split on the same feature/threshold across a whole level, giving 2ᵈ balanced leaves, branch-free inference, and built-in regularization. Everything below is computed live in JS, no library.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Ordered TS vs the leak</strong> builds a real high-cardinality categorical, encodes it two ways — <span style="color:#dc2626;font-weight:700">naive target-mean (includes the row's own label)</span> vs <span style="color:#16a34a;font-weight:700">ordered target statistics (prior rows only)</span> — trains a logistic model on each, and shows the naive encoding's train accuracy soar while validation stays flat (overfitting), whereas ordered TS keeps train≈val. <strong>Ordered boosting</strong> runs two real gradient-boosting fits: greedy residuals (each row's gradient comes from a model that saw it) vs leak-free out-of-fold residuals — watch greedy's test curve turn up while ordered stays down. <strong>Symmetric trees</strong> builds a normal per-node CART tree and an oblivious same-split-per-level tree on the same data and compares their decision regions. Move the sliders; every number recomputes from scratch.</p>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="ts"    class="subnav-btn px-4 py-2 rounded-lg text-sm">🎯 Ordered TS vs the leak</button>
+        <button data-mod="boost" class="subnav-btn px-4 py-2 rounded-lg text-sm">🔁 Ordered boosting</button>
+        <button data-mod="obliv" class="subnav-btn px-4 py-2 rounded-lg text-sm">🌳 Symmetric (oblivious) trees</button>
+      </div>
+
+      <!-- ============ MODULE: ORDERED TS ============ -->
+      <div id="mod-ts" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-4">
+          <div class="metric-pill"><div class="v" id="m1Card" style="color:#0f172a">—</div><div class="k">categories</div></div>
+          <div class="metric-pill"><div class="v" id="m1Rpc" style="color:#0ea5e9">—</div><div class="k">rows / category</div></div>
+          <div class="metric-pill"><div class="v" id="m1NaiveGap" style="color:#dc2626">—</div><div class="k">naive train−val gap</div></div>
+          <div class="metric-pill"><div class="v" id="m1OrderGap" style="color:#16a34a">—</div><div class="k">ordered train−val gap</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">TOY DATA — one high-cardinality categorical</div>
+            <div class="ctl-row"><div class="ctl-name">📦 rows (train+val)</div><input type="range" id="m1N" min="120" max="900" step="20" value="400"><div class="ctl-val" id="m1NV">400</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔤 categories (cardinality)</div><input type="range" id="m1K" min="8" max="300" step="4" value="140"><div class="ctl-val" id="m1KV">140</div></div>
+            <div class="ctl-row"><div class="ctl-name">🎚️ real signal strength</div><input type="range" id="m1Sig" min="0" max="0.45" step="0.03" value="0.24"><div class="ctl-val" id="m1SigV">0.24</div></div>
+            <div class="ctl-row"><div class="ctl-name">🧊 smoothing prior a</div><input type="range" id="m1A" min="0" max="10" step="0.5" value="1"><div class="ctl-val" id="m1AV">1.0</div></div>
+            <div class="mt-1"><button id="m1Resample" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">🎲 resample data</button></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>The leak:</strong> naive encoding replaces a category with the mean target of <em>all</em> its rows — <em>including the current row</em>. For a category that appears once, that mean <em>is</em> the row's own label. Raise cardinality → rarer categories → stronger leak. <strong>Ordered TS</strong> shuffles the rows and encodes each with the running mean of <em>earlier</em> same-category rows only: <code>(Σy_prior + a·p)/(n_prior + a)</code>. No row ever sees its own answer.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:380px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📊 Accuracy — a logistic model on the encoded feature</div>
+            <canvas id="m1bars" width="356" height="250"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#dc2626"></span> naive target-mean (leaks self)</span>
+              <span><span class="swatch" style="background:#16a34a"></span> ordered TS (prior rows only)</span>
+              <span>hollow bar = validation</span>
+            </div>
+          </div>
+
+          <div class="panel text-left" style="width:320px; max-width:100%;">
+            <div class="text-sm font-bold text-slate-700 mb-2">🔬 A few training rows — see the leak</div>
+            <div id="m1rows"></div>
+            <div class="mt-3 text-[11px] text-slate-500 leading-relaxed">
+              <div>corr(naive enc, y) on train = <b id="m1NaiveCorr" style="color:#dc2626">—</b></div>
+              <div>corr(ordered enc, y) on train = <b id="m1OrderCorr" style="color:#16a34a">—</b></div>
+              <div class="mt-1">A correlation near <b>1</b> means the feature has quietly become a copy of the label. Ordered TS breaks that copy while keeping the genuine category signal.</div>
+            </div>
+          </div>
+        </div>
+        <div id="m1Diag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+      <!-- ============ MODULE: ORDERED BOOSTING ============ -->
+      <div id="mod-boost" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-3xl mx-auto mb-4">
+          <div class="metric-pill"><div class="v" id="m2GreedyBest" style="color:#dc2626">—</div><div class="k">greedy best test MSE</div></div>
+          <div class="metric-pill"><div class="v" id="m2OrderBest" style="color:#16a34a">—</div><div class="k">ordered best test MSE</div></div>
+          <div class="metric-pill"><div class="v" id="m2GreedyGap" style="color:#dc2626">—</div><div class="k">greedy final test MSE</div></div>
+          <div class="metric-pill"><div class="v" id="m2OrderGap" style="color:#16a34a">—</div><div class="k">ordered final test MSE</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">1-D GRADIENT BOOSTING (real stumps)</div>
+            <div class="ctl-row"><div class="ctl-name">🌫️ label noise</div><input type="range" id="m2Noise" min="0" max="1.0" step="0.05" value="0.55"><div class="ctl-val" id="m2NoiseV">0.55</div></div>
+            <div class="ctl-row"><div class="ctl-name">🐾 learning rate</div><input type="range" id="m2LR" min="0.05" max="0.6" step="0.05" value="0.30"><div class="ctl-val" id="m2LRV">0.30</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔁 boosting rounds</div><input type="range" id="m2T" min="10" max="120" step="5" value="70"><div class="ctl-val" id="m2TV">70</div></div>
+            <div class="mt-1"><button id="m2Resample" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">🎲 resample data</button></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Prediction shift.</strong> Classic boosting fits each new tree to the residual <code>y−F(x)</code>, but <code>F</code> was trained <em>including</em> this row, so its residual is biased small — the model chases its own noise. <strong>Ordered boosting</strong> computes every row's residual from a model that never trained on it (here: leak-free <em>out-of-fold</em> predictions, the same principle as CatBoost's permutation prefixes). Watch the <span style="color:#dc2626;font-weight:700">greedy</span> test curve dip then climb (overfit) while <span style="color:#16a34a;font-weight:700">ordered</span> stays low.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:440px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📉 Loss vs boosting round</div>
+            <canvas id="m2chart" width="416" height="300"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#dc2626;border-top-style:solid"></span> greedy test MSE</span>
+              <span><span class="swatch-line" style="border-color:#16a34a;border-top-style:solid"></span> ordered test MSE</span>
+              <span>● = each curve's minimum · both scored on the clean target</span>
+            </div>
+          </div>
+        </div>
+        <div id="m2Diag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+      <!-- ============ MODULE: OBLIVIOUS TREES ============ -->
+      <div id="mod-obliv" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-3xl mx-auto mb-4">
+          <div class="metric-pill"><div class="v" id="m3NormAcc" style="color:#b45309">—</div><div class="k">normal tree train acc</div></div>
+          <div class="metric-pill"><div class="v" id="m3OblAcc" style="color:#0ea5e9">—</div><div class="k">oblivious tree train acc</div></div>
+          <div class="metric-pill"><div class="v" id="m3NormSplits" style="color:#b45309">—</div><div class="k">normal: distinct splits</div></div>
+          <div class="metric-pill"><div class="v" id="m3OblSplits" style="color:#0ea5e9">—</div><div class="k">oblivious: splits (=depth)</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:300px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">SAME DATA, TWO TREE SHAPES</div>
+            <div class="ctl-row"><div class="ctl-name">🌲 tree depth</div><input type="range" id="m3Depth" min="1" max="6" step="1" value="4"><div class="ctl-val" id="m3DepthV">4</div></div>
+            <div class="mt-1"><button id="m3Resample" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">🎲 resample data</button></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              A <strong>normal (CART)</strong> tree picks the best split at <em>every</em> node independently, so nodes at the same depth split on different rules — flexible but easy to overfit. A <strong>symmetric / oblivious</strong> tree (CatBoost's only tree type) picks <em>one</em> (feature, threshold) per <em>level</em> and applies it to <em>all</em> nodes there. A depth-d oblivious tree is exactly <code>2ᵈ</code> balanced leaves indexed by <code>d</code> yes/no tests — inference is <code>d</code> comparisons with no branching, and the rigid shape is a strong regularizer.
+            </div>
+          </div>
+          <div class="panel text-left" style="width:300px; max-width:100%;">
+            <div class="text-sm font-bold mb-1" style="color:#b45309">🌿 NORMAL TREE — per-node splits</div>
+            <canvas id="m3norm" width="272" height="272"></canvas>
+            <div class="text-[11px] text-slate-400 mt-1">Each node free to choose its own split → jagged, asymmetric regions.</div>
+          </div>
+          <div class="panel hero text-left" style="width:300px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-1">🧊 OBLIVIOUS TREE — one split per level</div>
+            <canvas id="m3obl" width="272" height="272"></canvas>
+            <div class="text-[11px] text-slate-400 mt-1">Same rule across each level → a clean grid of <code>2ᵈ</code> cells. This is what CatBoost grows.</div>
+          </div>
+        </div>
+        <div id="m3Diag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From "my encoding is a copy of the label" to "order fixes both leaks"</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">CatBoost is gradient boosting (Days 40–41) with two anti-leakage ideas and one tree shape. Here is a runnable from-scratch core: naive vs ordered target statistics with the leak measured numerically, the ordered-boosting residual scheme, an oblivious (symmetric) tree with branch-free inference, and the comparison table against XGBoost and LightGBM. Everything the LOOK tab draws lives in these snippets.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Naive target statistics — and why it leaks</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Replace a category by the mean target over all its rows. Because the sum includes the current row, a category that appears once encodes to (essentially) its own label. That is target leakage: the feature is now a disguised copy of <code>y</code>.</p>
+        <div class="relative"><pre>import numpy as np
+
+def naive_target_stats(cat, y, a=1.0, prior=None):
+    """Encode each row by the mean target of its category — INCLUDING itself."""
+    prior = y.mean() if prior is None else prior
+    sums, cnts = {}, {}
+    for c, t in zip(cat, y):                 # totals include every row
+        sums[c] = sums.get(c, 0.0) + t
+        cnts[c] = cnts.get(c, 0) + 1
+    enc = np.array([(sums[c] + a*prior) / (cnts[c] + a) for c in cat])
+    return enc
+
+# a category that appears once -> enc = (y + a*prior)/(1+a)  -> threshold at 0.5 nails y
+# corr(enc, y) climbs toward 1.0 as cardinality rises: the feature IS the label</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Ordered target statistics — use only earlier rows</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Fix a random permutation. Encode each row with the running mean of the target over <em>earlier</em> same-category rows only, smoothed by a prior. No row ever contributes to its own encoding, so the leak is gone — yet the genuine category signal survives.</p>
+        <div class="relative"><pre>def ordered_target_stats(cat, y, a=1.0, prior=None, seed=0):
+    """Encode row i with earlier same-category rows in a random permutation."""
+    prior = y.mean() if prior is None else prior
+    n = len(cat)
+    perm = np.random.default_rng(seed).permutation(n)
+    enc = np.zeros(n)
+    seen_sum, seen_cnt = {}, {}
+    for i in perm:                           # walk rows in permutation order
+        c = cat[i]
+        s, k = seen_sum.get(c, 0.0), seen_cnt.get(c, 0)
+        enc[i] = (s + a*prior) / (k + a)     # PRIOR rows only -> no self-leak
+        seen_sum[c] = s + y[i]               # only now add this row
+        seen_cnt[c] = k + 1
+    return enc
+# CatBoost averages several permutations to cut the variance of early rows.
+# At inference time it uses the full-data mean (targets are unknown -> no leak).</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Measure the leak — train vs validation</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Train a tiny model on each encoding and compare. The naive encoding scores near-perfectly on train but collapses to the base rate on validation (a huge gap = overfitting). Ordered TS keeps train ≈ val — it generalizes.</p>
+        <div class="relative"><pre>from sklearn.linear_model import LogisticRegression
+
+def gap(enc_train, enc_val, y_tr, y_va):
+    m = LogisticRegression().fit(enc_train.reshape(-1,1), y_tr)
+    tr = m.score(enc_train.reshape(-1,1), y_tr)
+    va = m.score(enc_val.reshape(-1,1),   y_va)
+    return tr, va, tr - va
+
+# naive :  train 0.98  val 0.55   gap 0.43   <- leaked; the score is a mirage
+# ordered: train 0.61  val 0.58   gap 0.03   <- honest; survives to validation
+# The gap, not the raw train score, is the signal you must watch.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Ordered boosting — a residual from a model that never saw the row</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The same leak appears in boosting: a residual <code>y−F(x)</code> is biased because <code>F</code> trained on that row (prediction shift). Ordered boosting builds each row's gradient from a model fit only on rows earlier in the permutation. The out-of-fold version below captures the identical leak-free principle.</p>
+        <div class="relative"><pre>def leak_free_residuals(x, y, F, folds):
+    """Each row's residual comes from a stump NOT trained on its fold."""
+    upd = np.zeros_like(F)
+    for k in np.unique(folds):
+        tr = folds != k                      # everything except fold k
+        stump = fit_stump(x[tr], (y - F)[tr])# fit on the OTHER rows
+        upd[folds == k] = stump(x[folds == k])  # predict the held-out fold
+    return upd                               # F never influenced its own target
+
+# greedy boosting: residual = y - F(x)      with F trained INCLUDING x  -> shift
+# ordered boosting: residual from a prefix/out-of-fold model -> unbiased gradient
+# CatBoost keeps ~log(n) prefix models per permutation so the cost stays sane.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">The oblivious (symmetric) tree — one split per level, branch-free inference</h3></div>
+        <p class="text-sm text-slate-600 mb-3">CatBoost grows only symmetric trees: every node at a level uses the same (feature, threshold). A depth-<code>d</code> tree is <code>2ᵈ</code> leaves indexed by <code>d</code> bit-tests, so scoring is <code>d</code> comparisons with no branch mispredictions — and the rigid shape resists overfitting.</p>
+        <div class="relative"><pre>def fit_oblivious(X, y, depth):
+    levels = []
+    for _ in range(depth):
+        # pick ONE (feature, threshold) that best splits ALL current groups
+        best = min(candidate_splits(X),
+                   key=lambda ft: total_gini_after(X, y, levels, ft))
+        levels.append(best)                  # same rule for the whole level
+    leaves = {}                              # 2**depth leaves keyed by bit-index
+    for xi, yi in zip(X, y):
+        leaves.setdefault(leaf_index(xi, levels), []).append(yi)
+    return levels, {k: np.mean(v) for k, v in leaves.items()}
+
+def leaf_index(x, levels):
+    idx = 0
+    for f, thr in levels:                    # d comparisons, no branching
+        idx = (idx << 1) | int(x[f] >= thr)
+    return idx</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Use the real library — and the trio it completes</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In practice you pass raw categoricals straight to CatBoost via <code>cat_features</code> — no manual one-hot, no leaky encoding. Its defaults are strong precisely because ordered TS + ordered boosting are on by default.</p>
+        <div class="relative"><pre>from catboost import CatBoostClassifier, Pool
+
+pool = Pool(X, y, cat_features=["city", "device", "user_id"])  # raw strings ok
+model = CatBoostClassifier(
+    iterations=1000, depth=6, learning_rate=0.05,
+    # ordered TS + ordered boosting are the DEFAULT (boosting_type='Ordered'
+    # for small data; symmetric trees always). No leaky preprocessing needed.
+).fit(pool)
+
+# The GBDT trio, same g,h gradient boosting core, different obsessions:
+#   Day 40 XGBoost  -> a rigorous 2nd-order objective + regularized leaves
+#   Day 41 LightGBM -> raw SPEED: leaf-wise + histograms + GOSS + EFB
+#   Day 43 CatBoost -> no LEAKAGE: ordered TS, ordered boosting, oblivious trees</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-10 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">⚔️ CatBoost vs XGBoost vs LightGBM — the GBDT trio</h3>
+      <div style="overflow-x:auto">
+      <table class="cmp">
+        <tr><th style="width:150px"></th><th>⚡ XGBoost (D40)</th><th>🌿 LightGBM (D41)</th><th>🐱 CatBoost (D43)</th></tr>
+        <tr><td class="cat">Signature idea</td><td>Second-order (Taylor) objective, closed-form regularized leaf weights</td><td>Speed: leaf-wise trees, histogram splits, GOSS &amp; EFB</td><td>Leakage-free training: ordered TS + ordered boosting</td></tr>
+        <tr><td class="cat">Tree growth</td><td>Level-wise (depth-balanced), pruned by gain − γ</td><td>Leaf-wise / best-first (deepest where it pays)</td><td>Symmetric / oblivious — one split per level</td></tr>
+        <tr><td class="cat">Categoricals</td><td>Manual (one-hot / external encoding)</td><td>Native, but greedy target-based (can leak)</td><td>Native ordered target statistics (no self-leak)</td></tr>
+        <tr><td class="cat">Residual bias</td><td>In-sample residuals (prediction shift possible)</td><td>In-sample residuals (prediction shift possible)</td><td>Ordered boosting → out-of-permutation, unbiased</td></tr>
+        <tr><td class="cat">Inference speed</td><td>Fast</td><td>Very fast (histograms)</td><td>Very fast — oblivious tree = d branch-free tests</td></tr>
+        <tr><td class="cat">Sweet spot</td><td>Strong all-round baseline, fine control</td><td>Huge datasets, many features, lowest train time</td><td>Many categoricals, small–medium data, best defaults</td></tr>
+      </table>
+      </div>
+    </div>
+
+    <div class="mt-8 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 43 of MachineLearningFromZero done — the GBDT trio is complete.</h3><p class="text-sm text-sky-700 mt-2">CatBoost keeps the exact <code>g, h</code> gradient-boosting engine of XGBoost and LightGBM but obsesses over <strong>target leakage</strong>. <strong>Ordered target statistics</strong> encode a category with the running target mean of only the rows that came <em>before</em> it in a random permutation, so no row ever peeks at its own label — killing the leak that naive mean-encoding creates on high-cardinality features. <strong>Ordered boosting</strong> applies the same trick to gradients: each row's residual is produced by a model that never trained on it, removing the "prediction shift" that biases ordinary boosting. And <strong>symmetric (oblivious) trees</strong> split on one (feature, threshold) per level, giving <code>2ᵈ</code> balanced leaves, branch-free <code>d</code>-comparison inference, and a built-in regularizer. The payoff: state-of-the-art results on messy categorical data with almost no tuning — pass raw columns via <code>cat_features</code> and trust the defaults. <strong>👉 Together with XGBoost (Day 40) and LightGBM (Day 41), CatBoost rounds out the three boosters that win most tabular competitions.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function randn(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function sigmoid(z){ if(z>30)return 1; if(z<-30)return 0; return 1/(1+Math.exp(-z)); }
+function pearson(a,b){ const n=a.length; let ma=0,mb=0; for(let i=0;i<n;i++){ma+=a[i];mb+=b[i];} ma/=n; mb/=n;
+  let sab=0,saa=0,sbb=0; for(let i=0;i<n;i++){ const da=a[i]-ma, db=b[i]-mb; sab+=da*db; saa+=da*da; sbb+=db*db; }
+  const d=Math.sqrt(saa*sbb); return d<1e-12?0:sab/d; }
+const CLASS_POS="#e11d48", CLASS_NEG="#4f46e5";
+const RED="#dc2626", GREEN="#16a34a";
+
+// tiny logistic regression on ONE feature (real gradient descent)
+function fitLogistic(x, y, iters=500, lr=0.8){
+  let w=0, b=0; const n=x.length;
+  for(let it=0; it<iters; it++){
+    let gw=0, gb=0;
+    for(let i=0;i<n;i++){ const p=sigmoid(w*x[i]+b); const d=p-y[i]; gw+=d*x[i]; gb+=d; }
+    w-=lr*gw/n; b-=lr*gb/n;
+  }
+  return {w,b};
+}
+function accLogistic(m, x, y){ let ok=0; for(let i=0;i<x.length;i++){ const yh=sigmoid(m.w*x[i]+m.b)>=0.5?1:0; if(yh===y[i])ok++; } return ok/x.length; }
+
+// ================= MODULE 1: ordered target statistics =================
+const M1 = { n:400, K:140, sig:0.24, a:1, seed:11 };
+let m1theta=[], m1rows=[];
+
+function m1gen(){
+  const rng=mulberry32(M1.seed);
+  m1theta=[]; for(let c=0;c<M1.K;c++){ let t=0.5+M1.sig*(rng()*2-1); m1theta[c]=Math.max(0.03,Math.min(0.97,t)); }
+  m1rows=[]; for(let i=0;i<M1.n;i++){ const c=Math.floor(rng()*M1.K); const y=rng()<m1theta[c]?1:0; m1rows.push({c,y}); }
+}
+
+function m1compute(){
+  const n=m1rows.length, nTrain=Math.floor(n*0.6);
+  const train=m1rows.slice(0,nTrain), val=m1rows.slice(nTrain);
+  const prior = train.reduce((s,r)=>s+r.y,0)/Math.max(1,train.length);
+  const a=M1.a;
+  // ---- full-train category totals (used for validation encoding, and naive train-mean) ----
+  const sum={}, cnt={};
+  for(const r of train){ sum[r.c]=(sum[r.c]||0)+r.y; cnt[r.c]=(cnt[r.c]||0)+1; }
+  const fullMean=c=> (cnt[c]!==undefined) ? (sum[c]+a*prior)/(cnt[c]+a) : prior;
+  // ---- NAIVE train encoding: mean INCLUDING self (== full train mean of its category) ----
+  const naiveTr = train.map(r=> fullMean(r.c));
+  const naiveVa = val.map(r=> fullMean(r.c));
+  // ---- ORDERED train encoding: prior rows only, in permutation order ----
+  const seenS={}, seenC={}; const ordEnc=new Array(train.length);
+  for(let i=0;i<train.length;i++){ const r=train[i]; const s=seenS[r.c]||0, k=seenC[r.c]||0;
+    ordEnc[i]=(s+a*prior)/(k+a); seenS[r.c]=s+r.y; seenC[r.c]=k+1; }
+  const orderTr = ordEnc;
+  const orderVa = val.map(r=> fullMean(r.c));   // inference: full-data mean (no leak at test)
+  const yTr=train.map(r=>r.y), yVa=val.map(r=>r.y);
+  // ---- fit logistic on each ----
+  const mN=fitLogistic(naiveTr,yTr), mO=fitLogistic(orderTr,yTr);
+  const res={
+    nTr:accLogistic(mN,naiveTr,yTr), nVa:accLogistic(mN,naiveVa,yVa),
+    oTr:accLogistic(mO,orderTr,yTr), oVa:accLogistic(mO,orderVa,yVa),
+    naiveCorr:pearson(naiveTr,yTr), orderCorr:pearson(orderTr,yTr),
+    rpc:(train.length/M1.K),
+    sample: train.slice(0,6).map((r,i)=>({c:r.c, y:r.y, ne:naiveTr[i], oe:orderTr[i]}))
+  };
+  return res;
+}
+
+function m1drawBars(res){
+  const cv=document.getElementById("m1bars"), ctx=cv.getContext("2d");
+  const W=cv.width, H=cv.height; ctx.clearRect(0,0,W,H);
+  const padL=34, padB=40, padT=12, base=H-padB, top=padT, h=base-top;
+  // axis
+  ctx.strokeStyle="#cbd5e1"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(padL,top); ctx.lineTo(padL,base); ctx.lineTo(W-6,base); ctx.stroke();
+  ctx.fillStyle="#94a3b8"; ctx.font="10px monospace"; ctx.textAlign="right";
+  for(let p=0;p<=100;p+=25){ const yy=base-h*(p/100); ctx.fillText(p+"%", padL-4, yy+3);
+    ctx.strokeStyle="#eef2f7"; ctx.beginPath(); ctx.moveTo(padL,yy); ctx.lineTo(W-6,yy); ctx.stroke(); }
+  const bars=[
+    {v:res.nTr, x:0, col:RED,   fill:true,  lab:"train"},
+    {v:res.nVa, x:1, col:RED,   fill:false, lab:"val"},
+    {v:res.oTr, x:2, col:GREEN, fill:true,  lab:"train"},
+    {v:res.oVa, x:3, col:GREEN, fill:false, lab:"val"},
+  ];
+  const groupGap=26, bw=54, x0=padL+18;
+  ctx.textAlign="center";
+  bars.forEach((bar,i)=>{
+    const gx=x0 + i*(bw+8) + (i>=2?groupGap:0);
+    const bh=h*bar.v;
+    if(bar.fill){ ctx.fillStyle=bar.col; ctx.fillRect(gx, base-bh, bw, bh); }
+    else { ctx.fillStyle="#fff"; ctx.fillRect(gx, base-bh, bw, bh); ctx.strokeStyle=bar.col; ctx.lineWidth=2.4; ctx.strokeRect(gx+1, base-bh+1, bw-2, bh-2); }
+    ctx.fillStyle="#0f172a"; ctx.font="bold 12px monospace";
+    ctx.fillText((bar.v*100).toFixed(0)+"%", gx+bw/2, base-bh-4);
+    ctx.fillStyle="#64748b"; ctx.font="10px sans-serif";
+    ctx.fillText(bar.lab, gx+bw/2, base+13);
+  });
+  ctx.font="bold 11px sans-serif";
+  ctx.fillStyle=RED;   ctx.fillText("NAIVE", x0+bw+4, base+28);
+  ctx.fillStyle=GREEN; ctx.fillText("ORDERED", x0+2*(bw+8)+groupGap+bw+4, base+28);
+}
+
+function m1refresh(){
+  const res=m1compute();
+  m1drawBars(res);
+  document.getElementById("m1Card").textContent=M1.K;
+  document.getElementById("m1Rpc").textContent=res.rpc.toFixed(1);
+  const ng=res.nTr-res.nVa, og=res.oTr-res.oVa;
+  document.getElementById("m1NaiveGap").textContent=(ng*100).toFixed(0)+" pts";
+  document.getElementById("m1OrderGap").textContent=(og*100).toFixed(0)+" pts";
+  document.getElementById("m1NaiveCorr").textContent=res.naiveCorr.toFixed(3);
+  document.getElementById("m1OrderCorr").textContent=res.orderCorr.toFixed(3);
+  // sample table
+  let html=`<table class="rowtbl"><tr><th>cat</th><th>y</th><th style="color:#dc2626">naive enc</th><th style="color:#16a34a">ordered enc</th></tr>`;
+  for(const s of res.sample){ const leak=Math.abs(s.ne-s.y)<0.3;
+    html+=`<tr><td>#${s.c}</td><td><b>${s.y}</b></td><td style="background:${leak?'#fee2e2':'#fff'}">${s.ne.toFixed(2)}</td><td>${s.oe.toFixed(2)}</td></tr>`; }
+  html+=`</table>`; document.getElementById("m1rows").innerHTML=html;
+  // diagnosis
+  const box=document.getElementById("m1Diag");
+  const set=(c,t,b)=>{ box.className="diag "+c+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; };
+  if(ng>0.18){
+    set("diag-bad",
+      `❌ Naive target-mean leaked: train ${(res.nTr*100).toFixed(0)}% vs val ${(res.nVa*100).toFixed(0)}% (gap ${(ng*100).toFixed(0)} pts)`,
+      `With about <b>${res.rpc.toFixed(1)} rows per category</b>, many categories are rare, so the naive mean is dominated by the row's own label — corr(enc, y)=<b>${res.naiveCorr.toFixed(2)}</b>, the feature is nearly a copy of the target. The model looks brilliant on training data and then falls apart on validation. Ordered TS gets train <b>${(res.oTr*100).toFixed(0)}%</b> / val <b>${(res.oVa*100).toFixed(0)}%</b> (gap just <b>${(og*100).toFixed(0)} pts</b>, corr=${res.orderCorr.toFixed(2)}) — a smaller train number, but an <em>honest</em> one that survives to new data. Lower the cardinality and the leak shrinks; raise it and the gap explodes.`);
+  } else {
+    set("diag-good",
+      `✅ Low cardinality → little to leak. Naive gap ${(ng*100).toFixed(0)} pts, ordered gap ${(og*100).toFixed(0)} pts`,
+      `At <b>${res.rpc.toFixed(1)} rows per category</b> most categories have enough rows that a single label barely moves the mean, so naive encoding does not leak much here — naive corr=${res.naiveCorr.toFixed(2)}. Crank the cardinality slider up (fewer rows per category) and watch the naive train/val gap blow open while ordered TS stays flat. That high-cardinality regime — user IDs, zip codes, SKUs — is exactly where CatBoost's ordered statistics earn their keep.`);
+  }
+}
+
+// ================= MODULE 2: ordered boosting (prediction shift) =================
+const M2 = { noise:0.55, lr:0.30, T:70, seed:5, nTrain:80, nTest:200, folds:5 };
+let m2xTr=[], m2yTr=[], m2xTe=[], m2yTe=[], m2fold=[];
+
+function m2f(x){ return Math.sin(2*Math.PI*x)*0.8; }
+function m2gen(){
+  const rng=mulberry32(M2.seed);
+  m2xTr=[]; m2yTr=[]; m2fold=[];
+  for(let i=0;i<M2.nTrain;i++){ const x=rng(); m2xTr.push(x); m2yTr.push(m2f(x)+M2.noise*randn(rng)); }
+  // shuffled fold assignment
+  const idx=[...Array(M2.nTrain).keys()]; for(let i=idx.length-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); [idx[i],idx[j]]=[idx[j],idx[i]]; }
+  m2fold=new Array(M2.nTrain); idx.forEach((id,pos)=> m2fold[id]=pos%M2.folds);
+  m2xTe=[]; m2yTe=[]; for(let i=0;i<M2.nTest;i++){ const x=i/(M2.nTest-1); m2xTe.push(x); m2yTe.push(m2f(x)); }
+}
+
+// decision stump minimizing SSE of residual r over feature x
+function fitStump(xs, rs){
+  const n=xs.length; if(n===0) return {thr:Infinity,l:0,r:0};
+  const idx=[...Array(n).keys()].sort((i,j)=>xs[i]-xs[j]);
+  let total=0; for(const r of rs) total+=r;
+  let leftSum=0, leftCnt=0, bestScore=Infinity, bestThr=null, bestL=total/n, bestR=total/n;
+  for(let k=0;k<n-1;k++){
+    leftSum+=rs[idx[k]]; leftCnt++;
+    if(xs[idx[k]]===xs[idx[k+1]]) continue;
+    const rightSum=total-leftSum, rightCnt=n-leftCnt;
+    const score=-(leftSum*leftSum/leftCnt + rightSum*rightSum/rightCnt); // minimise SSE
+    if(score<bestScore){ bestScore=score; bestThr=(xs[idx[k]]+xs[idx[k+1]])/2; bestL=leftSum/leftCnt; bestR=rightSum/rightCnt; }
+  }
+  if(bestThr===null){ const m=total/n; return {thr:Infinity,l:m,r:m}; }
+  return {thr:bestThr,l:bestL,r:bestR};
+}
+const applyStump=(s,x)=> x<s.thr? s.l : s.r;
+const mse=(a,b)=>{ let s=0; for(let i=0;i<a.length;i++){ const d=a[i]-b[i]; s+=d*d; } return s/a.length; };
+
+function m2run(){
+  const T=M2.T, lr=M2.lr, nTr=M2.nTrain, nTe=M2.nTest, folds=M2.folds;
+  // ---- GREEDY: one ensemble on all data, fit to IN-SAMPLE residuals (prediction shift) ----
+  let F=new Array(nTr).fill(0), Ft=new Array(nTe).fill(0);
+  const gTe=[];
+  for(let t=0;t<T;t++){
+    const r=m2yTr.map((y,i)=>y-F[i]);
+    const s=fitStump(m2xTr,r);
+    for(let i=0;i<nTr;i++) F[i]+=lr*applyStump(s,m2xTr[i]);
+    for(let i=0;i<nTe;i++) Ft[i]+=lr*applyStump(s,m2xTe[i]);
+    gTe.push(mse(Ft,m2yTe));
+  }
+  // ---- ORDERED: K cross-fitted ensembles; fold-k model trains ONLY on folds != k ----
+  // Each fold model is a standard (stable) GBM; a point is scored by the model that never saw it.
+  const FkTr=[], FkTe=[]; for(let k=0;k<folds;k++){ FkTr.push(new Array(nTr).fill(0)); FkTe.push(new Array(nTe).fill(0)); }
+  const oTe=[];
+  for(let t=0;t<T;t++){
+    for(let k=0;k<folds;k++){
+      const xin=[], rin=[]; for(let i=0;i<nTr;i++) if(m2fold[i]!==k){ xin.push(m2xTr[i]); rin.push(m2yTr[i]-FkTr[k][i]); }
+      const s=fitStump(xin,rin);                              // fit on this fold-model's OWN residuals (self-correcting → stable)
+      for(let i=0;i<nTr;i++) FkTr[k][i]+=lr*applyStump(s,m2xTr[i]);  // predict every train point (incl. held-out fold k)
+      for(let i=0;i<nTe;i++) FkTe[k][i]+=lr*applyStump(s,m2xTe[i]);
+    }
+    const FtO=new Array(nTe).fill(0);
+    for(let i=0;i<nTe;i++){ let s=0; for(let k=0;k<folds;k++) s+=FkTe[k][i]; FtO[i]=s/folds; }
+    oTe.push(mse(FtO,m2yTe));
+  }
+  return {gTe,oTe};
+}
+
+function m2draw(res){
+  const cv=document.getElementById("m2chart"), ctx=cv.getContext("2d");
+  const W=cv.width, H=cv.height; ctx.clearRect(0,0,W,H);
+  const padL=46, padB=26, padT=10, padR=8;
+  const x0=padL, x1=W-padR, y0=padT, y1=H-padB;
+  let mx=0; for(const a of [res.gTe,res.oTe]) for(const v of a) mx=Math.max(mx,v);
+  mx=mx*1.08||1; const T=res.gTe.length;
+  const X=i=> x0+(x1-x0)*(T<=1?0:i/(T-1));
+  const Y=v=> y1-(y1-y0)*(v/mx);
+  ctx.strokeStyle="#e2e8f0"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x0,y1); ctx.lineTo(x1,y1); ctx.stroke();
+  ctx.fillStyle="#94a3b8"; ctx.font="10px monospace"; ctx.textAlign="right";
+  for(let g=0;g<=4;g++){ const v=mx*g/4, yy=Y(v); ctx.fillText(v.toFixed(3), x0-4, yy+3);
+    ctx.strokeStyle="#f1f5f9"; ctx.beginPath(); ctx.moveTo(x0,yy); ctx.lineTo(x1,yy); ctx.stroke(); }
+  ctx.fillStyle="#94a3b8"; ctx.textAlign="center"; ctx.fillText("boosting round →", (x0+x1)/2, H-6);
+  const line=(arr,col)=>{ ctx.strokeStyle=col; ctx.lineWidth=2.2; ctx.setLineDash([]);
+    ctx.beginPath(); arr.forEach((v,i)=>{ const xx=X(i),yy=Y(v); i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy); }); ctx.stroke(); };
+  line(res.gTe,RED); line(res.oTe,GREEN);
+  const mark=(arr,col)=>{ let mi=0; for(let i=1;i<arr.length;i++) if(arr[i]<arr[mi])mi=i; ctx.fillStyle=col; ctx.beginPath(); ctx.arc(X(mi),Y(arr[mi]),3.8,0,7); ctx.fill(); ctx.strokeStyle="#fff"; ctx.lineWidth=1.4; ctx.stroke(); };
+  mark(res.gTe,RED); mark(res.oTe,GREEN);
+}
+
+function m2refresh(){
+  const res=m2run(); m2draw(res);
+  const gBest=Math.min(...res.gTe), oBest=Math.min(...res.oTe);
+  const gFin=res.gTe[res.gTe.length-1], oFin=res.oTe[res.oTe.length-1];
+  document.getElementById("m2GreedyBest").textContent=gBest.toFixed(3);
+  document.getElementById("m2OrderBest").textContent=oBest.toFixed(3);
+  document.getElementById("m2GreedyGap").textContent=gFin.toFixed(3);
+  document.getElementById("m2OrderGap").textContent=oFin.toFixed(3);
+  const gRise=gFin-gBest, oRise=oFin-oBest;
+  const box=document.getElementById("m2Diag");
+  const set=(c,t,b)=>{ box.className="diag "+c+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; };
+  if(oBest<gBest-1e-4 || gRise>oRise+0.004){
+    set("diag-good",
+      `✅ Ordered boosting generalizes better — best test MSE ${oBest.toFixed(3)} vs greedy ${gBest.toFixed(3)}`,
+      `Greedy boosting fits every tree to <em>in-sample</em> residuals <code>y−F(x)</code>, where <code>F</code> already trained on those rows — so its gradients are biased and it starts memorising label noise (prediction shift). The <span style="color:#dc2626;font-weight:700">greedy test</span> curve bottoms at <b>${gBest.toFixed(3)}</b> then climbs back to <b>${gFin.toFixed(3)}</b> (a <b>${(gRise>=0?'+':'')+gRise.toFixed(3)}</b> rise = overfitting). <span style="color:#16a34a;font-weight:700">Ordered</span> boosting scores every row with a fold-model that never trained on it, so its gradients are unbiased: the curve settles at <b>${oBest.toFixed(3)}</b> and barely drifts (<b>${(oRise>=0?'+':'')+oRise.toFixed(3)}</b>). Push the noise slider up and greedy's climb steepens.`);
+  } else {
+    set("diag-info",
+      `➖ Little noise → little to overfit (greedy best ${gBest.toFixed(3)}, ordered best ${oBest.toFixed(3)})`,
+      `When the signal is clean there is almost no noise to memorise, so greedy and ordered boosting look alike here. Push the <b>label noise</b> slider up: the greedy test curve will bottom out and then climb (prediction shift — it trains on residuals from a model that saw the row), while ordered boosting — each residual from a leave-out fold model — keeps the test floor low and flat. That robustness is exactly what CatBoost's ordered permutations buy on real, noisy data.`);
+  }
+}
+
+// ================= MODULE 3: symmetric (oblivious) trees =================
+const M3 = { depth:4, seed:3, dom:1.5 };
+let m3pts=[];
+
+function m3gen(){
+  const rng=mulberry32(M3.seed); m3pts=[];
+  for(let i=0;i<60;i++){ const t=Math.PI*rng(); m3pts.push({x:[Math.cos(t)*0.9-0.4+(rng()-0.5)*0.35, Math.sin(t)*0.9-0.30+(rng()-0.5)*0.35], y:1}); }
+  for(let i=0;i<60;i++){ const t=Math.PI*rng(); m3pts.push({x:[Math.cos(t)*0.9+0.4+(rng()-0.5)*0.35, -Math.sin(t)*0.9+0.30+(rng()-0.5)*0.35], y:0}); }
+}
+function gini(idxs){ if(idxs.length===0)return 0; let s=0; for(const i of idxs)s+=m3pts[i].y; const p=s/idxs.length; return 2*p*(1-p); }
+function majority(idxs){ if(idxs.length===0)return 0; let s=0; for(const i of idxs)s+=m3pts[i].y; return (s/idxs.length)>=0.5?1:0; }
+function candidates(){
+  const c=[];
+  for(let f=0;f<2;f++){ const vals=[...new Set(m3pts.map(p=>p.x[f]))].sort((a,b)=>a-b);
+    for(let k=0;k<vals.length-1;k++) c.push({f, thr:(vals[k]+vals[k+1])/2}); }
+  return c;
+}
+// ---- normal per-node CART ----
+function bestSplit(idxs){
+  let best=null;
+  for(let f=0;f<2;f++){
+    const order=[...idxs].sort((a,b)=>m3pts[a].x[f]-m3pts[b].x[f]);
+    for(let k=0;k<order.length-1;k++){ const va=m3pts[order[k]].x[f], vb=m3pts[order[k+1]].x[f]; if(va===vb)continue;
+      const thr=(va+vb)/2; const L=[],R=[]; for(const i of idxs) (m3pts[i].x[f]<thr?L:R).push(i);
+      if(!L.length||!R.length) continue;
+      const g=(L.length*gini(L)+R.length*gini(R))/idxs.length;
+      if(!best||g<best.g) best={f,thr,g}; }
+  }
+  return best;
+}
+let m3normSplits=0;
+function buildNormal(idxs, depth){
+  if(depth===0 || gini(idxs)===0 || idxs.length<4) return {leaf:majority(idxs)};
+  const s=bestSplit(idxs); if(!s) return {leaf:majority(idxs)};
+  m3normSplits++;
+  const L=[],R=[]; for(const i of idxs)(m3pts[i].x[s.f]<s.thr?L:R).push(i);
+  return {f:s.f,thr:s.thr,left:buildNormal(L,depth-1),right:buildNormal(R,depth-1)};
+}
+function predNormal(node,x){ while(!('leaf'in node)) node = x[node.f]<node.thr?node.left:node.right; return node.leaf; }
+// ---- oblivious: one split per level over all groups ----
+function buildOblivious(depth){
+  let groups=[[...Array(m3pts.length).keys()]]; const levels=[]; const cand=candidates();
+  for(let l=0;l<depth;l++){
+    let best=null;
+    for(const ft of cand){ let tot=0, cnt=0;
+      for(const g of groups){ const L=[],R=[]; for(const i of g)(m3pts[i].x[ft.f]<ft.thr?L:R).push(i);
+        tot+=L.length*gini(L)+R.length*gini(R); cnt+=g.length; }
+      const score=tot/Math.max(1,cnt);
+      if(!best||score<best.score) best={f:ft.f,thr:ft.thr,score}; }
+    if(!best) break; levels.push({f:best.f,thr:best.thr});
+    const ng=[]; for(const g of groups){ const L=[],R=[]; for(const i of g)(m3pts[i].x[best.f]<best.thr?L:R).push(i); ng.push(L,R); }
+    groups=ng;
+  }
+  const leafPred=groups.map(majority);
+  return {levels, leafPred};
+}
+function leafIndex(levels,x){ let idx=0; for(const lv of levels) idx=(idx<<1)|(x[lv.f]<lv.thr?0:1); return idx; }
+function predOblivious(tree,x){ return tree.leafPred[leafIndex(tree.levels,x)]; }
+
+function m3drawRegion(canvasId, predictFn){
+  const cv=document.getElementById(canvasId), ctx=cv.getContext("2d"); const S=cv.width; ctx.clearRect(0,0,S,S);
+  const D=M3.dom, toX=v=>(v+D)/(2*D)*S, toY=v=>S-(v+D)/(2*D)*S, fromX=px=>px/S*2*D-D, fromY=py=>(S-py)/S*2*D-D;
+  const cells=54, cw=S/cells;
+  for(let gx=0;gx<cells;gx++) for(let gy=0;gy<cells;gy++){
+    const x=fromX((gx+0.5)*cw), y=fromY((gy+0.5)*cw);
+    const cls=predictFn([x,y]);
+    ctx.fillStyle = cls===1 ? "rgba(225,29,72,0.13)" : "rgba(79,70,229,0.13)";
+    ctx.fillRect(gx*cw,gy*cw,cw+0.7,cw+0.7);
+  }
+  m3pts.forEach(p=>{ const px=toX(p.x[0]), py=toY(p.x[1]);
+    ctx.beginPath(); ctx.arc(px,py,4.2,0,7); ctx.fillStyle=p.y===1?CLASS_POS:CLASS_NEG; ctx.fill();
+    ctx.lineWidth=1.1; ctx.strokeStyle="#fff"; ctx.stroke(); });
+}
+function m3refresh(){
+  m3normSplits=0;
+  const normal=buildNormal([...Array(m3pts.length).keys()], M3.depth);
+  const obl=buildOblivious(M3.depth);
+  m3drawRegion("m3norm", x=>predNormal(normal,x));
+  m3drawRegion("m3obl",  x=>predOblivious(obl,x));
+  let okN=0, okO=0; for(const p of m3pts){ if(predNormal(normal,p.x)===p.y)okN++; if(predOblivious(obl,p.x)===p.y)okO++; }
+  const n=m3pts.length;
+  document.getElementById("m3NormAcc").textContent=(okN/n*100).toFixed(0)+"%";
+  document.getElementById("m3OblAcc").textContent=(okO/n*100).toFixed(0)+"%";
+  document.getElementById("m3NormSplits").textContent=m3normSplits;
+  document.getElementById("m3OblSplits").textContent=obl.levels.length+" → "+Math.pow(2,obl.levels.length)+" leaves";
+  const box=document.getElementById("m3Diag");
+  box.className="diag diag-info mt-6 max-w-4xl mx-auto text-left";
+  box.innerHTML=`<div class="text-base font-extrabold mb-1">🌳 Two ways to grow depth-${M3.depth} — free-form vs symmetric</div><div class="text-sm font-medium leading-relaxed">The <span style="color:#b45309;font-weight:700">normal tree</span> chose <b>${m3normSplits}</b> independent splits, one per internal node, so its regions are jagged and it hits <b>${(okN/n*100).toFixed(0)}%</b> train accuracy — great fit, but each extra node is another chance to overfit. The <span style="color:#0ea5e9;font-weight:700">oblivious tree</span> used just <b>${obl.levels.length}</b> level-splits to define <b>${Math.pow(2,obl.levels.length)}</b> balanced leaves (train <b>${(okO/n*100).toFixed(0)}%</b>): the same (feature, threshold) is reused across a whole level, so scoring a point is <b>${obl.levels.length}</b> branch-free comparisons and the rigid shape regularizes. CatBoost grows <em>only</em> this symmetric kind — a big reason its default models are both fast to score and hard to overfit.</div>`;
+}
+
+// ================= sub-nav wiring =================
+const subBtns=document.querySelectorAll("#subnav [data-mod]");
+function showMod(m){ document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden")); document.getElementById("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m));
+  if(m==="ts") m1refresh(); if(m==="boost") m2refresh(); if(m==="obliv") m3refresh(); }
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+// module 1 controls
+document.getElementById("m1N").addEventListener("input",e=>{ M1.n=+e.target.value; document.getElementById("m1NV").textContent=M1.n; m1gen(); m1refresh(); });
+document.getElementById("m1K").addEventListener("input",e=>{ M1.K=+e.target.value; document.getElementById("m1KV").textContent=M1.K; m1gen(); m1refresh(); });
+document.getElementById("m1Sig").addEventListener("input",e=>{ M1.sig=+e.target.value; document.getElementById("m1SigV").textContent=M1.sig.toFixed(2); m1gen(); m1refresh(); });
+document.getElementById("m1A").addEventListener("input",e=>{ M1.a=+e.target.value; document.getElementById("m1AV").textContent=M1.a.toFixed(1); m1refresh(); });
+document.getElementById("m1Resample").onclick=()=>{ M1.seed=(M1.seed*1103515245+12345)>>>0; m1gen(); m1refresh(); };
+// module 2 controls
+document.getElementById("m2Noise").addEventListener("input",e=>{ M2.noise=+e.target.value; document.getElementById("m2NoiseV").textContent=M2.noise.toFixed(2); m2gen(); m2refresh(); });
+document.getElementById("m2LR").addEventListener("input",e=>{ M2.lr=+e.target.value; document.getElementById("m2LRV").textContent=M2.lr.toFixed(2); m2refresh(); });
+document.getElementById("m2T").addEventListener("input",e=>{ M2.T=+e.target.value; document.getElementById("m2TV").textContent=M2.T; m2refresh(); });
+document.getElementById("m2Resample").onclick=()=>{ M2.seed=(M2.seed*1103515245+12345)>>>0; m2gen(); m2refresh(); };
+// module 3 controls
+document.getElementById("m3Depth").addEventListener("input",e=>{ M3.depth=+e.target.value; document.getElementById("m3DepthV").textContent=M3.depth; m3refresh(); });
+document.getElementById("m3Resample").onclick=()=>{ M3.seed=(M3.seed*1103515245+12345)>>>0; m3gen(); m3refresh(); };
+
+// ================= init =================
+m1gen(); m2gen(); m3gen();
+document.querySelector('[data-mod="ts"]').classList.add("on");
+showMod("ts");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. Where CatBoost sits in the GBDT trio", why:"CatBoost is the third of the great gradient-boosted-decision-tree libraries, and it shares the exact engine of the first two: fit an ensemble of small trees one at a time, each new tree pointed at the errors of the current ensemble using first- and second-order gradients (the g and h of Day 40). XGBoost's contribution was a rigorous second-order objective with regularized, closed-form leaf weights; LightGBM's was raw speed via leaf-wise growth, histogram split-finding, GOSS and EFB (Day 41). CatBoost's contribution is different in kind: it targets a correctness problem that the others largely ignore — target leakage. Two everyday practices quietly let the label bleed into the features and gradients during training, inflating scores that then evaporate on new data. CatBoost's whole design is organised around removing both leaks, plus a distinctive tree shape. So it is not a faster or more accurate re-implementation; it is boosting rebuilt to be honest, especially when the data is full of categorical columns.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">same core: additive trees on g, h gradients<br><br>D40 XGBoost → 2nd-order objective, reg. leaves<br>D41 LightGBM → SPEED (leaf-wise, histograms)<br>D43 CatBoost → NO LEAKAGE (ordered TS + boosting)<br><br>+ symmetric (oblivious) trees</div>`, code:`# all three optimise the same regularised boosting objective:
+#   F_{m}(x) = F_{m-1}(x) + eta * tree_m(x)
+#   tree_m fit to the gradient g and hessian h of the loss
+# CatBoost changes HOW the training targets/gradients are computed,
+# not the boosting math itself.` },
+ { title:"2. The problem: high-cardinality categoricals", why:"Tree models need numbers, but real tabular data is full of categorical columns — city, device, merchant, user_id, product SKU. Low-cardinality columns (a handful of values) can be one-hot encoded into a few binary columns, and trees handle those fine. High-cardinality columns break this: one-hot of a million user IDs is a million sparse columns, which is infeasible and useless for split-finding. The popular alternative is target (or 'mean') encoding: replace each category with the average target value of the rows in that category. It is compact and often very predictive — but it hides a trap. If the average includes the very row you are encoding, that row has just looked at its own answer. For a rare category, especially one that appears only once, the 'average' is simply the row's own label. The feature has silently become a leaked copy of the target, and the model will happily exploit it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">city, user_id, SKU … thousands of levels<br><br>one-hot → millions of sparse columns ✗<br>target mean encoding → compact & predictive ✓<br><br>but the mean INCLUDES this row →<br>rare category ⇒ encoding = its own label 😱</div>`, code:`# naive target encoding of a category c:
+#   enc(row) = mean(y over ALL rows with category c)   # includes 'row' itself!
+# appears-once category:  enc = y(row)  -> a perfect leak
+# high cardinality = many rare categories = massive leak` },
+ { title:"3. Target statistics, and the leak spelled out", why:"A target statistic (TS) is a numeric summary of the target for a category, usually the smoothed mean: (sum of y over the category + a·prior) / (count + a), where the prior is the global mean and a controls shrinkage toward it. Used carefully, a TS is a wonderful feature — it packs a high-cardinality column into one strong number. The danger is purely about which rows go into that sum. The naive 'greedy' TS uses the whole dataset, including the current row, so information about y(row) flows into x(row). In the LOOK demo you can watch corr(naive-encoding, y) climb toward 1.0 as you raise the cardinality: the feature becomes the label. Any model — even a one-line threshold — then scores near-perfectly on training data. This is the canonical example of leakage: not a bug in the code, but a subtle statistical dependence that makes offline metrics lie.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">TS(c) = (Σ y + a·prior) / (count + a)<br><br>naive: Σ and count run over ALL rows incl. self<br>⇒ y(row) leaks into x(row)<br><br>corr(enc, y) → 1 as categories get rarer<br>train score becomes a mirage</div>`, code:`prior = y.mean()
+enc = {}
+for c in categories:
+    rows = (cat == c)
+    enc[c] = (y[rows].sum() + a*prior) / (rows.sum() + a)   # includes self
+# train accuracy shoots up; validation does not follow -> overfit` },
+ { title:"4. Ordered target statistics — the core fix", why:"CatBoost's answer is disarmingly simple: impose an artificial 'time'. Draw a random permutation of the rows and pretend they arrived in that order. To encode a row, use only the rows that came before it in the permutation and share its category — a running target mean over that history, smoothed by the prior. Because a row is never in its own history, its own label can never enter its encoding, so the leak is structurally impossible. This is like an online/streaming estimate, or a per-row holdout that wastes no data (unlike a fixed holdout split, which would throw away rows). Early rows in the permutation have little history and thus noisy encodings, so CatBoost averages several independent permutations to stabilise them. The genuine signal — categories that truly predict the target — survives, because their prior rows really do carry that signal; only the self-referential leak is removed.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">pick a random permutation σ (an artificial 'time')<br><br>enc(row i) = (Σ y_j + a·prior)/(n_prior + a)<br>&nbsp;&nbsp;over j : σ(j) &lt; σ(i) AND cat_j = cat_i<br><br>row i never sees its own y → leak-free<br>average several σ to de-noise early rows</div>`, code:`perm = rng.permutation(n)
+seen_sum, seen_cnt = defaultdict(float), defaultdict(int)
+enc = np.zeros(n)
+for i in perm:
+    c = cat[i]
+    enc[i] = (seen_sum[c] + a*prior) / (seen_cnt[c] + a)  # PRIOR rows only
+    seen_sum[c] += y[i]; seen_cnt[c] += 1                 # then record` },
+ { title:"5. Why ordered TS generalizes — read the demo", why:"The LOOK demo makes the payoff concrete and measurable. It builds a high-cardinality categorical with a little genuine signal, encodes it both ways, fits a logistic model on each single feature, and reports train and validation accuracy. Naive encoding produces a sky-high training accuracy and a validation accuracy stuck near the base rate — a large train−val gap, the fingerprint of overfitting. Ordered TS produces a lower but honest training accuracy that validation nearly matches — a tiny gap. Crucially, the lesson is not 'higher training accuracy is better'; it is the reverse: the naive method's inflated training score is worthless because it does not transfer. The gap, not the raw number, is what you must watch. Slide the cardinality up and the naive gap explodes while ordered stays flat; slide it down (many rows per category) and the leak shrinks because a single label barely moves a large average.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">naive :  train 0.98 · val 0.55 · gap 0.43 ❌<br>ordered: train 0.61 · val 0.58 · gap 0.03 ✅<br><br>watch the GAP, not the train score<br>higher cardinality → bigger naive gap</div>`, code:`# fit a model on ONE encoded feature, compare train vs val
+tr_naive, va_naive = fit_score(naive_enc)   # big gap  -> leaked
+tr_ord,   va_ord   = fit_score(ordered_enc) # tiny gap -> generalizes
+# CatBoost does this automatically for every categorical column` },
+ { title:"6. The same leak in boosting: prediction shift", why:"Leakage does not stop at feature encoding — it reappears inside the boosting loop itself. Gradient boosting fits each new tree to the residual (more precisely the negative gradient) of the current model: r_i = y_i − F(x_i). But F was trained on a dataset that included row i, so F(x_i) is slightly too accurate on that row, which makes its residual biased — systematically a little too small. Training on these optimistic residuals nudges the model to over-explain its own training points, a subtle self-reinforcing overfit that CatBoost's authors named the prediction shift. It is the exact analogue of the target-statistics leak, one level up: a quantity used to train the model was computed by a model that had already seen the answer. On noisy data this shift accumulates over hundreds of rounds and opens a gap between training and test loss.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">residual r_i = y_i − F(x_i)<br>but F was trained INCLUDING row i<br>⇒ F(x_i) too good ⇒ r_i biased small<br><br>train on biased residuals → 'prediction shift'<br>= the TS leak, one level up</div>`, code:`# classic boosting round:
+r = y - F(X)          # F was fit on these same rows -> biased residual
+tree = fit(X, r)      # chases its own optimistic errors
+F = F + eta * tree    # prediction shift accumulates over rounds` },
+ { title:"7. Ordered boosting — an unbiased residual", why:"CatBoost fixes prediction shift with the same ordering idea. Under a random permutation, the residual for row i is computed by a model M that was trained only on the rows before i — a model that has never seen row i. That residual is therefore an honest, out-of-sample estimate, free of the self-flattery. Done naively this would require a separate model for every prefix of the permutation, which is far too expensive, so CatBoost keeps a logarithmic number of 'supporting' models (roughly one per power-of-two prefix length) and reuses them, and it shares this with the ordered-TS permutation. The LOOK demo shows the effect with the practically equivalent out-of-fold trick: each row's residual comes from a stump trained on the other folds. The greedy (in-sample) run's test loss dips and then climbs as it memorises noise, while the ordered run's train and test curves stay together and its test floor is lower. Same principle, same benefit: a model should never learn from a target it has already influenced.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">residual of row i ← model trained on rows before i<br>(a model that never saw row i) → unbiased<br><br>naive cost = one model per prefix ✗<br>CatBoost keeps ~log(n) supporting models ✓<br>demo uses the equivalent out-of-fold estimate</div>`, code:`# ordered boosting (idea): per permutation prefix model M_i
+r_i = y_i - M_{<i}(x_i)     # M_{<i} trained only on earlier rows
+# practical: O(log n) supporting models reused across rounds
+# demo stand-in: out-of-fold residuals (a fold's model never saw it)` },
+ { title:"8. Symmetric (oblivious) trees", why:"CatBoost's base learner is unusual: it grows only symmetric, or 'oblivious', trees. In an ordinary decision tree every node chooses its own best split, so two nodes at the same depth typically test different features and thresholds. In an oblivious tree, the entire level shares one (feature, threshold): the same question is asked of every node at that depth. A depth-d oblivious tree is therefore a perfectly balanced binary tree with exactly 2^d leaves, and a point's leaf is determined by d yes/no answers — literally d bits that index into a flat array of leaf values. This has three consequences. Inference is extremely fast and branch-free: d comparisons, no data-dependent branching, very cache- and SIMD-friendly. The rigid, balanced structure is a strong regularizer, because the tree simply cannot carve out the tiny bespoke regions a free-form tree uses to memorise noise. And split-finding is cheaper, since only one split is chosen per level rather than one per node. The LOOK demo builds both kinds on the same data so you can see the free-form tree's jagged regions next to the oblivious tree's clean 2^d grid.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">normal tree: each node picks its own split<br>oblivious tree: ONE split per LEVEL, all nodes<br><br>depth d ⇒ 2^d balanced leaves<br>leaf = d bit-tests → index into an array<br>fast · branch-free · self-regularizing</div>`, code:`levels = []                       # one (feature, threshold) per depth
+for d in range(depth):
+    levels.append(best_single_split_over_all_groups())
+def leaf(x):
+    idx = 0
+    for f, thr in levels:         # d branch-free comparisons
+        idx = (idx << 1) | (x[f] >= thr)
+    return leaf_value[idx]         # flat array of 2**depth leaves` },
+ { title:"9. Feature combinations — a bonus of ordering", why:"Because CatBoost already processes rows in a permutation to compute ordered statistics, it gets a powerful extra feature almost for free: combinations of categorical features. As it builds a tree, it can greedily combine the categoricals already used with the remaining ones — for example turning (city) and (device) into a single (city × device) category — and compute an ordered target statistic for that combined key on the fly. This captures interactions like 'iPhone users in Paris behave differently', which a model treating the columns independently would miss, and which manual feature engineering would have to anticipate. The combinations are generated lazily and only along promising branches, so the space does not explode, and every combined statistic is still computed with the leak-free ordered scheme. It is a concrete example of how one good idea — impose an order — pays dividends beyond the problem it was invented for.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">already permuting rows for ordered TS →<br>combine categoricals greedily, for free:<br><br>(city) × (device) → one new category key<br>ordered TS on the combo, still leak-free<br>captures interactions automatically</div>`, code:`# during tree building, greedily combine categoricals:
+combo = zip(cat_city, cat_device)      # (city, device) pairs
+enc_combo = ordered_target_stats(combo, y)   # leak-free TS on the pair
+# generated lazily along good branches -> no combinatorial blow-up` },
+ { title:"10. CatBoost vs XGBoost vs LightGBM", why:"The three boosters share a core but optimise for different things, and knowing the differences tells you which to reach for. Tree growth: XGBoost grows level-wise (balanced, then prunes by gain minus gamma), LightGBM grows leaf-wise (best-first, deep where it pays, fastest), and CatBoost grows symmetric/oblivious trees (balanced, regularizing, fast to score). Categoricals: XGBoost expects you to encode them yourself; LightGBM has native handling but its target-based version can leak; CatBoost's ordered target statistics are native and leak-free. Residual bias: XGBoost and LightGBM use in-sample residuals (prediction shift is possible); CatBoost's ordered boosting removes it. Speed: LightGBM is usually the fastest to train on very large data; CatBoost's oblivious trees make it exceptionally fast at inference. Defaults: CatBoost is famous for strong out-of-the-box results with little tuning, precisely because leakage control is built in. Rules of thumb: reach for LightGBM on huge datasets where training time dominates, XGBoost as a rigorous all-round baseline, and CatBoost when you have many categorical features or want the best default model on small-to-medium data.", concept:`<div class="bg-slate-100 p-4 rounded text-[11px] w-full text-left font-mono leading-relaxed">growth&nbsp;&nbsp;XGB level · LGBM leaf · Cat symmetric<br>cats&nbsp;&nbsp;&nbsp;&nbsp;XGB manual · LGBM native* · Cat ordered TS<br>resid&nbsp;&nbsp;&nbsp;XGB/LGBM in-sample · Cat ordered (unbiased)<br>speed&nbsp;&nbsp;&nbsp;LGBM fastest train · Cat fastest score<br>use&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;big→LGBM · baseline→XGB · cats→Cat</div>`, code:`# picking a booster:
+#   many categoricals / best defaults / small-med data -> CatBoost
+#   massive data, lowest training time                 -> LightGBM
+#   rigorous, well-understood all-round baseline        -> XGBoost
+# all three: same g,h boosting; different obsessions.` },
+ { title:"11. Payoff, cost, and when to use it", why:"CatBoost's payoff is trustworthy models on messy real-world tabular data with minimal effort: you hand it raw categorical columns through cat_features and its defaults are hard to beat, because ordered target statistics and ordered boosting stop the offline metrics from lying and the oblivious trees resist overfitting. The costs are real but modest. Ordered statistics and the supporting prefix models add bookkeeping, so per-iteration training can be slower than LightGBM's, especially without a GPU (CatBoost has excellent GPU training that closes much of the gap). The symmetric-tree constraint occasionally costs a little accuracy versus a free-form leaf-wise tree on problems with strong, localised interactions, though the regularization usually more than pays for itself. And like all boosters it needs early stopping and sensible depth/learning-rate to avoid overfitting the residuals. Use CatBoost when categorical features are central, when you want a strong model without a tuning marathon, or when fast, branch-free inference matters in production. Together with XGBoost (Day 40) and LightGBM (Day 41) it completes the trio of gradient boosters that dominate tabular machine learning.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">gain: leak-free scores · great defaults · fast inference<br>cost: bookkeeping (prefix models) → slower/iter on CPU<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;symmetric trees can cost a little on sharp interactions<br><br>use when: many categoricals · minimal tuning · fast scoring<br>the GBDT trio: XGBoost + LightGBM + CatBoost</div>`, code:`from catboost import CatBoostClassifier, Pool
+pool  = Pool(X, y, cat_features=["city","device","user_id"])
+model = CatBoostClassifier(iterations=2000, depth=6,
+                           learning_rate=0.03, task_type="GPU"
+          ).fit(pool, eval_set=val_pool, early_stopping_rounds=100)
+# raw categoricals in, ordered TS + ordered boosting on by default` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
