@@ -50,6 +50,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 41 — LightGBM](https://dev48v.infy.uk/ml/day41-lightgbm.html) — `day41-lightgbm.html`
 - [MachineLearningFromZero · Day 42 — The Kernel Trick](https://dev48v.infy.uk/ml/day42-kernel-trick.html) — `day42-kernel-trick.html`
 - [MachineLearningFromZero · Day 43 — CatBoost](https://dev48v.infy.uk/ml/day43-catboost.html) — `day43-catboost.html`
+- [MachineLearningFromZero · Day 44 — Model Calibration](https://dev48v.infy.uk/ml/day44-calibration.html) — `day44-calibration.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

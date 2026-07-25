@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 44 — Model Calibration</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:170px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .kbtn { border:1px solid #e2e8f0; background:#fff; font-weight:800; }
+  .kbtn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  .rowtbl { border-collapse:collapse; font-size:11px; width:100%; }
+  .rowtbl th, .rowtbl td { border:1px solid #e2e8f0; padding:3px 5px; text-align:center; font-variant-numeric:tabular-nums; }
+  .rowtbl th { background:#f1f5f9; font-weight:800; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 44</div>
+      <h1 class="text-xl font-bold">🎯 Model Calibration — When "90% Confident" Is Right Only 70% of the Time: the <em>Reliability Diagram</em> Bins Predictions and Plots Mean-Predicted vs Actual-Fraction, <em>Expected Calibration Error</em> Sums the Weighted Gaps off the Diagonal, and Two Post-hoc Fixes — <em>Platt Scaling</em> (a Sigmoid Fit on a Holdout) and <em>Isotonic Regression</em> (a Monotonic Step Fit) — Bend the Curve Back Toward the Diagonal</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>A classifier can be accurate and still <em>lie about its confidence</em>. When a well-trained model says "90% sure this is spam", you would like it to be right about 90 times out of 100 — but modern models (boosted trees, deep nets) are famously <em>over</em>confident: among the cases it stamped 0.9, the truth might be positive only 70% of the time.</strong> Calibration is about that promise — does a predicted probability match the observed frequency? The tool that reveals it is the <em>reliability diagram</em>: sort predictions into bins, plot each bin's mean predicted probability against the fraction that were actually positive. Perfect calibration sits on the 45° diagonal; a miscalibrated model bows away from it. <em>Expected Calibration Error (ECE)</em> turns that picture into one number — the size-weighted average vertical gap. Everything below bins real samples, computes ECE live, and fits Platt scaling and isotonic regression from scratch — no library.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Reliability &amp; ECE</strong> takes a deliberately <span style="color:#dc2626;font-weight:700">overconfident</span> toy model, bins its predictions, draws the reliability curve bowing off the diagonal, and reports ECE — then a toggle applies <span style="color:#2563eb;font-weight:700">Platt scaling</span> or <span style="color:#16a34a;font-weight:700">isotonic regression</span> (fit on a holdout, evaluated on held-out test data) so you watch the curve straighten and the ECE drop. <strong>Over- vs under-confidence</strong> sweeps a single sharpness knob so you can see the curve sag <em>below</em> the diagonal (overconfident) or climb <em>above</em> it (underconfident). <strong>Platt vs isotonic</strong> draws the two calibration maps side by side — a smooth fitted sigmoid vs a monotonic staircase — and races their ECE. Move the sliders; every number recomputes from scratch.</p>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="rel"  class="subnav-btn px-4 py-2 rounded-lg text-sm">📊 Reliability &amp; ECE</button>
+        <button data-mod="conf" class="subnav-btn px-4 py-2 rounded-lg text-sm">🎚️ Over- vs under-confidence</button>
+        <button data-mod="cmp"  class="subnav-btn px-4 py-2 rounded-lg text-sm">⚔️ Platt vs isotonic</button>
+      </div>
+
+      <!-- ============ MODULE: RELIABILITY & ECE ============ -->
+      <div id="mod-rel" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="aECE" style="color:#dc2626">—</div><div class="k">ECE (current)</div></div>
+          <div class="metric-pill"><div class="v" id="aMCE" style="color:#b45309">—</div><div class="k">max cal. error</div></div>
+          <div class="metric-pill"><div class="v" id="aBrier" style="color:#0ea5e9">—</div><div class="k">Brier score</div></div>
+          <div class="metric-pill"><div class="v" id="aAcc" style="color:#0f172a">—</div><div class="k">accuracy</div></div>
+        </div>
+
+        <div class="flex justify-center gap-2 mb-4" id="calibToggle">
+          <button data-mode="raw"   class="kbtn on px-4 py-2 rounded-lg text-sm">🔴 Raw (overconfident)</button>
+          <button data-mode="platt" class="kbtn px-4 py-2 rounded-lg text-sm">🔵 Platt scaling</button>
+          <button data-mode="iso"   class="kbtn px-4 py-2 rounded-lg text-sm">🟢 Isotonic</button>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:310px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">TOY MODEL — validation predictions</div>
+            <div class="ctl-row"><div class="ctl-name">📦 samples</div><input type="range" id="aN" min="300" max="4000" step="100" value="1600"><div class="ctl-val" id="aNV">1600</div></div>
+            <div class="ctl-row"><div class="ctl-name">🗄️ bins</div><input type="range" id="aB" min="5" max="20" step="1" value="12"><div class="ctl-val" id="aBV">12</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔥 overconfidence</div><input type="range" id="aT" min="1" max="3.2" step="0.1" value="2.2"><div class="ctl-val" id="aTV">2.2</div></div>
+            <div class="mt-1"><button id="aResample" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">🎲 resample data</button></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>How it is built.</strong> Each case has a true probability <code>q=σ(s)</code> and a real label drawn from it; the model reports <code>p=σ(T·s)</code>, sharpening the logits by the <strong>overconfidence</strong> factor <code>T&gt;1</code> — so its 0.9s are too bold. We <strong>split 50/50</strong>: the calibrator is fit on one half, and the reliability diagram + ECE are measured on the <em>held-out</em> other half. Toggle a fix above: the <span style="color:#dc2626;font-weight:700">faint red</span> raw curve stays for reference while the bold calibrated curve snaps toward the diagonal.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:396px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📈 Reliability diagram — predicted vs observed</div>
+            <canvas id="aRel" width="372" height="340"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#94a3b8;border-top-style:dashed"></span> perfect calibration</span>
+              <span><span class="swatch-line" style="border-color:#dc2626;border-top-style:solid"></span> raw model</span>
+              <span>● bin, size ∝ count · gray bars = confidence histogram</span>
+            </div>
+          </div>
+
+          <div class="panel text-left" style="width:300px; max-width:100%;">
+            <div class="text-sm font-bold text-slate-700 mb-2">🔬 The bins — ECE computed live</div>
+            <div id="aBinTbl"></div>
+            <div class="mt-2 text-[11px] text-slate-500 leading-relaxed">
+              <div>ECE = Σ (n<sub>b</sub>/N)·|conf−acc| = <b id="aEceFormula" style="color:#dc2626">—</b></div>
+              <div class="mt-1">Each row is a bin: <b>conf</b> = mean predicted probability, <b>acc</b> = fraction actually positive, <b>gap</b> = the vertical distance from the diagonal. ECE is the count-weighted average gap.</div>
+            </div>
+          </div>
+        </div>
+        <div id="aDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+      <!-- ============ MODULE: OVER / UNDER CONFIDENCE ============ -->
+      <div id="mod-conf" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-3xl mx-auto mb-4">
+          <div class="metric-pill"><div class="v" id="bStatus" style="color:#dc2626">—</div><div class="k">verdict</div></div>
+          <div class="metric-pill"><div class="v" id="bT" style="color:#0ea5e9">—</div><div class="k">sharpness T</div></div>
+          <div class="metric-pill"><div class="v" id="bECE" style="color:#dc2626">—</div><div class="k">ECE</div></div>
+          <div class="metric-pill"><div class="v" id="bMCE" style="color:#b45309">—</div><div class="k">max cal. error</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">ONE KNOB — logit sharpness</div>
+            <div class="ctl-row"><div class="ctl-name">🎚️ sharpness T</div><input type="range" id="bTs" min="0.3" max="3.0" step="0.05" value="2.2"><div class="ctl-val" id="bTsV">2.20</div></div>
+            <div class="mt-1"><button id="bResample" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">🎲 resample data</button></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              The model reports <code>p=σ(T·s)</code> for a true logit <code>s</code>. <strong>T&gt;1</strong> stretches the logits — probabilities pile up near 0 and 1, so the model is <span style="color:#dc2626;font-weight:700">overconfident</span> and the reliability curve sags <em>below</em> the diagonal on the right (its 0.9s under-deliver) and rides <em>above</em> it on the left. <strong>T&lt;1</strong> squashes them toward 0.5 — <span style="color:#2563eb;font-weight:700">underconfident</span>, the curve is steeper than the diagonal. <strong>T=1</strong> lands on it. Same accuracy either way — only the <em>numbers on the confidence</em> move.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:396px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📈 Reliability diagram — bow off the diagonal</div>
+            <canvas id="bRel" width="372" height="340"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#94a3b8;border-top-style:dashed"></span> perfect calibration</span>
+              <span>curve below diagonal = overconfident · above = underconfident</span>
+            </div>
+          </div>
+        </div>
+        <div id="bDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+      <!-- ============ MODULE: PLATT vs ISOTONIC ============ -->
+      <div id="mod-cmp" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-3xl mx-auto mb-4">
+          <div class="metric-pill"><div class="v" id="cRawE" style="color:#dc2626">—</div><div class="k">raw ECE</div></div>
+          <div class="metric-pill"><div class="v" id="cPlattE" style="color:#2563eb">—</div><div class="k">Platt ECE</div></div>
+          <div class="metric-pill"><div class="v" id="cIsoE" style="color:#9333ea">—</div><div class="k">isotonic ECE</div></div>
+          <div class="metric-pill"><div class="v" id="cWin" style="color:#16a34a">—</div><div class="k">winner</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:300px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">SAME DATA, TWO CALIBRATORS</div>
+            <div class="ctl-row"><div class="ctl-name">📦 fit-set size</div><input type="range" id="cN" min="200" max="4000" step="100" value="1600"><div class="ctl-val" id="cNV">1600</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔥 overconfidence</div><input type="range" id="cT" min="1.2" max="3.2" step="0.1" value="2.3"><div class="ctl-val" id="cTV">2.3</div></div>
+            <div class="mt-1"><button id="cResample" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">🎲 resample data</button></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              Both learn a map <code>rawprob → calibratedprob</code> on the fit set, scored on held-out test. <strong>Platt</strong> fits a 2-parameter sigmoid <code>σ(A·logit(p)+B)</code> by log-loss — smooth, low-variance, ideal when the distortion really is sigmoid-shaped (few parameters, small data). <strong>Isotonic</strong> fits <em>any</em> non-decreasing step function by Pool-Adjacent-Violators — flexible, corrects odd shapes, but hungrier for data and prone to overfit when the fit set is small. Shrink the fit-set slider and watch isotonic get jagged while Platt stays steady.
+            </div>
+          </div>
+          <div class="panel text-left" style="width:250px; max-width:100%;">
+            <div class="text-sm font-bold mb-1" style="color:#2563eb">🔵 PLATT — fitted sigmoid</div>
+            <canvas id="cPlatt" width="226" height="200"></canvas>
+            <div class="text-[11px] text-slate-400 mt-1">Two knobs (A,B) → one smooth monotone curve.</div>
+          </div>
+          <div class="panel hero text-left" style="width:250px; max-width:100%;">
+            <div class="text-sm font-bold mb-1" style="color:#9333ea">🟣 ISOTONIC — monotonic steps</div>
+            <canvas id="cIso" width="226" height="200"></canvas>
+            <div class="text-[11px] text-slate-400 mt-1">Free-form non-decreasing staircase (PAV).</div>
+          </div>
+          <div class="panel text-left" style="width:320px; max-width:100%;">
+            <div class="text-sm font-bold text-slate-700 mb-1">📉 ECE on held-out test</div>
+            <canvas id="cBars" width="296" height="180"></canvas>
+            <div class="text-[11px] text-slate-400 mt-1">Both crush the raw ECE; which wins depends on data size &amp; shape.</div>
+          </div>
+        </div>
+        <div id="cDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From "accurate but overconfident" to "a probability you can trust"</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Calibration is post-processing: leave the classifier alone, learn a monotone map from its scores to honest probabilities on a holdout, and measure the improvement with ECE. Here is a runnable from-scratch core — reliability binning, Expected Calibration Error, Platt scaling by log-loss, isotonic regression via Pool-Adjacent-Violators, the honest fit-on-holdout / score-on-test protocol, and the real library. Everything the LOOK tab draws lives in these snippets.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Bin predictions — build the reliability curve</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Sort the predicted probabilities into equal-width bins over [0,1]. For each bin record the mean predicted probability (<code>conf</code>) and the fraction of samples that were actually positive (<code>acc</code>). Plotting <code>acc</code> vs <code>conf</code> is the reliability diagram; the diagonal is perfect calibration.</p>
+        <div class="relative"><pre>import numpy as np
+
+def reliability(p, y, n_bins=12):
+    edges = np.linspace(0, 1, n_bins + 1)
+    idx = np.clip(np.digitize(p, edges) - 1, 0, n_bins - 1)
+    rows = []
+    for b in range(n_bins):
+        m = idx == b
+        if m.sum() == 0:
+            continue
+        rows.append(dict(conf=p[m].mean(),      # mean predicted prob
+                         acc=y[m].mean(),        # observed positive fraction
+                         n=int(m.sum())))
+    return rows                                   # points on the diagram
+# conf ~= acc on every bin  ->  points hug the diagonal  ->  well calibrated</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Expected Calibration Error — one number for the whole curve</h3></div>
+        <p class="text-sm text-slate-600 mb-3">ECE is the size-weighted average vertical gap between each bin and the diagonal: how far, on average, a predicted probability is from the truth. MCE is the worst single bin. Both are 0 for a perfectly calibrated model.</p>
+        <div class="relative"><pre>def ece(p, y, n_bins=12):
+    edges = np.linspace(0, 1, n_bins + 1)
+    idx = np.clip(np.digitize(p, edges) - 1, 0, n_bins - 1)
+    N, e, mce = len(p), 0.0, 0.0
+    for b in range(n_bins):
+        m = idx == b
+        if m.sum() == 0:
+            continue
+        gap = abs(p[m].mean() - y[m].mean())      # |conf - acc|
+        e   += (m.sum() / N) * gap                # weight by bin count
+        mce  = max(mce, gap)
+    return e, mce
+
+# accuracy answers "is the label right?"; ECE answers "is the PROBABILITY right?"
+# a 95%-accurate model can still have a huge ECE if its confidences lie.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Fix 1 — Platt scaling (fit a sigmoid on a holdout)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Learn two parameters A, B so that <code>σ(A·score + B)</code> matches the labels, by minimizing log-loss on a calibration holdout. Using the logit of the model's probability as the score, A rescales confidence (a temperature) and B shifts the base rate. Platt's original trick smooths the targets to resist overfitting.</p>
+        <div class="relative"><pre>def fit_platt(p_hold, y_hold, iters=800, lr=0.3):
+    x = np.log(np.clip(p_hold, 1e-6, 1-1e-6) /
+               np.clip(1-p_hold, 1e-6, 1-1e-6))   # score = logit(p)
+    # Platt target smoothing (optional but classic):
+    n1, n0 = y_hold.sum(), (1 - y_hold).sum()
+    t = np.where(y_hold == 1, (n1+1)/(n1+2), 1/(n0+2))
+    A, B = 1.0, 0.0
+    for _ in range(iters):
+        q  = 1 / (1 + np.exp(-(A*x + B)))          # calibrated prob
+        gA = ((q - t) * x).mean(); gB = (q - t).mean()
+        A -= lr*gA; B -= lr*gB
+    return lambda p: 1/(1+np.exp(-(A*np.log(p/(1-p)) + B)))
+# smooth, 2-parameter, low-variance -> great for small holdouts.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Fix 2 — Isotonic regression (Pool Adjacent Violators)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Fit the best <em>non-decreasing</em> step function mapping score → probability, minimizing squared error. Sort by score, then repeatedly merge any adjacent block whose value exceeds its right neighbour into a pooled (weighted-mean) block. The result is a monotone staircase — no shape assumption beyond "higher score ⇒ higher probability".</p>
+        <div class="relative"><pre>def fit_isotonic(p_hold, y_hold):
+    order = np.argsort(p_hold)
+    xs, ys = p_hold[order], y_hold[order].astype(float)
+    # PAV: stack of blocks (value, weight, x_lo, x_hi)
+    stack = []
+    for x, y in zip(xs, ys):
+        cur = [y, 1.0, x, x]
+        while stack and stack[-1][0] > cur[0]:          # violation -> pool
+            v, w, lo, hi = stack.pop()
+            tot = w + cur[1]
+            cur = [(v*w + cur[0]*cur[1]) / tot, tot, lo, cur[3]]
+        stack.append(cur)
+    knots_x = [c[2] for c in stack] + [c[3] for c in stack[-1:]]
+    knots_v = [c[0] for c in stack] + [stack[-1][0]]
+    return lambda p: np.interp(p, [c[2] for c in stack], [c[0] for c in stack])
+# flexible: corrects ANY monotone distortion, but needs more data than Platt.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">The honest protocol — fit on holdout, measure on test</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Never fit the calibrator on the training data the classifier already saw, and never report ECE on the same data you calibrated on — both leak and understate the error. Split off a calibration holdout, fit there, then measure ECE on a separate test set. Calibration is monotone, so it never changes the ranking — AUC and (near enough) accuracy are untouched; only the probabilities become trustworthy.</p>
+        <div class="relative"><pre># p_cal, y_cal = classifier's outputs on a HELD-OUT calibration set
+# p_test, y_test = a separate test set the calibrator never saw
+cal = fit_platt(p_cal, y_cal)          # or fit_isotonic(...)
+
+print("raw ECE :", ece(p_test,        y_test)[0])
+print("cal ECE :", ece(cal(p_test),   y_test)[0])   # should drop sharply
+print("AUC unchanged:", auc(p_test, y_test) == auc(cal(p_test), y_test))
+# calibration re-labels the confidence, not the decision boundary.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Use the real library — and temperature scaling for nets</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In practice, wrap any classifier in scikit-learn's <code>CalibratedClassifierCV</code> (method <code>"sigmoid"</code> = Platt, <code>"isotonic"</code> = isotonic, with cross-validated holdouts built in). For deep nets, <em>temperature scaling</em> — dividing the logits by one learned scalar T — is the standard, near-free fix (a special case of Platt with B=0, one parameter).</p>
+        <div class="relative"><pre>from sklearn.calibration import CalibratedClassifierCV, calibration_curve
+from sklearn.metrics import brier_score_loss
+
+cal = CalibratedClassifierCV(base_estimator=clf, method="isotonic", cv=5)
+cal.fit(X_train, y_train)                       # holdouts handled internally
+frac_pos, mean_pred = calibration_curve(y_test, cal.predict_proba(X_test)[:,1],
+                                        n_bins=12)   # the reliability curve
+
+# deep nets: temperature scaling — one scalar on the logits
+#   T = argmin_T  NLL( softmax(logits / T),  y_val )
+#   T > 1 softens overconfident logits; keeps argmax (accuracy) fixed.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-10 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">⚔️ Platt vs Isotonic vs Temperature scaling</h3>
+      <div style="overflow-x:auto">
+      <table class="cmp">
+        <tr><th style="width:150px"></th><th>🔵 Platt (sigmoid)</th><th>🟣 Isotonic (steps)</th><th>🌡️ Temperature</th></tr>
+        <tr><td class="cat">What it fits</td><td>2-param sigmoid σ(A·s+B)</td><td>Any non-decreasing step function (PAV)</td><td>1 scalar T on the logits</td></tr>
+        <tr><td class="cat">Flexibility</td><td>Low — assumes sigmoid distortion</td><td>High — corrects any monotone shape</td><td>Lowest — pure rescale, no shift</td></tr>
+        <tr><td class="cat">Data hunger</td><td>Small holdouts fine</td><td>Needs more data or it overfits</td><td>Tiny — one number</td></tr>
+        <tr><td class="cat">Failure mode</td><td>Underfits weird curves</td><td>Jagged / step-artifacts on little data</td><td>Can't fix non-uniform miscalibration</td></tr>
+        <tr><td class="cat">Best for</td><td>SVMs, boosted trees, small data</td><td>Big holdouts, non-sigmoid distortion</td><td>Neural nets (the default)</td></tr>
+        <tr><td class="cat">Changes ranking?</td><td>No (monotone)</td><td>No (monotone)</td><td>No (monotone)</td></tr>
+      </table>
+      </div>
+    </div>
+
+    <div class="mt-8 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 44 of MachineLearningFromZero done — probabilities you can actually bet on.</h3><p class="text-sm text-sky-700 mt-2">Accuracy asks "is the label right?"; <strong>calibration</strong> asks the harder question "is the <em>probability</em> right?" — and a 95%-accurate model can still be a confident liar. The <strong>reliability diagram</strong> exposes it by binning predictions and plotting mean-predicted vs actual-fraction: a calibrated model rides the 45° diagonal, an <strong>overconfident</strong> one sags below it (its 0.9s under-deliver) and an <strong>underconfident</strong> one climbs above. <strong>Expected Calibration Error</strong> compresses the whole curve into a single count-weighted gap. Two post-hoc fixes, both monotone so they never touch the ranking: <strong>Platt scaling</strong> fits a smooth 2-parameter sigmoid on a holdout — low variance, ideal for small data — and <strong>isotonic regression</strong> fits a free-form monotonic staircase via Pool-Adjacent-Violators — flexible but data-hungry. Fit on a holdout, measure ECE on separate test data, and the curve straightens while AUC stays put. <strong>👉 Whenever a probability drives a decision — a medical risk, a fraud threshold, an expected-value bet — calibration is what makes the number mean what it says.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function randn(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function sigmoid(z){ if(z>30)return 1; if(z<-30)return 0; return 1/(1+Math.exp(-z)); }
+function clip01(p){ const e=1e-6; return Math.min(1-e, Math.max(e,p)); }
+function logit(p){ p=clip01(p); return Math.log(p/(1-p)); }
+const MODECOLOR = { raw:"#dc2626", platt:"#2563eb", iso:"#16a34a" };
+
+// ---- generate an over/under-confident toy model ----
+// true prob q = sigmoid(s); label ~ Bernoulli(q); model reports p = sigmoid(T*s)
+function genData(n, T, spread, bias, seed){
+  const rng=mulberry32(seed>>>0); const out=[];
+  for(let i=0;i<n;i++){
+    const s=randn(rng)*spread+bias;
+    const q=sigmoid(s);
+    const y=rng()<q?1:0;
+    const p=sigmoid(T*s);
+    out.push({p,y});
+  }
+  return out;
+}
+
+// ---- reliability binning ----
+function binReliability(data, B){
+  const acc=Array.from({length:B},()=>({sumP:0,sumY:0,n:0}));
+  for(const d of data){ let k=Math.floor(d.p*B); if(k>=B)k=B-1; if(k<0)k=0;
+    acc[k].sumP+=d.p; acc[k].sumY+=d.y; acc[k].n++; }
+  return acc.map((b,k)=>({ lo:k/B, hi:(k+1)/B, n:b.n,
+    conf: b.n? b.sumP/b.n : (k+0.5)/B,
+    acc:  b.n? b.sumY/b.n : null }));
+}
+function eceOf(binned, N){ let e=0,m=0;
+  for(const b of binned){ if(!b.n) continue; const gap=Math.abs(b.conf-b.acc);
+    e+=(b.n/N)*gap; if(gap>m)m=gap; }
+  return {ece:e, mce:m};
+}
+function brierOf(data){ let s=0; for(const d of data){ const df=d.p-d.y; s+=df*df; } return s/data.length; }
+function accOf(data){ let ok=0; for(const d of data) if((d.p>=0.5?1:0)===d.y) ok++; return ok/data.length; }
+
+// ---- Platt scaling: sigmoid(A*logit(p)+B) via log-loss GD ----
+function fitPlatt(fit, iters=900, lr=0.4){
+  let A=1, B=0; const n=fit.length; if(!n) return {A,B,predict:p=>p};
+  // Platt target smoothing
+  let n1=0; for(const d of fit) n1+=d.y; const n0=n-n1;
+  const tHi=(n1+1)/(n1+2), tLo=1/(n0+2);
+  for(let it=0; it<iters; it++){
+    let gA=0,gB=0;
+    for(const d of fit){ const x=logit(d.p); const q=sigmoid(A*x+B); const t=d.y?tHi:tLo; const g=q-t; gA+=g*x; gB+=g; }
+    A-=lr*gA/n; B-=lr*gB/n;
+  }
+  return {A,B, predict:p=>sigmoid(A*logit(p)+B)};
+}
+
+// ---- Isotonic regression via Pool Adjacent Violators ----
+function fitIsotonic(fit){
+  if(!fit.length) return {predict:p=>p, blocks:[]};
+  const pts=fit.map(d=>({x:d.p,y:d.y})).sort((a,b)=>a.x-b.x);
+  const stack=[];
+  for(const pt of pts){
+    let cur={sumY:pt.y, w:1, xlo:pt.x, xhi:pt.x, val:pt.y};
+    while(stack.length && stack[stack.length-1].val > cur.val){
+      const prev=stack.pop();
+      cur={ sumY:prev.sumY+cur.sumY, w:prev.w+cur.w, xlo:prev.xlo, xhi:cur.xhi, val:0 };
+      cur.val=cur.sumY/cur.w;
+    }
+    stack.push(cur);
+  }
+  // interpolation knots (monotone non-decreasing)
+  const kx=[], kv=[];
+  for(const b of stack){ kx.push(b.xlo); kv.push(b.val); kx.push(b.xhi); kv.push(b.val); }
+  function predict(p){
+    if(p<=kx[0]) return kv[0];
+    if(p>=kx[kx.length-1]) return kv[kv.length-1];
+    let lo=0, hi=kx.length-1;
+    while(hi-lo>1){ const mid=(lo+hi)>>1; if(kx[mid]<=p) lo=mid; else hi=mid; }
+    const x0=kx[lo],x1=kx[hi],v0=kv[lo],v1=kv[hi];
+    return x1===x0? v1 : v0+(v1-v0)*(p-x0)/(x1-x0);
+  }
+  return {predict, blocks:stack};
+}
+
+// ================= reliability diagram drawer =================
+function drawReliability(id, binned, ghost, color, N){
+  const cv=document.getElementById(id), ctx=cv.getContext("2d");
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H);
+  const x0=40, y0=14, x1=W-14, y1=H-34;
+  const PX=v=>x0+(x1-x0)*v, PY=v=>y1-(y1-y0)*v;
+  // grid
+  ctx.strokeStyle="#eef2f7"; ctx.lineWidth=1;
+  for(let g=0;g<=5;g++){ const t=g/5;
+    ctx.beginPath(); ctx.moveTo(PX(t),y0); ctx.lineTo(PX(t),y1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x0,PY(t)); ctx.lineTo(x1,PY(t)); ctx.stroke(); }
+  // confidence histogram (faint bars)
+  const maxN=Math.max(1,...binned.map(b=>b.n));
+  binned.forEach(b=>{ if(!b.n)return; const cx=PX((b.lo+b.hi)/2); const bw=(x1-x0)/binned.length*0.7;
+    const hh=(y1-y0)*0.22*(b.n/maxN); ctx.fillStyle="rgba(148,163,184,0.20)"; ctx.fillRect(cx-bw/2,y1-hh,bw,hh); });
+  // axes
+  ctx.strokeStyle="#cbd5e1"; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x0,y1); ctx.lineTo(x1,y1); ctx.stroke();
+  ctx.fillStyle="#94a3b8"; ctx.font="10px monospace";
+  ctx.textAlign="center"; for(let g=0;g<=5;g++){ const t=g/5; ctx.fillText(t.toFixed(1), PX(t), y1+13); }
+  ctx.textAlign="right"; for(let g=0;g<=5;g++){ const t=g/5; ctx.fillText(t.toFixed(1), x0-4, PY(t)+3); }
+  ctx.save(); ctx.translate(11,(y0+y1)/2); ctx.rotate(-Math.PI/2); ctx.textAlign="center"; ctx.fillStyle="#64748b"; ctx.font="10px sans-serif"; ctx.fillText("observed fraction positive",0,0); ctx.restore();
+  ctx.textAlign="center"; ctx.fillStyle="#64748b"; ctx.font="10px sans-serif"; ctx.fillText("mean predicted probability",(x0+x1)/2,H-5);
+  // diagonal
+  ctx.strokeStyle="#94a3b8"; ctx.setLineDash([5,4]); ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(PX(0),PY(0)); ctx.lineTo(PX(1),PY(1)); ctx.stroke(); ctx.setLineDash([]);
+  const drawCurve=(bd,col,alpha,lw,dots)=>{
+    const pts=bd.filter(b=>b.n>0 && b.acc!==null);
+    ctx.globalAlpha=alpha; ctx.strokeStyle=col; ctx.lineWidth=lw;
+    ctx.beginPath(); pts.forEach((b,i)=>{ const X=PX(b.conf),Y=PY(b.acc); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }); ctx.stroke();
+    if(dots) pts.forEach(b=>{ const X=PX(b.conf),Y=PY(b.acc); const r=3+4*Math.sqrt(b.n/maxN);
+      ctx.beginPath(); ctx.arc(X,Y,r,0,7); ctx.fillStyle=col; ctx.fill(); ctx.strokeStyle="#fff"; ctx.lineWidth=1.2; ctx.stroke(); });
+    ctx.globalAlpha=1;
+  };
+  if(ghost) drawCurve(ghost,"#dc2626",0.30,2,false);
+  drawCurve(binned,color,1,2.6,true);
+}
+
+// ================= MODULE A: reliability & ECE =================
+const A={ n:1600, B:12, T:2.2, spread:1.9, seed:7, mode:"raw" };
+let aFit=[], aEval=[], aPlatt=null, aIso=null;
+function aGen(){
+  const all=genData(A.n, A.T, A.spread, 0, A.seed);
+  aFit=[]; aEval=[]; all.forEach((d,i)=> (i%2? aEval:aFit).push(d));
+  aPlatt=fitPlatt(aFit); aIso=fitIsotonic(aFit);
+}
+function aEvalCurrent(){
+  if(A.mode==="platt") return aEval.map(d=>({p:aPlatt.predict(d.p),y:d.y}));
+  if(A.mode==="iso")   return aEval.map(d=>({p:aIso.predict(d.p),y:d.y}));
+  return aEval.map(d=>({p:d.p,y:d.y}));
+}
+function aRefresh(){
+  const cur=aEvalCurrent(); const raw=aEval.map(d=>({p:d.p,y:d.y}));
+  const N=cur.length;
+  const curBin=binReliability(cur,A.B), rawBin=binReliability(raw,A.B);
+  const cE=eceOf(curBin,N), rE=eceOf(rawBin,N);
+  drawReliability("aRel", curBin, A.mode==="raw"?null:rawBin, MODECOLOR[A.mode], N);
+  document.getElementById("aECE").textContent=cE.ece.toFixed(3);
+  document.getElementById("aECE").style.color = cE.ece<0.03?"#16a34a":cE.ece<0.07?"#b45309":"#dc2626";
+  document.getElementById("aMCE").textContent=cE.mce.toFixed(3);
+  document.getElementById("aBrier").textContent=brierOf(cur).toFixed(3);
+  document.getElementById("aAcc").textContent=(accOf(cur)*100).toFixed(1)+"%";
+  document.getElementById("aEceFormula").textContent=cE.ece.toFixed(4);
+  // bin table (populated bins, up to 9)
+  let html=`<table class="rowtbl"><tr><th>bin</th><th>conf</th><th>acc</th><th>gap</th><th>n</th></tr>`;
+  const shown=curBin.filter(b=>b.n>0);
+  const step=Math.max(1,Math.ceil(shown.length/9));
+  for(let i=0;i<shown.length;i+=step){ const b=shown[i]; const gap=Math.abs(b.conf-b.acc);
+    const hot=gap>0.08; html+=`<tr><td>${b.lo.toFixed(2)}</td><td>${b.conf.toFixed(2)}</td><td>${b.acc.toFixed(2)}</td><td style="background:${hot?'#fee2e2':'#ecfdf5'};font-weight:700">${gap.toFixed(2)}</td><td>${b.n}</td></tr>`; }
+  html+=`</table>`; document.getElementById("aBinTbl").innerHTML=html;
+  // diagnosis
+  const box=document.getElementById("aDiag");
+  const set=(c,t,b)=>{ box.className="diag "+c+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; };
+  const drop=rE.ece-cE.ece, pct=rE.ece>1e-9?(drop/rE.ece*100):0;
+  if(A.mode==="raw"){
+    if(rE.ece>0.05){
+      set("diag-bad",
+        `❌ The raw model is overconfident — ECE ${rE.ece.toFixed(3)}, worst bin off by ${(rE.mce*100).toFixed(0)} points`,
+        `Read the curve: on the right it sits <em>below</em> the diagonal — where the model says ~0.9, the true positive rate is lower — and on the left it rides <em>above</em>. That is the fingerprint of overconfidence (the toy model sharpened its logits by T=<b>${A.T.toFixed(1)}</b>). The accuracy is fine, but the <em>probabilities</em> are not: a decision that trusts "90%" is being misled. Flip the toggle to <b>Platt scaling</b> or <b>Isotonic</b> — both fit on the held-out half and drag the curve back onto the diagonal.`);
+    } else {
+      set("diag-good",
+        `✅ Nearly calibrated already — raw ECE ${rE.ece.toFixed(3)}`,
+        `With overconfidence T=<b>${A.T.toFixed(1)}</b> close to 1 there is little distortion, so the raw curve already hugs the diagonal and calibration has little left to fix. Push the <b>overconfidence</b> slider up and watch the curve peel away from the diagonal and the ECE climb — then a fix earns its keep.`);
+    }
+  } else {
+    const name=A.mode==="platt"?"Platt scaling":"Isotonic regression";
+    set(cE.ece<0.035?"diag-good":"diag-info",
+      `${cE.ece<rE.ece?"✅":"➖"} ${name}: ECE ${rE.ece.toFixed(3)} → ${cE.ece.toFixed(3)}  (${pct>=0?"−":"+"}${Math.abs(pct).toFixed(0)}%)`,
+      `The <span style="color:${MODECOLOR[A.mode]};font-weight:700">calibrated</span> curve now tracks the diagonal while the <span style="color:#dc2626;font-weight:700">faint red</span> raw curve shows where it started. ${A.mode==="platt"?`Platt learned a 2-parameter sigmoid σ(A·logit(p)+B) with A=<b>${aPlatt.A.toFixed(2)}</b> (a temperature — A&lt;1 cools the overconfident logits) and B=<b>${aPlatt.B.toFixed(2)}</b> (a base-rate shift), fit by log-loss on the holdout.`:`Isotonic pooled the holdout into <b>${aIso.blocks.length}</b> monotone blocks — a free-form staircase that bends the map wherever the data demands, no sigmoid assumed.`} Crucially the ranking is untouched (a monotone map), so accuracy stays <b>${(accOf(aEvalCurrent())*100).toFixed(1)}%</b> and only the confidence numbers became honest. Both the diagram and ECE are measured on the <em>held-out test half</em>, not the fit half.`);
+  }
+}
+
+// ================= MODULE B: over/under confidence =================
+const Bm={ T:2.2, n:2000, B:12, spread:1.9, seed:21 };
+function bRefresh(){
+  const all=genData(Bm.n, Bm.T, Bm.spread, 0, Bm.seed).map(d=>({p:d.p,y:d.y}));
+  const binned=binReliability(all,Bm.B); const E=eceOf(binned,all.length);
+  const over=Bm.T>1.08, under=Bm.T<0.92;
+  const col=over?"#dc2626":under?"#2563eb":"#16a34a";
+  drawReliability("bRel", binned, null, col, all.length);
+  document.getElementById("bStatus").textContent=over?"OVER":under?"UNDER":"OK ✓";
+  document.getElementById("bStatus").style.color=col;
+  document.getElementById("bT").textContent=Bm.T.toFixed(2);
+  document.getElementById("bECE").textContent=E.ece.toFixed(3);
+  document.getElementById("bECE").style.color=E.ece<0.03?"#16a34a":E.ece<0.07?"#b45309":"#dc2626";
+  document.getElementById("bMCE").textContent=E.mce.toFixed(3);
+  const box=document.getElementById("bDiag");
+  const set=(c,t,b)=>{ box.className="diag "+c+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; };
+  if(over){
+    set("diag-bad",
+      `🔥 Overconfident (T=${Bm.T.toFixed(2)}) — ECE ${E.ece.toFixed(3)}`,
+      `Sharpening the logits (T&gt;1) pushes probabilities toward 0 and 1, so the model overstates its certainty. The reliability curve sits <em>below</em> the diagonal on the right — among cases it labels ~0.9, fewer than 90% are truly positive — and <em>above</em> it on the left. This is the everyday failure of boosted trees and deep nets. The fix is to <em>soften</em> the confidence (temperature/Platt with A&lt;1, or isotonic). Slide T down toward 1 and the curve settles onto the diagonal.`);
+  } else if(under){
+    set("diag-info",
+      `🧊 Underconfident (T=${Bm.T.toFixed(2)}) — ECE ${E.ece.toFixed(3)}`,
+      `Squashing the logits (T&lt;1) pulls every probability toward 0.5 — the model hedges. The curve is now <em>steeper</em> than the diagonal: it rides <em>above</em> on the right (says 0.7 when the truth is 0.85) and <em>below</em> on the left. Underconfidence is rarer than overconfidence but just as wrong; calibration would <em>sharpen</em> the probabilities (A&gt;1). Slide T up toward 1 to straighten it.`);
+  } else {
+    set("diag-good",
+      `✅ Well calibrated (T=${Bm.T.toFixed(2)}) — ECE ${E.ece.toFixed(3)}`,
+      `At T≈1 the reported probability equals the true probability, so the curve lands on the 45° diagonal and ECE is near zero — a predicted 0.8 really does come true about 80% of the time. Nudge T off 1 in either direction to watch the curve bow away and the ECE grow.`);
+  }
+}
+
+// ================= MODULE C: Platt vs isotonic =================
+const Cm={ n:1600, B:12, T:2.3, spread:1.9, seed:33 };
+function drawMap(id, fn, color, label){
+  const cv=document.getElementById(id), ctx=cv.getContext("2d");
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H);
+  const x0=28,y0=22,x1=W-10,y1=H-24;
+  const PX=v=>x0+(x1-x0)*v, PY=v=>y1-(y1-y0)*v;
+  ctx.strokeStyle="#eef2f7"; ctx.lineWidth=1;
+  for(let g=0;g<=4;g++){ const t=g/4; ctx.beginPath();ctx.moveTo(PX(t),y0);ctx.lineTo(PX(t),y1);ctx.stroke(); ctx.beginPath();ctx.moveTo(x0,PY(t));ctx.lineTo(x1,PY(t));ctx.stroke(); }
+  ctx.strokeStyle="#cbd5e1"; ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x0,y1);ctx.lineTo(x1,y1);ctx.stroke();
+  ctx.strokeStyle="#cbd5e1"; ctx.setLineDash([5,4]); ctx.beginPath();ctx.moveTo(PX(0),PY(0));ctx.lineTo(PX(1),PY(1));ctx.stroke(); ctx.setLineDash([]);
+  ctx.strokeStyle=color; ctx.lineWidth=2.6; ctx.beginPath();
+  for(let i=0;i<=240;i++){ const p=i/240; const c=Math.max(0,Math.min(1,fn(p))); const X=PX(p),Y=PY(c); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); } ctx.stroke();
+  ctx.fillStyle="#334155"; ctx.font="bold 10.5px sans-serif"; ctx.textAlign="center"; ctx.fillText(label,(x0+x1)/2,13);
+  ctx.fillStyle="#94a3b8"; ctx.font="9px monospace"; ctx.fillText("raw prob →",(x0+x1)/2,H-5);
+}
+function drawEceBars(id, bars){
+  const cv=document.getElementById(id), ctx=cv.getContext("2d");
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H);
+  const pad=38, base=H-24, top=14;
+  const mx=Math.max(0.01,...bars.map(b=>b.v))*1.18;
+  ctx.strokeStyle="#cbd5e1"; ctx.beginPath();ctx.moveTo(pad,top);ctx.lineTo(pad,base);ctx.lineTo(W-8,base);ctx.stroke();
+  ctx.fillStyle="#94a3b8"; ctx.font="9px monospace"; ctx.textAlign="right";
+  for(let g=0;g<=4;g++){ const v=mx*g/4, yy=base-(base-top)*(g/4); ctx.fillText(v.toFixed(3),pad-3,yy+3);
+    ctx.strokeStyle="#f1f5f9"; ctx.beginPath();ctx.moveTo(pad,yy);ctx.lineTo(W-8,yy);ctx.stroke(); }
+  const bw=50, gap=26; let x=pad+22; ctx.textAlign="center";
+  bars.forEach(b=>{ const hh=(base-top)*(b.v/mx); ctx.fillStyle=b.c; ctx.fillRect(x,base-hh,bw,hh);
+    ctx.fillStyle="#0f172a"; ctx.font="bold 11px monospace"; ctx.fillText(b.v.toFixed(3),x+bw/2,base-hh-4);
+    ctx.fillStyle="#475569"; ctx.font="bold 10px sans-serif"; ctx.fillText(b.k,x+bw/2,base+13); x+=bw+gap; });
+}
+function cRefresh(){
+  const all=genData(Cm.n*2, Cm.T, Cm.spread, 0, Cm.seed);
+  const fit=[], ev=[]; all.forEach((d,i)=>(i%2?ev:fit).push(d));
+  const platt=fitPlatt(fit), iso=fitIsotonic(fit);
+  const N=ev.length;
+  const rawB=binReliability(ev.map(d=>({p:d.p,y:d.y})),Cm.B);
+  const plB=binReliability(ev.map(d=>({p:platt.predict(d.p),y:d.y})),Cm.B);
+  const isB=binReliability(ev.map(d=>({p:iso.predict(d.p),y:d.y})),Cm.B);
+  const eR=eceOf(rawB,N).ece, eP=eceOf(plB,N).ece, eI=eceOf(isB,N).ece;
+  drawMap("cPlatt", p=>platt.predict(p), "#2563eb", "σ(A·logit p + B)");
+  drawMap("cIso",   p=>iso.predict(p),   "#9333ea", iso.blocks.length+" monotone steps");
+  drawEceBars("cBars",[{k:"raw",v:eR,c:"#dc2626"},{k:"Platt",v:eP,c:"#2563eb"},{k:"Iso",v:eI,c:"#9333ea"}]);
+  document.getElementById("cRawE").textContent=eR.toFixed(3);
+  document.getElementById("cPlattE").textContent=eP.toFixed(3);
+  document.getElementById("cIsoE").textContent=eI.toFixed(3);
+  const win=eP<eI?"Platt":"Isotonic"; const wc=eP<eI?"#2563eb":"#9333ea";
+  document.getElementById("cWin").textContent=win; document.getElementById("cWin").style.color=wc;
+  const box=document.getElementById("cDiag");
+  box.className="diag diag-info mt-6 max-w-4xl mx-auto text-left";
+  box.innerHTML=`<div class="text-base font-extrabold mb-1">⚔️ Both fix the overconfidence — raw ECE ${eR.toFixed(3)} → Platt ${eP.toFixed(3)} · Isotonic ${eI.toFixed(3)}</div><div class="text-sm font-medium leading-relaxed"><span style="color:#2563eb;font-weight:700">Platt</span> fit a single smooth sigmoid (A=<b>${platt.A.toFixed(2)}</b>, B=<b>${platt.B.toFixed(2)}</b>): only two knobs, so it barely moves as you resample — low variance, but it can only apply a sigmoid-shaped correction. <span style="color:#9333ea;font-weight:700">Isotonic</span> pooled the fit set into <b>${iso.blocks.length}</b> monotone blocks — a free-form staircase that can bend anywhere, which is why it usually wins on large holdouts but turns jagged and overfits when data is scarce. Both are monotone, so neither touches the model's ranking. On this run the winner is <b style="color:${wc}">${win}</b>. Shrink the <b>fit-set size</b> slider and watch isotonic's staircase get ragged (and its test ECE creep up) while Platt holds steady — the classic bias/variance trade between the two calibrators.</div>`;
+}
+
+// ================= sub-nav wiring =================
+const subBtns=document.querySelectorAll("#subnav [data-mod]");
+function showMod(m){ document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden")); document.getElementById("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m));
+  if(m==="rel") aRefresh(); if(m==="conf") bRefresh(); if(m==="cmp") cRefresh(); }
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+// module A controls
+document.getElementById("aN").addEventListener("input",e=>{ A.n=+e.target.value; document.getElementById("aNV").textContent=A.n; aGen(); aRefresh(); });
+document.getElementById("aB").addEventListener("input",e=>{ A.B=+e.target.value; document.getElementById("aBV").textContent=A.B; aRefresh(); });
+document.getElementById("aT").addEventListener("input",e=>{ A.T=+e.target.value; document.getElementById("aTV").textContent=A.T.toFixed(1); aGen(); aRefresh(); });
+document.getElementById("aResample").onclick=()=>{ A.seed=(A.seed*1103515245+12345)>>>0; aGen(); aRefresh(); };
+document.querySelectorAll("#calibToggle [data-mode]").forEach(b=> b.onclick=()=>{
+  A.mode=b.dataset.mode; document.querySelectorAll("#calibToggle [data-mode]").forEach(x=>x.classList.toggle("on", x===b)); aRefresh();
+});
+// module B controls
+document.getElementById("bTs").addEventListener("input",e=>{ Bm.T=+e.target.value; document.getElementById("bTsV").textContent=Bm.T.toFixed(2); bRefresh(); });
+document.getElementById("bResample").onclick=()=>{ Bm.seed=(Bm.seed*1103515245+12345)>>>0; bRefresh(); };
+// module C controls
+document.getElementById("cN").addEventListener("input",e=>{ Cm.n=+e.target.value; document.getElementById("cNV").textContent=Cm.n; cRefresh(); });
+document.getElementById("cT").addEventListener("input",e=>{ Cm.T=+e.target.value; document.getElementById("cTV").textContent=Cm.T.toFixed(1); cRefresh(); });
+document.getElementById("cResample").onclick=()=>{ Cm.seed=(Cm.seed*1103515245+12345)>>>0; cRefresh(); };
+
+// ================= init =================
+aGen();
+document.querySelector('[data-mod="rel"]').classList.add("on");
+showMod("rel");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. Accuracy is not the whole story", why:"A classifier makes two kinds of claim. The first is the decision — spam or not, disease or not — and accuracy measures how often that call is right. The second, quieter claim is the confidence attached to it: not just 'spam' but 'spam, probability 0.92'. Calibration is entirely about that second claim. A model is calibrated if, among all the cases it labels with probability 0.9, about 90% really are positive — the number means what it says. This matters the moment a probability drives a downstream decision: a doctor weighing a 0.9-vs-0.6 risk, a bank setting a fraud threshold, an expected-value bet. A model can be highly accurate and yet wildly overconfident, quoting 0.99 when it should say 0.7 — accurate decisions, dishonest probabilities. So we need a second axis of evaluation aimed squarely at whether the probabilities can be trusted.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">accuracy: is the LABEL right?<br>calibration: is the PROBABILITY right?<br><br>says 0.9 &nbsp;→&nbsp; right ~90% of the time?<br><br>a 95%-accurate model<br>can still be a confident liar</div>`, code:`# accuracy and calibration are DIFFERENT questions
+acc = (y_pred == y_true).mean()      # decision quality
+# calibration asks: of the cases scored p, is the truth ~p?
+# a model can ace one and fail the other.` },
+ { title:"2. Predicted probability vs observed frequency", why:"The definition of calibration is a promise about frequencies. Take every case the model scored near 0.7 and look at how many actually turned out positive; if the model is calibrated, that fraction is about 0.7. Repeat for 0.1, for 0.5, for 0.9. Formally, calibration asks that P(y=1 | model says p) = p for every p. We can never check a single continuous value p exactly — there is only one prediction at exactly 0.732 — so we group nearby predictions into bins and compare the bin's mean predicted probability against the bin's observed positive rate. That comparison, predicted vs observed, is the raw material of every calibration diagnostic. It is also why calibration needs data: you are estimating a conditional frequency, and frequencies need counts.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">calibrated ⇔ P(y=1 | model=p) = p<br><br>bucket predictions near p →<br>observed positive rate should ≈ p<br><br>predicted 0.7 → ~70% positive ✓<br>predicted 0.7 → ~50% positive ✗</div>`, code:`# can't test a single continuous p — bin nearby predictions
+mask = (0.65 <= p) & (p < 0.75)     # the "~0.7" bucket
+observed = y[mask].mean()           # should be ~0.70 if calibrated
+predicted = p[mask].mean()` },
+ { title:"3. The reliability diagram", why:"The reliability diagram (or calibration curve) makes the predicted-vs-observed comparison visual. Split the [0,1] range into bins, and for each bin plot a point whose x-coordinate is the mean predicted probability and whose y-coordinate is the observed fraction of positives. A perfectly calibrated model puts every point on the 45-degree diagonal, because predicted equals observed. Any departure from the diagonal is miscalibration you can literally see. It is customary to size each point by how many samples fell in its bin (so you don't over-read a bin with three points) and to draw a small histogram of the predictions underneath, because a model that only ever predicts near 0.5 has a very different reliability story than one that is bold. The diagram is the single most useful picture in this whole topic.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">x = mean predicted prob (per bin)<br>y = observed fraction positive (per bin)<br><br>on the diagonal → calibrated<br>below → overconfident · above → underconfident<br><br>dot size ∝ #samples in the bin</div>`, code:`# the reliability curve = the binned points
+for b in bins:
+    plot(x=p[b].mean(), y=y[b].mean(), size=len(b))
+plot_diagonal()        # y = x  is perfect calibration
+# distance from the diagonal = the miscalibration` },
+ { title:"4. Overconfidence vs underconfidence", why:"The shape of the departure tells you which way the model is wrong. An overconfident model pushes its probabilities toward the extremes — it loves to say 0.95 and 0.03 — so when it says 0.9 the truth is often only 0.75. On the diagram its curve sags below the diagonal on the right half and rides above it on the left: a shallow S rotated flatter than the diagonal. This is the common case for modern models — deep nets and boosted trees are notoriously overconfident, partly because they are trained to drive the loss down hard. An underconfident model does the opposite, hedging toward 0.5, so its curve is steeper than the diagonal. Reading the bow direction immediately tells you whether calibration should soften the confidence (the usual fix) or sharpen it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">OVERconfident: probs pushed to 0/1<br>curve sags BELOW diagonal (right side)<br>→ deep nets, boosted trees<br><br>UNDERconfident: probs hug 0.5<br>curve rides ABOVE diagonal<br>→ fix = sharpen instead of soften</div>`, code:`# overconfident logits: p = sigmoid(T * s),  T > 1
+#   -> pushes toward 0 and 1, curve dips below the diagonal
+# underconfident:                              T < 1
+#   -> pulls toward 0.5, curve rises above it
+# calibrated:                                  T = 1` },
+ { title:"5. Expected Calibration Error (ECE)", why:"A picture is persuasive but you also want a single number to track and compare. Expected Calibration Error is exactly the reliability diagram summarized: for each bin take the absolute gap between its mean predicted probability and its observed frequency, then average those gaps weighted by how many samples are in each bin. A perfectly calibrated model has ECE 0; a value of 0.1 means that, on average, a predicted probability is off by ten percentage points. The count-weighting matters — a big gap in a bin holding two samples should not dominate a tiny gap in a bin holding two thousand. ECE's cousins fill in the gaps it leaves: Maximum Calibration Error (MCE) reports the single worst bin, which you care about in safety-critical settings, and the Brier score (mean squared error of the probabilities) blends calibration with sharpness in one proper scoring rule.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ECE = Σ_b (n_b / N) · | conf_b − acc_b |<br><br>conf_b = mean predicted prob in bin<br>acc_b = observed positive fraction<br>weight = share of samples in the bin<br><br>MCE = max gap · Brier = mean (p − y)²</div>`, code:`def ece(p, y, n_bins=12):
+    e = 0.0
+    for b in bin_indices(p, n_bins):
+        gap = abs(p[b].mean() - y[b].mean())
+        e  += (len(b) / len(p)) * gap    # count-weighted
+    return e     # 0 = perfect; 0.1 = off by ~10 points on average` },
+ { title:"6. What calibration does NOT change", why:"A crucial and reassuring fact: every standard calibration method is a monotone (order-preserving) transformation of the scores. It stretches and bends the probability axis but never reorders two predictions — if case A scored higher than case B before, it still does after. Two consequences follow. First, any metric that depends only on ranking is completely untouched: AUC/ROC is identical before and after calibration, and accuracy at a fixed 0.5 threshold barely moves (only borderline cases that calibration nudges across 0.5 can flip). Second, calibration is pure post-processing — you fit the classifier once, then learn a cheap 1-D map from its scores to honest probabilities. You are not retraining or trading away discrimination for calibration; you are relabelling the confidence while keeping the decision boundary. That is why it is almost always worth doing when probabilities will be used.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">calibration = a MONOTONE map on the scores<br><br>ranking preserved →<br>&nbsp;&nbsp;• AUC / ROC: unchanged<br>&nbsp;&nbsp;• accuracy: ~unchanged<br>&nbsp;&nbsp;• only the PROBABILITIES move<br><br>post-processing, not retraining</div>`, code:`# monotone map g: score -> probability
+p_cal = g(p_raw)                 # g non-decreasing
+assert auc(p_cal, y) == auc(p_raw, y)   # ranking untouched
+# you relabel confidence; the decision order is preserved.` },
+ { title:"7. Fix 1 — Platt scaling", why:"Platt scaling, introduced to turn SVM margins into probabilities, is the simplest calibrator: fit a one-dimensional logistic regression from the model's score to the label. Using the logit of the model's probability as that score, it learns two parameters in sigmoid(A·score + B). A acts as a temperature — a value below 1 cools overconfident logits toward 0.5, above 1 sharpens them — and B shifts for base-rate mismatch. You fit A and B by minimizing log-loss on a held-out calibration set (Platt's paper also smooths the 0/1 targets slightly to prevent overfitting on tiny sets). Because it has only two parameters, Platt scaling is low-variance and works well even with a small holdout, but that same rigidity is its weakness: it can only apply an S-shaped correction, so it underfits miscalibration that is not sigmoid-shaped.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">g(p) = σ( A · logit(p) + B )<br><br>A = temperature (A&lt;1 softens overconfidence)<br>B = base-rate shift<br><br>fit A,B by log-loss on a HOLDOUT<br>2 params → low variance, small-data friendly</div>`, code:`# fit a 2-param sigmoid on the calibration holdout
+x = logit(p_hold)
+A, B = 1.0, 0.0
+for _ in range(iters):
+    q  = sigmoid(A*x + B)
+    A -= lr * ((q - y_hold) * x).mean()
+    B -= lr * (q - y_hold).mean()
+calibrate = lambda p: sigmoid(A*logit(p) + B)` },
+ { title:"8. Fix 2 — Isotonic regression", why:"Isotonic regression drops Platt's sigmoid assumption and asks only for monotonicity: find the non-decreasing function that best matches the labels in least-squares. The engine is the Pool Adjacent Violators algorithm. Sort the calibration samples by score; walk left to right treating each label as a block; whenever a block's value exceeds the block to its right (a violation of 'non-decreasing'), merge the two into one block whose value is their weighted mean, and cascade that merge leftwards until order is restored. What remains is a staircase of pooled blocks, each block a flat probability, together forming the best monotone fit. It is far more flexible than Platt — it can correct any monotone distortion, wavy or kinked — which makes it the stronger choice on large holdouts. The price is variance: with little data those blocks are estimated from few points, the staircase gets ragged, and it overfits.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">g = best NON-DECREASING step function<br>min Σ (g(p_i) − y_i)²  s.t.  g monotone<br><br>Pool Adjacent Violators (PAV):<br>sort by score → merge any block &gt; its<br>right neighbour into a weighted-mean block<br><br>flexible, but data-hungry (overfits when small)</div>`, code:`# PAV: monotone least-squares as a stack of blocks
+stack = []
+for x, y in sorted(zip(p_hold, y_hold)):
+    cur = [y, 1]                       # value, weight
+    while stack and stack[-1][0] > cur[0]:      # violation
+        v, w = stack.pop()
+        cur = [(v*w + cur[0]*cur[1])/(w+cur[1]), w+cur[1]]
+    stack.append(cur)                  # -> monotone staircase` },
+ { title:"9. Platt vs isotonic vs temperature scaling", why:"Three calibrators cover most needs, trading flexibility against data hunger. Platt scaling (two parameters) is the low-variance default for small calibration sets and for distortions that really are roughly sigmoid — classically SVMs and boosted trees. Isotonic regression (as many effective parameters as there are blocks) is the flexible choice when you have a large holdout and the miscalibration is an odd shape it needs to bend around; give it too little data and it overfits. Temperature scaling is the neural-network favourite: a single scalar T divides all the logits before the softmax, learned by minimizing validation NLL. It is a one-parameter special case of Platt (B fixed at 0) and, because it is monotone in a shared way across classes, it preserves the arg-max and therefore accuracy exactly — which is why it became the standard, near-free calibration for deep classifiers. Rule of thumb: nets → temperature, small tabular → Platt, big holdout with weird curve → isotonic.", concept:`<div class="bg-slate-100 p-4 rounded text-[11px] w-full text-left font-mono leading-relaxed">Platt&nbsp;&nbsp;&nbsp;2 params · low variance · small data<br>Isotonic&nbsp;flexible steps · big holdout · overfits small<br>Temp&nbsp;&nbsp;&nbsp;&nbsp;1 scalar T on logits · nets · keeps argmax<br><br>nets → temperature · tabular/small → Platt<br>big + weird shape → isotonic</div>`, code:`# scikit-learn wraps both, with internal CV holdouts:
+from sklearn.calibration import CalibratedClassifierCV
+CalibratedClassifierCV(clf, method="sigmoid",  cv=5)   # Platt
+CalibratedClassifierCV(clf, method="isotonic", cv=5)   # isotonic
+# nets: T = argmin_T NLL(softmax(logits / T), y_val)   # temperature` },
+ { title:"10. The honest protocol, pitfalls, and why it matters", why:"Calibration is only meaningful if it is measured honestly. Never fit the calibrator on data the classifier was trained on — those scores are optimistic and the map will bake the optimism in — and never report ECE on the same data you calibrated on, or you will understate the error (isotonic especially can drive in-sample ECE to nearly zero while test ECE is much higher). The discipline is: hold out a calibration set, fit the map there, and evaluate ECE on a separate test set. Watch two more traps: ECE depends on the number of bins (too few hides error, too many leaves bins empty and noisy — sweep it or use adaptive equal-mass bins), and small datasets make every bin's frequency a shaky estimate. Why bother with all this? Because whenever a probability leaves the model and enters a decision — a triage risk, a credit cutoff, a self-driving confidence, an expected-value wager — a miscalibrated number quietly corrupts the decision. Calibration is the cheap post-processing step that makes '0.9' actually mean 0.9.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">FIT calibrator on a holdout<br>MEASURE ece on a separate test set<br>(same-data ECE lies — esp. isotonic)<br><br>pitfalls: #bins · too little data<br><br>a probability that drives a decision<br>must mean what it says</div>`, code:`# the honest 3-way split
+p_train  # classifier trained here (never calibrate on this)
+p_cal    # fit Platt / isotonic here
+p_test   # report ECE here
+cal = fit_isotonic(p_cal, y_cal)
+print(ece(p_test, y_test), "->", ece(cal(p_test), y_test))  # the real gain` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
