@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 45 — Conformal Prediction</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:170px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .swatch-box { display:inline-block; width:14px; height:10px; border-radius:3px; vertical-align:0; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .kbtn { border:1px solid #e2e8f0; background:#fff; font-weight:800; }
+  .kbtn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  .rowtbl { border-collapse:collapse; font-size:11px; width:100%; }
+  .rowtbl th, .rowtbl td { border:1px solid #e2e8f0; padding:3px 5px; text-align:center; font-variant-numeric:tabular-nums; }
+  .rowtbl th { background:#f1f5f9; font-weight:800; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 45</div>
+      <h1 class="text-xl font-bold">🎯 Conformal Prediction — Turning a Point Guess into an Interval You Can <em>Trust</em>: <em>Split (Inductive) Conformal</em> Trains a Model, Scores Its Errors <code>|y−ŷ|</code> on a Held-out <em>Calibration</em> Set, Takes the <code>⌈(n+1)(1−α)⌉/n</code> Empirical <em>Quantile</em> q — and the Band <code>ŷ ± q</code> Then Covers the Truth with Probability <em>≥ 1−α</em> for <em>Any</em> Distribution (assuming only exchangeability), a Finite-Sample <em>Guarantee</em> No Other Method Gives</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>A model that only ever answers "the value is 3.2" is hiding how sure it is.</strong> Conformal prediction wraps <em>any</em> trained model in an <em>interval</em> — "the value is in [2.4, 4.0]" — that comes with a mathematical promise: <em>the true value lands inside at least 90% of the time</em> (or 95%, or whatever 1−α you ask for), and that promise holds for <strong>any</strong> data distribution, with <strong>finite</strong> data, no Gaussian assumption, no faith in the model being correct. The recipe is almost embarrassingly simple: train the model, look at how big its errors <code>|y−ŷ|</code> are on a fresh <em>calibration</em> set, take the right <em>empirical quantile</em> of those errors, and pad every prediction by it. Everything below computes that quantile and measures the resulting coverage <strong>live, from scratch</strong> — no library, no faking.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Split-conformal band</strong> fits a regressor on a toy 1-D dataset, scores its calibration errors, and turns the <span style="color:#0ea5e9;font-weight:700">α slider</span> into a real <span style="color:#dc2626;font-weight:700">quantile q</span> — the shaded band is <code>ŷ ± q</code>, and a live readout shows the <strong>empirical coverage on a held-out test set</strong> tracking the target 1−α. <strong>The coverage guarantee</strong> sweeps α across its whole range and plots achieved-vs-target coverage: the points ride the diagonal, so the guarantee is real, not a fluke. <strong>Adaptivity</strong> puts a constant-width band next to a <em>locally-normalized</em> one — divide the error by an estimate of local spread and the interval <em>widens where the model is unsure</em> and pinches where it is confident, same coverage, smarter shape. Move the sliders; every quantile and coverage number recomputes from the actual data.</p>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="rc"  class="subnav-btn px-4 py-2 rounded-lg text-sm">📏 Split-conformal band</button>
+        <button data-mod="cov" class="subnav-btn px-4 py-2 rounded-lg text-sm">🎯 The coverage guarantee</button>
+        <button data-mod="adp" class="subnav-btn px-4 py-2 rounded-lg text-sm">📐 Adaptivity</button>
+      </div>
+
+      <!-- ============ MODULE: SPLIT-CONFORMAL BAND ============ -->
+      <div id="mod-rc" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="rcTarget" style="color:#0ea5e9">—</div><div class="k">target 1−α</div></div>
+          <div class="metric-pill"><div class="v" id="rcEmp" style="color:#16a34a">—</div><div class="k">empirical coverage (test)</div></div>
+          <div class="metric-pill"><div class="v" id="rcQ" style="color:#dc2626">—</div><div class="k">quantile q</div></div>
+          <div class="metric-pill"><div class="v" id="rcWidth" style="color:#0f172a">—</div><div class="k">interval width 2q</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:314px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">TOY 1-D REGRESSION — split conformal</div>
+            <div class="ctl-row"><div class="ctl-name">🎚️ miscoverage α</div><input type="range" id="rcAlpha" min="0.02" max="0.5" step="0.01" value="0.10"><div class="ctl-val" id="rcAlphaV">0.10</div></div>
+            <div class="ctl-row"><div class="ctl-name">🗂️ calibration n</div><input type="range" id="rcNCal" min="20" max="400" step="10" value="150"><div class="ctl-val" id="rcNCalV">150</div></div>
+            <div class="mt-1"><button id="rcResample" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">🎲 resample data</button></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>How it works.</strong> A kernel regressor is trained (gray points → the <span style="color:#0f172a;font-weight:700">black curve ŷ</span>). On a separate <strong>calibration</strong> set we record the <em>nonconformity scores</em> <code>s=|y−ŷ|</code>, sort them, and take the <code>⌈(n+1)(1−α)⌉</code>-th smallest as the quantile <span style="color:#dc2626;font-weight:700">q</span>. The <span style="color:#0ea5e9;font-weight:700">shaded band</span> is simply <code>ŷ ± q</code>. On a fresh <strong>test</strong> set (blue dots, <span style="color:#dc2626;font-weight:700">red</span> = missed) the fraction that lands inside is the <strong>empirical coverage</strong> — watch it sit at or just above 1−α however you move the sliders.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:474px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📈 Prediction band ŷ ± q — over a held-out test set</div>
+            <canvas id="rcBand" width="450" height="340"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#0f172a"></span> model ŷ</span>
+              <span><span class="swatch-box" style="background:rgba(14,165,233,.18);border:1px solid #7dd3fc"></span> band ŷ±q</span>
+              <span><span class="swatch" style="background:rgba(37,99,235,.55)"></span> test inside</span>
+              <span><span class="swatch" style="background:#dc2626"></span> test missed</span>
+            </div>
+          </div>
+
+          <div class="panel text-left" style="width:316px; max-width:100%;">
+            <div class="text-sm font-bold text-slate-700 mb-2">🔬 Nonconformity scores — q is a real quantile</div>
+            <canvas id="rcHist" width="292" height="176"></canvas>
+            <div id="rcInfo" class="mt-2"></div>
+            <div class="mt-2 text-[11px] text-slate-500 leading-relaxed">
+              The histogram is the calibration errors <code>|y−ŷ|</code>. The <span style="color:#dc2626;font-weight:700">red line</span> is the conformal quantile <b>q</b> at rank <b id="rcRank">—</b> of <b id="rcN">—</b>. Everything the band draws comes from this one number.
+            </div>
+          </div>
+        </div>
+        <div id="rcDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+      <!-- ============ MODULE: THE COVERAGE GUARANTEE ============ -->
+      <div id="mod-cov" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-3xl mx-auto mb-4">
+          <div class="metric-pill"><div class="v" id="cvTarget" style="color:#0ea5e9">—</div><div class="k">target 1−α</div></div>
+          <div class="metric-pill"><div class="v" id="cvEmp" style="color:#16a34a">—</div><div class="k">empirical coverage</div></div>
+          <div class="metric-pill"><div class="v" id="cvGap" style="color:#0f172a">—</div><div class="k">mean |gap|</div></div>
+          <div class="metric-pill"><div class="v" id="cvTrials" style="color:#9333ea">—</div><div class="k">trials averaged</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">SWEEP α — does coverage keep its promise?</div>
+            <div class="ctl-row"><div class="ctl-name">🎚️ miscoverage α</div><input type="range" id="cvAlpha" min="0.02" max="0.5" step="0.02" value="0.10"><div class="ctl-val" id="cvAlphaV">0.10</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔁 trials</div><input type="range" id="cvTr" min="2" max="40" step="2" value="14"><div class="ctl-val" id="cvTrV">14</div></div>
+            <div class="mt-1"><button id="cvResample" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">🎲 resample data</button></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              For every α we recompute the conformal quantile and measure test coverage, averaged over <b>trials</b> fresh calibration/test resamples. Each dot plots <strong>achieved</strong> coverage (y) against the <strong>target</strong> 1−α (x). They ride the <span style="color:#94a3b8;font-weight:700">dashed diagonal</span> and sit <em>just above</em> it — conformal is guaranteed to be <em>at least</em> 1−α (slightly conservative because of the <code>+1</code> in the quantile rank). The <span style="color:#0ea5e9;font-weight:700">blue marker</span> is your current α. This is the guarantee, made visible.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:420px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📈 Achieved coverage vs target — hugging the diagonal</div>
+            <canvas id="cvPlot" width="396" height="360"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#94a3b8;border-top-style:dashed"></span> perfect coverage (y=x)</span>
+              <span><span class="swatch" style="background:#16a34a"></span> achieved (per α)</span>
+              <span><span class="swatch" style="background:#0ea5e9"></span> current α</span>
+            </div>
+          </div>
+        </div>
+        <div id="cvDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+      <!-- ============ MODULE: ADAPTIVITY ============ -->
+      <div id="mod-adp" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-3xl mx-auto mb-4">
+          <div class="metric-pill"><div class="v" id="apCovC" style="color:#dc2626">—</div><div class="k">const coverage</div></div>
+          <div class="metric-pill"><div class="v" id="apCovA" style="color:#9333ea">—</div><div class="k">adaptive coverage</div></div>
+          <div class="metric-pill"><div class="v" id="apWC" style="color:#dc2626">—</div><div class="k">const avg width</div></div>
+          <div class="metric-pill"><div class="v" id="apWA" style="color:#9333ea">—</div><div class="k">adaptive avg width</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:300px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">HETEROSKEDASTIC NOISE — where is the model unsure?</div>
+            <div class="ctl-row"><div class="ctl-name">🎚️ miscoverage α</div><input type="range" id="apAlpha" min="0.02" max="0.4" step="0.02" value="0.10"><div class="ctl-val" id="apAlphaV">0.10</div></div>
+            <div class="ctl-row"><div class="ctl-name">📣 noise slope</div><input type="range" id="apSlope" min="0" max="3.5" step="0.1" value="2.4"><div class="ctl-val" id="apSlopeV">2.4</div></div>
+            <div class="mt-1"><button id="apResample" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">🎲 resample data</button></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              Here the noise <em>grows with x</em>. Plain split conformal gives one <span style="color:#dc2626;font-weight:700">constant</span> width <code>ŷ±q</code> — correct on average but too wide on the quiet left and too narrow on the noisy right. <strong>Normalized</strong> conformal scores the error <em>relative</em> to a local spread estimate, <code>s=|y−ŷ|/σ̂(x)</code>, so the band becomes <code>ŷ ± q·σ̂(x)</code> — it <span style="color:#9333ea;font-weight:700">pinches where the model is confident and swells where it isn't</span>. Both keep the same marginal coverage; the adaptive one just spends its width more honestly. Push the <b>noise slope</b> up to exaggerate it.
+            </div>
+          </div>
+          <div class="panel text-left" style="width:256px; max-width:100%;">
+            <div class="text-sm font-bold mb-1" style="color:#dc2626">🟥 CONSTANT — ŷ ± q</div>
+            <canvas id="apConst" width="232" height="240"></canvas>
+            <div class="text-[11px] text-slate-400 mt-1">One width everywhere.</div>
+          </div>
+          <div class="panel hero text-left" style="width:256px; max-width:100%;">
+            <div class="text-sm font-bold mb-1" style="color:#9333ea">🟪 ADAPTIVE — ŷ ± q·σ̂(x)</div>
+            <canvas id="apAdapt" width="232" height="240"></canvas>
+            <div class="text-[11px] text-slate-400 mt-1">Widens where σ̂(x) is large.</div>
+          </div>
+          <div class="panel text-left" style="width:250px; max-width:100%;">
+            <div class="text-sm font-bold text-slate-700 mb-1">📊 Average interval width</div>
+            <canvas id="apBars" width="226" height="180"></canvas>
+            <div class="text-[11px] text-slate-400 mt-1">Same coverage — is adaptive tighter on average?</div>
+          </div>
+        </div>
+        <div id="apDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From a bare number to an interval with a guarantee</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Split (inductive) conformal prediction is a wrapper you can bolt onto any model in a dozen lines: split off a calibration set, score the model's errors on it, take one quantile, and pad every future prediction by it — with a proven <code>≥ 1−α</code> coverage guarantee. Here is the runnable from-scratch core — the split, the nonconformity scores, the exact <code>⌈(n+1)(1−α)⌉/n</code> quantile, the interval and its coverage check, the locally-adaptive (normalized) variant, and the real library. Everything the LOOK tab draws lives in these snippets.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Split the data — train / calibrate / test</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The "split" in split conformal: carve a <em>calibration</em> set out of your data that the model never trains on. Fit the model on the training part only; the calibration part is a clean, exchangeable sample used to measure how big the errors really are. Test data is what you'll finally predict on.</p>
+        <div class="relative"><pre>import numpy as np
+rng = np.random.default_rng(0)
+
+# X, y are your data. Shuffle then split three ways.
+idx = rng.permutation(len(X))
+tr, cal, te = np.split(idx, [int(.5*len(X)), int(.75*len(X))])
+
+model.fit(X[tr], y[tr])          # model NEVER sees the calibration set
+# cal = the exchangeable sample that earns the guarantee
+# te  = fresh points we will wrap in an interval</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Nonconformity scores — how "strange" is each point?</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A nonconformity score measures how badly the model fits a point. For regression the natural score is the absolute residual <code>|y − ŷ|</code>: large means the point disagrees with the model. Compute it on every calibration point — that distribution of "typical strangeness" is all conformal needs.</p>
+        <div class="relative"><pre>yhat_cal = model.predict(X[cal])
+scores   = np.abs(y[cal] - yhat_cal)     # nonconformity = |y - yhat|
+
+# scores is an empirical picture of how big errors normally are.
+# (any score works: |y-yhat|, |y-yhat|/sigma(x), 1 - softmax prob, ...)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The conformal quantile — the ⌈(n+1)(1−α)⌉ rank</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This is the whole trick. Sort the calibration scores and take the <code>⌈(n+1)(1−α)⌉</code>-th smallest. The <code>+1</code> (a "phantom" for the unseen test point) is what upgrades an ordinary quantile into a finite-sample guarantee. If that rank exceeds <code>n</code>, you don't have enough calibration data for that α and q is +∞ (an infinite, useless-but-honest interval).</p>
+        <div class="relative"><pre>def conformal_quantile(scores, alpha):
+    n = len(scores)
+    k = int(np.ceil((n + 1) * (1 - alpha)))    # the magic rank
+    if k > n:                                   # too little data for this alpha
+        return np.inf
+    return np.sort(scores)[k - 1]               # k-th smallest (1-indexed)
+
+q = conformal_quantile(scores, alpha=0.1)       # e.g. 90% target
+# k/n is ~ the (1-alpha) empirical quantile, nudged up by the +1.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The interval ŷ ± q — and check the coverage</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Pad every prediction by q: the interval is <code>[ŷ − q, ŷ + q]</code>. The theorem says the true y lands inside with probability at least <code>1 − α</code>. Verify it empirically on the test set — the fraction covered should sit at or just above the target, whatever the data looks like.</p>
+        <div class="relative"><pre>yhat_te = model.predict(X[te])
+lo, hi  = yhat_te - q, yhat_te + q          # the prediction interval
+
+covered = np.mean((y[te] >= lo) & (y[te] <= hi))
+print(f"target {1-alpha:.2f}  ->  empirical coverage {covered:.3f}")
+# covered >= 1 - alpha, distribution-free, no Gaussian assumption.
+# width 2q is the price: honest uncertainty in the model's own units.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Adaptivity — normalize by local spread</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A constant q is one-size-fits-all, so it wastes width where the model is confident and undershoots where it isn't. Fit a second model <code>σ̂(x)</code> to the size of the residuals, then score <code>|y−ŷ|/σ̂(x)</code>. Now the interval is <code>ŷ ± q·σ̂(x)</code> — same marginal guarantee, but it breathes with the local uncertainty.</p>
+        <div class="relative"><pre># mu = model.predict ; fit a spread model on |residual|
+resid   = np.abs(y[tr] - model.predict(X[tr]))
+sigma.fit(X[tr], resid)                         # sigma(x) ~ local error size
+
+s_cal = np.abs(y[cal] - model.predict(X[cal])) / (sigma.predict(X[cal]) + 1e-6)
+q = conformal_quantile(s_cal, alpha)            # quantile of NORMALIZED scores
+
+lo = model.predict(X[te]) - q * sigma.predict(X[te])
+hi = model.predict(X[te]) + q * sigma.predict(X[te])   # width varies with x</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Use the real library — MAPIE, and classification sets</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In practice reach for <code>MAPIE</code> (regression <em>and</em> classification) or <code>crepes</code>: they handle the split, the quantile, cross-conformal for data efficiency, and normalized/CQR variants. For classification the same idea produces a <em>prediction set</em> — a set of labels guaranteed to contain the true class with probability 1−α (APS / RAPS / LAC scores), which naturally grows on hard, ambiguous inputs.</p>
+        <div class="relative"><pre>from mapie.regression import MapieRegressor
+mapie = MapieRegressor(estimator=model, method="base", cv="split")
+mapie.fit(X_tr, y_tr)
+y_pred, y_pis = mapie.predict(X_te, alpha=0.1)   # y_pis[:,0], y_pis[:,1] = [lo,hi]
+
+# classification: a guaranteed-coverage prediction SET of labels
+from mapie.classification import MapieClassifier
+clf = MapieClassifier(estimator=model, method="aps", cv="split").fit(X_tr, y_tr)
+y_hat, y_set = clf.predict(X_te, alpha=0.05)      # set covers true label 95%+</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-10 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">⚖️ Conformal vs the alternatives for uncertainty</h3>
+      <div style="overflow-x:auto">
+      <table class="cmp">
+        <tr><th style="width:150px"></th><th>📏 Split conformal</th><th>🔮 Bayesian / GP credible</th><th>📊 Gaussian ±1.96σ</th></tr>
+        <tr><td class="cat">Coverage guarantee</td><td>Yes — finite-sample, ≥ 1−α</td><td>Only if the prior/model is correct</td><td>Only if errors truly Gaussian</td></tr>
+        <tr><td class="cat">Assumptions</td><td>Exchangeability only</td><td>Prior + likelihood correct</td><td>Normal, homoskedastic errors</td></tr>
+        <tr><td class="cat">Works on any model?</td><td>Yes — pure wrapper</td><td>No — needs a probabilistic model</td><td>Wrapper, but assumption-heavy</td></tr>
+        <tr><td class="cat">Cost</td><td>One calibration split + a quantile</td><td>Posterior inference (often heavy)</td><td>Trivial</td></tr>
+        <tr><td class="cat">Adapts to input x?</td><td>With normalized / CQR scores</td><td>Yes (natural)</td><td>No (constant width)</td></tr>
+        <tr><td class="cat">Main caveat</td><td>Marginal (not per-x) coverage; needs exchangeability</td><td>Miscalibrated if model wrong</td><td>Breaks under heteroskedasticity / heavy tails</td></tr>
+      </table>
+      </div>
+    </div>
+
+    <div class="mt-8 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 45 of MachineLearningFromZero done — a prediction you can put a probability on.</h3><p class="text-sm text-sky-700 mt-2">A point prediction hides its own uncertainty; <strong>conformal prediction</strong> replaces it with an interval (or a set of labels) that carries a real, finite-sample <strong>coverage guarantee</strong>. Split conformal is the whole recipe in four moves: <strong>train</strong> any model, score its errors <code>|y−ŷ|</code> on a held-out <strong>calibration</strong> set, take the <code>⌈(n+1)(1−α)⌉/n</code> empirical <strong>quantile q</strong>, and predict <code>ŷ ± q</code>. The magic is that this covers the truth with probability <strong>≥ 1−α</strong> for <em>any</em> distribution and <em>any</em> model — the only assumption is exchangeability, and the <code>+1</code> in the rank is what makes it exact in finite samples. <strong>α</strong> is the single knob: shrink it for tighter guarantees (wider bands), grow it for narrower bands (weaker guarantees). Plain conformal gives constant width; <strong>normalized</strong> scores <code>|y−ŷ|/σ̂(x)</code> make the band <strong>adapt</strong> — widening where the model is unsure. <strong>👉 Whenever a prediction feeds a real decision — a dosage, a price, a risk threshold — conformal turns "my best guess is 3.2" into "it's in [2.4, 4.0], and I'm 90% sure", with the math to back the claim.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function randn(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+// ---- true mean function of the toy 1-D regression ----
+function trueF(x){ return 1.15*Math.sin(1.9*Math.PI*x) + 0.5*x - 0.2; }
+
+// ---- generate data: x~U(0,1), y = f(x) + N(0, sigma(x)^2), heteroskedastic ----
+function genData(n, seed, nBase, nSlope){
+  const rng=mulberry32(seed>>>0); const out=[];
+  for(let i=0;i<n;i++){
+    const x=rng();
+    const sig=nBase*(0.25+nSlope*x);
+    const y=trueF(x)+randn(rng)*sig;
+    out.push({x,y});
+  }
+  return out;
+}
+
+// ---- kernel (Nadaraya-Watson) regressor: a real trained model ----
+function fitKernel(train, h){
+  const T=train.slice();
+  return { predict(x){ let sw=0,swy=0; for(const p of T){ const d=(x-p.x)/h; const w=Math.exp(-0.5*d*d); sw+=w; swy+=w*p.y; } return sw>1e-12? swy/sw : 0; } };
+}
+// ---- local spread model sigma-hat(x): kernel-smoothed |residual| + floor ----
+function fitSigma(train, model, h, beta){
+  const R=train.map(p=>({x:p.x, r:Math.abs(p.y-model.predict(p.x))}));
+  return { sigma(x){ let sw=0,swr=0; for(const p of R){ const d=(x-p.x)/h; const w=Math.exp(-0.5*d*d); sw+=w; swr+=w*p.r; } const s=sw>1e-12? swr/sw : 0; return s+beta; } };
+}
+function meanAbsResid(train, model){ let s=0; for(const p of train) s+=Math.abs(p.y-model.predict(p.x)); return s/Math.max(1,train.length); }
+
+// ---- the conformal quantile: k = ceil((n+1)(1-alpha)) -th smallest ----
+function conformalQ(scores, alpha){
+  const n=scores.length; if(!n) return Infinity;
+  const s=scores.slice().sort((a,b)=>a-b);
+  const k=Math.ceil((n+1)*(1-alpha));
+  return k>n ? Infinity : s[k-1];
+}
+function conformalRank(n, alpha){ return Math.ceil((n+1)*(1-alpha)); }
+
+// ---- coverage on a test set ----
+function coverConst(test, model, q){ if(!isFinite(q)) return 1; let c=0; for(const p of test){ if(Math.abs(p.y-model.predict(p.x))<=q) c++; } return c/test.length; }
+function coverAdapt(test, model, sig, q){ if(!isFinite(q)) return 1; let c=0; for(const p of test){ if(Math.abs(p.y-model.predict(p.x))<=q*sig.sigma(p.x)) c++; } return c/test.length; }
+
+// ================= regression band drawer =================
+function drawReg(id, model, bandFn, train, test, yr){
+  const cv=document.getElementById(id), ctx=cv.getContext("2d");
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H);
+  const x0=40,y0=12,x1=W-12,y1=H-26;
+  const span=(yr[1]-yr[0])||1;
+  const PX=x=>x0+(x1-x0)*x;
+  const PY=y=>{ let t=(y-yr[0])/span; if(t<-0.4)t=-0.4; if(t>1.4)t=1.4; return y1-(y1-y0)*t; };
+  // grid
+  ctx.strokeStyle="#eef2f7"; ctx.lineWidth=1;
+  for(let g=0;g<=5;g++){ ctx.beginPath();ctx.moveTo(PX(g/5),y0);ctx.lineTo(PX(g/5),y1);ctx.stroke(); }
+  for(let g=0;g<=4;g++){ const yy=y0+(y1-y0)*g/4; ctx.beginPath();ctx.moveTo(x0,yy);ctx.lineTo(x1,yy);ctx.stroke(); }
+  // band
+  const N=121, xs=[]; for(let i=0;i<N;i++) xs.push(i/(N-1));
+  ctx.fillStyle="rgba(14,165,233,0.16)";
+  ctx.beginPath();
+  xs.forEach((x,i)=>{ const b=bandFn(x); const Y=PY(b[1]); i?ctx.lineTo(PX(x),Y):ctx.moveTo(PX(x),Y); });
+  for(let i=N-1;i>=0;i--){ const x=xs[i]; const b=bandFn(x); ctx.lineTo(PX(x),PY(b[0])); }
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle="#7dd3fc"; ctx.lineWidth=1.2; ctx.setLineDash([4,3]);
+  [0,1].forEach(k=>{ ctx.beginPath(); xs.forEach((x,i)=>{ const b=bandFn(x); const Y=PY(b[k]); i?ctx.lineTo(PX(x),Y):ctx.moveTo(PX(x),Y); }); ctx.stroke(); });
+  ctx.setLineDash([]);
+  // model curve
+  ctx.strokeStyle="#0f172a"; ctx.lineWidth=2; ctx.beginPath();
+  xs.forEach((x,i)=>{ const Y=PY(model.predict(x)); i?ctx.lineTo(PX(x),Y):ctx.moveTo(PX(x),Y); }); ctx.stroke();
+  // train points
+  if(train){ ctx.fillStyle="rgba(148,163,184,0.42)"; train.forEach(p=>{ ctx.beginPath();ctx.arc(PX(p.x),PY(p.y),1.7,0,7);ctx.fill(); }); }
+  // test points (subsample for display; coverage uses full set)
+  if(test){ const step=Math.max(1,Math.ceil(test.length/320));
+    for(let i=0;i<test.length;i+=step){ const p=test[i]; const b=bandFn(p.x); const inside=p.y>=b[0]&&p.y<=b[1];
+      ctx.beginPath();ctx.arc(PX(p.x),PY(p.y),2.1,0,7); ctx.fillStyle=inside?"rgba(37,99,235,0.5)":"#dc2626"; ctx.fill(); } }
+  // axes + labels
+  ctx.strokeStyle="#cbd5e1"; ctx.lineWidth=1; ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x0,y1);ctx.lineTo(x1,y1);ctx.stroke();
+  ctx.fillStyle="#94a3b8"; ctx.font="10px monospace"; ctx.textAlign="center";
+  for(let g=0;g<=5;g++){ ctx.fillText((g/5).toFixed(1),PX(g/5),y1+13); }
+  ctx.fillStyle="#64748b"; ctx.font="10px sans-serif"; ctx.fillText("input x",(x0+x1)/2,H-3);
+}
+
+// ================= nonconformity histogram drawer =================
+function drawHist(id, scores, q){
+  const cv=document.getElementById(id), ctx=cv.getContext("2d");
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H);
+  const x0=8,y0=10,x1=W-8,y1=H-22;
+  const qFin=isFinite(q)?q:0;
+  const mx=Math.max(0.01, Math.max(...scores), qFin)*1.05;
+  const nb=24, bins=new Array(nb).fill(0);
+  scores.forEach(s=>{ let k=Math.floor(s/mx*nb); if(k>=nb)k=nb-1; if(k<0)k=0; bins[k]++; });
+  const mc=Math.max(1,...bins);
+  const bw=(x1-x0)/nb;
+  for(let k=0;k<nb;k++){ const hh=(y1-y0)*(bins[k]/mc); ctx.fillStyle="rgba(14,165,233,0.55)"; ctx.fillRect(x0+k*bw+0.5,y1-hh,bw-1,hh); }
+  // axis
+  ctx.strokeStyle="#cbd5e1"; ctx.lineWidth=1; ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x0,y1);ctx.lineTo(x1,y1);ctx.stroke();
+  // q line
+  if(isFinite(q)){ const qx=x0+(x1-x0)*(q/mx); ctx.strokeStyle="#dc2626"; ctx.lineWidth=2; ctx.beginPath();ctx.moveTo(qx,y0);ctx.lineTo(qx,y1);ctx.stroke();
+    ctx.fillStyle="#dc2626"; ctx.font="bold 10px monospace"; ctx.textAlign=qx>W-46?"right":"left"; ctx.fillText("q="+q.toFixed(2), qx>W-46?qx-3:qx+3, y0+9); }
+  else { ctx.fillStyle="#dc2626"; ctx.font="bold 11px monospace"; ctx.textAlign="center"; ctx.fillText("q = ∞  (n too small for this α)",(x0+x1)/2,(y0+y1)/2); }
+  ctx.fillStyle="#94a3b8"; ctx.font="9px sans-serif"; ctx.textAlign="center"; ctx.fillText("nonconformity score |y−ŷ|",(x0+x1)/2,H-4);
+}
+
+// ================= coverage-vs-target plot =================
+function drawCovPlot(id, pts, curTarget, curEmp){
+  const cv=document.getElementById(id), ctx=cv.getContext("2d");
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H);
+  const x0=42,y0=14,x1=W-14,y1=H-34;
+  const lo=0.45, hi=1.0;
+  const PX=v=>x0+(x1-x0)*(v-lo)/(hi-lo), PY=v=>y1-(y1-y0)*(v-lo)/(hi-lo);
+  ctx.strokeStyle="#eef2f7"; ctx.lineWidth=1;
+  for(let g=0;g<=5;g++){ const v=lo+(hi-lo)*g/5; ctx.beginPath();ctx.moveTo(PX(v),y0);ctx.lineTo(PX(v),y1);ctx.stroke(); ctx.beginPath();ctx.moveTo(x0,PY(v));ctx.lineTo(x1,PY(v));ctx.stroke(); }
+  ctx.strokeStyle="#cbd5e1"; ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x0,y1);ctx.lineTo(x1,y1);ctx.stroke();
+  ctx.fillStyle="#94a3b8"; ctx.font="10px monospace"; ctx.textAlign="center";
+  for(let g=0;g<=5;g++){ const v=lo+(hi-lo)*g/5; ctx.fillText(v.toFixed(2),PX(v),y1+13); }
+  ctx.textAlign="right"; for(let g=0;g<=5;g++){ const v=lo+(hi-lo)*g/5; ctx.fillText(v.toFixed(2),x0-4,PY(v)+3); }
+  ctx.save(); ctx.translate(11,(y0+y1)/2); ctx.rotate(-Math.PI/2); ctx.textAlign="center"; ctx.fillStyle="#64748b"; ctx.font="10px sans-serif"; ctx.fillText("empirical coverage",0,0); ctx.restore();
+  ctx.textAlign="center"; ctx.fillStyle="#64748b"; ctx.font="10px sans-serif"; ctx.fillText("target coverage 1−α",(x0+x1)/2,H-5);
+  // diagonal
+  ctx.strokeStyle="#94a3b8"; ctx.setLineDash([5,4]); ctx.lineWidth=1.5; ctx.beginPath();ctx.moveTo(PX(0.5),PY(0.5));ctx.lineTo(PX(hi),PY(hi));ctx.stroke(); ctx.setLineDash([]);
+  // swept points + line
+  ctx.strokeStyle="#16a34a"; ctx.lineWidth=2; ctx.beginPath();
+  pts.forEach((p,i)=>{ const X=PX(p.target),Y=PY(Math.max(lo,Math.min(hi,p.emp))); i?ctx.lineTo(X,Y):ctx.moveTo(X,Y); }); ctx.stroke();
+  pts.forEach(p=>{ const X=PX(p.target),Y=PY(Math.max(lo,Math.min(hi,p.emp))); ctx.beginPath();ctx.arc(X,Y,2.6,0,7);ctx.fillStyle="#16a34a";ctx.fill(); });
+  // current marker
+  const CX=PX(curTarget),CY=PY(Math.max(lo,Math.min(hi,curEmp)));
+  ctx.strokeStyle="#0ea5e9"; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(CX,y1);ctx.lineTo(CX,CY);ctx.stroke(); ctx.beginPath();ctx.moveTo(x0,CY);ctx.lineTo(CX,CY);ctx.stroke(); ctx.setLineDash([]);
+  ctx.beginPath();ctx.arc(CX,CY,5,0,7);ctx.fillStyle="#0ea5e9";ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();
+}
+
+// ================= width bar chart =================
+function drawWidthBars(id, bars){
+  const cv=document.getElementById(id), ctx=cv.getContext("2d");
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H);
+  const pad=34, base=H-22, top=14;
+  const mx=Math.max(0.01,...bars.map(b=>b.v))*1.2;
+  ctx.strokeStyle="#cbd5e1"; ctx.beginPath();ctx.moveTo(pad,top);ctx.lineTo(pad,base);ctx.lineTo(W-8,base);ctx.stroke();
+  ctx.fillStyle="#94a3b8"; ctx.font="9px monospace"; ctx.textAlign="right";
+  for(let g=0;g<=4;g++){ const v=mx*g/4, yy=base-(base-top)*(g/4); ctx.fillText(v.toFixed(2),pad-3,yy+3); ctx.strokeStyle="#f1f5f9"; ctx.beginPath();ctx.moveTo(pad,yy);ctx.lineTo(W-8,yy);ctx.stroke(); }
+  const bw=58, gap=30; let x=pad+24; ctx.textAlign="center";
+  bars.forEach(b=>{ const hh=(base-top)*(b.v/mx); ctx.fillStyle=b.c; ctx.fillRect(x,base-hh,bw,hh);
+    ctx.fillStyle="#0f172a"; ctx.font="bold 11px monospace"; ctx.fillText(b.v.toFixed(2),x+bw/2,base-hh-4);
+    ctx.fillStyle="#475569"; ctx.font="bold 10px sans-serif"; ctx.fillText(b.k,x+bw/2,base+13); x+=bw+gap; });
+}
+
+function setDiag(box, c, t, b){ box.className="diag "+c+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+
+// ================= MODULE RC: split-conformal band =================
+const RC={ alpha:0.10, nCal:150, seed:11, nBase:0.40, nSlope:1.1, nTrain:140, nTest:500, h:0.06 };
+let rcModel, rcTrain, rcCal, rcTest, rcYr;
+function rcGen(){
+  rcTrain=genData(RC.nTrain, RC.seed, RC.nBase, RC.nSlope);
+  rcCal  =genData(RC.nCal,   RC.seed+9991, RC.nBase, RC.nSlope);
+  rcTest =genData(RC.nTest,  RC.seed+7777, RC.nBase, RC.nSlope);
+  rcModel=fitKernel(rcTrain, RC.h);
+  const ally=[...rcTrain,...rcCal,...rcTest].map(p=>p.y);
+  let lo=Math.min(...ally), hi=Math.max(...ally); const pad=(hi-lo)*0.06; rcYr=[lo-pad,hi+pad];
+}
+function rcRefresh(){
+  const scores=rcCal.map(p=>Math.abs(p.y-rcModel.predict(p.x)));
+  const q=conformalQ(scores, RC.alpha);
+  const cov=coverConst(rcTest, rcModel, q);
+  const bandFn = isFinite(q) ? (x=>{ const yh=rcModel.predict(x); return [yh-q, yh+q]; })
+                             : (x=> [rcYr[0]-5, rcYr[1]+5]);
+  drawReg("rcBand", rcModel, bandFn, rcTrain, rcTest, rcYr);
+  drawHist("rcHist", scores, q);
+  const rank=conformalRank(rcCal.length, RC.alpha);
+  document.getElementById("rcTarget").textContent=(100*(1-RC.alpha)).toFixed(0)+"%";
+  const empEl=document.getElementById("rcEmp"); empEl.textContent=(cov*100).toFixed(1)+"%";
+  empEl.style.color = cov>=1-RC.alpha-0.005 ? "#16a34a" : "#b45309";
+  document.getElementById("rcQ").textContent = isFinite(q)? q.toFixed(3) : "∞";
+  document.getElementById("rcWidth").textContent = isFinite(q)? (2*q).toFixed(3) : "∞";
+  document.getElementById("rcRank").textContent = rank>rcCal.length? (rank+" > n") : rank;
+  document.getElementById("rcN").textContent = rcCal.length;
+  // info line
+  document.getElementById("rcInfo").innerHTML =
+    `<table class="rowtbl"><tr><th>n (cal)</th><th>rank k</th><th>k / (n+1)</th><th>q</th></tr>`+
+    `<tr><td>${rcCal.length}</td><td>${rank}${rank>rcCal.length?" (&gt;n)":""}</td><td>${(rank/(rcCal.length+1)).toFixed(3)}</td><td style="font-weight:800;color:#dc2626">${isFinite(q)?q.toFixed(3):"∞"}</td></tr></table>`;
+  // diagnosis
+  const box=document.getElementById("rcDiag");
+  if(!isFinite(q)){
+    setDiag(box,"diag-warn",
+      `⚠️ q = ∞ — not enough calibration data for α=${RC.alpha.toFixed(2)}`,
+      `The required rank ⌈(n+1)(1−α)⌉ = <b>${rank}</b> exceeds the <b>${rcCal.length}</b> calibration points, so conformal cannot honestly promise ${(100*(1-RC.alpha)).toFixed(0)}% coverage from this little data — it returns an infinite (trivially-covering) interval rather than lie. This is the method being <em>honest about its limits</em>. Slide <b>calibration n</b> up (you need at least ~${Math.ceil(1/RC.alpha)-1} points for α=${RC.alpha.toFixed(2)}) or raise α, and a finite band appears.`);
+  } else {
+    const good = cov>=1-RC.alpha-0.01;
+    setDiag(box, good?"diag-good":"diag-info",
+      `${good?"✅":"➖"} Target ${(100*(1-RC.alpha)).toFixed(0)}% → empirical ${(cov*100).toFixed(1)}% coverage · band width 2q = ${(2*q).toFixed(3)}`,
+      `From <b>${rcCal.length}</b> calibration errors we took the <b>${rank}</b>-th smallest = <span style="color:#dc2626;font-weight:700">q=${q.toFixed(3)}</span>, and the band <code>ŷ ± q</code> caught <b>${(cov*100).toFixed(1)}%</b> of the held-out test points — at or just above the ${(100*(1-RC.alpha)).toFixed(0)}% you asked for. Nothing here assumed a Gaussian or that the model is correct; the coverage rides on the calibration errors being <em>exchangeable</em> with the test errors. Drop <b>α</b> and q grows (wider, safer band); raise α and q shrinks (tighter, riskier). Notice the band is <em>constant width</em> — a job for the Adaptivity demo.`);
+  }
+}
+
+// ================= MODULE COV: the coverage guarantee =================
+const CV={ alpha:0.10, trials:14, seed:5, nBase:0.40, nSlope:1.1, nTrain:140, nCal:120, nTest:400, h:0.06 };
+function cvCov(model, alpha, salt){
+  let sum=0;
+  for(let t=0;t<CV.trials;t++){
+    const cal =genData(CV.nCal,  CV.seed+salt+1000+t*29, CV.nBase, CV.nSlope);
+    const test=genData(CV.nTest, CV.seed+salt+55000+t*29, CV.nBase, CV.nSlope);
+    const sc=cal.map(p=>Math.abs(p.y-model.predict(p.x)));
+    sum+=coverConst(test, model, conformalQ(sc, alpha));
+  }
+  return sum/CV.trials;
+}
+function cvRefresh(){
+  const train=genData(CV.nTrain, CV.seed, CV.nBase, CV.nSlope);
+  const model=fitKernel(train, CV.h);
+  const alphas=[]; for(let a=0.02;a<=0.5001;a+=0.02) alphas.push(+a.toFixed(2));
+  const pts=alphas.map(a=>({ target:1-a, emp:cvCov(model,a,0) }));
+  const curEmp=cvCov(model, CV.alpha, 7);
+  drawCovPlot("cvPlot", pts, 1-CV.alpha, curEmp);
+  let g=0; pts.forEach(p=>g+=Math.abs(p.emp-p.target)); g/=pts.length;
+  document.getElementById("cvTarget").textContent=(100*(1-CV.alpha)).toFixed(0)+"%";
+  document.getElementById("cvEmp").textContent=(curEmp*100).toFixed(1)+"%";
+  document.getElementById("cvGap").textContent=g.toFixed(3);
+  document.getElementById("cvTrials").textContent=CV.trials;
+  // how many points sit at/above the diagonal
+  const above=pts.filter(p=>p.emp>=p.target-0.005).length;
+  const box=document.getElementById("cvDiag");
+  setDiag(box,"diag-good",
+    `✅ Coverage tracks 1−α across the whole range — ${above}/${pts.length} α's meet or beat their target`,
+    `Every green dot is a different α, and its height is the <em>actual</em> fraction of test points the conformal band caught, averaged over <b>${CV.trials}</b> resamples. They hug the <span style="color:#94a3b8;font-weight:700">y=x diagonal</span> and sit <em>fractionally above</em> it — split conformal guarantees coverage <b>≥ 1−α</b> and is mildly conservative, because the <code>+1</code> in ⌈(n+1)(1−α)⌉ reserves room for the unseen test point. Your current α gives target <b>${(100*(1-CV.alpha)).toFixed(0)}%</b> and achieved <b>${(curEmp*100).toFixed(1)}%</b>. No distribution was assumed, no model-correctness — this straight line <em>is</em> the finite-sample guarantee. (Turn <b>trials</b> up to smooth the Monte-Carlo wobble.)`);
+}
+
+// ================= MODULE ADP: adaptivity =================
+const AP={ alpha:0.10, slope:2.4, seed:21, nBase:0.34, nTrain:170, nCal:220, nTest:600, h:0.06, hs:0.11 };
+function apRefresh(){
+  const train=genData(AP.nTrain, AP.seed, AP.nBase, AP.slope);
+  const cal  =genData(AP.nCal,   AP.seed+9991, AP.nBase, AP.slope);
+  const test =genData(AP.nTest,  AP.seed+7777, AP.nBase, AP.slope);
+  const model=fitKernel(train, AP.h);
+  const beta=0.15*meanAbsResid(train, model)+1e-3;
+  const sig=fitSigma(train, model, AP.hs, beta);
+  const ally=[...train,...cal,...test].map(p=>p.y);
+  let lo=Math.min(...ally), hi=Math.max(...ally); const pad=(hi-lo)*0.06; const yr=[lo-pad,hi+pad];
+  // constant
+  const scC=cal.map(p=>Math.abs(p.y-model.predict(p.x)));
+  const qC=conformalQ(scC, AP.alpha);
+  // adaptive (normalized)
+  const scA=cal.map(p=>Math.abs(p.y-model.predict(p.x))/sig.sigma(p.x));
+  const qA=conformalQ(scA, AP.alpha);
+  const covC=coverConst(test, model, qC);
+  const covA=coverAdapt(test, model, sig, qA);
+  // avg widths on a grid
+  let wC=0, wA=0; const G=121;
+  for(let i=0;i<G;i++){ const x=i/(G-1); wC+=isFinite(qC)?2*qC:0; wA+=isFinite(qA)?2*qA*sig.sigma(x):0; }
+  wC/=G; wA/=G;
+  const bandC = isFinite(qC)? (x=>{ const yh=model.predict(x); return [yh-qC, yh+qC]; }) : (x=>[yr[0]-5,yr[1]+5]);
+  const bandA = isFinite(qA)? (x=>{ const yh=model.predict(x); const s=sig.sigma(x); return [yh-qA*s, yh+qA*s]; }) : (x=>[yr[0]-5,yr[1]+5]);
+  drawReg("apConst", model, bandC, train, test, yr);
+  drawReg("apAdapt", model, bandA, train, test, yr);
+  drawWidthBars("apBars", [{k:"const",v:wC,c:"#dc2626"},{k:"adaptive",v:wA,c:"#9333ea"}]);
+  document.getElementById("apCovC").textContent=(covC*100).toFixed(1)+"%";
+  document.getElementById("apCovA").textContent=(covA*100).toFixed(1)+"%";
+  document.getElementById("apWC").textContent=wC.toFixed(2);
+  document.getElementById("apWA").textContent=wA.toFixed(2);
+  const box=document.getElementById("apDiag");
+  const tighter = wA<wC;
+  setDiag(box,"diag-info",
+    `📐 Both cover ~${(100*(1-AP.alpha)).toFixed(0)}% (const ${(covC*100).toFixed(1)}% · adaptive ${(covA*100).toFixed(1)}%) — but the shapes differ`,
+    `With the noise growing left→right, the <span style="color:#dc2626;font-weight:700">constant band</span> is a compromise: a single width q=${isFinite(qC)?qC.toFixed(2):"∞"} that is too generous in the calm region and barely enough in the loud one. The <span style="color:#9333ea;font-weight:700">adaptive band</span> scores each error <em>relative</em> to a local spread σ̂(x) and predicts <code>ŷ ± q·σ̂(x)</code> — so it <b>pinches on the left and swells on the right</b>, following where the model is actually uncertain. Marginal coverage is identical (that is still guaranteed), yet the average width is <b style="color:${tighter?'#16a34a':'#b45309'}">${tighter?'smaller':'similar'}</b> (${wA.toFixed(2)} vs ${wC.toFixed(2)}) and, more importantly, the width now <em>means something</em> per-x. Crank the <b>noise slope</b> up and the gap between the two shapes grows.`);
+}
+
+// ================= sub-nav wiring =================
+const subBtns=document.querySelectorAll("#subnav [data-mod]");
+function showMod(m){ document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden")); document.getElementById("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m));
+  if(m==="rc") rcRefresh(); if(m==="cov") cvRefresh(); if(m==="adp") apRefresh(); }
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+// RC controls
+document.getElementById("rcAlpha").addEventListener("input",e=>{ RC.alpha=+e.target.value; document.getElementById("rcAlphaV").textContent=RC.alpha.toFixed(2); rcRefresh(); });
+document.getElementById("rcNCal").addEventListener("input",e=>{ RC.nCal=+e.target.value; document.getElementById("rcNCalV").textContent=RC.nCal; rcGen(); rcRefresh(); });
+document.getElementById("rcResample").onclick=()=>{ RC.seed=(RC.seed*1103515245+12345)>>>0; rcGen(); rcRefresh(); };
+// CV controls
+document.getElementById("cvAlpha").addEventListener("input",e=>{ CV.alpha=+e.target.value; document.getElementById("cvAlphaV").textContent=CV.alpha.toFixed(2); cvRefresh(); });
+document.getElementById("cvTr").addEventListener("input",e=>{ CV.trials=+e.target.value; document.getElementById("cvTrV").textContent=CV.trials; cvRefresh(); });
+document.getElementById("cvResample").onclick=()=>{ CV.seed=(CV.seed*1103515245+12345)>>>0; cvRefresh(); };
+// ADP controls
+document.getElementById("apAlpha").addEventListener("input",e=>{ AP.alpha=+e.target.value; document.getElementById("apAlphaV").textContent=AP.alpha.toFixed(2); apRefresh(); });
+document.getElementById("apSlope").addEventListener("input",e=>{ AP.slope=+e.target.value; document.getElementById("apSlopeV").textContent=AP.slope.toFixed(1); apRefresh(); });
+document.getElementById("apResample").onclick=()=>{ AP.seed=(AP.seed*1103515245+12345)>>>0; apRefresh(); };
+
+// ================= init =================
+rcGen();
+document.querySelector('[data-mod="rc"]').classList.add("on");
+showMod("rc");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. A point prediction hides its own uncertainty", why:"Most models hand back a single number: the house is worth $412,000, the tumor is 3.2 cm, the demand is 84 units. But a bare point tells you nothing about how much to trust it — is it ±$5,000 or ±$80,000? That distinction is exactly what a downstream decision needs. A doctor dosing a drug, a trader sizing a bet, an engineer setting a safety margin all need a range and a confidence, not a lone number. Worse, most ways of bolting uncertainty onto a model lean on assumptions — Gaussian errors, a correct Bayesian prior, the model being well-specified — that quietly fail on real data and leave you overconfident. Conformal prediction attacks this directly: it converts any model's output into an interval that comes with a coverage guarantee, and it does so without trusting the model to be right.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">point: &nbsp; ŷ = 3.2<br>&nbsp; → how sure? &nbsp;¯\\_(ツ)_/¯<br><br>interval: &nbsp; y ∈ [2.4, 4.0]<br>&nbsp; → true 90% of the time ✓<br><br>a number a decision can use</div>`, code:`# a point prediction: no notion of uncertainty
+yhat = model.predict(x_new)      # 3.2 ... but how good?
+# a decision needs a RANGE + a confidence, not one number.
+# conformal turns yhat into [lo, hi] with a guarantee.` },
+ { title:"2. Prediction intervals and the coverage goal", why:"Instead of a point, we output an interval C(x) — a set of plausible y values. The single property we demand is coverage: over random draws of the data, the true y falls inside the interval at least a fraction 1−α of the time. Formally P(y ∈ C(x)) ≥ 1−α, where α is the miscoverage rate you choose (α=0.1 → 90% coverage). Note this is a marginal statement: it holds on average over points, not necessarily for every single x. That is a deliberate, honest trade — a guarantee that holds for any distribution can only be marginal without extra assumptions. The art is then to make the interval as narrow as possible while keeping that coverage, because a valid-but-enormous interval ([−∞,∞] always covers) is useless. Conformal gives validity for free and spends the rest of its effort on efficiency (narrowness).", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">want: &nbsp; P( y ∈ C(x) ) ≥ 1 − α<br><br>α = miscoverage you pick<br>1 − α = coverage you're promised<br><br>marginal (over points), not per-x<br>goal: valid AND as narrow as possible</div>`, code:`# we output an interval C(x), not a point
+# and demand:  P(y in C(x)) >= 1 - alpha
+alpha = 0.1                        # allow 10% misses
+# 1 - alpha = 0.9 target coverage
+# trivially valid: C(x) = (-inf, inf). the trick is NARROW + valid.` },
+ { title:"3. Nonconformity scores — measuring strangeness", why:"Conformal needs one ingredient from the model: a nonconformity score s(x,y) that says how poorly a candidate (x,y) fits — how 'strange' it is relative to what the model learned. For regression the obvious score is the absolute residual s = |y − ŷ(x)|: a point the model predicts well scores low, a surprising point scores high. The score is where all your modeling cleverness lives — you can use |y−ŷ|, or |y−ŷ|/σ̂(x) to get adaptivity, or quantile-regression gaps (CQR), or for classification one minus the predicted probability of the true class. Conformal treats the score as a black box; whatever you feed it, the guarantee holds. A better-designed score doesn't change validity — it changes how tight and how adaptive the resulting intervals are.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">nonconformity s(x,y) = "how strange"<br><br>regression: &nbsp; s = |y − ŷ(x)|<br>adaptive: &nbsp;&nbsp; s = |y − ŷ| / σ̂(x)<br>classify: &nbsp;&nbsp; s = 1 − p̂(true class)<br><br>low = fits · high = surprising</div>`, code:`# score = how badly the model fits a point
+def score(x, y):
+    return abs(y - model.predict(x))     # |y - yhat|
+# any score is valid; the choice controls tightness & adaptivity.
+# (normalized, CQR, softmax-based, ... all plug in here.)` },
+ { title:"4. The calibration set — split (inductive) conformal", why:"Full conformal prediction is elegant but expensive — it effectively refits the model for every candidate label. Split (or inductive) conformal makes it practical and is what everyone uses. Partition your data once: train the model on a training portion, then set aside a separate calibration set the model never saw. Because those calibration points are fresh and untouched, their nonconformity scores are an unbiased, exchangeable sample of how strange real errors are. A new test point is, statistically, just one more draw from that same pool. That single split is the whole reason the method is cheap (one model fit) and honest (the scores aren't contaminated by training). The price is a little data spent on calibration and slightly wider intervals than full conformal — a trade almost always worth making.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">data → [ train | calibration | test ]<br><br>fit model on TRAIN only<br>score errors on CALIBRATION (unseen)<br>→ an honest sample of "typical error"<br><br>a test point = one more such draw</div>`, code:`# split conformal: one model fit, clean calibration scores
+tr, cal, te = split(data)
+model.fit(X[tr], y[tr])                 # never touches cal
+scores = np.abs(y[cal] - model.predict(X[cal]))
+# cal scores are exchangeable with the future test score -> guarantee.` },
+ { title:"5. The conformal quantile — why ⌈(n+1)(1−α)⌉", why:"Here is the mechanical heart. Sort the n calibration scores and take q = the ⌈(n+1)(1−α)⌉-th smallest. The interval is then everything whose score is ≤ q, i.e. ŷ ± q for the residual score. Why the odd rank with the +1? Imagine adding the (unknown) test score to the calibration scores, giving n+1 exchangeable values. By symmetry the test score is equally likely to land in any of the n+1 rank positions. Asking it to fall at or below the ⌈(n+1)(1−α)⌉-th of them happens with probability ≥ 1−α — pure combinatorics, no distribution needed. That +1 phantom rank is precisely what converts an ordinary empirical quantile into a finite-sample guarantee. If ⌈(n+1)(1−α)⌉ > n you literally don't have enough calibration points to promise that level, and q is +∞ — the method refusing to over-claim.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">sort scores; &nbsp; k = ⌈(n+1)(1−α)⌉<br>q = k-th smallest calibration score<br><br>n+1 exchangeable ranks (test = phantom)<br>P(test rank ≤ k) ≥ 1 − α &nbsp;(just counting)<br><br>k &gt; n → q = ∞ (too little data)</div>`, code:`def conformal_quantile(scores, alpha):
+    n = len(scores)
+    k = int(np.ceil((n + 1) * (1 - alpha)))
+    return np.inf if k > n else np.sort(scores)[k - 1]
+# the +1 reserves a rank for the unseen test point ->
+# turns an empirical quantile into a finite-sample guarantee.` },
+ { title:"6. The coverage guarantee and exchangeability", why:"Put it together: with q the conformal quantile, the interval {y : s(x,y) ≤ q} satisfies P(y ∈ C(x)) ≥ 1−α — and, with continuous scores, also ≤ 1−α+1/(n+1), so it is tight, not loose. The one and only assumption is exchangeability: the calibration points and the test point are drawn such that any ordering is equally likely. That is weaker than i.i.d. and dramatically weaker than 'the model is correct' or 'errors are Gaussian'. The guarantee is distribution-free and finite-sample — it holds for n=50 as rigorously as n=50,000, for a linear model or a neural net, for any data-generating process, as long as exchangeability holds. The flip side: if exchangeability breaks — distribution shift, time series with trend, the test set systematically different — the guarantee can break too, which is why detecting and correcting shift (weighted conformal) is an active topic.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">1 − α ≤ P(y ∈ C(x)) ≤ 1 − α + 1/(n+1)<br><br>ONLY assumption: exchangeability<br>(weaker than i.i.d.)<br><br>distribution-free · finite-sample · any model<br>breaks under shift → weighted conformal</div>`, code:`# guarantee (continuous scores):
+#   1 - alpha  <=  P(y in C(x))  <=  1 - alpha + 1/(n+1)
+# assumption: cal points + test point are EXCHANGEABLE.
+# not assumed: gaussianity, model correctness, i.i.d.
+# distribution shift breaks exchangeability -> guarantee weakens.` },
+ { title:"7. α — the miscoverage knob", why:"α is the single dial you turn, and it encodes a fundamental trade-off. Small α (say 0.01 → 99% coverage) demands a bigger quantile q, so the interval gets wide: strong promise, vague answer. Large α (0.2 → 80% coverage) shrinks q and tightens the interval: weaker promise, sharper answer. There is no free lunch — you buy confidence with width. In the demos, dragging α is exactly this: watch q slide along the sorted calibration scores and the band inflate or deflate, while the empirical test coverage faithfully tracks 1−α. Choosing α is a domain decision, not a statistical one: a medical device might insist on 99%, a product recommendation might be happy at 80%. Because the guarantee holds at every α simultaneously (it's just a different rank), you can even report several levels — a nested family of intervals — from the same calibration scores.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">α ↓ &nbsp; (99%) &nbsp;→ &nbsp; q ↑ &nbsp;→ &nbsp; WIDE band<br>α ↑ &nbsp; (80%) &nbsp;→ &nbsp; q ↓ &nbsp;→ &nbsp; NARROW band<br><br>confidence ⇄ width &nbsp; (no free lunch)<br><br>same scores → every α at once (nested)</div>`, code:`for alpha in [0.20, 0.10, 0.05, 0.01]:      # 80..99%
+    q = conformal_quantile(scores, alpha)
+    print(alpha, "-> half-width", q)
+# smaller alpha => larger q => wider, safer interval.
+# one calibration set serves ALL levels (just a different rank).` },
+ { title:"8. Adaptivity — intervals that widen where unsure", why:"Plain split conformal gives a constant half-width q everywhere, which is valid but blunt: on inputs where the model is very accurate the band is needlessly wide, and on hard inputs it's uncomfortably tight, even though marginal coverage still holds. Adaptivity fixes the shape. The standard trick is a normalized nonconformity score: estimate a local spread σ̂(x) (for instance, train a second model on the absolute residuals), and score s = |y−ŷ|/σ̂(x). Now the quantile q multiplies σ̂(x), so the interval ŷ ± q·σ̂(x) is narrow where σ̂ is small and wide where it's large — it breathes with the difficulty of each input. Conformalized Quantile Regression (CQR) achieves the same by conformalizing a quantile regressor's own upper/lower predictions. Either way the marginal guarantee is untouched; adaptivity only redistributes width to where it's genuinely needed, moving you closer to the ideal of per-x (conditional) coverage.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">constant: &nbsp; ŷ ± q &nbsp; (one width)<br>adaptive: &nbsp; ŷ ± q·σ̂(x)<br><br>σ̂(x) = local error size (2nd model)<br>→ pinch where confident, swell where not<br><br>same coverage · width that MEANS something</div>`, code:`# normalized (locally-adaptive) conformal
+sigma.fit(X[tr], np.abs(y[tr] - model.predict(X[tr])))   # spread model
+s = np.abs(y[cal] - model.predict(X[cal])) / sigma.predict(X[cal])
+q = conformal_quantile(s, alpha)
+lo, hi = mu(X_te) - q*sigma(X_te), mu(X_te) + q*sigma(X_te)  # varies with x` },
+ { title:"9. Classification — guaranteed prediction sets", why:"The same machinery, applied to classification, produces a prediction set: instead of one predicted label it returns a set of labels guaranteed to contain the true class with probability ≥ 1−α. The score is built from the model's softmax outputs — the simplest (LAC) uses s = 1 − p̂(true label); the fancier Adaptive Prediction Sets (APS) accumulates sorted class probabilities until the true class is included. Calibrate the quantile q exactly as before, then at test time include every label whose score is ≤ q. The beautiful consequence is that set size becomes an automatic, honest measure of difficulty: an easy image yields a singleton {cat}, an ambiguous one yields {cat, lynx, fox} — the model literally shows how confused it is, while still keeping the coverage promise. This is why conformal has taken off in safety-critical ML: a classifier can now say 'it's one of these three, and I'm 95% sure the truth is in there.'", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">classification → prediction SET of labels<br>P( true label ∈ set ) ≥ 1 − α<br><br>easy input → { cat }<br>hard input → { cat, lynx, fox }<br><br>set size = honest difficulty meter</div>`, code:`# classification: score from the softmax, same quantile
+s_cal = 1 - proba[np.arange(n), y_cal]      # LAC: 1 - p(true class)
+q = conformal_quantile(s_cal, alpha)
+# test set = every label with (1 - p_label) <= q
+pred_set = [c for c in classes if 1 - proba_new[c] <= q]
+# |pred_set| grows on ambiguous inputs, still covers 1-alpha.` },
+ { title:"10. The honest protocol, pitfalls, and why it matters", why:"To get the guarantee in practice, respect a few rules. Keep the calibration set truly held out — never let the model train on it, or the scores turn optimistic and coverage collapses. Ensure exchangeability: shuffle before splitting, and beware time series or grouped data where future differs from past (use weighted or time-series conformal there). Remember coverage is marginal — averaged over inputs — so a valid interval can still under-cover a specific rare subgroup; adaptivity and group-conditional conformal push toward fairer per-x coverage. Watch the finite-sample floor: for 99% coverage you need at least ~99 calibration points (else q=∞), and small n makes coverage itself noisy. Reach for MAPIE or crepes rather than hand-rolling, and prefer cross-conformal when data is scarce. Why bother with all of it? Because the moment a prediction drives a real decision — a diagnosis, a loan, an autonomous action — a number without honest uncertainty is a liability, and conformal is the cheapest rigorous way to attach a probability you can actually defend.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">DO: hold cal out · shuffle · check shift<br>KNOW: coverage is MARGINAL not per-x<br>FLOOR: 99% needs n ≳ 99 (else q=∞)<br>USE: MAPIE / crepes · cross-conformal<br><br>a decision-driving number needs<br>an uncertainty it can defend</div>`, code:`# the honest split-conformal protocol
+idx = shuffle(range(len(X)))              # exchangeability
+tr, cal, te = split3(idx)                 # cal is HELD OUT
+model.fit(X[tr], y[tr])
+q = conformal_quantile(np.abs(y[cal]-model.predict(X[cal])), alpha)
+covered = ((y[te] >= yhat_te - q) & (y[te] <= yhat_te + q)).mean()
+assert covered >= 1 - alpha - slack       # the promise, verified` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
