@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 52 — Huber Regression</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:170px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .swatch-box { display:inline-block; width:14px; height:10px; border-radius:3px; vertical-align:0; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .ds-btn { border:1px solid #e2e8f0; background:#fff; font-weight:800; font-size:12px; padding:6px 11px; border-radius:9px; transition:all .15s; }
+  .ds-btn.on { color:#fff; border-color:transparent; background:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; }
+  canvas.clickable { cursor:crosshair; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  .rowtbl { border-collapse:collapse; font-size:11px; width:100%; }
+  .rowtbl th, .rowtbl td { border:1px solid #e2e8f0; padding:3px 5px; text-align:center; font-variant-numeric:tabular-nums; }
+  .rowtbl th { background:#f1f5f9; font-weight:800; }
+  .btn-run { background:#16a34a; color:#fff; }
+  .btn-run:hover { background:#15803d; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 52</div>
+      <h1 class="text-xl font-bold">🪨 Huber Regression — a fit that <strong>bends but doesn't break</strong> when a few points go bad. Ordinary least squares minimises the <em>sum of squared</em> residuals, so a point twice as far off pays four times the penalty and a point ten times as far pays a hundred — the fit is dragged toward whichever point is worst, and its <strong>breakdown point is zero</strong>. Huber keeps least-squares' smooth, convex world but caps that runaway growth: it uses the <strong>quadratic</strong> ½r² only while a residual stays inside a knee <code>|r| ≤ δ</code>, and switches to a <strong>linear</strong> penalty <code>δ(|r| − ½δ)</code> beyond it. Squaring near zero keeps OLS's efficiency on clean Gaussian noise; the linear tails mean a far-off point's <em>influence</em> stops growing — it pulls with a bounded, constant force instead of one that explodes with distance. You fit it not by a magic formula but by <strong>iteratively reweighted least squares</strong>: refit an ordinary weighted line, where each point's weight is <code>w = min(1, δ/|r|)</code> — full weight inside the knee, gently discounted outside — and repeat until it settles. Unlike <span style="color:#9333ea;font-weight:700">RANSAC (Day 51)</span>, which throws points away and samples for a consensus, Huber uses <em>every</em> point with one smooth loss — so it sits <strong>between</strong> ordinary least-squares and a fully-robust fit. Everything below <strong>runs live in your browser</strong> — scatter outliers (click to add your own), watch IRLS reweight and converge with a <span style="color:#0ea5e9;font-weight:700">δ slider</span>, see <span style="color:#dc2626;font-weight:700">least-squares</span> dragged away for contrast, and read the Huber loss against the squared loss so you can <em>see</em> the linear tails.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>Least squares has no defence against a far-off point.</strong> Because it minimises the <em>sum of squared</em> residuals, a single outlier — whose squared error is enormous — can pivot the whole fitted line toward itself. <strong>Huber regression</strong> softens exactly that. It keeps the smooth quadratic penalty ½r² for residuals inside a knee <code>|r| ≤ δ</code>, so on honest, near-Gaussian noise it behaves just like OLS; but once a residual exceeds <code>δ</code> the penalty grows only <span style="color:#16a34a;font-weight:700">linearly</span>, <code>δ(|r| − ½δ)</code>, so a wild point contributes a <em>bounded, constant</em> pull instead of one that explodes with distance. The fit is found by <strong>iteratively reweighted least squares</strong>: refit a weighted line where each point's weight is <code>min(1, δ/|r|)</code> — full inside the knee, gently discounted in the tails — and repeat until it settles. Every point still counts; none is thrown away. Below it is <strong>built from scratch, live</strong> — the IRLS reweighting, the ±δ quadratic band, the Huber line converging, the dragged least-squares line, and the loss curves whose tails go straight.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Fit Huber vs OLS</strong> drops inliers along a hidden line plus a few outliers, then <span style="color:#16a34a;font-weight:700">runs IRLS live</span> — each iteration you watch the weights fade the outliers, the ±δ band mark the quadratic core, and the Huber line settle onto the honest points while the <span style="color:#dc2626;font-weight:700">dragged least-squares line</span> and a <span style="color:#9333ea;font-weight:700">fully-robust Theil–Sen line</span> are shown for contrast; <span style="color:#0ea5e9;font-weight:700">click to add your own outliers</span> and slide <code>δ</code> to feel the knee move. <strong>Huber vs squared loss</strong> plots the two penalties side by side so you can <em>see</em> the parabola give way to a straight tail at <code>±δ</code> — flip to the influence <code>ψ(r)</code> and the weight <code>w(r)</code> to watch OLS's influence grow without bound while Huber's is capped. <strong>Drag the outlier</strong> pins the data and slides one outlier cluster up and down — watch the OLS line chase it, Theil–Sen ignore it, and Huber sit <em>between</em> them, its position set by <code>δ</code>. Every pixel is computed in-browser.</p>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="live"  class="subnav-btn px-4 py-2 rounded-lg text-sm">🪨 Fit Huber vs OLS</button>
+        <button data-mod="loss"  class="subnav-btn px-4 py-2 rounded-lg text-sm">📉 Huber vs squared loss</button>
+        <button data-mod="vs"    class="subnav-btn px-4 py-2 rounded-lg text-sm">⚖️ Drag the outlier</button>
+      </div>
+
+      <!-- ============ MODULE: LIVE HUBER (IRLS) ============ -->
+      <div id="mod-live" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="hN" style="color:#0f172a">—</div><div class="k">total points</div></div>
+          <div class="metric-pill"><div class="v" id="hIter" style="color:#f59e0b">—</div><div class="k">IRLS iteration</div></div>
+          <div class="metric-pill"><div class="v" id="hHub" style="color:#16a34a">—</div><div class="k">Huber slope</div></div>
+          <div class="metric-pill"><div class="v" id="hOls" style="color:#dc2626">—</div><div class="k">least-squares slope</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE HUBER KNOBS</div>
+            <div class="ctl-row"><div class="ctl-name">📐 δ (knee / transition)</div><input type="range" id="hDelta" min="0.15" max="3" step="0.05" value="0.8"><div class="ctl-val" id="hDeltaV">0.80</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔁 max IRLS iters</div><input type="range" id="hMaxIter" min="1" max="60" step="1" value="40"><div class="ctl-val" id="hMaxIterV">40</div></div>
+            <div class="ctl-row"><div class="ctl-name">💥 outlier count</div><input type="range" id="hOut" min="0" max="30" step="1" value="8"><div class="ctl-val" id="hOutV">8</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="hRun"    class="btn-run px-3 py-1.5 rounded-lg font-bold text-xs">▶ Run IRLS</button>
+              <button id="hStep"   class="bg-amber-500 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-amber-400">⏭ Step</button>
+              <button id="hFinish" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">⏩ Finish</button>
+              <button id="hReset"  class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">↻ Reset</button>
+              <button id="hNew"    class="bg-slate-500 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-400">🎲 New data</button>
+            </div>
+            <div class="mt-3">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🎯 scenario</div>
+              <div id="hPresets" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2 flex flex-col gap-1">
+              <label class="flex items-center gap-2 text-[12px] text-slate-600 font-semibold"><input type="checkbox" id="hShowOls" checked> overlay least-squares (OLS)</label>
+              <label class="flex items-center gap-2 text-[12px] text-slate-600 font-semibold"><input type="checkbox" id="hShowRobust" checked> overlay fully-robust (Theil–Sen)</label>
+              <label class="flex items-center gap-2 text-[12px] text-slate-600 font-semibold"><input type="checkbox" id="hShowBand" checked> show ±δ quadratic band</label>
+              <label class="flex items-center gap-2 text-[12px] text-slate-600 font-semibold"><input type="checkbox" id="hShowTrue"> show hidden true line</label>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> Each IRLS pass fits an ordinary <b>weighted</b> least-squares line, where a point's weight is <code>min(1, δ/|r|)</code> — <b>1</b> inside the <span style="color:#16a34a;font-weight:700">±δ band</span> (the quadratic core), and shrinking in the linear tails so outliers <b>fade</b> and pull less. The <span style="color:#16a34a;font-weight:700">green</span> line is the current Huber fit; the <span style="color:#dc2626;font-weight:700">red dashed</span> line is OLS on all points, dragged by the outliers; the <span style="color:#9333ea;font-weight:700">purple dotted</span> line is Theil–Sen, a fully-robust reference. Huber sits <em>between</em> them. <b>Click the canvas</b> to add outliers anywhere.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:600px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🪨 IRLS reweighting → robust line &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">click to add outliers</span></div>
+            <canvas id="hCanvas" class="clickable" width="576" height="360"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#0ea5e9"></span> inlier</span>
+              <span><span class="swatch" style="background:#fff;border:1.5px solid #f43f5e"></span> outlier</span>
+              <span><span class="swatch" style="background:#fff;border:1.5px dashed #9333ea"></span> down-weighted (tail)</span>
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> Huber</span>
+              <span><span class="swatch-line" style="border-color:#dc2626"></span> least-squares</span>
+              <span><span class="swatch-line" style="border-color:#9333ea"></span> Theil–Sen (robust)</span>
+              <span><span class="swatch-box" style="background:rgba(22,163,74,0.16)"></span> ±δ quadratic band</span>
+            </div>
+            <div id="hDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: LOSS CURVES ============ -->
+      <div id="mod-loss" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="lD" style="color:#0ea5e9">—</div><div class="k">δ (transition)</div></div>
+          <div class="metric-pill"><div class="v" id="lSq" style="color:#dc2626">—</div><div class="k">squared loss @|r|=3</div></div>
+          <div class="metric-pill"><div class="v" id="lHu" style="color:#16a34a">—</div><div class="k">Huber loss @|r|=3</div></div>
+          <div class="metric-pill"><div class="v" id="lSave" style="color:#9333ea">—</div><div class="k">penalty on that point cut</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">SEE THE LINEAR TAILS</div>
+            <div class="ctl-row"><div class="ctl-name">📐 δ (knee)</div><input type="range" id="lDelta" min="0.2" max="3" step="0.05" value="0.8"><div class="ctl-val" id="lDeltaV">0.80</div></div>
+            <div class="mt-1">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">what to plot</div>
+              <div id="lModes" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[12px] text-slate-600 leading-relaxed text-center font-mono">
+              ρ<sub>δ</sub>(r) = ½r²&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|r| ≤ δ<br>ρ<sub>δ</sub>(r) = δ(|r| − ½δ)&nbsp;&nbsp;|r| &gt; δ
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Three views of the same knee.</strong> <b>Loss</b> ρ(r): the <span style="color:#16a34a;font-weight:700">Huber</span> curve hugs the <span style="color:#dc2626;font-weight:700">parabola</span> inside <code>±δ</code>, then peels off into a <em>straight line</em> — that flatter tail is why a far point costs far less. <b>Influence</b> ψ(r)=ρ′(r): OLS's grows without bound (a point's pull ∝ its distance), Huber's is <em>capped at ±δ</em> — the deep reason outliers can't dominate. <b>Weight</b> w(r)=ψ(r)/r: OLS weights every point equally at 1; Huber holds 1 inside the knee then decays as <code>δ/|r|</code> — exactly the IRLS reweighting the fit uses. Slide <code>δ</code> and watch the transition slide with it.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:460px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📉 <span id="lTitle">Huber loss vs squared loss</span></div>
+            <canvas id="lCanvas" width="436" height="340"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#dc2626"></span> <span id="lLabelSq">squared ½r²</span></span>
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> <span id="lLabelHu">Huber ρ<sub>δ</sub>(r)</span></span>
+              <span><span class="swatch-box" style="background:rgba(14,165,233,0.14)"></span> quadratic core |r| ≤ δ</span>
+            </div>
+            <div id="lDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: DRAG THE OUTLIER ============ -->
+      <div id="mod-vs" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="vTrue" style="color:#64748b">—</div><div class="k">true slope</div></div>
+          <div class="metric-pill"><div class="v" id="vOls" style="color:#dc2626">—</div><div class="k">OLS slope</div></div>
+          <div class="metric-pill"><div class="v" id="vHub" style="color:#16a34a">—</div><div class="k">Huber slope</div></div>
+          <div class="metric-pill"><div class="v" id="vRob" style="color:#9333ea">—</div><div class="k">Theil–Sen slope</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">DRAG THE OUTLIERS, WATCH THE LINES</div>
+            <div class="text-[11px] text-slate-500 mb-2">The inliers are fixed on a hidden line (slope <b>0.55</b>). A cluster of outliers sits off to the side; the slider slides it <b>up and down</b>. OLS chases it; Theil–Sen ignores it; Huber sits <b>between</b>, and where it lands depends on <code>δ</code>.</div>
+            <div class="ctl-row"><div class="ctl-name">↕ outlier offset</div><input type="range" id="vLev" min="-4" max="4" step="0.1" value="2.5"><div class="ctl-val" id="vLevV">+2.5</div></div>
+            <div class="ctl-row"><div class="ctl-name">💥 outlier count</div><input type="range" id="vCount" min="0" max="30" step="1" value="12"><div class="ctl-val" id="vCountV">12</div></div>
+            <div class="ctl-row"><div class="ctl-name">📐 δ (knee)</div><input type="range" id="vDelta" min="0.15" max="3" step="0.05" value="0.8"><div class="ctl-val" id="vDeltaV">0.80</div></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Between two extremes.</strong> Slide the offset out and the <span style="color:#dc2626;font-weight:700">red</span> OLS slope drifts far from <b>0.55</b>; the <span style="color:#9333ea;font-weight:700">purple</span> Theil–Sen line barely moves. The <span style="color:#16a34a;font-weight:700">green</span> Huber line lands <em>in between</em> — <b>small δ</b> pushes it toward the fully-robust line, <b>large δ</b> pulls it back toward OLS (at δ ≫ the outliers, Huber <em>is</em> OLS). Note the limit: pile on enough outliers, or make them high-leverage in x, and even Huber bends — its breakdown point is near zero, which is exactly where RANSAC (Day 51) takes over.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:460px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">⚖️ same points · three philosophies</div>
+            <canvas id="vCanvas" width="436" height="360"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#64748b"></span> hidden true line</span>
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> Huber</span>
+              <span><span class="swatch-line" style="border-color:#dc2626"></span> least-squares</span>
+              <span><span class="swatch-line" style="border-color:#9333ea"></span> Theil–Sen</span>
+              <span><span class="swatch" style="background:#0ea5e9"></span> inlier</span>
+              <span><span class="swatch" style="background:#fff;border:1.5px solid #f43f5e"></span> outlier cluster</span>
+            </div>
+          </div>
+        </div>
+        <div id="vDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From "square every error" to "cap the big ones"</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Huber regression is barely more code than ordinary least squares — the exact routine the LOOK tab runs, no scikit-learn black box. Below is the runnable core: the Huber loss with its quadratic core and linear tails, the weight function that turns it into a reweighting rule, one pass of weighted least squares, the IRLS loop that repeats until it settles, and how to set δ from the noise scale. Every line the LOOK tab draws comes from these snippets.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The Huber loss — quadratic core, linear tails</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This is the whole idea in one function. While a residual stays inside the knee <code>|r| ≤ δ</code> it is penalised by the ordinary squared loss <code>½r²</code> — so on clean, near-Gaussian data Huber behaves exactly like least squares. Past the knee it switches to a <em>linear</em> penalty <code>δ(|r| − ½δ)</code>, chosen so the two pieces meet smoothly in both value and slope. A point ten times δ away costs about <code>10δ²</code>, not <code>50δ²</code> — the runaway squared growth is gone.</p>
+        <div class="relative"><pre>function huberLoss(r, d) {           // d = delta, the knee
+  const a = Math.abs(r);
+  return a <= d ? 0.5 * r * r        // quadratic core (like OLS)
+                : d * (a - 0.5 * d); // linear tail (bounded growth)
+}
+// the two pieces join smoothly: same value AND same slope at |r| = d</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The weight — how the linear tail becomes a reweighting</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The trick that makes Huber fittable with plain least-squares machinery: its derivative (the <b>influence</b>) is <code>ψ(r) = r</code> inside the knee and a constant <code>±δ</code> outside — capped. Divide the influence by <code>r</code> and you get a <b>weight</b> <code>w(r) = min(1, δ/|r|)</code>: full weight for points in the quadratic core, and a discount <code>δ/|r|</code> that shrinks the further out a point is. That single line is why outliers pull less — they are literally scaled down before the fit sees them.</p>
+        <div class="relative"><pre>const huberWeight = (r, d) => {
+  const a = Math.abs(r);
+  return a <= d ? 1 : d / a;   // 1 in the core, δ/|r| in the tails
+};
+// ψ(r) = r · w(r): capped at ±δ, so a point's PULL never grows past δ</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">One weighted least-squares pass</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Given the weights, fitting a line is the closed-form <b>weighted</b> least squares — the same normal equations as OLS with each sum weighted by <code>wᵢ</code>. Down-weighted outliers contribute a fraction of a point to every sum, so the line barely notices them. This is the estimation half; the weights above are the robustness half.</p>
+        <div class="relative"><pre>function wlsFit(pts, w) {              // weighted least-squares line
+  let Sw=0, Swx=0, Swy=0, Swxx=0, Swxy=0;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i], wi = w[i];
+    Sw += wi; Swx += wi*p.x; Swy += wi*p.y;
+    Swxx += wi*p.x*p.x; Swxy += wi*p.x*p.y;
+  }
+  const den = Sw*Swxx - Swx*Swx;
+  const m = (Sw*Swxy - Swx*Swy) / den;
+  return { m, b: (Swy - m*Swx) / Sw };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The IRLS loop — reweight, refit, repeat</h3></div>
+        <p class="text-sm text-slate-600 mb-3">That is the entire algorithm. Start from an ordinary least-squares line, compute each point's residual, turn residuals into Huber weights, refit the weighted line, and repeat. Because the Huber loss is <b>convex</b>, this iteration converges to the one global minimum — usually in a handful of passes — no local optima, no randomness, no threshold to tune a consensus. Watch it settle in the LOOK tab.</p>
+        <div class="relative"><pre>function huberFit(pts, d, iters = 50) {
+  let model = olsFit(pts);                     // start from OLS
+  for (let k = 0; k < iters; k++) {
+    const w = pts.map(p =>                     // reweight by residual
+      huberWeight(p.y - (model.m*p.x + model.b), d));
+    const next = wlsFit(pts, w);               // refit weighted line
+    if (Math.abs(next.m - model.m) < 1e-9) { model = next; break; }
+    model = next;                              // repeat until settled
+  }
+  return model;             // the robust line — every point used
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Choosing δ — scale it to the noise</h3></div>
+        <p class="text-sm text-slate-600 mb-3">δ is the knee between "honest noise" and "outlier". Because it lives in residual units, a fit that scales with the data must set it relative to the noise spread σ. The standard choice is <code>δ = 1.345·σ</code>, which gives <b>95% of OLS's efficiency</b> on clean Gaussian data while still clipping gross errors — so proper implementations standardise residuals by a robust σ (via the MAD) and use the scale-free constant 1.345. The LOOK tab keeps δ in raw units so the knee lines up visibly with the loss plot.</p>
+        <div class="relative"><pre># robust scale, then the 95%-efficient tuning constant
+import numpy as np
+resid = np.abs(y - (m*x + b))
+sigma = 1.4826 * np.median(np.abs(resid - np.median(resid)))  # MAD → σ
+delta = 1.345 * sigma       # standard Huber knee: 95% efficient, robust
+# small δ → closer to L1 / median (more robust, less efficient)
+# large δ → closer to OLS (δ → ∞ IS ordinary least squares)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">In practice — the standard tools</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You will rarely hand-roll it. scikit-learn's <code>HuberRegressor</code> fits the Huber loss (its <code>epsilon</code> is δ in standardised units, default 1.35) and jointly estimates the scale, handing back coefficients plus an <code>outliers_</code> mask. statsmodels' <code>RLM</code> exposes the whole family of M-estimators — Huber, Tukey's bisquare, and more — over the same IRLS engine.</p>
+        <div class="relative"><pre># scikit-learn — robust linear regression
+from sklearn.linear_model import HuberRegressor
+h = HuberRegressor(epsilon=1.35).fit(X, y)   # epsilon = δ (standardised)
+robust_line = (h.coef_, h.intercept_)
+outliers    = h.outliers_        # points that fell in the linear tails
+
+# statsmodels — the M-estimator family over the same IRLS
+import statsmodels.api as sm
+rlm = sm.RLM(y, sm.add_constant(x), M=sm.robust.norms.HuberT()).fit()</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-10 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧭 Five ways to fit through outliers — and where Huber sits</h3>
+      <div style="overflow-x:auto">
+      <table class="cmp">
+        <tr><th style="width:150px"></th><th>📉 Least squares (OLS)</th><th>🪨 Huber (Day 52)</th><th>📏 LAD / L1</th><th>🧮 Theil–Sen</th><th>🗳️ RANSAC (Day 51)</th></tr>
+        <tr><td class="cat">Loss on a residual</td><td>½r² everywhere</td><td><b>½r² then linear</b></td><td>|r| everywhere</td><td>—(median of slopes)</td><td>0/1 in-or-out of band</td></tr>
+        <tr><td class="cat">Uses every point?</td><td>✅</td><td><b>✅ (down-weighted)</b></td><td>✅</td><td>✅ (all pairs)</td><td>❌ inliers only</td></tr>
+        <tr><td class="cat">Handles outliers?</td><td><b>❌ none</b></td><td>~ soft, mild y-outliers</td><td>✅ moderate</td><td>✅ moderate</td><td><b>✅ heavy (&gt;50%)</b></td></tr>
+        <tr><td class="cat">Breakdown point</td><td><b>0%</b></td><td>~0% (high-leverage)</td><td>~0% (high-leverage)</td><td>~29%</td><td><b>up to ~50%+</b></td></tr>
+        <tr><td class="cat">Smooth / convex?</td><td>✅ smooth</td><td><b>✅ smooth &amp; convex</b></td><td>convex, kinked</td><td>—</td><td>❌ combinatorial</td></tr>
+        <tr><td class="cat">Deterministic?</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td><b>❌ random samples</b></td></tr>
+        <tr><td class="cat">Cost</td><td>O(n) closed form</td><td>a few IRLS passes</td><td>LP / IRLS</td><td>O(n²) slopes</td><td>N samples × O(n)</td></tr>
+        <tr><td class="cat">Best when</td><td>clean, Gaussian noise</td><td><b>a few mild outliers, keep efficiency</b></td><td>heavy-tailed noise</td><td>moderate outliers, low-D</td><td>many outliers + a threshold</td></tr>
+      </table>
+      </div>
+      <p class="text-xs text-slate-500 mt-3">The trade is <em>how much contamination you expect and how smooth you need the fit to be</em>. <b>OLS</b> is optimal on Gaussian noise and useless the instant one high-leverage point appears. <b>Huber</b> is the gentle middle: it keeps least-squares' smooth, convex, efficient behaviour on the bulk of the data and only grades the tails down to linear, so it shrugs off a <em>few mild</em> outliers while still — being an all-points estimator — bending toward a truly gross high-leverage point (its breakdown point stays near zero). <b>LAD (L1)</b> is Huber's δ→0 limit, the median line: more robust, but kinked and less efficient. <b>Theil–Sen</b> takes the median of all pairwise slopes — elegant, deterministic, robust to ~29% contamination, but O(n²). <b>RANSAC (Day 51)</b> makes the opposite bet: it throws points away and samples for a consensus, tolerating well past half the data as garbage — but it is random, needs a threshold, and is not smooth. Huber's genius is that it changes <em>nothing</em> about the least-squares workflow except one weighting line, buying real robustness against mild outliers while staying convex, deterministic, and statistically efficient. The moment your outliers become many or high-leverage, hand off to a sampling method like RANSAC.</p>
+    </div>
+
+    <div class="mt-8 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 52 of MachineLearningFromZero done — a fit that bends under outliers instead of breaking.</h3><p class="text-sm text-sky-700 mt-2"><strong>Huber regression</strong> keeps least-squares' smooth, convex world but caps its fatal sensitivity to far-off points. It penalises a residual with the ordinary <span style="color:#dc2626;font-weight:700">quadratic ½r²</span> while it stays inside a knee <code>|r| ≤ δ</code> — so on clean, near-Gaussian noise it is just OLS, keeping <b>95% efficiency</b> at the standard δ = 1.345σ — and switches to a <span style="color:#16a34a;font-weight:700">linear penalty δ(|r| − ½δ)</span> beyond it, so an outlier's <em>influence</em> stops growing and is capped at ±δ instead of exploding with distance. You fit it by <strong>iteratively reweighted least squares</strong>: refit a weighted line with weights <code>min(1, δ/|r|)</code> — full inside the knee, discounted in the tails — until it settles, which it always does, because the loss is convex with one global minimum. Every point is used; none is discarded. That places Huber <strong>between</strong> ordinary least-squares and a fully-robust fit: <b>large δ</b> recovers OLS, <b>small δ</b> approaches the median line, and δ ≈ 1.345σ balances the two. Its limit is honest — because it still touches every point, a truly gross or high-leverage outlier can bend it, so its breakdown point stays near zero. <strong>👉 When your data is mostly clean with a handful of mild outliers and you want to keep least-squares' smoothness and efficiency, reach for Huber; when outliers become many or high-leverage, switch to a sampling method like RANSAC (Day 51).</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+const el = id => document.getElementById(id);
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function randn(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function setDiag(box, c, t, b){ box.className="diag "+c+" mt-3 text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+function setDiagWide(box, c, t, b){ box.className="diag "+c+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+const fmt=(x,d=2)=>Number(x).toFixed(d);
+function median(a){ if(!a.length) return 0; const s=a.slice().sort((x,y)=>x-y); const n=s.length; return n%2? s[(n-1)/2] : 0.5*(s[n/2-1]+s[n/2]); }
+
+/* ================================================================
+   CORE: Huber loss / influence / weight, weighted LS, IRLS, Theil–Sen
+   ================================================================ */
+// Huber loss ρ_δ(r): quadratic core, linear tails
+function huberLoss(r, d){ const a=Math.abs(r); return a<=d ? 0.5*r*r : d*(a-0.5*d); }
+// influence ψ(r) = ρ'(r): identity inside the knee, capped at ±δ outside
+function huberPsi(r, d){ const a=Math.abs(r); return a<=d ? r : d*Math.sign(r); }
+// IRLS weight w(r) = ψ(r)/r = min(1, δ/|r|)
+function huberWeight(r, d){ const a=Math.abs(r); return a<=d ? 1 : d/a; }
+
+// ordinary least-squares line (all points, unit weights)
+function olsFit(pts){
+  const n=pts.length; if(n<2) return null;
+  let sx=0,sy=0,sxx=0,sxy=0; for(const p of pts){ sx+=p.x; sy+=p.y; sxx+=p.x*p.x; sxy+=p.x*p.y; }
+  const den=n*sxx-sx*sx; if(Math.abs(den)<1e-12) return null;
+  const m=(n*sxy-sx*sy)/den; return { m, b:(sy-m*sx)/n };
+}
+// weighted least-squares line
+function wlsFit(pts, w){
+  let Sw=0,Swx=0,Swy=0,Swxx=0,Swxy=0;
+  for(let i=0;i<pts.length;i++){ const p=pts[i], wi=w[i]; Sw+=wi; Swx+=wi*p.x; Swy+=wi*p.y; Swxx+=wi*p.x*p.x; Swxy+=wi*p.x*p.y; }
+  const den=Sw*Swxx-Swx*Swx; if(Math.abs(den)<1e-12 || Sw<1e-12) return null;
+  const m=(Sw*Swxy-Swx*Swy)/den; return { m, b:(Swy-m*Swx)/Sw };
+}
+// full (non-animated) Huber IRLS — used by the loss/contrast modules
+function huberFit(pts, d, iters){
+  iters=iters||60;
+  let model=olsFit(pts); if(!model) return null;
+  for(let k=0;k<iters;k++){
+    const w=pts.map(p=>huberWeight(p.y-(model.m*p.x+model.b), d));
+    const next=wlsFit(pts, w); if(!next) break;
+    if(Math.abs(next.m-model.m)<1e-9 && Math.abs(next.b-model.b)<1e-9){ model=next; break; }
+    model=next;
+  }
+  return model;
+}
+// Theil–Sen: median of all pairwise slopes → a fully-robust reference line
+function theilSen(pts){
+  const slopes=[];
+  for(let i=0;i<pts.length;i++) for(let j=i+1;j<pts.length;j++){ const dx=pts[j].x-pts[i].x; if(Math.abs(dx)>1e-9) slopes.push((pts[j].y-pts[i].y)/dx); }
+  if(!slopes.length) return null;
+  const m=median(slopes); const ints=pts.map(p=>p.y-m*p.x); return { m, b:median(ints) };
+}
+
+/* ================================================================
+   viewport mapping (domain 0..10 in x and y)
+   ================================================================ */
+const V={XMIN:0,XMAX:10,YMIN:0,YMAX:10,ML:34,MR:14,MT:14,MB:26};
+function pxX(cv,x){ return V.ML + (cv.width-V.ML-V.MR)*(x-V.XMIN)/(V.XMAX-V.XMIN); }
+function pxY(cv,y){ const y0=V.MT,y1=cv.height-V.MB; return y1-(y1-y0)*(y-V.YMIN)/(V.YMAX-V.YMIN); }
+function invX(cv,p){ return V.XMIN+(p-V.ML)/(cv.width-V.ML-V.MR)*(V.XMAX-V.XMIN); }
+function invY(cv,p){ const y0=V.MT,y1=cv.height-V.MB; return V.YMIN+(y1-p)/(y1-y0)*(V.YMAX-V.YMIN); }
+function plotClip(cv,ctx){ ctx.beginPath(); ctx.rect(V.ML,V.MT,cv.width-V.ML-V.MR,cv.height-V.MB-V.MT); ctx.clip(); }
+function drawAxes(cv,ctx){
+  const W=cv.width,H=cv.height, y0=V.MT,y1=H-V.MB;
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1;
+  for(let g=0;g<=5;g++){ const yy=y0+(y1-y0)*g/5; ctx.beginPath();ctx.moveTo(V.ML,yy);ctx.lineTo(W-V.MR,yy);ctx.stroke(); }
+  for(let g=0;g<=5;g++){ const xx=V.ML+(W-V.ML-V.MR)*g/5; ctx.beginPath();ctx.moveTo(xx,y0);ctx.lineTo(xx,y1);ctx.stroke(); }
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(V.ML,y0); ctx.lineTo(V.ML,y1); ctx.lineTo(W-V.MR,y1); ctx.stroke();
+  ctx.fillStyle='#94a3b8'; ctx.font='9px monospace'; ctx.textAlign='center';
+  for(let t=0;t<=10;t+=2){ ctx.fillText(t, pxX(cv,t), y1+11); }
+}
+function strokeLine(cv,ctx,model,color,lw,dash){
+  if(!model) return; ctx.save(); plotClip(cv,ctx);
+  ctx.strokeStyle=color; ctx.lineWidth=lw; if(dash)ctx.setLineDash(dash);
+  const x0=V.XMIN, x1=V.XMAX;
+  ctx.beginPath(); ctx.moveTo(pxX(cv,x0),pxY(cv,model.m*x0+model.b)); ctx.lineTo(pxX(cv,x1),pxY(cv,model.m*x1+model.b)); ctx.stroke();
+  ctx.restore();
+}
+function fillBand(cv,ctx,model,t,color){
+  if(!model) return; ctx.save(); plotClip(cv,ctx);
+  const x0=V.XMIN,x1=V.XMAX;
+  ctx.beginPath();
+  ctx.moveTo(pxX(cv,x0),pxY(cv,model.m*x0+model.b+t));
+  ctx.lineTo(pxX(cv,x1),pxY(cv,model.m*x1+model.b+t));
+  ctx.lineTo(pxX(cv,x1),pxY(cv,model.m*x1+model.b-t));
+  ctx.lineTo(pxX(cv,x0),pxY(cv,model.m*x0+model.b-t));
+  ctx.closePath(); ctx.fillStyle=color; ctx.fill();
+  ctx.restore();
+}
+
+/* ================================================================
+   MODULE LIVE — fit Huber vs OLS with animated IRLS
+   ================================================================ */
+const HB = {
+  inlierPts:[], outlierPts:[], pts:[],
+  trueM:0.55, trueB:2.4, noise:0.35,
+  nInliers:40, nOutliers:8, scenario:'few',
+  delta:0.8, maxIter:40,
+  iter:0, model:null, done:false, timer:null
+};
+function hbMakeInliers(){
+  const rng=mulberry32((Math.random()*1e9)>>>0);
+  const out=[]; for(let i=0;i<HB.nInliers;i++){ const x=0.6+8.8*rng(); const y=HB.trueM*x+HB.trueB+HB.noise*randn(rng); out.push({x, y:Math.max(0.2,Math.min(9.8,y))}); }
+  HB.inlierPts=out;
+}
+function hbMakeOutliers(){
+  const rng=mulberry32((Math.random()*1e9)>>>0);
+  const out=[]; const n=HB.nOutliers, sc=HB.scenario;
+  for(let i=0;i<n;i++){ let x,y;
+    if(sc==='leverage'){ x=8+1.6*rng(); y=0.4+1.6*rng(); }                 // high-leverage bottom-right
+    else if(sc==='twosided'){ if(i%2===0){ x=0.8+8.4*rng(); y=8+1.6*rng(); } else { x=0.8+8.4*rng(); y=0.4+1.4*rng(); } }
+    else { x=0.8+8.4*rng(); y=7.6+2*rng(); }                               // y-outliers up high
+    out.push({x:Math.max(0.2,Math.min(9.8,x)), y:Math.max(0.2,Math.min(9.8,y))});
+  }
+  HB.outlierPts=out;
+}
+function hbRebuild(){
+  const nIn=HB.inlierPts.length;
+  HB.pts = HB.inlierPts.concat(HB.outlierPts).map((p,i)=>({x:p.x, y:p.y, truth: i<nIn?'in':'out'}));
+  hbResetRun();
+}
+function hbResetRun(){ hbStopRun(); HB.iter=0; HB.model=olsFit(HB.pts); HB.done=false; }
+function hbStepOnce(){
+  if(!HB.model || HB.iter>=HB.maxIter) return false;
+  HB.iter++;
+  const w=HB.pts.map(p=>huberWeight(p.y-(HB.model.m*p.x+HB.model.b), HB.delta));
+  const next=wlsFit(HB.pts, w);
+  if(!next){ HB.done=true; return false; }
+  const conv=Math.abs(next.m-HB.model.m)<1e-7 && Math.abs(next.b-HB.model.b)<1e-7;
+  HB.model=next;
+  if(conv || HB.iter>=HB.maxIter){ HB.done=true; return false; }
+  return true;
+}
+function hbFinish(){ hbStopRun(); let guard=0; while(hbStepOnce() && guard++<200){} HB.done=true; }
+function hbStopRun(){ if(HB.timer){ clearInterval(HB.timer); HB.timer=null; } el('hRun').innerHTML='▶ Run IRLS'; }
+function hbStartRun(){
+  if(HB.done) hbResetRun();
+  if(HB.timer){ hbStopRun(); return; }
+  el('hRun').innerHTML='⏸ Pause';
+  HB.timer=setInterval(()=>{
+    const cont=hbStepOnce();
+    hbDraw();
+    if(!cont){ hbStopRun(); }
+  }, 320);
+}
+function hbDraw(){
+  const cv=el('hCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height); ctx.setLineDash([]); drawAxes(cv,ctx);
+  const showOls=el('hShowOls').checked, showRobust=el('hShowRobust').checked, showBand=el('hShowBand').checked, showTrue=el('hShowTrue').checked;
+  const ols=olsFit(HB.pts), rob=theilSen(HB.pts);
+  const dispW = HB.model ? HB.pts.map(p=>huberWeight(p.y-(HB.model.m*p.x+HB.model.b), HB.delta)) : HB.pts.map(()=>1);
+  // ±δ quadratic band around the Huber line
+  if(showBand && HB.model) fillBand(cv,ctx,HB.model,HB.delta,'rgba(22,163,74,0.16)');
+  if(showTrue) strokeLine(cv,ctx,{m:HB.trueM,b:HB.trueB},'#64748b',1.6,[3,3]);
+  if(showRobust && rob) strokeLine(cv,ctx,rob,'#9333ea',2,[2,3]);
+  if(showOls && ols) strokeLine(cv,ctx,ols,'#dc2626',2,[6,4]);
+  if(HB.model) strokeLine(cv,ctx,HB.model,'#16a34a', HB.done?3.2:2.6, null);
+  // points — opacity by weight so down-weighted outliers fade
+  for(let i=0;i<HB.pts.length;i++){ const p=HB.pts[i]; const X=pxX(cv,p.x),Y=pxY(cv,p.y); const w=dispW[i];
+    ctx.globalAlpha=0.28+0.72*w;
+    if(p.truth==='out'){ ctx.beginPath();ctx.arc(X,Y,3.6,0,7);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle='#f43f5e';ctx.lineWidth=1.6;ctx.stroke(); }
+    else { ctx.beginPath();ctx.arc(X,Y,3.6,0,7);ctx.fillStyle='#0ea5e9';ctx.fill(); }
+    ctx.globalAlpha=1;
+    if(w<0.985){ ctx.beginPath();ctx.arc(X,Y,6,0,7);ctx.strokeStyle='rgba(147,51,234,0.6)';ctx.lineWidth=1.3;ctx.setLineDash([2,2]);ctx.stroke();ctx.setLineDash([]); }
+  }
+  // metrics
+  el('hN').textContent=HB.pts.length;
+  el('hIter').textContent=HB.iter+' / '+HB.maxIter;
+  el('hHub').textContent=HB.model?fmt(HB.model.m,2):'—';
+  el('hOls').textContent=ols?fmt(ols.m,2):'—';
+  hbDiag(ols,rob);
+}
+function hbDiag(ols,rob){
+  const box=el('hDiag'); const n=HB.pts.length;
+  if(n<2){ setDiag(box,'diag-info','Add points to fit','Load a scenario or click the canvas to scatter points.'); return; }
+  const nDown = HB.model ? HB.pts.filter(p=>huberWeight(p.y-(HB.model.m*p.x+HB.model.b),HB.delta)<0.985).length : 0;
+  if(HB.iter===0){
+    setDiag(box,'diag-info','▶ Press Run IRLS to reweight and converge',
+      `There are <b>${HB.inlierPts.length} inliers</b> on a hidden line plus <b>${HB.outlierPts.length} outliers</b>. The <span style="color:#16a34a;font-weight:700">green</span> line starts as ordinary least-squares (identical to the <span style="color:#dc2626;font-weight:700">red</span> line right now). Each IRLS pass will down-weight points outside the <span style="color:#16a34a;font-weight:700">±${fmt(HB.delta,2)} band</span> by <code>δ/|r|</code> and refit — watch the outliers fade and the green line pull away from red toward the honest points.`);
+    return;
+  }
+  if(!HB.done){
+    setDiag(box,'diag-info',`🪨 IRLS pass ${HB.iter}: ${nDown} point(s) down-weighted in the linear tails`,
+      `The weighted refit is pulling the <span style="color:#16a34a;font-weight:700">green</span> Huber line toward the inliers — points outside the ±δ band contribute only a fraction <code>δ/|r|</code> of a point to the fit, so they fade. Keep stepping and it settles onto the honest line, while <span style="color:#dc2626;font-weight:700">OLS</span> stays dragged toward the outliers.`);
+    return;
+  }
+  // done — compare slope errors
+  const hSlope=HB.model?HB.model.m:0, oSlope=ols?ols.m:0, rSlope=rob?rob.m:0;
+  const hErr=Math.abs(hSlope-HB.trueM), oErr=Math.abs(oSlope-HB.trueM), rErr=Math.abs(rSlope-HB.trueM);
+  if(hErr<oErr){
+    setDiag(box,'diag-good',`✅ Huber converged: slope ${fmt(hSlope,2)} vs true ${fmt(HB.trueM,2)} (OLS ${fmt(oSlope,2)})`,
+      `IRLS settled after <b>${HB.iter} passes</b>, down-weighting <b>${nDown}</b> tail point(s). Huber's slope error is <b>${fmt(hErr,2)}</b> versus least-squares' <b>${fmt(oErr,2)}</b> (${fmt(oErr/(hErr||1e-6),1)}× worse) — same data, but the linear tails stopped the outliers from dominating. Notice Huber (${fmt(hSlope,2)}) sits <em>between</em> OLS (${fmt(oSlope,2)}) and fully-robust Theil–Sen (${fmt(rSlope,2)}, error ${fmt(rErr,2)}): raise <b>δ</b> to slide it toward OLS, lower δ to slide it toward the robust line.`);
+  } else {
+    setDiag(box,'diag-warn',`⚠️ Huber did not clearly beat OLS this run (slope ${fmt(hSlope,2)} vs ${fmt(oSlope,2)})`,
+      `With few outliers, a δ so large the whole dataset sits inside the band (then Huber <em>is</em> OLS), or <b>high-leverage</b> outliers far out in x, Huber's advantage shrinks — its breakdown point is near zero, so a gross leveraged point still bends it. Lower <b>δ</b> toward the noise scale, add more <b>outliers</b>, or try the <b>leverage</b> scenario to see where a sampling method like RANSAC (Day 51) would be needed instead. Theil–Sen error here: <b>${fmt(rErr,2)}</b>.`);
+  }
+}
+function hbBuildScenarioButtons(){
+  const wrap=el('hPresets'); wrap.innerHTML='';
+  [['few','🌤️ a few outliers'],['many','💥 many outliers'],['twosided','↕ two-sided'],['leverage','🏋️ high leverage']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(HB.scenario===id?' on':''); b.textContent=label;
+    b.onclick=()=>{
+      HB.scenario=id;
+      HB.nOutliers = id==='few'?8:(id==='many'?18:(id==='leverage'?10:14));
+      el('hOut').value=HB.nOutliers; el('hOutV').textContent=HB.nOutliers;
+      hbMakeInliers(); hbMakeOutliers(); hbRebuild(); hbBuildScenarioButtons(); hbDraw();
+    };
+    wrap.appendChild(b);
+  });
+}
+el('hDelta').addEventListener('input',e=>{ HB.delta=+e.target.value; el('hDeltaV').textContent=fmt(HB.delta,2); hbResetRun(); hbDraw(); });
+el('hMaxIter').addEventListener('input',e=>{ HB.maxIter=+e.target.value; el('hMaxIterV').textContent=HB.maxIter; if(HB.iter>HB.maxIter) hbResetRun(); hbDraw(); });
+el('hOut').addEventListener('input',e=>{ HB.nOutliers=+e.target.value; el('hOutV').textContent=HB.nOutliers; hbMakeOutliers(); hbRebuild(); hbDraw(); });
+el('hRun').onclick=()=>hbStartRun();
+el('hStep').onclick=()=>{ if(HB.done) hbResetRun(); hbStepOnce(); hbDraw(); };
+el('hFinish').onclick=()=>{ if(HB.done) hbResetRun(); hbFinish(); hbDraw(); };
+el('hReset').onclick=()=>{ hbResetRun(); hbDraw(); };
+el('hNew').onclick=()=>{ hbMakeInliers(); hbMakeOutliers(); hbRebuild(); hbDraw(); };
+el('hShowOls').addEventListener('change',hbDraw);
+el('hShowRobust').addEventListener('change',hbDraw);
+el('hShowBand').addEventListener('change',hbDraw);
+el('hShowTrue').addEventListener('change',hbDraw);
+el('hCanvas').addEventListener('click',ev=>{
+  const cv=ev.currentTarget; const r=cv.getBoundingClientRect();
+  const pxv=(ev.clientX-r.left)*(cv.width/r.width), pyv=(ev.clientY-r.top)*(cv.height/r.height);
+  let x=invX(cv,pxv), y=invY(cv,pyv); x=Math.max(V.XMIN,Math.min(V.XMAX,x)); y=Math.max(V.YMIN,Math.min(V.YMAX,y));
+  HB.outlierPts.push({x,y}); HB.nOutliers=HB.outlierPts.length;
+  el('hOut').value=Math.min(30,HB.nOutliers); el('hOutV').textContent=HB.nOutliers;
+  hbRebuild(); hbDraw();
+});
+
+/* ================================================================
+   MODULE LOSS — Huber vs squared loss / influence / weight
+   ================================================================ */
+const LS={ delta:0.8, mode:'loss' };
+function lossDraw(){
+  const cv=el('lCanvas'); if(!cv) return; const ctx=cv.getContext('2d'); const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H); ctx.setLineDash([]);
+  const ml=42,mr=16,mt=16,mb=30; const x0=ml,x1=W-mr,y0=mt,y1=H-mb;
+  const R=4.0, d=LS.delta;
+  let yMin,yMax,fSq,fHu,yTicks,zero=false, sqLabel,huLabel,title;
+  if(LS.mode==='loss'){ yMin=0; yMax=0.5*R*R; fSq=r=>0.5*r*r; fHu=r=>huberLoss(r,d); yTicks=[0,2,4,6,8]; sqLabel='squared ½r²'; huLabel='Huber ρ<sub>δ</sub>(r)'; title='Huber loss vs squared loss'; }
+  else if(LS.mode==='infl'){ yMin=-R; yMax=R; fSq=r=>r; fHu=r=>huberPsi(r,d); yTicks=[-4,-2,0,2,4]; zero=true; sqLabel='squared ψ = r'; huLabel='Huber ψ (capped ±δ)'; title='Influence ψ(r) = ρ′(r)'; }
+  else { yMin=0; yMax=1.25; fSq=r=>1; fHu=r=>huberWeight(r,d); yTicks=[0,0.5,1]; sqLabel='squared w = 1'; huLabel='Huber w = min(1, δ/|r|)'; title='Weight w(r) = ψ(r)/r'; }
+  const PX=r=>x0+(x1-x0)*(r+R)/(2*R);
+  const PY=v=>y1-(y1-y0)*(v-yMin)/(yMax-yMin);
+  // y gridlines + labels
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1; ctx.fillStyle='#94a3b8'; ctx.font='9px monospace'; ctx.textAlign='right';
+  yTicks.forEach(v=>{ const yy=PY(v); ctx.beginPath();ctx.moveTo(x0,yy);ctx.lineTo(x1,yy);ctx.stroke(); ctx.fillText(fmt(v, v%1===0?0:1), x0-4, yy+3); });
+  // shade quadratic core |r| ≤ δ
+  ctx.fillStyle='rgba(14,165,233,0.14)'; ctx.fillRect(PX(-d),y0,PX(d)-PX(-d),y1-y0);
+  // vertical δ lines
+  ctx.strokeStyle='#0ea5e9'; ctx.lineWidth=1.4; ctx.setLineDash([4,3]);
+  [ -d, d ].forEach(rr=>{ ctx.beginPath(); ctx.moveTo(PX(rr),y0); ctx.lineTo(PX(rr),y1); ctx.stroke(); });
+  ctx.setLineDash([]);
+  ctx.fillStyle='#0369a1'; ctx.font='10px monospace'; ctx.textAlign='center';
+  ctx.fillText('−δ',PX(-d),y0+10); ctx.fillText('+δ',PX(d),y0+10);
+  // zero line (influence)
+  if(zero){ ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x0,PY(0)); ctx.lineTo(x1,PY(0)); ctx.stroke(); }
+  // curves
+  function curve(f,color,lw){ ctx.beginPath(); let started=false; for(let i=0;i<=240;i++){ const r=-R+2*R*i/240; const Y=PY(f(r)); const X=PX(r); if(!started){ctx.moveTo(X,Y);started=true;} else ctx.lineTo(X,Y);} ctx.strokeStyle=color; ctx.lineWidth=lw; ctx.stroke(); }
+  curve(fSq,'#dc2626',2.2);
+  curve(fHu,'#16a34a',2.8);
+  // axes
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x0,y1); ctx.lineTo(x1,y1); ctx.stroke();
+  ctx.fillStyle='#94a3b8'; ctx.font='9px monospace'; ctx.textAlign='center';
+  for(let r=-4;r<=4;r+=2){ ctx.fillText(r, PX(r), y1+11); }
+  ctx.fillStyle='#64748b'; ctx.font='10px sans-serif'; ctx.fillText('residual r  (→)',(x0+x1)/2,H-3);
+  // metrics + labels
+  const sq3=0.5*9, hu3=huberLoss(3,d); const save=100*(sq3-hu3)/sq3;
+  el('lD').textContent=fmt(d,2);
+  el('lSq').textContent=fmt(sq3,2);
+  el('lHu').textContent=fmt(hu3,2);
+  el('lSave').textContent=fmt(save,0)+'%';
+  el('lTitle').innerHTML=title;
+  el('lLabelSq').innerHTML=sqLabel;
+  el('lLabelHu').innerHTML=huLabel;
+  lossDiag(d,sq3,hu3,save);
+}
+function lossDiag(d,sq3,hu3,save){
+  const box=el('lDiag');
+  if(LS.mode==='loss'){
+    setDiag(box,'diag-info',`📉 at |r|=3 the far point costs ${fmt(hu3,2)} under Huber vs ${fmt(sq3,2)} under OLS`,
+      `Inside <code>±${fmt(d,2)}</code> the <span style="color:#16a34a;font-weight:700">Huber</span> curve <em>is</em> the <span style="color:#dc2626;font-weight:700">parabola</span> — same efficient quadratic on honest noise. Past the knee it goes <b>straight</b>: a point at r=3 pays <b>${fmt(hu3,2)}</b> instead of <b>${fmt(sq3,2)}</b>, a <b>${fmt(save,0)}% cut</b> in its penalty, so it can no longer dominate the sum. Slide <b>δ</b> right and the straight tail starts later (more OLS-like); slide it left and even mild residuals are treated as outliers.`);
+  } else if(LS.mode==='infl'){
+    setDiag(box,'diag-info',`⚡ influence is capped at ±${fmt(d,2)} — this is WHY outliers pull less`,
+      `The influence <code>ψ(r)=ρ′(r)</code> is how hard a point tugs the fit. For <span style="color:#dc2626;font-weight:700">least squares</span> it is <code>r</code> — a point twice as far pulls twice as hard, forever. For <span style="color:#16a34a;font-weight:700">Huber</span> it rises with r <em>only inside the knee</em>, then flattens to a constant <b>±${fmt(d,2)}</b>: no matter how far an outlier drifts, its pull is bounded. Bounded influence is the formal definition of robustness.`);
+  } else {
+    setDiag(box,'diag-info',`⚖️ weight = min(1, δ/|r|) — the exact IRLS reweighting`,
+      `Turn influence into a per-point weight <code>w(r)=ψ(r)/r</code>. <span style="color:#dc2626;font-weight:700">OLS</span> weights every point at <b>1</b>. <span style="color:#16a34a;font-weight:700">Huber</span> holds <b>1</b> inside <code>±${fmt(d,2)}</code> then decays as <code>δ/|r|</code> — a point at r=3 counts as only <b>${fmt(huberWeight(3,d),2)}</b> of a point. This is literally the weight the Fit-tab's IRLS multiplies each residual by before refitting.`);
+  }
+}
+function lossBuildModeButtons(){
+  const wrap=el('lModes'); wrap.innerHTML='';
+  [['loss','loss ρ(r)'],['infl','influence ψ(r)'],['weight','weight w(r)']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(LS.mode===id?' on':''); b.textContent=label;
+    b.onclick=()=>{ LS.mode=id; lossBuildModeButtons(); lossDraw(); };
+    wrap.appendChild(b);
+  });
+}
+el('lDelta').addEventListener('input',e=>{ LS.delta=+e.target.value; el('lDeltaV').textContent=fmt(LS.delta,2); lossDraw(); });
+
+/* ================================================================
+   MODULE VS — drag the outlier: OLS vs Huber vs Theil–Sen
+   ================================================================ */
+const HVS={ inliers:[], trueM:0.55, trueB:2.2, offset:2.5, count:12, delta:0.8 };
+function hvsBuildInliers(){ const rng=mulberry32(12345); const out=[]; for(let i=0;i<40;i++){ const x=0.6+8.8*rng(); const y=HVS.trueM*x+HVS.trueB+0.3*randn(rng); out.push({x,y:Math.max(0.2,Math.min(9.8,y))}); } HVS.inliers=out; }
+function hvsData(){
+  const pts=HVS.inliers.map(p=>({x:p.x,y:p.y,truth:'in'}));
+  const rng=mulberry32(777); const baseY=5+HVS.offset;
+  for(let i=0;i<HVS.count;i++){ const x=6.5+2.6*rng(); const y=baseY+0.5*randn(rng); pts.push({x:Math.max(0.2,Math.min(9.8,x)), y:Math.max(0.2,Math.min(9.8,y)), truth:'out'}); }
+  return pts;
+}
+function hvsDraw(){
+  const cv=el('vCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height); ctx.setLineDash([]); drawAxes(cv,ctx);
+  const pts=hvsData();
+  const ols=olsFit(pts), hub=huberFit(pts,HVS.delta,80), rob=theilSen(pts);
+  strokeLine(cv,ctx,{m:HVS.trueM,b:HVS.trueB},'#64748b',1.8,[4,4]);
+  if(rob) strokeLine(cv,ctx,rob,'#9333ea',2.2,[2,3]);
+  if(ols) strokeLine(cv,ctx,ols,'#dc2626',2.6,[6,4]);
+  if(hub) strokeLine(cv,ctx,hub,'#16a34a',3,null);
+  for(const p of pts){ const X=pxX(cv,p.x),Y=pxY(cv,p.y);
+    if(p.truth==='out'){ ctx.beginPath();ctx.arc(X,Y,3.6,0,7);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle='#f43f5e';ctx.lineWidth=1.6;ctx.stroke(); }
+    else { ctx.beginPath();ctx.arc(X,Y,3.4,0,7);ctx.fillStyle='#0ea5e9';ctx.fill(); }
+  }
+  el('vTrue').textContent=fmt(HVS.trueM,2);
+  el('vOls').textContent=ols?fmt(ols.m,2):'—';
+  el('vHub').textContent=hub?fmt(hub.m,2):'—';
+  el('vRob').textContent=rob?fmt(rob.m,2):'—';
+  hvsDiag(ols,hub,rob);
+}
+function hvsDiag(ols,hub,rob){
+  const box=el('vDiag');
+  const oErr=ols?Math.abs(ols.m-HVS.trueM):0, hErr=hub?Math.abs(hub.m-HVS.trueM):0, rErr=rob?Math.abs(rob.m-HVS.trueM):0;
+  setDiagWide(box,'diag-info',`⚖️ offset ${HVS.offset>=0?'+':''}${fmt(HVS.offset,1)} · ${HVS.count} outliers · δ ${fmt(HVS.delta,2)} — OLS ${ols?fmt(ols.m,2):'—'} · Huber ${hub?fmt(hub.m,2):'—'} · Theil–Sen ${rob?fmt(rob.m,2):'—'} (true ${fmt(HVS.trueM,2)})`,
+    `The <span style="color:#dc2626;font-weight:700">red</span> least-squares line is fit to <em>all</em> points, so pushing the cluster away bends it toward the outliers — slope error <b>${fmt(oErr,2)}</b>. The <span style="color:#9333ea;font-weight:700">purple</span> Theil–Sen line takes the median pairwise slope and barely moves — error <b>${fmt(rErr,2)}</b>. The <span style="color:#16a34a;font-weight:700">green</span> Huber line sits <em>between</em> them — error <b>${fmt(hErr,2)}</b> — because it still uses every point but caps each outlier's pull at δ. Slide <b>δ</b> down and Huber slides toward the robust purple line; slide δ up past the outlier residuals and Huber merges into red OLS. This is the whole message: Huber is a <em>tunable middle ground</em> between efficiency and robustness — but pile on enough outliers and even it bends, which is where sample-consensus RANSAC (Day 51) takes over.`);
+}
+el('vLev').addEventListener('input',e=>{ HVS.offset=+e.target.value; el('vLevV').textContent=(HVS.offset>=0?'+':'')+fmt(HVS.offset,1); hvsDraw(); });
+el('vCount').addEventListener('input',e=>{ HVS.count=+e.target.value; el('vCountV').textContent=HVS.count; hvsDraw(); });
+el('vDelta').addEventListener('input',e=>{ HVS.delta=+e.target.value; el('vDeltaV').textContent=fmt(HVS.delta,2); hvsDraw(); });
+
+/* ================================================================
+   sub-nav wiring
+   ================================================================ */
+const subBtns=document.querySelectorAll("#subnav [data-mod]");
+function showMod(m){
+  document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden"));
+  el("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m));
+  if(m!=="live") hbStopRun();
+  if(m==="live") hbDraw();
+  if(m==="loss") lossDraw();
+  if(m==="vs") hvsDraw();
+}
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+/* ================================================================
+   init
+   ================================================================ */
+hbMakeInliers(); hbMakeOutliers(); hbRebuild(); hbBuildScenarioButtons();
+lossBuildModeButtons();
+hvsBuildInliers();
+document.querySelector('[data-mod="live"]').classList.add("on");
+showMod("live");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. Why squared error breaks on a single outlier", why:"Ordinary least squares picks the line minimising the sum of SQUARED vertical residuals. Squaring is the whole problem: a point twice as far off contributes four times the penalty, a point ten times as far contributes a hundred times. So the fit is dominated by whichever point is farthest, and a single gross outlier — a mislabelled sample, a sensor glitch — can pull the entire line away from every honest measurement just to shrink that one enormous squared term. Statisticians measure this with the breakdown point: the smallest fraction of contaminated data that can send an estimate to infinity. For OLS it is zero — one bad point out of a million is enough. The influence of a point (how hard it tugs the fit) grows linearly with its residual and never stops. Huber's answer is not to throw points away but to keep the good quadratic behaviour near zero while capping how much any one far point is allowed to matter.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">OLS minimises Σ (yᵢ − (m·xᵢ+b))²<br><br>residual 2× → penalty 4× · residual 10× → penalty 100×<br>one far point → HUGE squared term → line pivots to it<br><br>breakdown point of OLS = 0%<br>influence ψ(r) = r  →  grows without bound</div>`, code:`# least squares: one outlier hijacks the slope
+import numpy as np
+x = np.arange(20.0); y = 0.5*x + 1 + 0.1*np.random.randn(20)
+y[7] = 40                       # a single wild point
+m, b = np.polyfit(x, y, 1)      # closed-form OLS
+print(round(m, 2))              # nowhere near 0.5 — dragged away` },
+ { title:"2. The Huber loss — quadratic core, linear tails", why:"Huber's loss is a hybrid. For a residual inside the knee |r| ≤ δ it uses the ordinary squared loss ½r²; for |r| > δ it switches to a linear penalty δ(|r| − ½δ). The two pieces are chosen to join SMOOTHLY — they agree in both value and first derivative exactly at r = δ — so the whole loss is continuous, differentiable, and, crucially, still CONVEX with a single global minimum. The design pays off at both ends. Near zero, keeping the parabola means Huber inherits least-squares' statistical efficiency on clean Gaussian noise — you lose almost nothing when there are no outliers. Out in the tails, the linear growth means a residual ten times δ costs about 10δ² instead of 50δ², so a far point contributes a large-but-bounded amount rather than an overwhelming one. It is the smallest possible change to least squares that tames outliers: alter only the tails, leave the productive core intact.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ρ_δ(r) = ½r²&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|r| ≤ δ&nbsp;&nbsp;(quadratic core)<br>ρ_δ(r) = δ(|r|−½δ)&nbsp;&nbsp;|r| &gt; δ&nbsp;&nbsp;(linear tail)<br><br>the pieces meet smoothly at |r| = δ (value + slope)<br>convex → ONE global minimum<br><br>near 0: efficient like OLS · far out: bounded like L1</div>`, code:`function huberLoss(r, d) {           // d = delta, the knee
+  const a = Math.abs(r);
+  return a <= d ? 0.5 * r * r        // quadratic core (like OLS)
+                : d * (a - 0.5 * d); // linear tail (bounded growth)
+}` },
+ { title:"3. δ — the knee between noise and outlier", why:"δ is the single tuning parameter, and it draws the boundary between 'honest scatter' and 'outlier'. It lives in the units of the residual, so it must be set relative to the noise scale σ. The standard choice is δ = 1.345·σ, a value picked so that on purely Gaussian data Huber retains 95% of ordinary least-squares' efficiency while still clipping gross errors — that is why scikit-learn's HuberRegressor defaults its epsilon to about 1.35 and estimates σ jointly. The two limits are illuminating. As δ → ∞ the knee never arrives, every residual stays quadratic, and Huber becomes ORDINARY LEAST SQUARES. As δ → 0 almost everything is in the linear regime and Huber approaches least-absolute-deviations, the MEDIAN line — maximally robust but less efficient and kinked. So δ is a dial between efficiency and robustness: large δ trusts the data, small δ distrusts it. Set it too large and outliers slip inside the quadratic core and dominate again; set it too small and honest noise gets treated as outliers, throwing away good information.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">δ = knee, in residual units → scale by noise σ<br>standard: δ = 1.345·σ  (95% efficient vs OLS)<br><br>δ → ∞ : all quadratic → Huber IS ordinary least squares<br>δ → 0 : all linear → Huber → L1 / median line<br><br>a dial: large δ = efficient/trusting · small δ = robust/wary</div>`, code:`# robust scale, then the 95%-efficient tuning constant
+import numpy as np
+resid = np.abs(y - (m*x + b))
+sigma = 1.4826 * np.median(np.abs(resid - np.median(resid)))  # MAD → σ
+delta = 1.345 * sigma       # standard Huber knee
+# δ → ∞ recovers OLS · δ → 0 approaches the median (L1) line` },
+ { title:"4. The influence function — why outliers pull less", why:"The deepest way to see Huber's robustness is the influence function ψ(r), the derivative of the loss — literally how hard a point pulls on the fit for a given residual. For least squares ρ(r) = ½r² so ψ(r) = r: influence grows without bound, a point twice as far pulls twice as hard, a point a hundred times as far pulls a hundred times as hard, forever. That unbounded influence IS the zero breakdown point. For Huber, ψ(r) = r inside the knee but a CONSTANT ±δ outside it — the influence is capped. No matter how far an outlier drifts, its tug on the line saturates at δ and grows no further. Bounded influence is the formal, textbook definition of a robust estimator, and Huber is the canonical example. This also explains why the fit needs no assumption about how outliers are distributed: whether they are clustered, adversarial, or arbitrarily far, each one's contribution to the estimating equation is limited to ±δ. Cap the influence and you cap the damage.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">influence ψ(r) = ρ′(r) = how hard a point pulls<br><br>OLS:&nbsp;&nbsp;&nbsp;ψ(r) = r&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ unbounded (no limit)<br>Huber: ψ(r) = r if |r|≤δ, else ±δ → CAPPED<br><br>bounded influence = the definition of robustness<br>an outlier at 100δ still pulls with force only δ</div>`, code:`function huberPsi(r, d) {      // influence = derivative of the loss
+  const a = Math.abs(r);
+  return a <= d ? r             // grows inside the knee
+                : d * Math.sign(r);  // CAPPED at ±δ outside
+}
+// OLS influence is just r — unbounded — hence breakdown = 0` },
+ { title:"5. Fitting by IRLS — reweight, refit, repeat", why:"There is no closed form for the Huber fit, but there is something almost as good: iteratively reweighted least squares. Divide the influence by the residual and you get a WEIGHT, w(r) = ψ(r)/r = min(1, δ/|r|): exactly 1 for points inside the quadratic core, and a shrinking discount δ/|r| for points in the linear tails. That turns the robust problem into a sequence of ordinary weighted-least-squares fits. Start from the plain OLS line, compute every point's residual, convert residuals to weights, refit a weighted line — where down-weighted outliers contribute only a fraction of a point to the normal equations — and repeat. Because the Huber loss is convex, this iteration is guaranteed to converge to the one global minimum, and in practice it settles in a handful of passes. No gradients to tune, no random sampling, no consensus threshold — just least squares applied over and over with the outliers progressively turned down. Watching the weights fade the outliers and the line snap onto the inliers is the whole algorithm made visible.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">weight w(r) = ψ(r)/r = min(1, δ/|r|)<br>&nbsp;&nbsp;1 inside the core · δ/|r| shrinking in the tails<br><br>repeat until settled:<br>&nbsp;1. residuals from current line<br>&nbsp;2. weights = min(1, δ/|rᵢ|)<br>&nbsp;3. refit WEIGHTED least squares<br><br>convex ⇒ converges to the one global minimum</div>`, code:`function huberFit(pts, d, iters = 50) {
+  let model = olsFit(pts);                     // start from OLS
+  for (let k = 0; k < iters; k++) {
+    const w = pts.map(p =>
+      huberWeight(p.y - (model.m*p.x + model.b), d));  // reweight
+    const next = wlsFit(pts, w);               // refit weighted line
+    if (Math.abs(next.m - model.m) < 1e-9) { model = next; break; }
+    model = next;                              // repeat until settled
+  }
+  return model;                 // every point used, outliers turned down
+}` },
+ { title:"6. An M-estimator — Huber's family and the RANSAC contrast", why:"Huber regression is the flagship of the M-estimators: methods that replace least-squares' Σr² with Σρ(r) for some robust ρ, and solve Σψ(r)·xᵢ = 0 by IRLS. Swap the ρ and you get the whole family — Huber's ρ is convex with a bounded but never-zero influence, while redescending choices like Tukey's bisquare push the influence all the way back to zero for extreme points (rejecting them outright), at the cost of convexity and a guaranteed global optimum. This framing sharpens the contrast with Day 51's RANSAC. Huber is SMOOTH and uses EVERY point with a continuous weight, solving one convex optimisation deterministically; RANSAC is COMBINATORIAL, hypothesising models from tiny random samples and scoring them by a hard in-or-out consensus count. Huber's smoothness buys efficiency and determinism but only mild robustness; RANSAC's sampling buys robustness to a majority of outliers but is random and needs a threshold. They sit at opposite ends of the robust-fitting spectrum, and Theil–Sen (median of pairwise slopes) and least-median-of-squares live in between.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">M-estimator: minimise Σ ρ(rᵢ), solve Σ ψ(rᵢ)·xᵢ = 0<br>Huber ρ: convex, bounded influence (never zero)<br>Tukey bisquare: redescending → rejects, not convex<br><br>Huber (Day 52): smooth · ALL points · deterministic<br>RANSAC (Day 51): combinatorial · SAMPLE + consensus · random</div>`, code:`# statsmodels — the whole M-estimator family over one IRLS engine
+import statsmodels.api as sm
+X = sm.add_constant(x)
+sm.RLM(y, X, M=sm.robust.norms.HuberT()).fit()      # Huber
+sm.RLM(y, X, M=sm.robust.norms.TukeyBiweight()).fit()  # redescending
+# same reweighting loop, different ψ — Huber is the convex default` },
+ { title:"7. The limit — breakdown, leverage, and honesty", why:"Huber is robust, but it is important to be honest about how much. Its breakdown point is essentially ZERO in the presence of high-LEVERAGE outliers — points that are extreme in x, not just y. The reason is that Huber down-weights by the size of the RESIDUAL, but a high-leverage point can sit right on a badly-tilted line and therefore have a small residual, so it is never down-weighted and quietly dictates the slope. Huber defends beautifully against moderate outliers in y (vertical outliers) but not against a lever far out in x. This is why Huber is described as having good robustness of EFFICIENCY but poor robustness of BREAKDOWN. When contamination is heavy, or outliers are high-leverage, you need methods whose breakdown point is genuinely high: RANSAC (Day 51), which samples minimal subsets and counts consensus, tolerating a majority of outliers; least-median-of-squares, reaching the theoretical 50%; or bounded-influence GM-estimators that also down-weight by leverage. Huber's sweet spot is exactly stated: a mostly-clean dataset with a handful of MILD, vertical outliers, where you want to keep least-squares' smoothness, determinism, and efficiency while shrugging off the few bad points.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Huber down-weights by RESIDUAL size, not leverage<br>a high-leverage point can have a SMALL residual<br>&nbsp;&nbsp;→ never down-weighted → still dictates the slope<br><br>breakdown point ≈ 0% (like OLS) for x-outliers<br>good robustness of EFFICIENCY, poor of BREAKDOWN<br><br>heavy/leveraged outliers → use RANSAC / LMS instead</div>`, code:`# Huber shrugs off vertical outliers but a high-leverage
+# point (extreme in x) can keep a small residual and dominate:
+x = np.r_[np.arange(20.0), 100.0]      # one point far out in x
+y = np.r_[0.5*np.arange(20.0)+1, 5.0]  # sits off the true line
+# HuberRegressor still bends toward it — residual stays small.
+# heavy contamination → RANSACRegressor / LMS (high breakdown)` },
+ { title:"8. Where Huber fits — choosing your robust tool", why:"Robust regression is a spectrum, and Huber occupies the gentle, practical end of it. Reach for ordinary least squares when the data is clean and Gaussian — it is optimal and unbeatable there. Reach for Huber when the data is MOSTLY clean but sprinkled with a few mild outliers and you want to keep OLS's smoothness, determinism, and efficiency while not being derailed by them — it is a one-line change to the least-squares workflow (reweight by min(1, δ/|r|)) and the default robust regressor in most libraries for exactly this reason. Its cousins fill the gaps: least-absolute-deviations (Huber's δ→0 limit) for heavier-tailed noise, Theil–Sen for moderate contamination with a deterministic median-of-slopes, and RANSAC (Day 51) or least-median-of-squares when outliers are MANY or high-leverage and you are willing to trade smoothness and determinism for a high breakdown point. The mental model is a dial from efficiency to robustness, and δ is Huber's own private version of that dial: crank it up to recover OLS, wind it down toward the median. In the from-scratch series it is the bridge between the least-squares world you started in and the fully-robust, sample-based world of RANSAC.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">clean Gaussian → OLS (optimal)<br>a few MILD outliers, keep efficiency → Huber ✅<br>heavy-tailed noise → LAD / L1 (median line)<br>moderate outliers, low-D → Theil–Sen<br>MANY / high-leverage outliers → RANSAC · LMS<br><br>δ is Huber's dial: ∞ = OLS · 0 = median</div>`, code:`# scikit-learn — the practical default robust regressor
+from sklearn.linear_model import HuberRegressor
+h = HuberRegressor(epsilon=1.35).fit(X, y)   # epsilon = δ (standardised)
+print(h.coef_, h.intercept_)
+print(h.outliers_)     # which points landed in the linear tails
+# a few mild outliers → Huber; many/heavy → RANSAC (Day 51)` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
