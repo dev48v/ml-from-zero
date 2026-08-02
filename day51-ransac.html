@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 51 — RANSAC</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:170px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .swatch-box { display:inline-block; width:14px; height:10px; border-radius:3px; vertical-align:0; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .ds-btn { border:1px solid #e2e8f0; background:#fff; font-weight:800; font-size:12px; padding:6px 11px; border-radius:9px; transition:all .15s; }
+  .ds-btn.on { color:#fff; border-color:transparent; background:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; }
+  canvas.clickable { cursor:crosshair; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  .rowtbl { border-collapse:collapse; font-size:11px; width:100%; }
+  .rowtbl th, .rowtbl td { border:1px solid #e2e8f0; padding:3px 5px; text-align:center; font-variant-numeric:tabular-nums; }
+  .rowtbl th { background:#f1f5f9; font-weight:800; }
+  .btn-run { background:#16a34a; color:#fff; }
+  .btn-run:hover { background:#15803d; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 51</div>
+      <h1 class="text-xl font-bold">🗳️ RANSAC (RANdom SAmple Consensus) — fit a model that flatly <strong>ignores the outliers</strong> that wreck least-squares. Ordinary least squares minimises <em>squared</em> residuals, so a single far-off point yanks the whole line toward itself — its <strong>breakdown point is zero</strong>: one bad measurement can ruin the fit. RANSAC throws that away and does something almost cheeky instead: repeatedly grab the <strong>minimum number of points</strong> a model needs (just <strong>2 for a line</strong>), fit it <em>exactly</em>, then count how many of the <em>other</em> points fall inside a threshold band — that count is the <strong>consensus</strong>. Keep the model with the <span style="color:#16a34a;font-weight:700">largest consensus set</span>, then <strong>refit least-squares on those inliers alone</strong> for precision. Because each guess is built from a clean minimal sample, outliers never get averaged in — they simply fail to vote. The number of random tries you need follows a tidy probability law <code>N = log(1−p) / log(1−wˢ)</code> that explodes as the inlier fraction <code>w</code> drops. Everything below <strong>runs live in your browser</strong> — scatter heavy outliers (click to add your own), watch RANSAC <em>animate</em> its random 2-point samples with the inlier band and count per iteration, converge to the robust line, and see <span style="color:#dc2626;font-weight:700">ordinary least-squares</span> get dragged away for contrast — with sliders for threshold, iterations, and outlier count.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>Least squares has no defence against a single bad point.</strong> Because it minimises the <em>sum of squared</em> vertical residuals, a lone outlier — whose squared error is enormous — can pivot the entire fitted line away from every honest measurement. Its breakdown point is zero: corrupt one observation and the estimate is arbitrarily wrong. <strong>RANSAC</strong> takes the opposite stance. Rather than trusting every point at once, it <em>hypothesises</em> a model from the smallest random subset that defines it — for a line, two points — checks how many of the remaining points <span style="color:#16a34a;font-weight:700">agree</span> with that hypothesis to within a threshold, and repeats. The hypothesis with the widest agreement wins, and a final least-squares pass on its inliers alone sharpens it. Outliers are never fitted; they only ever fail to consent. Below it is <strong>built from scratch, live</strong> — the random minimal samples, the inlier band, the consensus count per iteration, the convergence to a robust line, and the least-squares line being dragged off course — on points you place yourself.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Scatter outliers &amp; run RANSAC</strong> drops inliers along a hidden line plus heavy outliers, then <span style="color:#f59e0b;font-weight:700">animates the random 2-point samples</span> — each iteration you see the candidate line, its threshold band, the inliers that fall inside, and the best-consensus model so far snapping toward the truth, with the <span style="color:#dc2626;font-weight:700">dragged least-squares line</span> shown for contrast; <span style="color:#0ea5e9;font-weight:700">click to add your own outliers</span> and sliders for threshold, iterations, and outlier count. <strong>RANSAC vs least-squares</strong> pins the data and drags one outlier cluster with a slider — watch the OLS line swing wildly while RANSAC holds the true line, and read the slope error of each. <strong>How many iterations?</strong> makes the probability law <code>N = log(1−p)/log(1−wˢ)</code> live — slide the inlier fraction and confidence and watch the required number of random tries blow up as outliers grow. Every pixel is computed in-browser.</p>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="live"  class="subnav-btn px-4 py-2 rounded-lg text-sm">🗳️ Scatter outliers &amp; run RANSAC</button>
+        <button data-mod="vs"    class="subnav-btn px-4 py-2 rounded-lg text-sm">⚖️ RANSAC vs least-squares</button>
+        <button data-mod="prob"  class="subnav-btn px-4 py-2 rounded-lg text-sm">🎲 How many iterations?</button>
+      </div>
+
+      <!-- ============ MODULE: LIVE RANSAC ============ -->
+      <div id="mod-live" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="rN" style="color:#0f172a">—</div><div class="k">total points</div></div>
+          <div class="metric-pill"><div class="v" id="rIter" style="color:#f59e0b">—</div><div class="k">iteration</div></div>
+          <div class="metric-pill"><div class="v" id="rBest" style="color:#16a34a">—</div><div class="k">best consensus</div></div>
+          <div class="metric-pill"><div class="v" id="rBestPct" style="color:#0ea5e9">—</div><div class="k">best inlier %</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE RANSAC KNOBS</div>
+            <div class="ctl-row"><div class="ctl-name">📏 inlier threshold</div><input type="range" id="rThr" min="0.1" max="1.5" step="0.05" value="0.6"><div class="ctl-val" id="rThrV">0.60</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔁 max iterations</div><input type="range" id="rMaxIter" min="4" max="200" step="1" value="40"><div class="ctl-val" id="rMaxIterV">40</div></div>
+            <div class="ctl-row"><div class="ctl-name">💥 outlier count</div><input type="range" id="rOut" min="0" max="45" step="1" value="20"><div class="ctl-val" id="rOutV">20</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="rRun"    class="btn-run px-3 py-1.5 rounded-lg font-bold text-xs">▶ Run</button>
+              <button id="rStep"   class="bg-amber-500 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-amber-400">⏭ Step</button>
+              <button id="rFinish" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">⏩ Finish</button>
+              <button id="rReset"  class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">↻ Reset</button>
+              <button id="rNew"    class="bg-slate-500 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-400">🎲 New data</button>
+            </div>
+            <div class="mt-3">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🎯 scenario</div>
+              <div id="rPresets" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2 flex flex-col gap-1">
+              <label class="flex items-center gap-2 text-[12px] text-slate-600 font-semibold"><input type="checkbox" id="rShowOls" checked> overlay least-squares (all points)</label>
+              <label class="flex items-center gap-2 text-[12px] text-slate-600 font-semibold"><input type="checkbox" id="rShowBand" checked> show inlier band</label>
+              <label class="flex items-center gap-2 text-[12px] text-slate-600 font-semibold"><input type="checkbox" id="rShowTrue"> show hidden true line</label>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> Each iteration picks <b>2 random points</b> (amber), fits the exact line through them, and counts every point within <code>±threshold</code> of it — the <span style="color:#16a34a;font-weight:700">consensus set</span>. The largest-consensus model so far is the <span style="color:#16a34a;font-weight:700">green</span> line with the shaded band; the <span style="color:#dc2626;font-weight:700">red dashed</span> line is ordinary least-squares on <em>all</em> points, dragged by the outliers. On <b>Finish</b> RANSAC refits least-squares on its inliers only. <b>Click the canvas</b> to add outliers anywhere.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:600px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🗳️ random sample → consensus &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">click to add outliers</span></div>
+            <canvas id="rCanvas" class="clickable" width="576" height="360"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#0ea5e9"></span> inlier</span>
+              <span><span class="swatch" style="background:#fff;border:1.5px solid #f43f5e"></span> outlier</span>
+              <span><span class="swatch" style="background:#f59e0b"></span> sampled pair</span>
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> RANSAC (best consensus)</span>
+              <span><span class="swatch-line" style="border-color:#dc2626"></span> least-squares (all)</span>
+              <span><span class="swatch-box" style="background:rgba(22,163,74,0.14)"></span> inlier band</span>
+            </div>
+            <div id="rDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: RANSAC vs OLS ============ -->
+      <div id="mod-vs" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="vTrue" style="color:#64748b">—</div><div class="k">true slope</div></div>
+          <div class="metric-pill"><div class="v" id="vOls" style="color:#dc2626">—</div><div class="k">least-squares slope</div></div>
+          <div class="metric-pill"><div class="v" id="vRan" style="color:#16a34a">—</div><div class="k">RANSAC slope</div></div>
+          <div class="metric-pill"><div class="v" id="vIn" style="color:#0ea5e9">—</div><div class="k">RANSAC inliers</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">DRAG THE OUTLIERS, WATCH THE LINES</div>
+            <div class="text-[11px] text-slate-500 mb-2">The inliers are fixed on a hidden line (slope <b>0.55</b>). A cluster of outliers sits off to the side; the slider slides it <b>up and down</b>. Least-squares chases it; RANSAC does not.</div>
+            <div class="ctl-row"><div class="ctl-name">↕ outlier offset</div><input type="range" id="vLev" min="-4" max="4" step="0.1" value="2.5"><div class="ctl-val" id="vLevV">+2.5</div></div>
+            <div class="ctl-row"><div class="ctl-name">💥 outlier count</div><input type="range" id="vCount" min="0" max="30" step="1" value="16"><div class="ctl-val" id="vCountV">16</div></div>
+            <div class="ctl-row"><div class="ctl-name">📏 threshold</div><input type="range" id="vThr" min="0.2" max="1.5" step="0.05" value="0.7"><div class="ctl-val" id="vThrV">0.70</div></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Breakdown point.</strong> Least-squares breaks with a <em>single</em> high-leverage outlier — its estimate can be pulled arbitrarily far. RANSAC keeps working as long as a clean minimal sample is still findable in reasonable time, tolerating well over half the data as outliers. Slide the offset to a big value and watch the <span style="color:#dc2626;font-weight:700">red</span> slope drift away from <b>0.55</b> while the <span style="color:#16a34a;font-weight:700">green</span> one barely moves.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:460px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">⚖️ same points · two philosophies</div>
+            <canvas id="vCanvas" width="436" height="360"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#64748b"></span> hidden true line</span>
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> RANSAC</span>
+              <span><span class="swatch-line" style="border-color:#dc2626"></span> least-squares</span>
+              <span><span class="swatch" style="background:#0ea5e9"></span> inlier</span>
+              <span><span class="swatch" style="background:#fff;border:1.5px solid #f43f5e"></span> outlier cluster</span>
+            </div>
+          </div>
+        </div>
+        <div id="vDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+      <!-- ============ MODULE: HOW MANY ITERATIONS ============ -->
+      <div id="mod-prob" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="qW" style="color:#0ea5e9">—</div><div class="k">inlier fraction w</div></div>
+          <div class="metric-pill"><div class="v" id="qS" style="color:#9333ea">—</div><div class="k">sample size s</div></div>
+          <div class="metric-pill"><div class="v" id="qP" style="color:#64748b">—</div><div class="k">confidence p</div></div>
+          <div class="metric-pill"><div class="v" id="qN" style="color:#16a34a">—</div><div class="k">iterations N needed</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE PROBABILITY LAW</div>
+            <div class="ctl-row"><div class="ctl-name">✅ inlier fraction w</div><input type="range" id="pW" min="0.05" max="0.95" step="0.01" value="0.5"><div class="ctl-val" id="pWv">0.50</div></div>
+            <div class="ctl-row"><div class="ctl-name">🎯 sample size s</div><input type="range" id="pS" min="2" max="8" step="1" value="2"><div class="ctl-val" id="pSv">2</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔒 confidence p</div><input type="range" id="pP" min="0.9" max="0.999" step="0.001" value="0.99"><div class="ctl-val" id="pPv">0.990</div></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[12px] text-slate-600 leading-relaxed text-center font-mono">
+              N = ⌈ log(1 − p) / log(1 − wˢ) ⌉
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Where it comes from.</strong> One random sample is all-inlier with probability <code>wˢ</code>. So it fails with probability <code>1−wˢ</code>, and <code>N</code> independent samples all fail with probability <code>(1−wˢ)ᴺ</code>. Demand that this be at most <code>1−p</code> (i.e. succeed at least once with confidence <code>p</code>) and solve for <code>N</code>. The curse: <code>N</code> grows <b>exponentially in the sample size s</b> and <b>blows up as w → 0</b> — which is why RANSAC loves <em>minimal</em> samples and struggles when outliers dominate.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:440px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📈 iterations vs inlier fraction &nbsp;<span class="text-slate-400 font-semibold">(log scale)</span></div>
+            <canvas id="pCanvas" width="416" height="300"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> N(w) for current s, p</span>
+              <span><span class="swatch-line" style="border-color:#0ea5e9"></span> your w</span>
+            </div>
+            <div id="pDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From "trust every point" to "let the majority vote"</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">RANSAC is astonishingly little code — the exact routine the LOOK tab runs, no scikit-learn black box. Below is the runnable core: fit a line from the two-point minimal sample, score a model by how many points consent to it, loop random samples keeping the widest consensus, compute how many loops you actually need from the inlier fraction, and polish the winner with a least-squares refit on its inliers. Every line the LOOK tab draws comes from these snippets.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The minimal sample — a line from exactly 2 points</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A model needs <code>s</code> points, where <code>s</code> is its degrees of freedom — for a line, two. Fitting from the <em>minimum</em> is the whole trick: with only two points there is no averaging, so a sample of two <b>inliers</b> gives a clean line, and you never dilute a good hypothesis by mixing outliers in. (A vertical pair has infinite slope — just skip it and draw again.)</p>
+        <div class="relative"><pre>// a line needs exactly 2 points (its degrees of freedom)
+function fitLine(p, q) {
+  const dx = q.x - p.x;
+  if (Math.abs(dx) < 1e-9) return null;     // vertical pair → skip this sample
+  const m = (q.y - p.y) / dx;
+  return { m, b: p.y - m * p.x };           // y = m·x + b
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The consensus score — count the inliers</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This replaces least-squares' sum-of-squares. A point is an <b>inlier</b> if its residual to the candidate line is within a threshold <code>t</code>; the model's score is simply <em>how many</em> inliers it has. Counting is bounded — an outlier a mile away adds nothing beyond "not an inlier" — so a single wild point can never dominate the score the way it dominates a squared-error sum.</p>
+        <div class="relative"><pre>const residual = (pt, {m, b}) => Math.abs(pt.y - (m * pt.x + b));
+
+function consensus(pts, model, t) {
+  const inliers = [];
+  for (let i = 0; i < pts.length; i++)
+    if (residual(pts[i], model) <= t) inliers.push(i);  // inside the band
+  return inliers;                                       // its SIZE = the score
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The loop — sample, score, keep the best</h3></div>
+        <p class="text-sm text-slate-600 mb-3">That is the entire algorithm. Draw a random minimal sample, fit it, score its consensus, and remember the model with the most inliers. Repeat for a fixed budget of trials. No gradients, no matrix inverse in the loop — just a competition where the biggest agreeing crowd wins.</p>
+        <div class="relative"><pre>function ransac(pts, t, iters) {
+  let best = { inliers: [], model: null };
+  for (let k = 0; k < iters; k++) {
+    const [i, j] = twoDistinct(pts.length);         // random minimal sample
+    const model = fitLine(pts[i], pts[j]);
+    if (!model) continue;
+    const inliers = consensus(pts, model, t);
+    if (inliers.length > best.inliers.length)       // widest consensus wins
+      best = { inliers, model };
+  }
+  return best;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">How many trials — the probability formula</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You do not guess the iteration count — you compute it. If a fraction <code>w</code> of points are inliers, a minimal sample of <code>s</code> is all-inlier with probability <code>wˢ</code>. To hit at least one clean sample with confidence <code>p</code>, solve <code>(1−wˢ)ᴺ ≤ 1−p</code>. Good RANSAC updates <code>w</code> from the best consensus so far and shrinks <code>N</code> adaptively as it finds better models.</p>
+        <div class="relative"><pre>function trials(w, s = 2, p = 0.99) {
+  return Math.ceil(Math.log(1 - p) / Math.log(1 - Math.pow(w, s)));
+}
+// w=0.5 → 17   w=0.3 → 49   w=0.1 → 459    (explodes as outliers grow)
+// adaptive: after each better model, set w = bestInliers / n and recompute N</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Refit on the consensus set — polish the winner</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The winning two-point line is only as good as its two points. Now that you know <em>which</em> points are inliers, throw least-squares at <b>all of them at once</b> — and only them. This is where the precision comes from: robust selection first, efficient estimation second. (Some implementations then re-count inliers and refit again until stable.)</p>
+        <div class="relative"><pre>function olsFit(pts, idx) {                 // least squares on INLIERS ONLY
+  const S = idx.map(i => pts[i]), n = S.length;
+  let sx=0, sy=0, sxx=0, sxy=0;
+  for (const p of S) { sx+=p.x; sy+=p.y; sxx+=p.x*p.x; sxy+=p.x*p.y; }
+  const m = (n*sxy - sx*sy) / (n*sxx - sx*sx);
+  return { m, b: (sy - m*sx) / n };
+}
+const { inliers } = ransac(pts, t, iters);
+const robust = olsFit(pts, inliers);       // ← the final, precise line</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">In practice — the standard tools</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You will rarely hand-roll it. scikit-learn's <code>RANSACRegressor</code> wraps any base estimator with a residual threshold and trial budget and hands back the refit model plus an inlier mask. For geometry — line, plane, homography, fundamental matrix — scikit-image's <code>ransac</code> and OpenCV's <code>findHomography(..., cv2.RANSAC)</code> are the workhorses that made RANSAC a computer-vision staple.</p>
+        <div class="relative"><pre># scikit-learn — robust regression
+from sklearn.linear_model import RANSACRegressor, LinearRegression
+r = RANSACRegressor(LinearRegression(),
+                    residual_threshold=0.6,   # your inlier band
+                    max_trials=100).fit(X, y)
+robust_line = r.estimator_        # least-squares refit on inliers
+inlier_mask = r.inlier_mask_      # boolean: which points it kept
+
+# scikit-image — geometry (lines, planes, homographies)
+from skimage.measure import ransac, LineModelND
+model, inliers = ransac(points, LineModelND, min_samples=2,
+                        residual_threshold=0.6, max_trials=100)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-10 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧭 Five ways to fit through outliers — and how each holds up</h3>
+      <div style="overflow-x:auto">
+      <table class="cmp">
+        <tr><th style="width:150px"></th><th>📉 Least squares (OLS)</th><th>🪨 Huber (Day 52)</th><th>🧮 Theil–Sen</th><th>🗳️ RANSAC (Day 51)</th><th>🎯 Least median of squares</th></tr>
+        <tr><td class="cat">Handles outliers?</td><td><b>❌ none — one point ruins it</b></td><td>~ soft down-weight</td><td>✅ moderate</td><td><b>✅ heavy (&gt;50%)</b></td><td>✅ heavy</td></tr>
+        <tr><td class="cat">Breakdown point</td><td><b>0%</b></td><td>~0% (high-leverage)</td><td>~29%</td><td><b>up to ~50%+</b></td><td><b>50%</b></td></tr>
+        <tr><td class="cat">Needs a threshold?</td><td>no</td><td>tuning δ</td><td>no</td><td><b>yes — inlier band</b></td><td>no</td></tr>
+        <tr><td class="cat">Deterministic?</td><td>✅</td><td>✅</td><td>✅</td><td><b>❌ random samples</b></td><td>~ (search)</td></tr>
+        <tr><td class="cat">Assumes outlier %?</td><td>—</td><td>—</td><td>—</td><td>via iteration count N(w)</td><td>assumes ≤ 50%</td></tr>
+        <tr><td class="cat">Cost</td><td>O(n) closed form</td><td>IRLS iterations</td><td>O(n²) slopes</td><td>N samples × O(n) score</td><td>expensive search</td></tr>
+        <tr><td class="cat">Best when</td><td>clean, Gaussian noise</td><td>a few mild outliers</td><td>moderate outliers, low-D</td><td><b>many outliers + a threshold</b></td><td>high-breakdown, small n</td></tr>
+      </table>
+      </div>
+      <p class="text-xs text-slate-500 mt-3">The trade is <em>how much contamination you expect</em>. <b>OLS</b> is optimal when noise is Gaussian and there are no outliers, and useless the instant there is one high-leverage point. <b>Huber (Day 52)</b> keeps least-squares' smoothness but grades residuals down to linear past a knee, tolerating <em>mild</em> outliers while still bending toward a bad high-leverage point. <b>Theil–Sen</b> takes the median of all pairwise slopes — elegant and deterministic, robust to ~29% contamination, but O(n²). <b>RANSAC</b> is the tool when outliers are <em>many</em> and you can name a threshold: it makes no smoothness assumption, tolerates well over half the data as garbage, and dominates geometric vision (homographies, fundamental matrices, point-cloud fitting) — at the price of randomness, a threshold to set, and an iteration budget that grows as the inlier fraction falls. <b>Least median of squares</b> reaches the theoretical 50% breakdown with no threshold, but the search is costly. RANSAC's genius is the <em>minimal sample</em>: fit from the fewest points possible so a clean guess needs only a few good points to coincide, then let consensus and a final refit do the rest.</p>
+    </div>
+
+    <div class="mt-8 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 51 of MachineLearningFromZero done — a fit that ignores the outliers instead of drowning in them.</h3><p class="text-sm text-sky-700 mt-2"><strong>RANSAC</strong> replaces least-squares' fatal trust in every point with a vote. Rather than minimising a squared error that one far-off point can dominate, it <strong>hypothesises</strong> a model from the smallest random sample that defines it — <span style="color:#f59e0b;font-weight:700">2 points for a line</span> — counts how many other points fall within a threshold band (the <span style="color:#16a34a;font-weight:700">consensus set</span>), keeps the model with the widest agreement, and <strong>refits least-squares on those inliers alone</strong>. Because good hypotheses are built from clean minimal samples, outliers never get averaged in — they only ever fail to consent, so the <strong>breakdown point climbs from OLS's 0% to well past 50%</strong>. The number of random tries you need is not a guess but a formula, <code>N = log(1−p)/log(1−wˢ)</code>, that grows exponentially in the sample size <code>s</code> and explodes as the inlier fraction <code>w</code> shrinks — the reason RANSAC prizes minimal samples and struggles when outliers truly dominate. Set the threshold from your noise scale (roughly 2–3σ), the confidence and inlier guess set the budget, and a final refit gives the precision. <strong>👉 The moment your data has gross outliers — bad correspondences, sensor glitches, mislabels — and squared error is dragging your model off the truth, stop trusting every point and start sampling for consensus.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function randn(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function setDiag(box, c, t, b){ box.className="diag "+c+" mt-3 text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+function setDiagWide(box, c, t, b){ box.className="diag "+c+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+const fmt=(x,d=2)=>Number(x).toFixed(d);
+
+/* ================================================================
+   CORE: minimal-sample fit, consensus, the RANSAC loop, refit
+   ================================================================ */
+// a line needs exactly 2 points; skip a (near-)vertical pair
+function fitLine2(p, q){
+  const dx=q.x-p.x; if(Math.abs(dx)<1e-9) return null;
+  const m=(q.y-p.y)/dx; return { m, b:p.y-m*p.x };
+}
+const residual=(pt,model)=>Math.abs(pt.y-(model.m*pt.x+model.b));
+// consensus: indices of points within the threshold band
+function consensus(pts, model, t){
+  const idx=[]; for(let i=0;i<pts.length;i++){ if(residual(pts[i],model)<=t) idx.push(i); }
+  return idx;
+}
+// least-squares over a subset of indices (or all points if idx omitted)
+function olsFit(pts, idx){
+  const S = idx ? idx.map(i=>pts[i]) : pts; const n=S.length; if(n<2) return null;
+  let sx=0,sy=0,sxx=0,sxy=0; for(const p of S){ sx+=p.x; sy+=p.y; sxx+=p.x*p.x; sxy+=p.x*p.y; }
+  const den=n*sxx-sx*sx; if(Math.abs(den)<1e-9) return null;
+  const m=(n*sxy-sx*sy)/den; return { m, b:(sy-m*sx)/n };
+}
+// full (non-animated) RANSAC — used by the contrast module (seeded = stable)
+function ransacFull(pts, t, iters, seed){
+  const rng=mulberry32(seed>>>0); const n=pts.length;
+  let best={idx:[], model:null};
+  if(n<2) return best;
+  for(let k=0;k<iters;k++){
+    let i=Math.floor(rng()*n), j=Math.floor(rng()*n), g=0;
+    while(j===i && g++<8) j=Math.floor(rng()*n);
+    const model=fitLine2(pts[i],pts[j]); if(!model) continue;
+    const idx=consensus(pts,model,t);
+    if(idx.length>best.idx.length) best={idx, model};
+  }
+  if(best.idx.length>=2){ const r=olsFit(pts,best.idx); if(r) best.model=r; }
+  return best;
+}
+// iterations needed for confidence p with inlier fraction w and sample size s
+function trials(w, s, p){
+  const ws=Math.pow(w,s);
+  if(ws>=1) return 1;
+  const denom=Math.log(1-ws); if(denom>=0) return Infinity;
+  return Math.ceil(Math.log(1-p)/denom);
+}
+
+/* ================================================================
+   viewport mapping (domain 0..10 in x and y)
+   ================================================================ */
+const V={XMIN:0,XMAX:10,YMIN:0,YMAX:10,ML:34,MR:14,MT:14,MB:26};
+function pxX(cv,x){ return V.ML + (cv.width-V.ML-V.MR)*(x-V.XMIN)/(V.XMAX-V.XMIN); }
+function pxY(cv,y){ const y0=V.MT,y1=cv.height-V.MB; return y1-(y1-y0)*(y-V.YMIN)/(V.YMAX-V.YMIN); }
+function invX(cv,p){ return V.XMIN+(p-V.ML)/(cv.width-V.ML-V.MR)*(V.XMAX-V.XMIN); }
+function invY(cv,p){ const y0=V.MT,y1=cv.height-V.MB; return V.YMIN+(y1-p)/(y1-y0)*(V.YMAX-V.YMIN); }
+function plotClip(cv,ctx){ ctx.beginPath(); ctx.rect(V.ML,V.MT,cv.width-V.ML-V.MR,cv.height-V.MB-V.MT); ctx.clip(); }
+function drawAxes(cv,ctx){
+  const W=cv.width,H=cv.height, y0=V.MT,y1=H-V.MB;
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1;
+  for(let g=0;g<=5;g++){ const yy=y0+(y1-y0)*g/5; ctx.beginPath();ctx.moveTo(V.ML,yy);ctx.lineTo(W-V.MR,yy);ctx.stroke(); }
+  for(let g=0;g<=5;g++){ const xx=V.ML+(W-V.ML-V.MR)*g/5; ctx.beginPath();ctx.moveTo(xx,y0);ctx.lineTo(xx,y1);ctx.stroke(); }
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(V.ML,y0); ctx.lineTo(V.ML,y1); ctx.lineTo(W-V.MR,y1); ctx.stroke();
+  ctx.fillStyle='#94a3b8'; ctx.font='9px monospace'; ctx.textAlign='center';
+  for(let t=0;t<=10;t+=2){ ctx.fillText(t, pxX(cv,t), y1+11); }
+}
+function strokeLine(cv,ctx,model,color,lw,dash){
+  if(!model) return; ctx.save(); plotClip(cv,ctx);
+  ctx.strokeStyle=color; ctx.lineWidth=lw; if(dash)ctx.setLineDash(dash);
+  const x0=V.XMIN, x1=V.XMAX;
+  ctx.beginPath(); ctx.moveTo(pxX(cv,x0),pxY(cv,model.m*x0+model.b)); ctx.lineTo(pxX(cv,x1),pxY(cv,model.m*x1+model.b)); ctx.stroke();
+  ctx.restore();
+}
+function fillBand(cv,ctx,model,t,color){
+  if(!model) return; ctx.save(); plotClip(cv,ctx);
+  const x0=V.XMIN,x1=V.XMAX;
+  ctx.beginPath();
+  ctx.moveTo(pxX(cv,x0),pxY(cv,model.m*x0+model.b+t));
+  ctx.lineTo(pxX(cv,x1),pxY(cv,model.m*x1+model.b+t));
+  ctx.lineTo(pxX(cv,x1),pxY(cv,model.m*x1+model.b-t));
+  ctx.lineTo(pxX(cv,x0),pxY(cv,model.m*x0+model.b-t));
+  ctx.closePath(); ctx.fillStyle=color; ctx.fill();
+  ctx.restore();
+}
+
+/* ================================================================
+   MODULE LIVE — scatter outliers & run RANSAC
+   ================================================================ */
+const RS = {
+  inlierPts: [], outlierPts: [], pts: [],
+  trueM: 0.55, trueB: 2.4, noise: 0.35,
+  nInliers: 42, nOutliers: 20, scenario:'heavy',
+  threshold: 0.6, maxIter: 40,
+  iter: 0, best: null, candidate: null, finalRansac: null, done:false,
+  timer: null
+};
+function makeInliers(){
+  const rng=mulberry32((Math.random()*1e9)>>>0);
+  const out=[]; for(let i=0;i<RS.nInliers;i++){ const x=0.6+8.8*rng(); const y=RS.trueM*x+RS.trueB+RS.noise*randn(rng); out.push({x, y:Math.max(0.2,Math.min(9.8,y))}); }
+  RS.inlierPts=out;
+}
+function makeOutliers(){
+  const rng=mulberry32((Math.random()*1e9)>>>0);
+  const out=[]; const n=RS.nOutliers, sc=RS.scenario;
+  for(let i=0;i<n;i++){
+    let x,y;
+    if(sc==='leverage'){ x=7.5+2*rng(); y=0.6+2.2*rng(); }              // a corner cluster
+    else if(sc==='twoclusters'){ if(i%2===0){ x=1+1.6*rng(); y=7.6+1.6*rng(); } else { x=7.4+1.8*rng(); y=0.5+1.7*rng(); } }
+    else { x=0.5+9*rng(); y=0.5+9*rng(); }                              // scattered
+    out.push({x:Math.max(0.2,Math.min(9.8,x)), y:Math.max(0.2,Math.min(9.8,y))});
+  }
+  RS.outlierPts=out;
+}
+function rebuild(){
+  const nIn=RS.inlierPts.length;
+  RS.pts = RS.inlierPts.concat(RS.outlierPts).map((p,i)=>({x:p.x, y:p.y, truth: i<nIn?'in':'out'}));
+  resetRun();
+}
+function resetRun(){ stopRun(); RS.iter=0; RS.best=null; RS.candidate=null; RS.finalRansac=null; RS.done=false; }
+function pickTwo(n){ let i=Math.floor(Math.random()*n), j=Math.floor(Math.random()*n), g=0; while(j===i && g++<8) j=Math.floor(Math.random()*n); return [i,j]; }
+function oneIter(){
+  const n=RS.pts.length; if(n<2 || RS.iter>=RS.maxIter) return false;
+  RS.iter++;
+  const [i,j]=pickTwo(n); const model=fitLine2(RS.pts[i],RS.pts[j]);
+  if(model){
+    const idx=consensus(RS.pts,model,RS.threshold);
+    RS.candidate={m:model.m,b:model.b,idx,sample:[i,j]};
+    if(!RS.best || idx.length>RS.best.idx.length){ RS.best={m:model.m,b:model.b,idx:idx.slice()}; }
+  } else { RS.candidate={degenerate:true,sample:[i,j]}; }
+  return true;
+}
+function finishRun(){
+  stopRun();
+  while(RS.iter<RS.maxIter) oneIter();
+  if(RS.best && RS.best.idx.length>=2){ const r=olsFit(RS.pts,RS.best.idx); RS.finalRansac = r || {m:RS.best.m,b:RS.best.b}; }
+  RS.done=true;
+}
+function stopRun(){ if(RS.timer){ clearInterval(RS.timer); RS.timer=null; } document.getElementById('rRun').innerHTML='▶ Run'; }
+function startRun(){
+  if(RS.done) resetRun();
+  if(RS.timer){ stopRun(); return; }
+  document.getElementById('rRun').innerHTML='⏸ Pause';
+  RS.timer=setInterval(()=>{
+    const cont=oneIter();
+    if(!cont || RS.iter>=RS.maxIter){ finishRun(); draw1(); }
+    else draw1();
+  }, 130);
+}
+function draw1(){
+  const cv=document.getElementById('rCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H); ctx.setLineDash([]);
+  drawAxes(cv,ctx);
+  const showOls=document.getElementById('rShowOls').checked;
+  const showBand=document.getElementById('rShowBand').checked;
+  const showTrue=document.getElementById('rShowTrue').checked;
+  const ols=olsFit(RS.pts);
+  const shown = RS.done ? RS.finalRansac : RS.best;   // green line to display
+  // inlier band around the shown model
+  if(showBand && shown) fillBand(cv,ctx,shown,RS.threshold,'rgba(22,163,74,0.14)');
+  // true line
+  if(showTrue) strokeLine(cv,ctx,{m:RS.trueM,b:RS.trueB},'#64748b',1.6,[3,3]);
+  // candidate (current random sample) line
+  if(!RS.done && RS.candidate && !RS.candidate.degenerate) strokeLine(cv,ctx,RS.candidate,'#f59e0b',1.6,[5,4]);
+  // best / final RANSAC line
+  if(shown) strokeLine(cv,ctx,shown,'#16a34a', RS.done?3.2:2.4, null);
+  // OLS line
+  if(showOls && ols) strokeLine(cv,ctx,ols,'#dc2626',2,[6,4]);
+  // points
+  const bestSet = shown ? new Set((RS.done?RS.best.idx:RS.best.idx)) : new Set();
+  for(let i=0;i<RS.pts.length;i++){
+    const p=RS.pts[i]; const X=pxX(cv,p.x),Y=pxY(cv,p.y);
+    const isInlier = bestSet.has(i);
+    if(p.truth==='out'){
+      ctx.beginPath(); ctx.arc(X,Y,3.4,0,7); ctx.fillStyle='#fff'; ctx.fill(); ctx.strokeStyle='#f43f5e'; ctx.lineWidth=1.5; ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(X,Y,3.4,0,7); ctx.fillStyle='#0ea5e9'; ctx.fill();
+    }
+    if(isInlier){ ctx.beginPath(); ctx.arc(X,Y,5.4,0,7); ctx.strokeStyle='rgba(22,163,74,0.85)'; ctx.lineWidth=1.4; ctx.stroke(); }
+  }
+  // sampled pair
+  if(!RS.done && RS.candidate && RS.candidate.sample){
+    RS.candidate.sample.forEach(k=>{ const p=RS.pts[k]; if(!p) return; const X=pxX(cv,p.x),Y=pxY(cv,p.y); ctx.beginPath(); ctx.arc(X,Y,6,0,7); ctx.fillStyle='#f59e0b'; ctx.fill(); ctx.strokeStyle='#b45309'; ctx.lineWidth=1.4; ctx.stroke(); });
+  }
+  // metrics
+  const n=RS.pts.length; const bc=RS.best?RS.best.idx.length:0;
+  document.getElementById('rN').textContent=n;
+  document.getElementById('rIter').textContent=RS.iter+' / '+RS.maxIter;
+  document.getElementById('rBest').textContent=RS.best?bc:'—';
+  document.getElementById('rBestPct').textContent=(RS.best&&n)?fmt(100*bc/n,0)+'%':'—';
+  diag1(ols);
+}
+function diag1(ols){
+  const box=document.getElementById('rDiag');
+  const n=RS.pts.length;
+  if(n<2){ setDiag(box,'diag-info','Add points to fit','Load a scenario or click the canvas to scatter points.'); return; }
+  if(RS.iter===0 && !RS.done){
+    setDiag(box,'diag-info','▶ Press Run to sample for consensus',
+      `There are <b>${RS.inlierPts.length} inliers</b> hiding along a line plus <b>${RS.outlierPts.length} outliers</b>. RANSAC will pick two random points at a time, fit the line through them, and count how many others fall within <code>±${fmt(RS.threshold,2)}</code>. The <span style="color:#dc2626;font-weight:700">red dashed</span> least-squares line already shows the damage — it is pulled off by the outliers before RANSAC even starts.`);
+    return;
+  }
+  if(!RS.done){
+    const c=RS.candidate&&RS.candidate.idx?RS.candidate.idx.length:0;
+    setDiag(box,'diag-info',`🗳️ iteration ${RS.iter}: this sample agrees with ${c} points · best so far ${RS.best?RS.best.idx.length:0}`,
+      `The <span style="color:#f59e0b;font-weight:700">amber</span> pair is the current random minimal sample and its dashed line the hypothesis; the <span style="color:#16a34a;font-weight:700">green</span> line is the widest-consensus model found so far, with its inliers ringed. Watch the green line lock onto the honest points and ignore the scattered ones — no averaging of outliers, just the biggest agreeing crowd winning.`);
+    return;
+  }
+  // done — compare slope errors to the truth
+  const rSlope = RS.finalRansac?RS.finalRansac.m:(RS.best?RS.best.m:0);
+  const oSlope = ols?ols.m:0;
+  const rErr=Math.abs(rSlope-RS.trueM), oErr=Math.abs(oSlope-RS.trueM);
+  const bc=RS.best?RS.best.idx.length:0;
+  if(rErr<oErr){
+    setDiag(box,'diag-good',`✅ RANSAC recovered the line: slope ${fmt(rSlope,2)} vs true ${fmt(RS.trueM,2)}`,
+      `RANSAC settled on the <b>${bc}-point consensus set</b> and refit least-squares on those inliers alone — slope error <b>${fmt(rErr,2)}</b>. Ordinary least-squares on all ${RS.pts.length} points landed at slope <b>${fmt(oSlope,2)}</b> (error <b>${fmt(oErr,2)}</b>, ${fmt(oErr/(rErr||1e-6),1)}× worse) because every outlier's squared residual dragged it. Same data, but one method votes and the other averages. Try more outliers, or a tighter threshold, and watch when RANSAC finally struggles.`);
+  } else {
+    setDiag(box,'diag-warn',`⚠️ RANSAC did not clearly beat least-squares this run (slope ${fmt(rSlope,2)} vs ${fmt(oSlope,2)})`,
+      `With few outliers, or a threshold so loose that outliers sneak into the band, RANSAC's advantage shrinks — and its randomness means an unlucky short run can miss the best sample. Raise the <b>outlier count</b>, tighten the <b>threshold</b> toward the noise scale, or give it more <b>iterations</b> and Run again: the probability formula in the third demo says how many tries you actually need.`);
+  }
+}
+// scenario buttons
+function buildScenarioButtons(){
+  const wrap=document.getElementById('rPresets'); wrap.innerHTML='';
+  [['heavy','💥 heavy (scattered)'],['leverage','🏋️ leverage cluster'],['twoclusters','✌️ two clusters'],['light','🌤️ light']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(RS.scenario===id?' on':''); b.textContent=label;
+    b.onclick=()=>{
+      RS.scenario = id==='light'?'heavy':id;
+      RS.nOutliers = id==='light'?6:(id==='leverage'?12:(id==='twoclusters'?18:20));
+      document.getElementById('rOut').value=RS.nOutliers; document.getElementById('rOutV').textContent=RS.nOutliers;
+      makeInliers(); makeOutliers(); rebuild(); buildScenarioButtons(); draw1();
+    };
+    wrap.appendChild(b);
+  });
+}
+document.getElementById('rThr').addEventListener('input',e=>{ RS.threshold=+e.target.value; document.getElementById('rThrV').textContent=fmt(RS.threshold,2); resetRun(); draw1(); });
+document.getElementById('rMaxIter').addEventListener('input',e=>{ RS.maxIter=+e.target.value; document.getElementById('rMaxIterV').textContent=RS.maxIter; if(RS.iter>RS.maxIter) resetRun(); draw1(); });
+document.getElementById('rOut').addEventListener('input',e=>{ RS.nOutliers=+e.target.value; document.getElementById('rOutV').textContent=RS.nOutliers; makeOutliers(); rebuild(); draw1(); });
+document.getElementById('rRun').onclick=()=>startRun();
+document.getElementById('rStep').onclick=()=>{ if(RS.done) resetRun(); if(RS.iter<RS.maxIter){ oneIter(); if(RS.iter>=RS.maxIter) finishRun(); } else finishRun(); draw1(); };
+document.getElementById('rFinish').onclick=()=>{ if(RS.done) resetRun(); finishRun(); draw1(); };
+document.getElementById('rReset').onclick=()=>{ resetRun(); draw1(); };
+document.getElementById('rNew').onclick=()=>{ makeInliers(); makeOutliers(); rebuild(); draw1(); };
+document.getElementById('rShowOls').addEventListener('change',draw1);
+document.getElementById('rShowBand').addEventListener('change',draw1);
+document.getElementById('rShowTrue').addEventListener('change',draw1);
+document.getElementById('rCanvas').addEventListener('click',ev=>{
+  const cv=ev.currentTarget; const r=cv.getBoundingClientRect();
+  const pxv=(ev.clientX-r.left)*(cv.width/r.width), pyv=(ev.clientY-r.top)*(cv.height/r.height);
+  let x=invX(cv,pxv), y=invY(cv,pyv); x=Math.max(V.XMIN,Math.min(V.XMAX,x)); y=Math.max(V.YMIN,Math.min(V.YMAX,y));
+  RS.outlierPts.push({x,y}); RS.nOutliers=RS.outlierPts.length;
+  document.getElementById('rOut').value=Math.min(45,RS.nOutliers); document.getElementById('rOutV').textContent=RS.nOutliers;
+  rebuild(); draw1();
+});
+
+/* ================================================================
+   MODULE VS — RANSAC vs least-squares (leverage slider)
+   ================================================================ */
+const VS={ inliers:[], trueM:0.55, trueB:2.2, offset:2.5, count:16, thr:0.7 };
+function vsBuildInliers(){ const rng=mulberry32(12345); const out=[]; for(let i=0;i<40;i++){ const x=0.6+8.8*rng(); const y=VS.trueM*x+VS.trueB+0.3*randn(rng); out.push({x,y:Math.max(0.2,Math.min(9.8,y))}); } VS.inliers=out; }
+function vsData(){
+  const pts=VS.inliers.map(p=>({x:p.x,y:p.y,truth:'in'}));
+  const rng=mulberry32(777);
+  const baseY=5+VS.offset; // cluster centre y follows the slider
+  for(let i=0;i<VS.count;i++){ const x=6.5+2.6*rng(); const y=baseY+0.5*randn(rng); pts.push({x:Math.max(0.2,Math.min(9.8,x)), y:Math.max(0.2,Math.min(9.8,y)), truth:'out'}); }
+  return pts;
+}
+function vsDraw(){
+  const cv=document.getElementById('vCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height); ctx.setLineDash([]); drawAxes(cv,ctx);
+  const pts=vsData();
+  const ols=olsFit(pts);
+  const ran=ransacFull(pts, VS.thr, 300, 20250731);
+  // lines
+  strokeLine(cv,ctx,{m:VS.trueM,b:VS.trueB},'#64748b',1.8,[4,4]);
+  if(ols) strokeLine(cv,ctx,ols,'#dc2626',2.6,[6,4]);
+  if(ran.model) strokeLine(cv,ctx,ran.model,'#16a34a',3,null);
+  // points
+  for(const p of pts){ const X=pxX(cv,p.x),Y=pxY(cv,p.y);
+    if(p.truth==='out'){ ctx.beginPath(); ctx.arc(X,Y,3.6,0,7); ctx.fillStyle='#fff'; ctx.fill(); ctx.strokeStyle='#f43f5e'; ctx.lineWidth=1.6; ctx.stroke(); }
+    else { ctx.beginPath(); ctx.arc(X,Y,3.4,0,7); ctx.fillStyle='#0ea5e9'; ctx.fill(); }
+  }
+  document.getElementById('vTrue').textContent=fmt(VS.trueM,2);
+  document.getElementById('vOls').textContent=ols?fmt(ols.m,2):'—';
+  document.getElementById('vRan').textContent=ran.model?fmt(ran.model.m,2):'—';
+  document.getElementById('vIn').textContent=ran.idx.length;
+  vsDiag(ols,ran);
+}
+function vsDiag(ols,ran){
+  const box=document.getElementById('vDiag');
+  const oErr=ols?Math.abs(ols.m-VS.trueM):0, rErr=ran.model?Math.abs(ran.model.m-VS.trueM):0;
+  setDiagWide(box,'diag-info',`⚖️ offset ${VS.offset>=0?'+':''}${fmt(VS.offset,1)} · ${VS.count} outliers · least-squares slope ${ols?fmt(ols.m,2):'—'} vs RANSAC ${ran.model?fmt(ran.model.m,2):'—'} (true ${fmt(VS.trueM,2)})`,
+    `The <span style="color:#dc2626;font-weight:700">red</span> least-squares line is fit to <em>all</em> points, so as you push the outlier cluster away its squared residuals bend the line toward it — slope error <b>${fmt(oErr,2)}</b>. The <span style="color:#16a34a;font-weight:700">green</span> RANSAC line found the <b>${ran.idx.length}-inlier</b> consensus and ignored the cluster entirely — slope error <b>${fmt(rErr,2)}</b>, hugging the <span style="color:#64748b;font-weight:700">dashed true line</span>. This is the <b>breakdown point</b> made visible: OLS breaks with a single leveraged point; RANSAC holds until the outliers can out-vote the inliers. Crank the outlier count past the inliers and watch even RANSAC finally flip — the majority is no longer honest.`);
+}
+document.getElementById('vLev').addEventListener('input',e=>{ VS.offset=+e.target.value; document.getElementById('vLevV').textContent=(VS.offset>=0?'+':'')+fmt(VS.offset,1); vsDraw(); });
+document.getElementById('vCount').addEventListener('input',e=>{ VS.count=+e.target.value; document.getElementById('vCountV').textContent=VS.count; vsDraw(); });
+document.getElementById('vThr').addEventListener('input',e=>{ VS.thr=+e.target.value; document.getElementById('vThrV').textContent=fmt(VS.thr,2); vsDraw(); });
+
+/* ================================================================
+   MODULE PROB — how many iterations?
+   ================================================================ */
+const PB={ w:0.5, s:2, p:0.99 };
+function probDraw(){
+  document.getElementById('qW').textContent=fmt(PB.w,2);
+  document.getElementById('qS').textContent=PB.s;
+  document.getElementById('qP').textContent=fmt(PB.p,3);
+  const N=trials(PB.w,PB.s,PB.p);
+  document.getElementById('qN').textContent = isFinite(N)? (N>1e6? '10⁶+' : N) : '∞';
+  // curve N(w)
+  const cv=document.getElementById('pCanvas'), ctx=cv.getContext('2d'); const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H); ctx.setLineDash([]);
+  const x0=40,y0=14,x1=W-12,y1=H-26;
+  const wmin=0.05,wmax=0.95;
+  // log-y from 1 to Nmax
+  const logMax=6; // 10^6
+  const PX=w=>x0+(x1-x0)*(w-wmin)/(wmax-wmin);
+  const PY=N=>{ const L=Math.max(0,Math.min(logMax,Math.log10(Math.max(1,N)))); return y1-(y1-y0)*L/logMax; };
+  // gridlines (decades)
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1; ctx.fillStyle='#94a3b8'; ctx.font='9px monospace'; ctx.textAlign='right';
+  for(let d=0;d<=logMax;d++){ const yy=y1-(y1-y0)*d/logMax; ctx.beginPath();ctx.moveTo(x0,yy);ctx.lineTo(x1,yy);ctx.stroke(); ctx.fillText('10'+['⁰','¹','²','³','⁴','⁵','⁶'][d], x0-4, yy+3); }
+  // current-w marker
+  ctx.save(); ctx.strokeStyle='#0ea5e9'; ctx.lineWidth=1.6; ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(PX(PB.w),y0); ctx.lineTo(PX(PB.w),y1); ctx.stroke(); ctx.restore();
+  // the curve
+  ctx.beginPath(); let started=false;
+  for(let i=0;i<=160;i++){ const w=wmin+(wmax-wmin)*i/160; const N=trials(w,PB.s,PB.p); const X=PX(w),Y=PY(isFinite(N)?N:1e9); if(!started){ctx.moveTo(X,Y);started=true;} else ctx.lineTo(X,Y); }
+  ctx.strokeStyle='#16a34a'; ctx.lineWidth=2.4; ctx.stroke();
+  // marker dot at current w
+  const Ncur=trials(PB.w,PB.s,PB.p); ctx.beginPath(); ctx.arc(PX(PB.w),PY(isFinite(Ncur)?Ncur:1e9),4,0,7); ctx.fillStyle='#0ea5e9'; ctx.fill();
+  // axes
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.beginPath();ctx.moveTo(x0,y0);ctx.lineTo(x0,y1);ctx.lineTo(x1,y1);ctx.stroke();
+  ctx.fillStyle='#94a3b8'; ctx.font='9px monospace'; ctx.textAlign='center';
+  for(let t=0.1;t<=0.9;t+=0.2){ ctx.fillText(fmt(t,1), PX(t), y1+11); }
+  ctx.fillStyle='#64748b'; ctx.font='10px sans-serif'; ctx.fillText('inlier fraction w  (→)',(x0+x1)/2,H-2);
+  probDiag(N);
+}
+function probDiag(N){
+  const box=document.getElementById('pDiag');
+  const w50=trials(0.5,PB.s,PB.p), w30=trials(0.3,PB.s,PB.p), w10=trials(0.1,PB.s,PB.p);
+  const Ntxt = isFinite(N)? (N>1e6?'over a million':N.toLocaleString()) : 'unbounded';
+  setDiag(box,'diag-info',`🎲 with w=${fmt(PB.w,2)}, s=${PB.s}, p=${fmt(PB.p,3)} → N = ${Ntxt} trials`,
+    `To be ${fmt(PB.p*100,1)}% sure of drawing at least one all-inlier sample you need <b>${Ntxt}</b> random tries. Hold s=2, p=0.99 and watch how fast it climbs as outliers grow: w=0.5→<b>${w50}</b>, w=0.3→<b>${w30}</b>, w=0.1→<b>${w10}</b>. And it is <em>exponential in s</em> — that is exactly why RANSAC fits from the <b>smallest</b> sample a model allows: a plane (s=3) or a homography (s=4) already needs far more iterations than a line (s=2) at the same contamination. Real implementations recompute N on the fly from the best inlier count so they stop early once a good model appears.`);
+}
+document.getElementById('pW').addEventListener('input',e=>{ PB.w=+e.target.value; document.getElementById('pWv').textContent=fmt(PB.w,2); probDraw(); });
+document.getElementById('pS').addEventListener('input',e=>{ PB.s=+e.target.value; document.getElementById('pSv').textContent=PB.s; probDraw(); });
+document.getElementById('pP').addEventListener('input',e=>{ PB.p=+e.target.value; document.getElementById('pPv').textContent=fmt(PB.p,3); probDraw(); });
+
+/* ================================================================
+   sub-nav wiring
+   ================================================================ */
+const subBtns=document.querySelectorAll("#subnav [data-mod]");
+function showMod(m){
+  document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden"));
+  document.getElementById("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m));
+  if(m!=="live") stopRun();
+  if(m==="live") draw1();
+  if(m==="vs") vsDraw();
+  if(m==="prob") probDraw();
+}
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+/* ================================================================
+   init
+   ================================================================ */
+makeInliers(); makeOutliers(); rebuild(); buildScenarioButtons();
+vsBuildInliers();
+document.querySelector('[data-mod="live"]').classList.add("on");
+showMod("live");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. Why least-squares dies on a single outlier", why:"Ordinary least squares picks the line minimising the sum of SQUARED vertical residuals. Squaring is the whole problem: a point twice as far off contributes four times the penalty, a point ten times as far contributes a hundred times. So the fit is exquisitely sensitive to whichever point is farthest, and a single gross outlier — a mislabelled sample, a sensor glitch, a bad correspondence — can pull the entire line away from every honest measurement to reduce that one enormous squared term. Statisticians call this the breakdown point: the smallest fraction of contaminated data that can send the estimate to infinity. For OLS it is zero — one bad point out of a million is enough. That is not a tuning issue you can fix with more data or regularisation; it is structural. Any method that averages over all points, trusting each equally, inherits it. RANSAC's answer is to stop trusting every point and instead find the largest subset that agrees.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">OLS minimises Σ (yᵢ − (m·xᵢ+b))²<br><br>one far point → HUGE squared term<br>line pivots to reduce it → whole fit ruined<br><br>breakdown point of OLS = 0%<br>(one bad point out of any number)</div>`, code:`# least squares: one outlier hijacks the slope
+import numpy as np
+x = np.arange(20.0); y = 0.5*x + 1 + 0.1*np.random.randn(20)
+y[7] = 40                       # a single wild point
+m, b = np.polyfit(x, y, 1)      # closed-form OLS
+print(round(m, 2))              # nowhere near 0.5 — dragged away` },
+ { title:"2. The RANSAC idea — hypothesise, then count votes", why:"RANSAC inverts the usual fit-everything approach. Instead of estimating one model from all the data, it GUESSES a model from a tiny random subset and then asks the rest of the data to vote on it. The guess-and-check loop is: draw a random minimal sample, fit a candidate model to just those points, count how many of ALL the points lie within a threshold of that candidate (the consensus set), and keep whichever candidate collected the most agreement. After enough random draws, at least one sample will — with high probability — have consisted entirely of inliers, producing a candidate the true inliers rally around while the outliers, being mutually inconsistent, never form a large consensus of their own. The output is not an average that outliers can bias; it is a selection of the hypothesis with the widest support. That single shift — from fitting to hypothesising-and-voting — is what buys robustness.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">repeat:<br>&nbsp;1. pick a random MINIMAL sample<br>&nbsp;2. fit a candidate model to it<br>&nbsp;3. count points within threshold (consensus)<br>&nbsp;4. keep the candidate with the MOST inliers<br><br>selection, not averaging → outliers can't bias it</div>`, code:`best = {"inliers": [], "model": None}
+for _ in range(iters):
+    sample = random_minimal_sample(points)   # e.g. 2 points for a line
+    model  = fit(sample)
+    inliers = [p for p in points if residual(p, model) <= t]
+    if len(inliers) > len(best["inliers"]):  # widest consensus wins
+        best = {"inliers": inliers, "model": model}` },
+ { title:"3. The minimal sample — why 2 points, not more", why:"A model's minimal sample size s equals its degrees of freedom: a line has two (slope and intercept), so two points define it exactly; a circle needs three, a plane three, a 2-D homography four correspondences, a fundamental matrix seven or eight. RANSAC always samples exactly this minimum, and the reason is subtle but crucial. First, a minimal fit is exact — no residual, no averaging — so if all s sampled points happen to be inliers, the candidate is a genuinely good model, not a compromise. Second, and more importantly, the probability that a random sample is entirely clean is wˢ, which shrinks rapidly with s. Sampling the minimum keeps s as small as possible, maximising the chance of an all-inlier draw and minimising the iterations you need. Using MORE points per sample would seem safer but is actually worse: it lowers the odds every sampled point is an inlier, so you would wait far longer for a clean hypothesis. Fit from the fewest points the model allows, then let the refit step use the many.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">s = model's degrees of freedom<br>line 2 · circle 3 · plane 3 · homography 4<br><br>sample EXACTLY s points:<br>• minimal fit is exact (no averaging)<br>• P(all inliers) = wˢ — smallest s ⇒ best odds<br><br>more points per sample = LONGER wait for a clean one</div>`, code:`def fit_line(p, q):
+    dx = q[0] - p[0]
+    if abs(dx) < 1e-9: return None        # vertical pair → skip
+    m = (q[1] - p[1]) / dx
+    return (m, p[1] - m*p[0])             # exact line through 2 points
+# a line's minimal sample is 2 — never sample more than you must` },
+ { title:"4. The consensus score — count, don't sum", why:"How you SCORE a candidate is what makes RANSAC robust. Least squares sums squared residuals, so an outlier's huge residual dominates the score. RANSAC instead COUNTS how many points fall within a fixed threshold and ignores how far the rest are. This bounded score is the key: a point one threshold away and a point a thousand away are treated identically — both simply 'not inliers' — so no single point, however wild, can move the score by more than one vote. The candidate with the biggest count is chosen. Because true inliers all cluster near the true model, a clean hypothesis collects them all in one big consensus set; outliers are scattered and mutually disagreeing, so no bad hypothesis gathers a comparable crowd. This is also why RANSAC needs no assumption about the outliers' distribution — they can be adversarial, clustered, or arbitrarily far, and the count simply doesn't care. The vote is inherently robust in a way any weighted average can never be.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">score(model) = # { points : |residual| ≤ t }<br><br>a point at 1·t and one at 1000·t → SAME (both out)<br>bounded influence: one point = at most one vote<br><br>vs OLS: score = Σ residual² → one point can dominate</div>`, code:`def consensus(points, model, t):
+    return [i for i, p in enumerate(points)
+            if abs(p[1] - (model[0]*p[0] + model[1])) <= t]
+# the SIZE of this list is the score — bounded, outlier-proof
+score = len(consensus(points, model, t))` },
+ { title:"5. The threshold — set it from the noise", why:"The one parameter you must choose is the inlier threshold t: the residual below which a point counts as agreeing with the model. It encodes how much scatter you consider 'normal' honest noise versus a genuine outlier. Set it from the measurement noise: if inliers have standard deviation σ around the true model, a common choice is t ≈ 2σ to 3σ, which captures roughly 95–99% of true inliers under a Gaussian noise assumption while excluding gross errors. Get it wrong in either direction and RANSAC suffers. Too tight, and many real inliers fall outside the band — the consensus sets shrink, good hypotheses look no better than bad ones, and the winning model may rest on a handful of points. Too loose, and outliers slip inside the band, inflating every candidate's count and letting a hypothesis that leans toward the outliers win. Unlike the bandwidth in KDE, this threshold has a physical meaning — it lives in the units of your residual — so you usually can set it from what you know about the sensor, not by search. When you cannot, scale-estimating variants (like MSAC or MLESAC) soften the hard cutoff.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">t = inlier tolerance, in residual units<br>rule of thumb:  t ≈ 2σ … 3σ  (σ = noise scale)<br><br>too tight → real inliers excluded, consensus tiny<br>too loose → outliers sneak in, wrong model wins<br><br>set it from the sensor, not by guessing</div>`, code:`# threshold from the noise scale (robust σ estimate)
+import numpy as np
+resid = np.abs(y - (m*x + b))
+sigma = 1.4826 * np.median(np.abs(resid - np.median(resid)))  # MAD → σ
+t = 2.5 * sigma        # ~99% of Gaussian inliers kept, gross errors out` },
+ { title:"6. How many iterations — the probability law", why:"You do not pick the iteration count by feel — you derive it. Let w be the fraction of points that are inliers. A single minimal sample of size s is all-inlier with probability wˢ (assuming sampling with replacement), so it FAILS to be clean with probability 1 − wˢ. Draw N independent samples and the probability that EVERY one is contaminated is (1 − wˢ)ᴺ. You want at least one clean sample with confidence p, i.e. (1 − wˢ)ᴺ ≤ 1 − p, which solving for N gives N ≥ log(1 − p) / log(1 − wˢ). Two lessons fall straight out. First, N grows explosively as w drops: at s = 2 and p = 0.99, w = 0.5 needs 17 trials, w = 0.3 needs 49, w = 0.1 needs 459 — the cost of contamination is steep. Second, N grows exponentially in s, which is the deep reason to sample minimally. In practice you rarely know w in advance, so adaptive RANSAC starts pessimistic, and every time it finds a larger consensus set it updates w = (best inliers)/n and RECOMPUTES N, usually stopping far earlier than a fixed worst-case budget.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">P(sample all inliers) = wˢ<br>P(N samples all bad) = (1 − wˢ)ᴺ ≤ 1 − p<br><br>⇒ N = ⌈ log(1 − p) / log(1 − wˢ) ⌉<br><br>s=2, p=0.99:  w=.5→17 · w=.3→49 · w=.1→459<br>adaptive: update w from best consensus, shrink N</div>`, code:`import math
+def n_iterations(w, s=2, p=0.99):
+    return math.ceil(math.log(1-p) / math.log(1 - w**s))
+# adaptive loop: whenever a bigger consensus appears,
+# w = len(best_inliers)/n ; N = n_iterations(w, s, p)  # and stop early` },
+ { title:"7. Refit on the consensus set — precision after robustness", why:"The model RANSAC selects is fit from only s points — enough to be a good hypothesis, but wasteful of all the other inliers it identified. So there is a final step: take the winning consensus set — every point that agreed with the best model — and run an ordinary least-squares fit on THOSE points alone. Now least squares is safe, because the outliers have already been screened out; averaging over a clean set is exactly what OLS is good at. This two-stage design is the elegant heart of RANSAC: use a robust, combinatorial search to decide WHICH points to trust, then a fast, efficient estimator to squeeze precision out of them. The minimal sample gave robustness; the refit gives accuracy. Many implementations iterate the last step — refit, re-evaluate which points are now inliers, refit again — until the inlier set stops changing, a locally-optimised variant (LO-RANSAC) that tightens the estimate further. The result is a line, plane, or homography that is both uncontaminated by outliers and as precise as all the good data allows.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">stage 1 (robust): sample+consensus → WHICH points<br>stage 2 (precise): least squares on inliers → the model<br><br>minimal sample = robustness<br>refit on all inliers = accuracy<br><br>optional: re-count & refit until stable (LO-RANSAC)</div>`, code:`inliers = consensus(points, best_model, t)     # trusted points only
+X = np.array([p[0] for p in points])[inliers]
+Y = np.array([p[1] for p in points])[inliers]
+m, b = np.polyfit(X, Y, 1)     # OLS is safe now — outliers removed
+robust_model = (m, b)          # robust selection + precise estimation` },
+ { title:"8. Where RANSAC fits — cousins, limits, and vision", why:"RANSAC is one of a family of robust estimators, and knowing the neighbours tells you when to reach for it. Huber regression (Day 52) keeps least-squares' smooth optimisation but caps each residual's growth from quadratic to linear past a knee — it tames MILD outliers cheaply but still bends toward a high-leverage point, so its breakdown point stays near zero. Theil–Sen takes the median of all pairwise slopes, deterministic and robust to about 29% contamination but O(n²). Least median of squares reaches the theoretical 50% breakdown with no threshold, at a steep search cost. RANSAC's niche is the regime those struggle with: MANY outliers (often a majority) plus a residual threshold you can name from physics. That is precisely computer vision — matching two images produces mostly WRONG correspondences, and RANSAC is the standard tool that fits a homography, fundamental matrix, or camera pose through them, and the workhorse behind panorama stitching, structure-from-motion, and SLAM. Its costs are the trade: it is non-deterministic (two runs can differ), it needs a threshold, its iteration count explodes when inliers are rare, and it can occasionally lock onto a spurious consensus. But when your data is mostly garbage and you can define 'close enough', nothing simpler works as well. A fitting robust close to the from-scratch series.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Huber (Day 52): soft, cheap, mild outliers — breakdown ~0<br>Theil–Sen: median slope, ~29% breakdown, O(n²)<br>LMS: 50% breakdown, no threshold, costly search<br>RANSAC: &gt;50% outliers + a threshold → vision's default<br><br>⚠ random · needs t · N explodes as w→0</div>`, code:`# vision's default: robustly fit a homography through
+# mostly-wrong feature matches (typical inlier ratio < 50%)
+import cv2, numpy as np
+H, mask = cv2.findHomography(src_pts, dst_pts,
+                            method=cv2.RANSAC, ransacReprojThreshold=3.0)
+# mask = inlier correspondences; H = the refit transform` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>

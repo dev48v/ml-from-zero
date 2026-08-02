@@ -52,6 +52,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 43 — CatBoost](https://dev48v.infy.uk/ml/day43-catboost.html) — `day43-catboost.html`
 - [MachineLearningFromZero · Day 44 — Model Calibration](https://dev48v.infy.uk/ml/day44-calibration.html) — `day44-calibration.html`
 - [MachineLearningFromZero · Day 45 — Conformal Prediction](https://dev48v.infy.uk/ml/day45-conformal-prediction.html) — `day45-conformal-prediction.html`
+- [MachineLearningFromZero · Day 51 — RANSAC](https://dev48v.infy.uk/ml/day51-ransac.html) — `day51-ransac.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
