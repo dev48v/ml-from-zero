@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 53 — Theil–Sen Estimator</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:170px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .swatch-box { display:inline-block; width:14px; height:10px; border-radius:3px; vertical-align:0; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .ds-btn { border:1px solid #e2e8f0; background:#fff; font-weight:800; font-size:12px; padding:6px 11px; border-radius:9px; transition:all .15s; }
+  .ds-btn.on { color:#fff; border-color:transparent; background:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; }
+  canvas.clickable { cursor:crosshair; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  .rowtbl { border-collapse:collapse; font-size:11px; width:100%; }
+  .rowtbl th, .rowtbl td { border:1px solid #e2e8f0; padding:3px 5px; text-align:center; font-variant-numeric:tabular-nums; }
+  .rowtbl th { background:#f1f5f9; font-weight:800; }
+  .btn-run { background:#16a34a; color:#fff; }
+  .btn-run:hover { background:#15803d; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 53</div>
+      <h1 class="text-xl font-bold">🧮 The Theil–Sen estimator — the robust line you can compute with nothing but a <strong>median</strong>. Ordinary least squares picks the slope that minimises the <em>sum of squared</em> residuals, so a single far-off point — whose squared error is enormous — pivots the whole line toward itself; its <strong>breakdown point is zero</strong>. Theil–Sen throws that machinery away for something almost startlingly simple: take <strong>every pair of points</strong>, compute the slope of the line through that pair, and let the <strong>median of all those pairwise slopes</strong> be your slope. The intercept is then just <code>median(yᵢ − m·xᵢ)</code>. That is the entire estimator — no loss function, no iteration, no gradient, no threshold to tune. Why it works is the whole point: an outlier corrupts only the pairs it belongs to, and those corrupted pairs produce <em>extreme</em> slopes that land in the <strong>tails</strong> of the distribution — where the median simply steps over them. You have to contaminate nearly <strong>29%</strong> of the data before the median slope itself is pulled off, versus one bad point for OLS. Everything below <strong>runs live in your browser</strong> — scatter points and <span style="color:#0ea5e9;font-weight:700">drag them</span> or click to add outliers, watch the <span style="color:#16a34a;font-weight:700">median-of-slopes</span> line hold the truth while <span style="color:#dc2626;font-weight:700">least-squares</span> is dragged away, see the full histogram of pairwise slopes with its median vs mean, and pull an outlier cluster to feel the two philosophies diverge.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>Least squares has no defence against a single bad point.</strong> Because it minimises the <em>sum of squared</em> residuals, one lone outlier can pivot the entire fitted line toward itself — its breakdown point is zero. <strong>Theil–Sen</strong> answers with the humblest robust idea in statistics: the slope between <em>two</em> points is a slope estimate, so compute it for <strong>all <code>n(n−1)/2</code> pairs</strong> and take the <span style="color:#16a34a;font-weight:700">median</span>. A median cannot be moved by a minority of extreme values, and an outlier only spoils the pairs it touches — a minority — so the corrupted pairwise slopes fall harmlessly into the tails while the median holds. The intercept follows the same recipe: <code>median(yᵢ − m·xᵢ)</code>. No squared error, no iteration, no tuning constant, and no random sampling — the estimate is <strong>exact and deterministic</strong>. Below it is <strong>built from scratch, live</strong> — the pairwise slopes, the median line, the histogram of every slope with its median vs its mean, and least-squares being dragged off course — on points you place and drag yourself.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Median of pairwise slopes</strong> drops inliers along a hidden line plus a few outliers, then draws the <span style="color:#16a34a;font-weight:700">Theil–Sen line</span> — the median-of-slopes fit — against the <span style="color:#dc2626;font-weight:700">dragged least-squares line</span>; toggle the faint <span style="color:#94a3b8;font-weight:700">pairwise segments</span> to see the very slopes it takes the median of, <span style="color:#0ea5e9;font-weight:700">drag any point</span> or click empty space to add an outlier and watch both lines recompute instantly. <strong>The slope histogram</strong> plots the distribution of <em>all</em> pairwise slopes as you slide an outlier cluster — watch the <span style="color:#dc2626;font-weight:700">mean</span> chase the growing tail while the <span style="color:#16a34a;font-weight:700">median</span> sits rock-still, the picture of why the median resists outliers. <strong>Drag the outlier</strong> pins the data and slides one cluster up and down — the OLS slope drifts far from the truth while Theil–Sen barely twitches, with the slope error of each read out live. Every pixel is computed in-browser.</p>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="live"  class="subnav-btn px-4 py-2 rounded-lg text-sm">🧮 Median of pairwise slopes</button>
+        <button data-mod="hist"  class="subnav-btn px-4 py-2 rounded-lg text-sm">📊 The slope histogram</button>
+        <button data-mod="vs"    class="subnav-btn px-4 py-2 rounded-lg text-sm">⚖️ Drag the outlier</button>
+      </div>
+
+      <!-- ============ MODULE: LIVE THEIL–SEN ============ -->
+      <div id="mod-live" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="tN" style="color:#0f172a">—</div><div class="k">total points</div></div>
+          <div class="metric-pill"><div class="v" id="tPairs" style="color:#0ea5e9">—</div><div class="k">pairwise slopes</div></div>
+          <div class="metric-pill"><div class="v" id="tTS" style="color:#16a34a">—</div><div class="k">Theil–Sen slope</div></div>
+          <div class="metric-pill"><div class="v" id="tOls" style="color:#dc2626">—</div><div class="k">least-squares slope</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE THEIL–SEN KNOBS</div>
+            <div class="ctl-row"><div class="ctl-name">💥 outlier count</div><input type="range" id="tOut" min="0" max="30" step="1" value="6"><div class="ctl-val" id="tOutV">6</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="tNew"    class="bg-slate-500 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-400">🎲 New data</button>
+              <button id="tReset"  class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">↻ Reset outliers</button>
+            </div>
+            <div class="mt-3">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🎯 scenario</div>
+              <div id="tPresets" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2 flex flex-col gap-1">
+              <label class="flex items-center gap-2 text-[12px] text-slate-600 font-semibold"><input type="checkbox" id="tShowOls" checked> overlay least-squares (OLS)</label>
+              <label class="flex items-center gap-2 text-[12px] text-slate-600 font-semibold"><input type="checkbox" id="tShowPairs"> show all pairwise segments</label>
+              <label class="flex items-center gap-2 text-[12px] text-slate-600 font-semibold"><input type="checkbox" id="tShowTrue"> show hidden true line</label>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> Every <span style="color:#94a3b8;font-weight:700">faint segment</span> joins one pair of points; the slope of that segment is one pairwise slope. Theil–Sen's slope is the <b>median</b> of all of them, and its intercept is <code>median(yᵢ − m·xᵢ)</code> — the <span style="color:#16a34a;font-weight:700">green</span> line. The <span style="color:#dc2626;font-weight:700">red dashed</span> line is ordinary least-squares on all points, dragged by the outliers. <b>Drag any point</b> or <b>click empty space</b> to add an outlier — both lines recompute live.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:600px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🧮 median of pairwise slopes → robust line &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">drag a point · click to add outliers</span></div>
+            <canvas id="tCanvas" class="clickable" width="576" height="360"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#0ea5e9"></span> inlier</span>
+              <span><span class="swatch" style="background:#fff;border:1.5px solid #f43f5e"></span> outlier</span>
+              <span><span class="swatch-line" style="border-color:#94a3b8"></span> pairwise segment</span>
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> Theil–Sen (median slope)</span>
+              <span><span class="swatch-line" style="border-color:#dc2626"></span> least-squares</span>
+              <span><span class="swatch-line" style="border-color:#64748b"></span> hidden true line</span>
+            </div>
+            <div id="tDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: SLOPE HISTOGRAM ============ -->
+      <div id="mod-hist" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="sPairs" style="color:#0ea5e9">—</div><div class="k">pairwise slopes</div></div>
+          <div class="metric-pill"><div class="v" id="sTrue" style="color:#64748b">—</div><div class="k">true slope</div></div>
+          <div class="metric-pill"><div class="v" id="sMed" style="color:#16a34a">—</div><div class="k">median slope</div></div>
+          <div class="metric-pill"><div class="v" id="sMean" style="color:#dc2626">—</div><div class="k">mean slope</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">MEDIAN vs MEAN OF THE SLOPES</div>
+            <div class="text-[11px] text-slate-500 mb-2">The inliers sit on a hidden line (slope <b>0.55</b>). A cluster of outliers off to the side spawns <em>extreme</em> pairwise slopes that pile into the tails. Slide it and watch what each summary does.</div>
+            <div class="ctl-row"><div class="ctl-name">↕ outlier offset</div><input type="range" id="sOff" min="-4" max="4" step="0.1" value="2.5"><div class="ctl-val" id="sOffV">+2.5</div></div>
+            <div class="ctl-row"><div class="ctl-name">💥 outlier count</div><input type="range" id="sCount" min="0" max="24" step="1" value="10"><div class="ctl-val" id="sCountV">10</div></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[12px] text-slate-600 leading-relaxed text-center font-mono">
+              slope<sub>Theil–Sen</sub> = median<sub>i&lt;j</sub> (yⱼ − yᵢ)/(xⱼ − xᵢ)
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Why the median wins.</strong> Each outlier corrupts only the pairs it belongs to — a <em>minority</em> of all pairs — and those corrupted slopes land far out in the <b>tails</b>. The <span style="color:#dc2626;font-weight:700">mean</span> (what least-squares-like averaging chases) is dragged toward the tail; the <span style="color:#16a34a;font-weight:700">median</span> only cares which side of centre a value is on, so tail slopes are stepped over. You must corrupt about <b>29%</b> of the data before enough pairs go bad to move the median itself.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:460px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📊 distribution of all pairwise slopes</div>
+            <canvas id="sCanvas" width="436" height="340"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-box" style="background:#bae6fd"></span> slope frequency</span>
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> median (Theil–Sen)</span>
+              <span><span class="swatch-line" style="border-color:#dc2626"></span> mean</span>
+              <span><span class="swatch-line" style="border-color:#64748b"></span> true slope</span>
+            </div>
+            <div id="sDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: DRAG THE OUTLIER ============ -->
+      <div id="mod-vs" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="vTrue" style="color:#64748b">—</div><div class="k">true slope</div></div>
+          <div class="metric-pill"><div class="v" id="vOls" style="color:#dc2626">—</div><div class="k">OLS slope</div></div>
+          <div class="metric-pill"><div class="v" id="vTS" style="color:#16a34a">—</div><div class="k">Theil–Sen slope</div></div>
+          <div class="metric-pill"><div class="v" id="vErr" style="color:#0ea5e9">—</div><div class="k">OLS ÷ Theil–Sen error</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">DRAG THE OUTLIERS, WATCH THE LINES</div>
+            <div class="text-[11px] text-slate-500 mb-2">The inliers are fixed on a hidden line (slope <b>0.55</b>). A cluster of outliers sits off to the side; the slider slides it <b>up and down</b>. Least-squares chases it; Theil–Sen does not.</div>
+            <div class="ctl-row"><div class="ctl-name">↕ outlier offset</div><input type="range" id="vLev" min="-4" max="4" step="0.1" value="2.5"><div class="ctl-val" id="vLevV">+2.5</div></div>
+            <div class="ctl-row"><div class="ctl-name">💥 outlier count</div><input type="range" id="vCount" min="0" max="30" step="1" value="12"><div class="ctl-val" id="vCountV">12</div></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Breakdown point ≈ 29%.</strong> Least-squares breaks with a <em>single</em> high-leverage outlier — its slope can be pulled arbitrarily far. Theil–Sen keeps working until roughly <b>29.3%</b> of the points are contaminated, because that is how many bad points it takes for the corrupted pairs to become a majority of the slopes on one side of the median. Slide the offset to a big value and watch the <span style="color:#dc2626;font-weight:700">red</span> slope drift away from <b>0.55</b> while the <span style="color:#16a34a;font-weight:700">green</span> one barely moves — until you also crank the count past a quarter of the data.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:460px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">⚖️ same points · two philosophies</div>
+            <canvas id="vCanvas" width="436" height="360"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#64748b"></span> hidden true line</span>
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> Theil–Sen</span>
+              <span><span class="swatch-line" style="border-color:#dc2626"></span> least-squares</span>
+              <span><span class="swatch" style="background:#0ea5e9"></span> inlier</span>
+              <span><span class="swatch" style="background:#fff;border:1.5px solid #f43f5e"></span> outlier cluster</span>
+            </div>
+          </div>
+        </div>
+        <div id="vDiag" class="diag diag-info mt-6 max-w-4xl mx-auto text-left">—</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From "square every error" to "take the median slope"</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Theil–Sen is arguably the least code of any robust regressor — the exact routine the LOOK tab runs, no scikit-learn black box. Below is the runnable core: the slope through a pair of points, the slope over <em>every</em> pair, the median that makes it robust, the two-line estimator itself (median slope, then median intercept), the breakdown-point argument, and the standard tools. Every line the LOOK tab draws comes from these snippets.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The slope through a pair of points</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The whole estimator is built on the most elementary fact in coordinate geometry: two points define a line, and its slope is rise over run. Each pair of your data points is therefore a tiny, independent slope estimate. (A pair sharing an x-value is a vertical line with undefined slope — just skip it.)</p>
+        <div class="relative"><pre>function pairSlope(p, q) {
+  const dx = q.x - p.x;
+  if (Math.abs(dx) < 1e-9) return null;   // same x → undefined slope, skip
+  return (q.y - p.y) / dx;                // rise over run
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Every pairwise slope</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Now take that slope for <b>all <code>n(n−1)/2</code> unordered pairs</b>. This is the one price Theil–Sen pays — it is O(n²) in both time and memory. But the payoff is that a single outlier can only ever spoil the <code>n−1</code> pairs that include it, a vanishing fraction of the whole for large n, so most of these slopes come from clean pair-of-inliers and cluster tightly around the truth.</p>
+        <div class="relative"><pre>function allPairSlopes(pts) {
+  const slopes = [];
+  for (let i = 0; i < pts.length; i++)
+    for (let j = i + 1; j < pts.length; j++) {   // each unordered pair once
+      const s = pairSlope(pts[i], pts[j]);
+      if (s !== null) slopes.push(s);
+    }
+  return slopes;                                  // n(n−1)/2 of them
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The median — the source of the robustness</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This one function is why Theil–Sen shrugs off outliers where the <em>mean</em> (and hence least squares) does not. The median depends only on the <b>rank</b> of a value, not its magnitude — you can send half-minus-one of the numbers to infinity and it does not move. Take the median of a set of slopes and the extreme, outlier-born slopes in the tails are stepped over entirely.</p>
+        <div class="relative"><pre>function median(a) {
+  if (!a.length) return 0;
+  const s = a.slice().sort((x, y) => x - y);      // rank the values
+  const n = s.length;
+  return n % 2 ? s[(n - 1) / 2]                    // odd → middle element
+               : 0.5 * (s[n/2 - 1] + s[n/2]);     // even → mean of middle two
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The Theil–Sen estimator — two medians</h3></div>
+        <p class="text-sm text-slate-600 mb-3">That is the entire algorithm. The slope is the median of all pairwise slopes; the intercept is the median of <code>yᵢ − m·xᵢ</code> — the value that makes half the points sit above the line and half below at that slope. No loss function, no iterations, no learning rate, no threshold, no randomness. The result is exact and deterministic: run it twice on the same data, get the same line to the last bit.</p>
+        <div class="relative"><pre>function theilSen(pts) {
+  const m = median(allPairSlopes(pts));            // slope = median of slopes
+  const intercepts = pts.map(p => p.y - m * p.x);  // b that centres each point
+  const b = median(intercepts);                    // intercept = their median
+  return { m, b };                                 // y = m·x + b, done
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">The breakdown point — why ~29%</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The median of a list breaks at 50% contamination. Theil–Sen's slope is a median <em>of pairs</em>, and a fraction <code>ε</code> of bad points makes a pair bad with probability <code>1−(1−ε)²</code>. Solve for when that reaches half — the point where corrupted pairs could dominate — and you get <code>ε = 1 − 1/√2 ≈ 0.293</code>. So Theil–Sen tolerates just under <b>29.3%</b> of arbitrary contamination, a colossal jump from OLS's <b>0%</b>, while staying a simple closed formula.</p>
+        <div class="relative"><pre># the breakdown-point algebra (why 29.3%, not 50%)
+# a pair is "clean" only if BOTH its points are inliers:
+#   P(clean pair) = (1 - eps)^2
+# the median of slopes tips once bad pairs reach half:
+#   (1 - eps)^2 = 1/2   ->   eps = 1 - 1/sqrt(2) = 0.2929...
+# OLS breakdown = 0 (one point);  Theil-Sen = 29.3%;  RANSAC/LMS = up to 50%</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">In practice — the standard tools</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You will rarely hand-roll it. SciPy's <code>theilslopes</code> returns the median slope, intercept, and a confidence interval for the slope in one call. scikit-learn's <code>TheilSenRegressor</code> generalises the idea to multiple features (it takes the spatial median over random <em>subsets</em> of features+1 points, since exhaustive pairs explode in high dimensions) and drops into any pipeline with the usual <code>fit</code>/<code>predict</code>.</p>
+        <div class="relative"><pre># SciPy — slope, intercept, and a slope confidence interval
+from scipy.stats import theilslopes
+slope, intercept, lo, hi = theilslopes(y, x, 0.95)
+
+# scikit-learn — multivariate Theil-Sen (subsamples in high-D)
+from sklearn.linear_model import TheilSenRegressor
+ts = TheilSenRegressor(random_state=0).fit(X, y)
+robust_line = (ts.coef_, ts.intercept_)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-10 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧭 Five ways to fit through outliers — and where Theil–Sen sits</h3>
+      <div style="overflow-x:auto">
+      <table class="cmp">
+        <tr><th style="width:150px"></th><th>📉 Least squares (OLS)</th><th>🪨 Huber (Day 52)</th><th>🧮 Theil–Sen (Day 53)</th><th>🗳️ RANSAC (Day 51)</th><th>📏 LAD / L1</th></tr>
+        <tr><td class="cat">Core idea</td><td>minimise Σr²</td><td>½r² then linear tails</td><td><b>median of pairwise slopes</b></td><td>sample + consensus vote</td><td>minimise Σ|r|</td></tr>
+        <tr><td class="cat">Uses every point?</td><td>✅</td><td>✅ (down-weighted)</td><td><b>✅ (all pairs)</b></td><td>❌ inliers only</td><td>✅</td></tr>
+        <tr><td class="cat">Breakdown point</td><td><b>0%</b></td><td>~0% (high-leverage)</td><td><b>~29.3%</b></td><td><b>up to ~50%+</b></td><td>~0% (high-leverage)</td></tr>
+        <tr><td class="cat">Deterministic?</td><td>✅</td><td>✅</td><td><b>✅ exact</b></td><td>❌ random samples</td><td>✅</td></tr>
+        <tr><td class="cat">Needs a threshold / tuning?</td><td>no</td><td>tuning δ</td><td><b>no — none at all</b></td><td>yes — inlier band</td><td>no</td></tr>
+        <tr><td class="cat">Cost</td><td>O(n) closed form</td><td>a few IRLS passes</td><td><b>O(n²) slopes</b></td><td>N samples × O(n)</td><td>LP / IRLS</td></tr>
+        <tr><td class="cat">Best when</td><td>clean, Gaussian noise</td><td>a few mild outliers, keep efficiency</td><td><b>moderate outliers, 1-D / low-D, want zero tuning</b></td><td>many outliers + a threshold</td><td>heavy-tailed noise</td></tr>
+      </table>
+      </div>
+      <p class="text-xs text-slate-500 mt-3">The trade is <em>how much contamination you expect and how much you are willing to configure</em>. <b>OLS</b> is optimal on clean Gaussian noise and useless the instant one high-leverage point appears. <b>Huber (Day 52)</b> keeps least-squares' smoothness but grades big residuals down to linear, tolerating a <em>few mild</em> outliers while still bending toward a gross one. <b>Theil–Sen</b> is the elegant middle: no loss, no iteration, no threshold — just the median of every pairwise slope — deterministic and robust to nearly <b>29%</b> contamination, at an O(n²) cost that is trivial for the small, low-dimensional problems it shines on (it is a favourite for trend estimation in climate and econometrics). <b>RANSAC (Day 51)</b> makes the opposite bet: throw points away and sample for a consensus, tolerating well past half the data as garbage — but it is random, needs a threshold, and is not smooth. <b>LAD / L1</b> minimises absolute error — robust to vertical outliers but, like Huber and OLS, defenceless against a high-leverage point in x. Theil–Sen's genius is that it buys real, tuning-free robustness with nothing more exotic than the median — the same reason it, like all these methods, still bends to a point placed far out in x.</p>
+    </div>
+
+    <div class="mt-8 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 53 of MachineLearningFromZero done — the robust line you fit with a median.</h3><p class="text-sm text-sky-700 mt-2"><strong>The Theil–Sen estimator</strong> replaces least-squares' fragile sum-of-squares with the humblest robust idea in statistics: the slope between two points is a slope estimate, so compute it for <span style="color:#0ea5e9;font-weight:700">all n(n−1)/2 pairs</span> and take the <span style="color:#16a34a;font-weight:700">median</span>; the intercept is <code>median(yᵢ − m·xᵢ)</code>. Because the median depends only on rank and an outlier corrupts only the minority of pairs it touches — pairs whose slopes fall harmlessly into the <em>tails</em> — the fit is unmoved until nearly <strong>29.3%</strong> of the data is contaminated, versus a single point for OLS, and it needs <strong>no loss function, no iteration, no threshold, and no randomness</strong>: the estimate is exact and deterministic. Its one cost is the O(n²) sweep over pairs, cheap for the small, low-dimensional trend problems where it is beloved, and generalised by scikit-learn to higher dimensions via subsampling. That places Theil–Sen between the smooth all-points estimators — OLS and <span style="color:#dc2626;font-weight:700">Huber (Day 52)</span> — and the sample-and-vote world of <span style="color:#9333ea;font-weight:700">RANSAC (Day 51)</span>: more robust and simpler to use than Huber, more deterministic and tuning-free than RANSAC, but still bendable by a high-leverage point far out in x. <strong>👉 When your data is one- or low-dimensional, you expect up to a quarter of it to be junk, and you want a robust slope with literally nothing to tune, reach for Theil–Sen.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+const el = id => document.getElementById(id);
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function randn(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function setDiag(box, c, t, b){ box.className="diag "+c+" mt-3 text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+function setDiagWide(box, c, t, b){ box.className="diag "+c+" mt-6 max-w-4xl mx-auto text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+const fmt=(x,d=2)=>Number(x).toFixed(d);
+const clampD=v=>Math.max(0.2,Math.min(9.8,v));
+function median(a){ if(!a.length) return 0; const s=a.slice().sort((x,y)=>x-y); const n=s.length; return n%2? s[(n-1)/2] : 0.5*(s[n/2-1]+s[n/2]); }
+const avg=a=>a.length? a.reduce((s,x)=>s+x,0)/a.length : 0;
+
+/* ================================================================
+   CORE: ordinary least squares, pairwise slopes, Theil–Sen
+   ================================================================ */
+// ordinary least-squares line (all points)
+function olsFit(pts){
+  const n=pts.length; if(n<2) return null;
+  let sx=0,sy=0,sxx=0,sxy=0; for(const p of pts){ sx+=p.x; sy+=p.y; sxx+=p.x*p.x; sxy+=p.x*p.y; }
+  const den=n*sxx-sx*sx; if(Math.abs(den)<1e-12) return null;
+  const m=(n*sxy-sx*sy)/den; return { m, b:(sy-m*sx)/n };
+}
+// the slope of every unordered pair (skip vertical pairs)
+function pairwiseSlopes(pts){
+  const s=[];
+  for(let i=0;i<pts.length;i++) for(let j=i+1;j<pts.length;j++){ const dx=pts[j].x-pts[i].x; if(Math.abs(dx)>1e-9) s.push((pts[j].y-pts[i].y)/dx); }
+  return s;
+}
+// Theil–Sen: slope = median of pairwise slopes, intercept = median(yᵢ − m·xᵢ)
+function theilSen(pts){
+  const slopes=pairwiseSlopes(pts); if(!slopes.length) return null;
+  const m=median(slopes); const ints=pts.map(p=>p.y-m*p.x); return { m, b:median(ints) };
+}
+
+/* ================================================================
+   viewport mapping (domain 0..10 in x and y)
+   ================================================================ */
+const V={XMIN:0,XMAX:10,YMIN:0,YMAX:10,ML:34,MR:14,MT:14,MB:26};
+function pxX(cv,x){ return V.ML + (cv.width-V.ML-V.MR)*(x-V.XMIN)/(V.XMAX-V.XMIN); }
+function pxY(cv,y){ const y0=V.MT,y1=cv.height-V.MB; return y1-(y1-y0)*(y-V.YMIN)/(V.YMAX-V.YMIN); }
+function invX(cv,p){ return V.XMIN+(p-V.ML)/(cv.width-V.ML-V.MR)*(V.XMAX-V.XMIN); }
+function invY(cv,p){ const y0=V.MT,y1=cv.height-V.MB; return V.YMIN+(y1-p)/(y1-y0)*(V.YMAX-V.YMIN); }
+function plotClip(cv,ctx){ ctx.beginPath(); ctx.rect(V.ML,V.MT,cv.width-V.ML-V.MR,cv.height-V.MB-V.MT); ctx.clip(); }
+function drawAxes(cv,ctx){
+  const W=cv.width,H=cv.height, y0=V.MT,y1=H-V.MB;
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1;
+  for(let g=0;g<=5;g++){ const yy=y0+(y1-y0)*g/5; ctx.beginPath();ctx.moveTo(V.ML,yy);ctx.lineTo(W-V.MR,yy);ctx.stroke(); }
+  for(let g=0;g<=5;g++){ const xx=V.ML+(W-V.ML-V.MR)*g/5; ctx.beginPath();ctx.moveTo(xx,y0);ctx.lineTo(xx,y1);ctx.stroke(); }
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(V.ML,y0); ctx.lineTo(V.ML,y1); ctx.lineTo(W-V.MR,y1); ctx.stroke();
+  ctx.fillStyle='#94a3b8'; ctx.font='9px monospace'; ctx.textAlign='center';
+  for(let t=0;t<=10;t+=2){ ctx.fillText(t, pxX(cv,t), y1+11); }
+}
+function strokeLine(cv,ctx,model,color,lw,dash){
+  if(!model) return; ctx.save(); plotClip(cv,ctx);
+  ctx.strokeStyle=color; ctx.lineWidth=lw; if(dash)ctx.setLineDash(dash);
+  const x0=V.XMIN, x1=V.XMAX;
+  ctx.beginPath(); ctx.moveTo(pxX(cv,x0),pxY(cv,model.m*x0+model.b)); ctx.lineTo(pxX(cv,x1),pxY(cv,model.m*x1+model.b)); ctx.stroke();
+  ctx.restore();
+}
+
+/* ================================================================
+   MODULE LIVE — median of pairwise slopes, live drag/add
+   ================================================================ */
+const TS = {
+  pts:[], trueM:0.55, trueB:2.4, noise:0.32,
+  nInliers:26, nOutliers:6, scenario:'few',
+  drag:null
+};
+function tsOutlier(rng){
+  const sc=TS.scenario; let x,y;
+  if(sc==='leverage'){ x=8+1.6*rng(); y=0.4+1.6*rng(); }                       // high-leverage bottom-right
+  else if(sc==='twosided'){ if(rng()<0.5){ x=0.8+8.4*rng(); y=8+1.6*rng(); } else { x=0.8+8.4*rng(); y=0.4+1.4*rng(); } }
+  else { x=0.8+8.4*rng(); y=7.6+2*rng(); }                                     // y-outliers up high
+  return { x:clampD(x), y:clampD(y), truth:'out' };
+}
+function tsMakeData(){
+  const rng=mulberry32((Math.random()*1e9)>>>0);
+  const pts=[];
+  for(let i=0;i<TS.nInliers;i++){ const x=0.6+8.8*rng(); const y=TS.trueM*x+TS.trueB+TS.noise*randn(rng); pts.push({x, y:clampD(y), truth:'in'}); }
+  for(let i=0;i<TS.nOutliers;i++){ pts.push(tsOutlier(rng)); }
+  TS.pts=pts; TS.drag=null;
+}
+function tsResetOutliers(){ TS.pts=TS.pts.filter(p=>p.truth==='in'); TS.nOutliers=0; el('tOut').value=0; el('tOutV').textContent=0; }
+function tsSyncOutCount(){ TS.nOutliers=TS.pts.filter(p=>p.truth==='out').length; el('tOut').value=Math.min(30,TS.nOutliers); el('tOutV').textContent=TS.nOutliers; }
+function tsNearest(cv,px,py){
+  let best=-1, bd=13*13;
+  for(let i=0;i<TS.pts.length;i++){ const X=pxX(cv,TS.pts[i].x),Y=pxY(cv,TS.pts[i].y); const d=(X-px)*(X-px)+(Y-py)*(Y-py); if(d<bd){ bd=d; best=i; } }
+  return best;
+}
+function tsDraw(){
+  const cv=el('tCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height); ctx.setLineDash([]); drawAxes(cv,ctx);
+  const showOls=el('tShowOls').checked, showPairs=el('tShowPairs').checked, showTrue=el('tShowTrue').checked;
+  const ols=olsFit(TS.pts), ts=theilSen(TS.pts), n=TS.pts.length;
+  // faint pairwise segments (the very slopes we take the median of)
+  if(showPairs && n>=2){
+    ctx.save(); plotClip(cv,ctx); ctx.strokeStyle='rgba(148,163,184,0.30)'; ctx.lineWidth=1;
+    const pairs=n*(n-1)/2; const step = pairs>420 ? Math.ceil(pairs/420) : 1; let c=0;
+    for(let i=0;i<n;i++) for(let j=i+1;j<n;j++){ if((c++%step)!==0) continue;
+      ctx.beginPath(); ctx.moveTo(pxX(cv,TS.pts[i].x),pxY(cv,TS.pts[i].y)); ctx.lineTo(pxX(cv,TS.pts[j].x),pxY(cv,TS.pts[j].y)); ctx.stroke(); }
+    ctx.restore();
+  }
+  if(showTrue) strokeLine(cv,ctx,{m:TS.trueM,b:TS.trueB},'#64748b',1.6,[3,3]);
+  if(showOls && ols) strokeLine(cv,ctx,ols,'#dc2626',2.4,[6,4]);
+  if(ts) strokeLine(cv,ctx,ts,'#16a34a',3.2,null);
+  // points
+  for(let i=0;i<n;i++){ const p=TS.pts[i]; const X=pxX(cv,p.x),Y=pxY(cv,p.y);
+    if(p.truth==='out'){ ctx.beginPath();ctx.arc(X,Y,4,0,7);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle='#f43f5e';ctx.lineWidth=1.7;ctx.stroke(); }
+    else { ctx.beginPath();ctx.arc(X,Y,3.8,0,7);ctx.fillStyle='#0ea5e9';ctx.fill(); }
+  }
+  // metrics
+  el('tN').textContent=n;
+  el('tPairs').textContent=n>=2 ? (n*(n-1)/2) : 0;
+  el('tTS').textContent=ts?fmt(ts.m,2):'—';
+  el('tOls').textContent=ols?fmt(ols.m,2):'—';
+  tsDiag(ols,ts);
+}
+function tsDiag(ols,ts){
+  const box=el('tDiag'); const n=TS.pts.length;
+  if(n<2 || !ts){ setDiag(box,'diag-info','Add points to fit','Load a scenario, drag a point, or click the canvas to scatter points.'); return; }
+  const nOut=TS.pts.filter(p=>p.truth==='out').length;
+  const tErr=Math.abs(ts.m-TS.trueM), oErr=ols?Math.abs(ols.m-TS.trueM):0;
+  if(nOut===0){
+    setDiag(box,'diag-info','🧮 No outliers yet — Theil–Sen and OLS nearly agree',
+      `With clean data the median-of-slopes line (<b>${fmt(ts.m,2)}</b>) and least-squares (<b>${ols?fmt(ols.m,2):'—'}</b>) both track the true slope <b>${fmt(TS.trueM,2)}</b>. Add outliers (a scenario, a drag, or a click) and watch the <span style="color:#dc2626;font-weight:700">red</span> OLS line get dragged away while the <span style="color:#16a34a;font-weight:700">green</span> Theil–Sen line holds. Tick <b>show all pairwise segments</b> to see the ${n*(n-1)/2} slopes it takes the median of.`);
+    return;
+  }
+  if(tErr<oErr){
+    setDiag(box,'diag-good',`✅ Theil–Sen holds: slope ${fmt(ts.m,2)} vs true ${fmt(TS.trueM,2)} (OLS ${ols?fmt(ols.m,2):'—'})`,
+      `<b>${nOut}</b> outlier(s) spoil only the pairs that touch them — a minority of the <b>${n*(n-1)/2}</b> pairwise slopes — so their extreme slopes fall in the tails and the median steps over them. Theil–Sen's slope error is <b>${fmt(tErr,2)}</b> versus least-squares' <b>${fmt(oErr,2)}</b> (${fmt(oErr/(tErr||1e-6),1)}× worse) on the very same points. No loss, no iteration, no threshold — just two medians.`);
+  } else {
+    setDiag(box,'diag-warn',`⚠️ Theil–Sen didn't clearly beat OLS here (slope ${fmt(ts.m,2)} vs ${ols?fmt(ols.m,2):'—'})`,
+      `With very few outliers, outliers placed near the true line, or a <b>high-leverage</b> point far out in x (the <b>leverage</b> scenario), Theil–Sen's edge shrinks — its breakdown point is ~29%, and a leveraged point can keep a small residual and still tilt the pairwise slopes. Add more <b>outliers</b> up high in y, or push a point far off the line, to see the median hold where OLS breaks. Theil–Sen error ${fmt(tErr,2)}, OLS error ${fmt(oErr,2)}.`);
+  }
+}
+function tsBuildScenarioButtons(){
+  const wrap=el('tPresets'); wrap.innerHTML='';
+  [['few','🌤️ a few outliers'],['many','💥 many outliers'],['twosided','↕ two-sided'],['leverage','🏋️ high leverage']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(TS.scenario===id?' on':''); b.textContent=label;
+    b.onclick=()=>{
+      TS.scenario=id;
+      TS.nOutliers = id==='few'?6:(id==='many'?16:(id==='leverage'?9:12));
+      el('tOut').value=TS.nOutliers; el('tOutV').textContent=TS.nOutliers;
+      tsMakeData(); tsBuildScenarioButtons(); tsDraw();
+    };
+    wrap.appendChild(b);
+  });
+}
+el('tOut').addEventListener('input',e=>{
+  const want=+e.target.value; el('tOutV').textContent=want;
+  let outs=TS.pts.filter(p=>p.truth==='out'), ins=TS.pts.filter(p=>p.truth==='in');
+  const rng=mulberry32((Math.random()*1e9)>>>0);
+  while(outs.length>want) outs.pop();
+  while(outs.length<want) outs.push(tsOutlier(rng));
+  TS.pts=ins.concat(outs); TS.nOutliers=want; tsDraw();
+});
+el('tNew').onclick=()=>{ tsMakeData(); tsDraw(); };
+el('tReset').onclick=()=>{ tsResetOutliers(); tsDraw(); };
+el('tShowOls').addEventListener('change',tsDraw);
+el('tShowPairs').addEventListener('change',tsDraw);
+el('tShowTrue').addEventListener('change',tsDraw);
+function tsPointer(ev){ const cv=ev.currentTarget; const r=cv.getBoundingClientRect(); return { cv, px:(ev.clientX-r.left)*(cv.width/r.width), py:(ev.clientY-r.top)*(cv.height/r.height) }; }
+el('tCanvas').addEventListener('pointerdown',ev=>{
+  const {cv,px,py}=tsPointer(ev); const i=tsNearest(cv,px,py);
+  if(i>=0){ TS.drag=i; try{ cv.setPointerCapture(ev.pointerId); }catch(e){} }
+  else { const x=Math.max(V.XMIN,Math.min(V.XMAX,invX(cv,px))), y=Math.max(V.YMIN,Math.min(V.YMAX,invY(cv,py))); TS.pts.push({x,y,truth:'out'}); tsSyncOutCount(); tsDraw(); }
+});
+el('tCanvas').addEventListener('pointermove',ev=>{
+  if(TS.drag==null) return; const {cv,px,py}=tsPointer(ev);
+  TS.pts[TS.drag].x=Math.max(V.XMIN,Math.min(V.XMAX,invX(cv,px)));
+  TS.pts[TS.drag].y=Math.max(V.YMIN,Math.min(V.YMAX,invY(cv,py)));
+  tsDraw();
+});
+window.addEventListener('pointerup',()=>{ TS.drag=null; });
+
+/* ================================================================
+   MODULE HIST — the distribution of all pairwise slopes
+   ================================================================ */
+const SL={ trueM:0.55, trueB:2.4, offset:2.5, count:10 };
+function slData(){
+  const rng=mulberry32(2024); const pts=[];
+  for(let i=0;i<32;i++){ const x=0.6+8.8*rng(); const y=SL.trueM*x+SL.trueB+0.3*randn(rng); pts.push({x, y:clampD(y)}); }
+  const rng2=mulberry32(99); const baseY=5+SL.offset;
+  for(let i=0;i<SL.count;i++){ const x=6.4+2.6*rng2(); const y=clampD(baseY+0.5*randn(rng2)); pts.push({x,y}); }
+  return pts;
+}
+function slDraw(){
+  const cv=el('sCanvas'); if(!cv) return; const ctx=cv.getContext('2d'); const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H); ctx.setLineDash([]);
+  const ml=40,mr=14,mt=16,mb=30; const x0=ml,x1=W-mr,y0=mt,y1=H-mb;
+  const pts=slData(); const slopes=pairwiseSlopes(pts);
+  const med=median(slopes), mean=avg(slopes);
+  const SMIN=-3, SMAX=3, BINS=48;
+  const bins=new Array(BINS).fill(0);
+  for(const s of slopes){ let b=Math.floor((s-SMIN)/(SMAX-SMIN)*BINS); b=Math.max(0,Math.min(BINS-1,b)); bins[b]++; }
+  const maxc=Math.max(1,...bins);
+  const SX=s=>x0+(x1-x0)*(Math.max(SMIN,Math.min(SMAX,s))-SMIN)/(SMAX-SMIN);
+  // y gridlines
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1;
+  for(let g=0;g<=4;g++){ const yy=y0+(y1-y0)*g/4; ctx.beginPath();ctx.moveTo(x0,yy);ctx.lineTo(x1,yy);ctx.stroke(); }
+  // bars
+  const bw=(x1-x0)/BINS;
+  for(let i=0;i<BINS;i++){ if(!bins[i]) continue; const h=(y1-y0)*bins[i]/maxc; ctx.fillStyle='#bae6fd'; ctx.fillRect(x0+i*bw+0.5,y1-h,bw-1,h); }
+  // marker lines
+  function vline(s,color,lw,label,ly){ const X=SX(s); ctx.strokeStyle=color; ctx.lineWidth=lw; ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(X,y0); ctx.lineTo(X,y1); ctx.stroke(); ctx.fillStyle=color; ctx.font='bold 10px monospace'; ctx.textAlign='center'; ctx.fillText(label,Math.max(x0+14,Math.min(x1-14,X)),ly); }
+  vline(SL.trueM,'#64748b',1.6,'true',y0+11);
+  vline(mean,'#dc2626',2,'mean',y0+24);
+  vline(med,'#16a34a',2.6,'median',y0+37);
+  // axes + x ticks (slope)
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x0,y1); ctx.lineTo(x1,y1); ctx.stroke();
+  ctx.fillStyle='#94a3b8'; ctx.font='9px monospace'; ctx.textAlign='center';
+  for(let s=SMIN;s<=SMAX;s+=1){ ctx.fillText(s, SX(s), y1+11); }
+  ctx.fillStyle='#64748b'; ctx.font='10px sans-serif'; ctx.fillText('pairwise slope  (→)',(x0+x1)/2,H-3);
+  // metrics
+  el('sPairs').textContent=slopes.length;
+  el('sTrue').textContent=fmt(SL.trueM,2);
+  el('sMed').textContent=fmt(med,2);
+  el('sMean').textContent=fmt(mean,2);
+  slDiag(med,mean);
+}
+function slDiag(med,mean){
+  const box=el('sDiag');
+  const medErr=Math.abs(med-SL.trueM), meanErr=Math.abs(mean-SL.trueM);
+  setDiag(box,'diag-info',`📊 median ${fmt(med,2)} vs mean ${fmt(mean,2)} — true ${fmt(SL.trueM,2)}`,
+    `The <b>${SL.count}</b> outliers create pairwise slopes that pile into the <b>tails</b> of this histogram. The <span style="color:#dc2626;font-weight:700">mean</span> is pulled toward them — error <b>${fmt(meanErr,2)}</b> — which is exactly how a lone outlier drags least-squares. The <span style="color:#16a34a;font-weight:700">median</span> only cares about rank, so it stays near the bulk — error <b>${fmt(medErr,2)}</b>. Slide the offset out: the mean marker chases the tail while the median barely stirs. Only when the outliers approach ~29% of the points do enough pairs go bad to shift the median.`);
+}
+el('sOff').addEventListener('input',e=>{ SL.offset=+e.target.value; el('sOffV').textContent=(SL.offset>=0?'+':'')+fmt(SL.offset,1); slDraw(); });
+el('sCount').addEventListener('input',e=>{ SL.count=+e.target.value; el('sCountV').textContent=SL.count; slDraw(); });
+
+/* ================================================================
+   MODULE VS — drag the outlier: OLS vs Theil–Sen
+   ================================================================ */
+const VS={ inliers:[], trueM:0.55, trueB:2.2, offset:2.5, count:12 };
+function vsBuildInliers(){ const rng=mulberry32(12345); const out=[]; for(let i=0;i<40;i++){ const x=0.6+8.8*rng(); const y=VS.trueM*x+VS.trueB+0.3*randn(rng); out.push({x,y:clampD(y)}); } VS.inliers=out; }
+function vsData(){
+  const pts=VS.inliers.map(p=>({x:p.x,y:p.y,truth:'in'}));
+  const rng=mulberry32(777); const baseY=5+VS.offset;
+  for(let i=0;i<VS.count;i++){ const x=6.5+2.6*rng(); const y=baseY+0.5*randn(rng); pts.push({x:clampD(x), y:clampD(y), truth:'out'}); }
+  return pts;
+}
+function vsDraw(){
+  const cv=el('vCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height); ctx.setLineDash([]); drawAxes(cv,ctx);
+  const pts=vsData(); const ols=olsFit(pts), ts=theilSen(pts);
+  strokeLine(cv,ctx,{m:VS.trueM,b:VS.trueB},'#64748b',1.8,[4,4]);
+  if(ols) strokeLine(cv,ctx,ols,'#dc2626',2.6,[6,4]);
+  if(ts) strokeLine(cv,ctx,ts,'#16a34a',3,null);
+  for(const p of pts){ const X=pxX(cv,p.x),Y=pxY(cv,p.y);
+    if(p.truth==='out'){ ctx.beginPath();ctx.arc(X,Y,3.8,0,7);ctx.fillStyle='#fff';ctx.fill();ctx.strokeStyle='#f43f5e';ctx.lineWidth=1.7;ctx.stroke(); }
+    else { ctx.beginPath();ctx.arc(X,Y,3.4,0,7);ctx.fillStyle='#0ea5e9';ctx.fill(); }
+  }
+  const oErr=ols?Math.abs(ols.m-VS.trueM):0, tErr=ts?Math.abs(ts.m-VS.trueM):0;
+  el('vTrue').textContent=fmt(VS.trueM,2);
+  el('vOls').textContent=ols?fmt(ols.m,2):'—';
+  el('vTS').textContent=ts?fmt(ts.m,2):'—';
+  el('vErr').textContent=(tErr>1e-6)? fmt(oErr/tErr,1)+'×' : '—';
+  vsDiag(ols,ts,oErr,tErr);
+}
+function vsDiag(ols,ts,oErr,tErr){
+  const box=el('vDiag');
+  setDiagWide(box,'diag-info',`⚖️ offset ${VS.offset>=0?'+':''}${fmt(VS.offset,1)} · ${VS.count} outliers — OLS ${ols?fmt(ols.m,2):'—'} · Theil–Sen ${ts?fmt(ts.m,2):'—'} (true ${fmt(VS.trueM,2)})`,
+    `The <span style="color:#dc2626;font-weight:700">red</span> least-squares line is fit to <em>all</em> points, so pushing the cluster away bends it toward the outliers — slope error <b>${fmt(oErr,2)}</b>. The <span style="color:#16a34a;font-weight:700">green</span> Theil–Sen line takes the median of all pairwise slopes and barely moves — error <b>${fmt(tErr,2)}</b>, about <b>${tErr>1e-6?fmt(oErr/tErr,1):'∞'}×</b> tighter — because the outlier-born slopes are a minority that fall in the tails, and the median steps over them. This is the whole message: no loss, no iteration, no threshold, just a median — robust up to ~29% contamination. Push the count past a quarter of the data, or drag a point far out in x, and even Theil–Sen bends, which is where a sampling method like RANSAC (Day 51) takes over.`);
+}
+el('vLev').addEventListener('input',e=>{ VS.offset=+e.target.value; el('vLevV').textContent=(VS.offset>=0?'+':'')+fmt(VS.offset,1); vsDraw(); });
+el('vCount').addEventListener('input',e=>{ VS.count=+e.target.value; el('vCountV').textContent=VS.count; vsDraw(); });
+
+/* ================================================================
+   sub-nav wiring
+   ================================================================ */
+const subBtns=document.querySelectorAll("#subnav [data-mod]");
+function showMod(m){
+  document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden"));
+  el("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m));
+  if(m==="live") tsDraw();
+  if(m==="hist") slDraw();
+  if(m==="vs") vsDraw();
+}
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+/* ================================================================
+   init
+   ================================================================ */
+tsMakeData(); tsBuildScenarioButtons();
+vsBuildInliers();
+document.querySelector('[data-mod="live"]').classList.add("on");
+showMod("live");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. Why squared error breaks on a single outlier", why:"Ordinary least squares picks the line minimising the sum of SQUARED vertical residuals. Squaring is the whole problem: a point twice as far off contributes four times the penalty, ten times as far a hundred times. So the fit is dominated by whichever point is farthest, and a single gross outlier — a mislabelled sample, a sensor glitch — can pull the entire line away from every honest measurement just to shrink that one enormous squared term. Statisticians measure this with the breakdown point: the smallest fraction of contaminated data that can send an estimate to infinity. For OLS it is zero — one bad point out of a million is enough. Theil–Sen's answer is not to reweight or to sample, but to replace the fragile average at the heart of least squares with a MEDIAN, which a minority of bad values cannot move.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">OLS minimises Σ (yᵢ − (m·xᵢ+b))²<br><br>residual 2× → penalty 4× · residual 10× → penalty 100×<br>one far point → HUGE squared term → line pivots to it<br><br>breakdown point of OLS = 0%<br>the fix: summarise with a MEDIAN, not a mean</div>`, code:`# least squares: one outlier hijacks the slope
+import numpy as np
+x = np.arange(20.0); y = 0.5*x + 1 + 0.1*np.random.randn(20)
+y[7] = 40                       # a single wild point
+m, b = np.polyfit(x, y, 1)      # closed-form OLS
+print(round(m, 2))              # nowhere near 0.5 — dragged away` },
+ { title:"2. A slope from every pair of points", why:"Theil–Sen starts from the most elementary fact in geometry: two points define a line, and its slope is rise over run. Any pair of your data points is therefore an independent little estimate of the underlying slope. The move that makes the method is to do this for EVERY unordered pair — all n(n−1)/2 of them. Most pairs are two inliers, and each such pair gives a slope close to the truth; only the pairs that happen to include an outlier are corrupted. Crucially, an outlier can belong to at most n−1 pairs, so for large n the corrupted slopes are a small minority. Instead of blending every point into one fragile average, you have turned the problem into a large population of slope votes, most of them honest — and a population is something a median can summarise robustly.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">two points → one slope:  m_ij = (yⱼ − yᵢ)/(xⱼ − xᵢ)<br><br>do it for ALL pairs → n(n−1)/2 slope estimates<br>clean pair (in,in) → good slope · pair with an outlier → wild<br><br>an outlier spoils ≤ n−1 pairs → a MINORITY for large n</div>`, code:`function allPairSlopes(pts) {
+  const s = [];
+  for (let i = 0; i < pts.length; i++)
+    for (let j = i + 1; j < pts.length; j++) {
+      const dx = pts[j].x - pts[i].x;
+      if (Math.abs(dx) > 1e-9) s.push((pts[j].y - pts[i].y) / dx);
+    }
+  return s;                       // n(n−1)/2 slope votes
+}` },
+ { title:"3. The median of the slopes = the slope", why:"Take that whole population of pairwise slopes and report its MEDIAN. That single choice is the entire source of Theil–Sen's robustness. The median depends only on the RANK of the values, not their magnitudes: you can push nearly half of them to plus or minus infinity and the middle value does not budge. The corrupted, outlier-born slopes are extreme, so they sort to the far ends of the list — the tails — and the median in the centre steps right over them. Contrast this with the mean, which every extreme value tugs on; the mean of the pairwise slopes would inherit least-squares' fragility, but the median is immune to a minority of them. This is the same reason the median income of a town barely changes when a billionaire moves in, while the mean lurches. Robustness here is not a clever trick bolted on — it is a direct property of choosing the median as your summary.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">sort all pairwise slopes, take the middle one<br><br>median cares about RANK, not magnitude<br>outlier slopes are extreme → they sort to the TAILS<br>→ the median in the centre never sees them<br><br>mean chases outliers · median steps over them</div>`, code:`function median(a) {
+  const s = a.slice().sort((x, y) => x - y);   // rank the values
+  const n = s.length;
+  return n % 2 ? s[(n - 1) / 2]
+               : 0.5 * (s[n/2 - 1] + s[n/2]);
+}
+const slope = median(allPairSlopes(pts));      // robust slope` },
+ { title:"4. The intercept — a second median", why:"A slope alone is not a line; you still need the intercept. Theil–Sen finds it with the same idea a second time. Having fixed the slope m, each data point implies an intercept bᵢ = yᵢ − m·xᵢ — the height at which a line of slope m would have to sit to pass through that point. Take the MEDIAN of those n intercepts and you have b. Geometrically this places the line so that half the points sit above it and half below, at the chosen slope — the most robust possible centring. (Some variants instead pass the line through the median x and median y, or take the median of the residuals; the yᵢ − m·xᵢ median is the standard Theil–Sen intercept.) Two medians — one over pairs for the slope, one over points for the intercept — and the estimator is complete. There is no optimisation to run, nothing to initialise, and nothing that could fail to converge.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">given slope m, each point wants intercept bᵢ = yᵢ − m·xᵢ<br><br>b = median( bᵢ )<br>→ half the points above the line, half below<br><br>slope = median over PAIRS · intercept = median over POINTS<br>y = m·x + b  — no loss, no iteration, no tuning</div>`, code:`function theilSen(pts) {
+  const m = median(allPairSlopes(pts));            // slope
+  const intercepts = pts.map(p => p.y - m * p.x);  // bᵢ for each point
+  const b = median(intercepts);                    // intercept
+  return { m, b };                                 // the whole estimator
+}` },
+ { title:"5. The breakdown point — why ~29.3%", why:"How much contamination can Theil–Sen absorb? The median of a plain list breaks at 50%: once half-plus-one of the values are corrupt, the middle value is one of them. But Theil–Sen's slope is a median of PAIRS, and a pair is clean only if BOTH its members are inliers. If a fraction ε of the points are outliers, a random pair is clean with probability (1−ε)² and corrupt with probability 1−(1−ε)². The slope-median is safe until corrupt pairs reach half the population, i.e. (1−ε)² = ½, which solves to ε = 1 − 1/√2 ≈ 0.293. So Theil–Sen tolerates just under 29.3% arbitrary contamination — dramatically better than OLS's 0% and LAD's 0% under leverage, though short of RANSAC's or least-median-of-squares' ~50%. The pairing is a double-edged sword: it turns n points into a robust population of slopes, but because badness compounds across the two members of a pair, the breakdown lands at 29% rather than the median's full 50%.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">a pair is clean ⇔ BOTH points are inliers<br>P(clean pair) = (1 − ε)²<br><br>slope-median tips when clean pairs = ½:<br>(1 − ε)² = ½  →  ε = 1 − 1/√2 ≈ 0.293<br><br>OLS 0% · LAD ~0% · Theil–Sen 29.3% · RANSAC/LMS ~50%</div>`, code:`# breakdown-point algebra
+# clean pair needs two inliers: (1-eps)^2
+# median of slopes tips at half-bad pairs:
+#   (1-eps)^2 = 0.5  ->  eps = 1 - 1/2**0.5
+print(round(1 - 1/2**0.5, 4))    # 0.2929  ≈ 29.3%` },
+ { title:"6. The cost — O(n²) and how the libraries scale it", why:"Theil–Sen's simplicity has one price: enumerating every pair is O(n²) in time and, done naively, memory. For a few hundred or a few thousand points — the trend lines, the 1-D calibrations, the climate and hydrology series where Theil–Sen is a standard tool — that is nothing. But at a million points, n² is a trillion pairs, so the practical estimators do two things. First, in a single predictor there is an O(n log n) selection algorithm that finds the median slope without materialising all pairs. Second, in MULTIPLE dimensions there is no 'pair' that determines a hyperplane, so scikit-learn's TheilSenRegressor draws many random SUBSETS of (n_features + 1) points, fits each exactly, and takes the spatial median of the resulting parameter vectors — a Monte-Carlo generalisation whose robustness and cost you tune with the number of subsamples. The pure two-median formula is the 1-D heart; the libraries wrap it for scale and dimension.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">all pairs = n(n−1)/2 = O(n²)<br>fine for hundreds–thousands of points<br><br>1-D: O(n log n) median-slope selection (no full enumeration)<br>multi-D: no defining pair → random (d+1)-subsets<br>+ spatial median of the fits (scikit-learn)</div>`, code:`# SciPy — exact 1-D Theil–Sen + slope CI (efficient internally)
+from scipy.stats import theilslopes
+slope, intercept, lo, hi = theilslopes(y, x, 0.95)
+
+# scikit-learn — multivariate via random subsamples
+from sklearn.linear_model import TheilSenRegressor
+TheilSenRegressor(max_subpopulation=1e4).fit(X, y)` },
+ { title:"7. Where Theil–Sen fits — choosing your robust tool", why:"Theil–Sen occupies a sweet spot on the robust-regression spectrum: it is the estimator you reach for when you want real robustness with LITERALLY NOTHING to tune. Unlike Huber (Day 52) there is no δ to set; unlike RANSAC (Day 51) there is no inlier threshold, no iteration budget, and no randomness — the answer is exact and reproducible. It resists up to ~29% contamination, comes with a clean confidence interval for the slope, and is a mainstay of trend detection in environmental science and econometrics precisely because analysts trust a method with no knobs to fiddle. Its limits are honest and worth stating. Like OLS, Huber, and LAD, it defends against outliers in y but not against a HIGH-LEVERAGE point far out in x, which can quietly tilt the pairwise slopes; and the O(n²) pairing makes it awkward at very large n or high dimension without the library approximations. When contamination is heavy (past ~29%), or dominated by leverage points, step up to RANSAC or least-median-of-squares. But for a small, low-dimensional dataset with moderate junk and a desire for a deterministic, tuning-free robust line, Theil–Sen is hard to beat — the median, doing what the median does best.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">clean Gaussian → OLS (optimal)<br>a few MILD outliers, keep efficiency → Huber (δ dial)<br>moderate outliers, low-D, ZERO tuning → Theil–Sen ✅<br>heavy / high-leverage outliers → RANSAC · LMS<br><br>no threshold, no iteration, deterministic · breakdown 29%</div>`, code:`# scikit-learn — a robust regressor with nothing to tune
+from sklearn.linear_model import TheilSenRegressor
+ts = TheilSenRegressor(random_state=0).fit(X, y)
+print(ts.coef_, ts.intercept_)
+# moderate outliers, low-D → Theil–Sen
+# many / high-leverage → RANSAC (Day 51)` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
