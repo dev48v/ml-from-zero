@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 54 — Random Projections (Johnson–Lindenstrauss)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:170px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .swatch-box { display:inline-block; width:14px; height:10px; border-radius:3px; vertical-align:0; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .ds-btn { border:1px solid #e2e8f0; background:#fff; font-weight:800; font-size:12px; padding:6px 11px; border-radius:9px; transition:all .15s; }
+  .ds-btn.on { color:#fff; border-color:transparent; background:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  .btn-run { background:#16a34a; color:#fff; }
+  .btn-run:hover { background:#15803d; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 54</div>
+      <h1 class="text-xl font-bold">🎲 Random Projections — the almost-magical result that you can slash a dataset from <strong>thousands of dimensions down to a few dozen by multiplying it with a matrix of random numbers</strong>, and the geometry survives. No looking at the data, no eigenvectors, no training — just draw a <strong>random</strong> linear map <code>R</code> and send every point <code>x</code> to <code>(1/√k)·R·x</code>. The <strong>Johnson–Lindenstrauss lemma</strong> promises that for any set of <code>n</code> points there exists such a map into <code>k ≈ O(log n / ε²)</code> dimensions that preserves <em>every</em> pairwise distance within a factor of <code>(1 ± ε)</code> — and the astonishing part is that <code>k</code> depends only on how many points you have and how much distortion you'll tolerate, <strong>not on the original dimension D at all</strong>. A 10,000-dimensional bag-of-words and a 1,000,000-dimensional one collapse to the <em>same</em> target size. Why does a random direction preserve length? Because the squared length of a projected vector is a sum of <code>k</code> independent, identically-distributed contributions with mean equal to the true squared length — so by concentration of measure it clusters tightly around the truth, and the more directions <code>k</code> you keep the tighter it clusters. Everything below <strong>runs live in your browser</strong>: real points scattered in high-D, a random Gaussian (or sparse ±1 <span style="color:#0ea5e9;font-weight:700">Achlioptas</span>) matrix built by hand, and a scatter of <span style="color:#64748b;font-weight:700">original distance</span> vs <span style="color:#0ea5e9;font-weight:700">projected distance</span> that <span style="color:#16a34a;font-weight:700">hugs the diagonal</span> — with a live distortion histogram tightening and a <code>k</code> slider driving the error down like <code>1/√k</code>.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>You can compress data without ever looking at it.</strong> Multiply your points by a matrix of random numbers, keep only <code>k</code> of the output coordinates, and — provably — the distances between points barely change. That is <strong>random projection</strong>, and its licence is the <span style="color:#0ea5e9;font-weight:700">Johnson–Lindenstrauss lemma</span>: any <code>n</code> points in any number of dimensions can be mapped into <code>k ≈ O(log n / ε²)</code> dimensions so that every pairwise distance is preserved to within <code>(1 ± ε)</code>. The projected squared length of a vector is an <em>average</em> of <code>k</code> independent random contributions, each with the right mean, so it concentrates on the true value — and averaging more of them (bigger <code>k</code>) makes the estimate tighter. Below it is <strong>built from scratch, live</strong> — the random matrix, the projection, the pairwise distances in both spaces, the distortion histogram, and the <code>k</code>-vs-error curve — on data you choose and reshape yourself.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Distances survive the squeeze</strong> scatters real high-D points, projects them through a random matrix to <code>k</code> dimensions, and plots <span style="color:#64748b;font-weight:700">original distance</span> against <span style="color:#0ea5e9;font-weight:700">projected distance</span> — a cloud that <span style="color:#16a34a;font-weight:700">hugs the diagonal</span> the moment <code>k</code> is even modest; slide <code>k</code>, swap the random matrix for a <span style="color:#0ea5e9;font-weight:700">sparse ±1</span> one, or re-roll it, and watch the cloud tighten or loosen. <strong>The distortion histogram</strong> plots the distribution of distance ratios <code>projected ÷ original</code>: it stands as a spike at <strong>1.0</strong> and fattens as you shrink <code>k</code>, with the <code>(1 ± ε)</code> tolerance band drawn in — the visual of the JL guarantee. <strong>The JL bound</strong> sweeps <code>k</code> from tiny to large and traces the measured distortion falling like <code>1/√k</code>, marks where it drops below your chosen <code>ε</code>, and contrasts that with the (famously pessimistic) worst-case <code>k = O(log n / ε²)</code> the theorem guarantees. Every pixel is computed in-browser.</p>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="scatter" class="subnav-btn px-4 py-2 rounded-lg text-sm">📐 Distances survive the squeeze</button>
+        <button data-mod="hist"    class="subnav-btn px-4 py-2 rounded-lg text-sm">📊 The distortion histogram</button>
+        <button data-mod="jl"      class="subnav-btn px-4 py-2 rounded-lg text-sm">📉 The JL bound (k vs error)</button>
+      </div>
+
+      <!-- ============ MODULE: DISTANCE SCATTER ============ -->
+      <div id="mod-scatter" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="rpD" style="color:#64748b">—</div><div class="k">original dims D</div></div>
+          <div class="metric-pill"><div class="v" id="rpK" style="color:#0ea5e9">—</div><div class="k">target dims k</div></div>
+          <div class="metric-pill"><div class="v" id="rpMean" style="color:#16a34a">—</div><div class="k">mean dist. ratio</div></div>
+          <div class="metric-pill"><div class="v" id="rpRms" style="color:#dc2626">—</div><div class="k">RMS distortion</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE PROJECTION KNOBS</div>
+            <div class="ctl-row"><div class="ctl-name">🎯 target dims k</div><input type="range" id="rpKs" min="2" max="64" step="1" value="12"><div class="ctl-val" id="rpKsV">12</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔢 points n</div><input type="range" id="rpNs" min="30" max="110" step="2" value="70"><div class="ctl-val" id="rpNsV">70</div></div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🗂️ high-D dataset (D = 96)</div>
+              <div id="rpData" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-3">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🎲 random matrix R</div>
+              <div id="rpMat" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="rpNew"  class="bg-slate-500 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-400">🗂️ New data</button>
+              <button id="rpRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 Re-roll matrix</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> Each dot is one <em>pair</em> of points: its <b>x</b> is their distance in the full <b>96-D</b> space, its <b>y</b> is their distance after projection to <b>k</b> dims via <code>y = (1/√k)·R·x</code>. The <span style="color:#16a34a;font-weight:700">green dashed diagonal</span> is perfect preservation — dots on it means the distance survived exactly. <span style="color:#0ea5e9;font-weight:700">Blue</span> dots are within 10%, <span style="color:#f59e0b;font-weight:700">amber</span> within 25%, <span style="color:#dc2626;font-weight:700">red</span> worse. Raise <b>k</b> and the whole cloud collapses onto the diagonal.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:600px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📐 original distance → projected distance &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">the cloud should hug the diagonal</span></div>
+            <canvas id="rpCanvas" width="576" height="360"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#16a34a;border-top-style:dashed"></span> perfect preservation (y = x)</span>
+              <span><span class="swatch" style="background:#0ea5e9"></span> ≤10% off</span>
+              <span><span class="swatch" style="background:#f59e0b"></span> ≤25% off</span>
+              <span><span class="swatch" style="background:#dc2626"></span> &gt;25% off</span>
+            </div>
+            <div id="rpDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: DISTORTION HISTOGRAM ============ -->
+      <div id="mod-hist" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="hgMean" style="color:#16a34a">—</div><div class="k">mean ratio</div></div>
+          <div class="metric-pill"><div class="v" id="hgStd" style="color:#0ea5e9">—</div><div class="k">ratio std-dev</div></div>
+          <div class="metric-pill"><div class="v" id="hgIn" style="color:#0f172a">—</div><div class="k">within (1 ± ε)</div></div>
+          <div class="metric-pill"><div class="v" id="hgMax" style="color:#dc2626">—</div><div class="k">worst distortion</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">HOW TIGHT IS THE SPIKE AT 1.0?</div>
+            <div class="text-[11px] text-slate-500 mb-2">Every pairwise distance ratio <code>projected ÷ original</code> falls into a bin. Perfect preservation would be a single spike at <b>1.0</b>; real projection smears it — the smear is the distortion.</div>
+            <div class="ctl-row"><div class="ctl-name">🎯 target dims k</div><input type="range" id="hgKs" min="2" max="64" step="1" value="8"><div class="ctl-val" id="hgKsV">8</div></div>
+            <div class="ctl-row"><div class="ctl-name">📏 tolerance ε</div><input type="range" id="hgEps" min="0.05" max="0.5" step="0.01" value="0.20"><div class="ctl-val" id="hgEpsV">0.20</div></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[12px] text-slate-600 leading-relaxed text-center font-mono">
+              JL: (1 − ε)·‖xᵢ−xⱼ‖ ≤ ‖yᵢ−yⱼ‖ ≤ (1 + ε)·‖xᵢ−xⱼ‖
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Why it concentrates.</strong> The projected squared distance is <code>(1/k)·Σ</code> of <b>k</b> independent terms, each with mean equal to the true squared distance. Their average has variance <code>∝ 1/k</code>, so as <b>k</b> grows the histogram narrows into a spike at <b>1.0</b> — this is <em>concentration of measure</em>. The shaded band is the <code>(1 ± ε)</code> tolerance; the fraction of pairs inside it is the JL guarantee in the flesh. Shrink <b>k</b> and watch the tails spill past the band.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:460px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📊 distribution of distance ratios (projected ÷ original)</div>
+            <canvas id="hgCanvas" width="436" height="340"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-box" style="background:#bae6fd"></span> ratio frequency</span>
+              <span><span class="swatch-box" style="background:#dcfce7"></span> (1 ± ε) band</span>
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> ratio = 1 (perfect)</span>
+              <span><span class="swatch-line" style="border-color:#dc2626"></span> mean ratio</span>
+            </div>
+            <div id="hgDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: JL BOUND (k vs error) ============ -->
+      <div id="mod-jl" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="jlN" style="color:#64748b">—</div><div class="k">points n</div></div>
+          <div class="metric-pill"><div class="v" id="jlEps" style="color:#dc2626">—</div><div class="k">target ε</div></div>
+          <div class="metric-pill"><div class="v" id="jlKemp" style="color:#16a34a">—</div><div class="k">k for RMS &lt; ε</div></div>
+          <div class="metric-pill"><div class="v" id="jlKth" style="color:#9333ea">—</div><div class="k">JL worst-case k</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">MORE DIMENSIONS → LESS DISTORTION</div>
+            <div class="text-[11px] text-slate-500 mb-2">Sweeping <b>k</b> and measuring the typical (RMS) distance distortion traces a clean <code>1/√k</code> falloff — the same reason averaging more samples shrinks a standard error.</div>
+            <div class="ctl-row"><div class="ctl-name">🔢 points n</div><input type="range" id="jlNs" min="30" max="120" step="2" value="70"><div class="ctl-val" id="jlNsV">70</div></div>
+            <div class="ctl-row"><div class="ctl-name">📏 target ε</div><input type="range" id="jlEpss" min="0.05" max="0.5" step="0.01" value="0.25"><div class="ctl-val" id="jlEpsV">0.25</div></div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[12px] text-slate-600 leading-relaxed text-center font-mono">
+              k ≥ 8·ln(n) / ε²  &nbsp;(the JL bound)
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Bound vs practice.</strong> The theorem's <code>k = O(log n / ε²)</code> is a <em>worst-case</em> guarantee holding for <b>every</b> pair simultaneously (a union bound over all <code>n(n−1)/2</code> of them), so it is famously loose — it can demand hundreds of dimensions. The <span style="color:#16a34a;font-weight:700">measured RMS distortion</span> (typical, not worst pair) drops below <b>ε</b> at a far smaller <b>k</b>. Note that <b>k depends on n and ε — never on the original dimension D</b>: that is the whole miracle.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:460px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📉 distortion vs target dimension k</div>
+            <canvas id="jlCanvas" width="436" height="340"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#0ea5e9"></span> measured RMS distortion</span>
+              <span><span class="swatch-line" style="border-color:#94a3b8"></span> theory 1/√(2k)</span>
+              <span><span class="swatch-line" style="border-color:#dc2626"></span> target ε</span>
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> k where RMS = ε</span>
+            </div>
+            <div id="jlDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From "high-D is expensive" to "multiply by random noise"</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Random projection is one of the shortest dimensionality-reduction algorithms there is — the exact routine the LOOK tab runs, no scikit-learn black box. Below is the runnable core: the random Gaussian matrix, the one-line projection, the sparse ±1 (Achlioptas) variant that skips two-thirds of the multiplies, the distortion measurement, the Johnson–Lindenstrauss dimension formula, and the standard tools. Every dot the LOOK tab draws comes from these snippets.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The random Gaussian matrix</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The entire "model" is a <code>k × D</code> matrix of independent standard-normal numbers, scaled by <code>1/√k</code>. Nothing about your data is ever consulted — the map is chosen before the data is seen. The <code>1/√k</code> factor is the calibration that makes the projection preserve <em>lengths</em> in expectation rather than inflating them by a factor of <code>√k</code>.</p>
+        <div class="relative"><pre>// standard normal via Box–Muller
+function randn(rng) {
+  let u = 0, v = 0;
+  while (u === 0) u = rng();
+  while (v === 0) v = rng();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+// k×D Gaussian projection matrix, row-major, scaled 1/√k
+function gaussianMatrix(k, D, rng) {
+  const R = new Float64Array(k * D);
+  const s = 1 / Math.sqrt(k);
+  for (let i = 0; i < k * D; i++) R[i] = s * randn(rng);
+  return R;                          // E‖Rx‖² = ‖x‖²
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The projection — one matrix–vector product</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Reducing a point from <code>D</code> dimensions to <code>k</code> is a single matrix–vector multiply: coordinate <code>r</code> of the output is the dot product of row <code>r</code> of <code>R</code> with the point. That is it — no iteration, no fitting, no eigen-decomposition. For a whole dataset it is one <code>(N×D)·(D×k)</code> matrix product.</p>
+        <div class="relative"><pre>// project N points (flat N*D) down to N*k
+function project(X, N, D, R, k) {
+  const Y = new Float64Array(N * k);
+  for (let n = 0; n < N; n++)
+    for (let r = 0; r < k; r++) {
+      let acc = 0;
+      for (let d = 0; d < D; d++) acc += R[r * D + d] * X[n * D + d];
+      Y[n * k + r] = acc;            // yₙᵣ = rowᵣ · xₙ
+    }
+  return Y;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The sparse ±1 variant (Achlioptas)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You do not need real-valued Gaussians. Achlioptas showed that entries drawn as <code>√3 × {+1 with prob 1/6, 0 with prob 2/3, −1 with prob 1/6}</code> give the <em>same</em> JL guarantee — yet two-thirds of the entries are zero (so you skip those multiplies) and the rest are just additions and subtractions. It is faster, database-friendly, and needs no floating-point RNG. The LOOK tab's "sparse ±1" toggle uses exactly this.</p>
+        <div class="relative"><pre>// Achlioptas sparse ±1 matrix, scaled 1/√k
+function sparseMatrix(k, D, rng) {
+  const R = new Float64Array(k * D);
+  const s = Math.sqrt(3 / k);        // √3 · (1/√k)
+  for (let i = 0; i < k * D; i++) {
+    const u = rng();
+    R[i] = u < 1/6 ? s : (u < 1/3 ? -s : 0);   // ⅔ are zeros
+  }
+  return R;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Measuring the distortion</h3></div>
+        <p class="text-sm text-slate-600 mb-3">To check the promise you compare every pairwise distance before and after. The ratio <code>‖yᵢ−yⱼ‖ / ‖xᵢ−xⱼ‖</code> should sit near <b>1</b>; its spread is the distortion. This is precisely what fills the scatter and the histogram — a mean ratio near 1.0 and an RMS distortion that shrinks like <code>1/√k</code>.</p>
+        <div class="relative"><pre>function distortionStats(X, Y, N, D, k) {
+  let sum = 0, sumSq = 0, worst = 0, m = 0;
+  const dist = (A, i, j, dim) => {
+    let s = 0; for (let d = 0; d < dim; d++) { const t = A[i*dim+d]-A[j*dim+d]; s += t*t; }
+    return Math.sqrt(s);
+  };
+  for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
+    const o = dist(X, i, j, D); if (o < 1e-9) continue;
+    const r = dist(Y, i, j, k) / o;              // distance ratio
+    sum += r; sumSq += (r-1)*(r-1); worst = Math.max(worst, Math.abs(r-1)); m++;
+  }
+  return { mean: sum/m, rms: Math.sqrt(sumSq/m), worst };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">How many dimensions? The JL formula</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The Johnson–Lindenstrauss lemma pins the target dimension: to preserve all <code>n(n−1)/2</code> pairwise distances within <code>(1 ± ε)</code> with high probability, <code>k ≳ (4 ln n)/(ε²/2 − ε³/3)</code>, i.e. <code>O(log n / ε²)</code>. The single most important feature of this expression is what is <em>absent</em> from it: the original dimension <code>D</code>. Ten thousand features or ten million, the target <code>k</code> is the same.</p>
+        <div class="relative"><pre># scikit-learn's exact bound (the constant matters)
+import numpy as np
+def jl_min_dim(n, eps):
+    return int(np.ceil((4 * np.log(n)) / (eps**2/2 - eps**3/3)))
+
+jl_min_dim(1_000_000, 0.1)   # ~ 15,000  — independent of D
+jl_min_dim(1_000_000, 0.3)   # ~ 1,700
+# note: worst-case & loose; typical distortion is far smaller</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">In practice — the standard tools</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You rarely hand-roll it. scikit-learn ships <code>GaussianRandomProjection</code> and the faster <code>SparseRandomProjection</code>, and <code>johnson_lindenstrauss_min_dim</code> to size <code>k</code>; passing <code>n_components='auto'</code> lets it pick <code>k</code> from your sample count and a target <code>eps</code>. Random projection is a favourite front-end for speeding up kNN, clustering, and locality-sensitive hashing on very high-dimensional data.</p>
+        <div class="relative"><pre># scikit-learn — random projection in three lines
+from sklearn.random_projection import (
+    SparseRandomProjection, johnson_lindenstrauss_min_dim)
+
+k = johnson_lindenstrauss_min_dim(n_samples=10_000, eps=0.2)
+rp = SparseRandomProjection(n_components=k, random_state=0)
+X_small = rp.fit_transform(X)        # fit ignores X's values — just its shape</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-10 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧭 Five ways to shrink dimensions — and where random projection sits</h3>
+      <div style="overflow-x:auto">
+      <table class="cmp">
+        <tr><th style="width:150px"></th><th>🎲 Random Projection (Day 54)</th><th>📉 PCA (Day 14)</th><th>🗺️ t-SNE / UMAP (Day 23–24)</th><th>🧠 Autoencoder</th><th>🔎 Feature selection</th></tr>
+        <tr><td class="cat">Core idea</td><td><b>multiply by a random matrix</b></td><td>project onto top eigenvectors</td><td>preserve neighbourhoods nonlinearly</td><td>learn an encoder network</td><td>keep the most useful columns</td></tr>
+        <tr><td class="cat">Looks at the data?</td><td><b>❌ data-oblivious</b></td><td>✅ (covariance)</td><td>✅</td><td>✅ (trains)</td><td>✅</td></tr>
+        <tr><td class="cat">Preserves…</td><td><b>pairwise distances (1±ε)</b></td><td>global variance</td><td>local structure / clusters</td><td>whatever the loss rewards</td><td>chosen signal</td></tr>
+        <tr><td class="cat">Target size depends on</td><td><b>n &amp; ε only — not D</b></td><td>variance kept</td><td>usually 2–3 (viz)</td><td>you pick</td><td>you pick</td></tr>
+        <tr><td class="cat">Cost / speed</td><td><b>one matmul — very fast</b></td><td>an SVD</td><td>slow, iterative</td><td>full training</td><td>varies</td></tr>
+        <tr><td class="cat">Deterministic?</td><td>❌ random (but any draw works whp)</td><td>✅</td><td>❌</td><td>❌</td><td>depends</td></tr>
+        <tr><td class="cat">Best when</td><td><b>huge D, need speed, distances matter (kNN, LSH, streaming)</b></td><td>linear, want max variance in few dims</td><td>visualising clusters in 2-D</td><td>rich nonlinear features, lots of data</td><td>interpretability</td></tr>
+      </table>
+      </div>
+      <p class="text-xs text-slate-500 mt-3">The trade is <em>how much you're willing to look at the data, and what you need to preserve</em>. <b>PCA (Day 14)</b> is optimal for keeping variance in a linear subspace but must compute an SVD of your data — data-dependent and O(D²) or worse. <b>Random projection</b> makes the opposite bet: don't look at the data at all, just multiply by random noise; you lose PCA's optimality but gain a distance-preserving guarantee, a target size that ignores <code>D</code> entirely, and a single blazing matmul — which is why it is the go-to preprocessor for kNN, k-means, and locality-sensitive hashing on millions of features. <b>t-SNE / UMAP (Days 23–24)</b> preserve local neighbourhoods for visualisation but distort distances and don't scale as a general reducer. <b>Autoencoders</b> learn a task-shaped nonlinear code but need training and lots of data. <b>Feature selection</b> keeps original, interpretable columns. Random projection's genius is buying a provable, dimension-independent distance guarantee with nothing more than a matrix of random numbers — the same reason it degrades gracefully: pick <code>k</code> too small and distances just blur, they never break.</p>
+    </div>
+
+    <div class="mt-8 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 54 of MachineLearningFromZero done — compressing data with pure randomness.</h3><p class="text-sm text-sky-700 mt-2"><strong>Random projection</strong> reduces dimensions by the most audacious trick imaginable: multiply your points by a matrix of <span style="color:#0ea5e9;font-weight:700">random numbers</span> — Gaussian, or a sparse ±1 Achlioptas matrix that zeros two-thirds of its entries — scale by <code>1/√k</code>, and keep the output. The <span style="color:#16a34a;font-weight:700">Johnson–Lindenstrauss lemma</span> guarantees that <code>k ≈ O(log n / ε²)</code> dimensions preserve <em>every</em> pairwise distance within <code>(1 ± ε)</code>, and — the miracle — that <code>k</code> depends only on the number of points and your tolerance, <strong>never on the original dimension D</strong>. It works because a projected squared distance is an average of <code>k</code> independent, correctly-centred contributions, so by concentration of measure it clusters ever more tightly around the truth as <code>k</code> grows — the distortion falling like <code>1/√k</code>. No SVD, no training, no data-peeking, no iteration: a single matrix multiply. That places it against the data-dependent reducers — <span style="color:#9333ea;font-weight:700">PCA (Day 14)</span> and <span style="color:#dc2626;font-weight:700">t-SNE / UMAP (Days 23–24)</span> — as the fast, oblivious, distance-preserving alternative, beloved for kNN, clustering, and LSH on enormous feature spaces. <strong>👉 When D is huge, you need speed, and pairwise distances are what matter, reach for a random projection.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+const el = id => document.getElementById(id);
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function randn(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function setDiag(box, c, t, b){ box.className="diag "+c+" mt-3 text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+const fmt=(x,d=2)=>Number(x).toFixed(d);
+const avg=a=>a.length? a.reduce((s,x)=>s+x,0)/a.length : 0;
+
+/* ================================================================
+   CORE: high-D data, random projection matrix, projection, distance
+   ================================================================ */
+// build a k×D projection matrix (row-major), scaled so E‖Rx‖² = ‖x‖²
+function makeProjection(k, D, type, rng){
+  const R = new Float64Array(k*D);
+  if(type==='sparse'){                                  // Achlioptas ±1, ⅔ zeros
+    const s = Math.sqrt(3/k);
+    for(let i=0;i<k*D;i++){ const u=rng(); R[i] = u<1/6 ? s : (u<1/3 ? -s : 0); }
+  } else if(type==='signs'){                            // dense ±1
+    const s = 1/Math.sqrt(k);
+    for(let i=0;i<k*D;i++) R[i] = rng()<0.5 ? s : -s;
+  } else {                                              // Gaussian (default)
+    const s = 1/Math.sqrt(k);
+    for(let i=0;i<k*D;i++) R[i] = s*randn(rng);
+  }
+  return R;
+}
+// project N points (flat N*D) down to N*k via  y = R·x
+function project(X, N, D, R, k){
+  const Y = new Float64Array(N*k);
+  for(let n=0;n<N;n++){ const xo=n*D;
+    for(let r=0;r<k;r++){ let acc=0; const ro=r*D;
+      for(let d=0;d<D;d++) acc += R[ro+d]*X[xo+d];
+      Y[n*k+r]=acc;
+    }
+  }
+  return Y;
+}
+// Euclidean distance between rows i and j of a flat array with `dim` columns
+function dist(A, i, j, dim){ let s=0; const oi=i*dim, oj=j*dim; for(let d=0;d<dim;d++){ const t=A[oi+d]-A[oj+d]; s+=t*t; } return Math.sqrt(s); }
+// generate N points in D dims: clustered blobs / gaussian cloud / uniform cube
+function makeData(N, D, kind, rng){
+  const X = new Float64Array(N*D);
+  if(kind==='cloud'){
+    for(let i=0;i<N*D;i++) X[i]=randn(rng);
+  } else if(kind==='cube'){
+    for(let i=0;i<N*D;i++) X[i]=2*rng()-1;
+  } else {                                              // blobs (default)
+    const nC=4; const centers=[];
+    for(let c=0;c<nC;c++){ const ct=new Float64Array(D); for(let d=0;d<D;d++) ct[d]=3.2*randn(rng); centers.push(ct); }
+    for(let n=0;n<N;n++){ const c=n%nC; const off=n*D; for(let d=0;d<D;d++) X[off+d]=centers[c][d]+randn(rng); }
+  }
+  return X;
+}
+
+/* ================================================================
+   MODULE SCATTER — original vs projected pairwise distance
+   ================================================================ */
+const RP = { D:96, N:70, k:12, kind:'blobs', mtype:'gaussian', X:null, seedData:1, seedMat:1 };
+function rpMakeData(){ RP.X = makeData(RP.N, RP.D, RP.kind, mulberry32(RP.seedData)); }
+function rpPairs(k){
+  const R = makeProjection(k, RP.D, RP.mtype, mulberry32(RP.seedMat));
+  const Y = project(RP.X, RP.N, RP.D, R, k);
+  const orig=[], proj=[], ratios=[];
+  for(let i=0;i<RP.N;i++) for(let j=i+1;j<RP.N;j++){
+    const o=dist(RP.X,i,j,RP.D); if(o<1e-9) continue;
+    orig.push(o); const p=dist(Y,i,j,k); proj.push(p); ratios.push(p/o);
+  }
+  return {orig,proj,ratios};
+}
+function rpDraw(){
+  const cv=el('rpCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H); ctx.setLineDash([]);
+  const P=rpPairs(RP.k);
+  let mx=0; for(let i=0;i<P.orig.length;i++){ if(P.orig[i]>mx)mx=P.orig[i]; if(P.proj[i]>mx)mx=P.proj[i]; }
+  mx = mx*1.08 || 1;
+  const ml=46,mr=14,mt=14,mb=34, x0=ml,x1=W-mr,y0=mt,y1=H-mb;
+  const SX=v=>x0+(x1-x0)*Math.min(v,mx)/mx, SY=v=>y1-(y1-y0)*Math.min(v,mx)/mx;
+  // grid
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1;
+  for(let g=0;g<=5;g++){ const yy=y0+(y1-y0)*g/5; ctx.beginPath();ctx.moveTo(x0,yy);ctx.lineTo(x1,yy);ctx.stroke(); const xx=x0+(x1-x0)*g/5; ctx.beginPath();ctx.moveTo(xx,y0);ctx.lineTo(xx,y1);ctx.stroke(); }
+  // perfect-preservation diagonal
+  ctx.strokeStyle='#16a34a'; ctx.lineWidth=2; ctx.setLineDash([6,4]);
+  ctx.beginPath(); ctx.moveTo(SX(0),SY(0)); ctx.lineTo(SX(mx),SY(mx)); ctx.stroke(); ctx.setLineDash([]);
+  // points
+  for(let i=0;i<P.orig.length;i++){ const d=Math.abs(P.ratios[i]-1);
+    ctx.fillStyle = d<0.1 ? 'rgba(14,165,233,0.55)' : d<0.25 ? 'rgba(245,158,11,0.62)' : 'rgba(239,68,68,0.6)';
+    ctx.beginPath(); ctx.arc(SX(P.orig[i]),SY(P.proj[i]),2.4,0,7); ctx.fill();
+  }
+  // axes + labels
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x0,y0);ctx.lineTo(x0,y1);ctx.lineTo(x1,y1);ctx.stroke();
+  ctx.fillStyle='#64748b'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+  ctx.fillText('original distance  (in '+RP.D+'-D)  →',(x0+x1)/2,H-6);
+  ctx.save(); ctx.translate(13,(y0+y1)/2); ctx.rotate(-Math.PI/2); ctx.fillText('projected distance  (in '+RP.k+'-D)',0,0); ctx.restore();
+  // metrics
+  const meanR=avg(P.ratios); let s2=0,mxd=0; for(const r of P.ratios){ const dd=r-1; s2+=dd*dd; if(Math.abs(dd)>mxd)mxd=Math.abs(dd); }
+  const rms=Math.sqrt(s2/P.ratios.length);
+  el('rpD').textContent=RP.D; el('rpK').textContent=RP.k;
+  el('rpMean').textContent=fmt(meanR,3); el('rpRms').textContent=fmt(rms,3);
+  rpDiag(rms,mxd,P.ratios.length);
+}
+function rpDiag(rms,mxd,npairs){
+  const box=el('rpDiag');
+  const mtName = RP.mtype==='sparse'?'sparse ±1 (Achlioptas)':(RP.mtype==='signs'?'dense ±1':'Gaussian');
+  if(rms<0.12){
+    setDiag(box,'diag-good',`✅ Distances preserved — RMS distortion ${fmt(rms,3)} at k = ${RP.k}`,
+      `All <b>${npairs}</b> pairwise distances from <b>${RP.D}-D</b> survive the projection into just <b>${RP.k}</b> dims through the <b>${mtName}</b> matrix — the cloud hugs the green diagonal, worst single pair off by <b>${fmt(mxd*100,0)}%</b>. This is Johnson–Lindenstrauss at work: a random linear map keeps geometry intact, and it did so <em>without ever looking at your data</em>. Push <b>k</b> lower to watch the cloud fan out, or swap the matrix type — the guarantee holds for all three.`);
+  } else if(rms<0.25){
+    setDiag(box,'diag-warn',`⚠️ Getting blurry — RMS distortion ${fmt(rms,3)} at k = ${RP.k}`,
+      `With only <b>${RP.k}</b> output dims the ${npairs} distances are preserved but loosely — the cloud has visibly thickened around the diagonal (worst pair off by <b>${fmt(mxd*100,0)}%</b>). Distortion falls like <b>1/√k</b>, so nudging <b>k</b> up tightens it fast. Notice it still <em>degrades gracefully</em>: distances blur, they never snap.`);
+  } else {
+    setDiag(box,'diag-bad',`🔴 Too few dimensions — RMS distortion ${fmt(rms,3)} at k = ${RP.k}`,
+      `At <b>k = ${RP.k}</b> there aren't enough random directions to average over, so the projected squared length is a noisy estimate and the cloud sprays well off the diagonal (worst pair off by <b>${fmt(mxd*100,0)}%</b>). This is the low-<b>k</b> regime the JL bound warns about — raise <b>k</b> and concentration of measure pulls everything back onto the line.`);
+  }
+}
+function rpBuildDataButtons(){
+  const wrap=el('rpData'); wrap.innerHTML='';
+  [['blobs','🫧 clustered blobs'],['cloud','☁️ gaussian cloud'],['cube','🎲 uniform cube']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(RP.kind===id?' on':''); b.textContent=label;
+    b.onclick=()=>{ RP.kind=id; RP.seedData=(Math.random()*1e9)>>>0; rpMakeData(); rpBuildDataButtons(); rpDraw(); };
+    wrap.appendChild(b);
+  });
+}
+function rpBuildMatButtons(){
+  const wrap=el('rpMat'); wrap.innerHTML='';
+  [['gaussian','🔔 Gaussian'],['sparse','✳️ sparse ±1'],['signs','± dense ±1']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(RP.mtype===id?' on':''); b.textContent=label;
+    b.onclick=()=>{ RP.mtype=id; rpBuildMatButtons(); rpDraw(); };
+    wrap.appendChild(b);
+  });
+}
+el('rpKs').addEventListener('input',e=>{ RP.k=+e.target.value; el('rpKsV').textContent=RP.k; rpDraw(); });
+el('rpNs').addEventListener('input',e=>{ RP.N=+e.target.value; el('rpNsV').textContent=RP.N; rpMakeData(); rpDraw(); });
+el('rpNew').onclick=()=>{ RP.seedData=(Math.random()*1e9)>>>0; rpMakeData(); rpDraw(); };
+el('rpRoll').onclick=()=>{ RP.seedMat=(Math.random()*1e9)>>>0; rpDraw(); };
+
+/* ================================================================
+   MODULE HIST — distribution of distance ratios (projected ÷ original)
+   ================================================================ */
+const HG={ k:8, eps:0.20 };
+function hgRatios(){
+  const R=makeProjection(HG.k,RP.D,RP.mtype,mulberry32(4242));
+  const Y=project(RP.X,RP.N,RP.D,R,HG.k); const ratios=[];
+  for(let i=0;i<RP.N;i++) for(let j=i+1;j<RP.N;j++){ const o=dist(RP.X,i,j,RP.D); if(o<1e-9)continue; ratios.push(dist(Y,i,j,HG.k)/o); }
+  return ratios;
+}
+function hgDraw(){
+  const cv=el('hgCanvas'); if(!cv) return; const ctx=cv.getContext('2d'); const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H); ctx.setLineDash([]);
+  const ml=40,mr=14,mt=16,mb=30, x0=ml,x1=W-mr,y0=mt,y1=H-mb;
+  const ratios=hgRatios();
+  const RMIN=0.4,RMAX=1.6,BINS=44;
+  const bins=new Array(BINS).fill(0);
+  for(const r of ratios){ let b=Math.floor((r-RMIN)/(RMAX-RMIN)*BINS); b=Math.max(0,Math.min(BINS-1,b)); bins[b]++; }
+  const maxc=Math.max(1,...bins);
+  const SX=r=>x0+(x1-x0)*(Math.max(RMIN,Math.min(RMAX,r))-RMIN)/(RMAX-RMIN);
+  // ε tolerance band
+  ctx.fillStyle='#dcfce7'; ctx.fillRect(SX(1-HG.eps),y0,SX(1+HG.eps)-SX(1-HG.eps),y1-y0);
+  // y gridlines
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1;
+  for(let g=0;g<=4;g++){ const yy=y0+(y1-y0)*g/4; ctx.beginPath();ctx.moveTo(x0,yy);ctx.lineTo(x1,yy);ctx.stroke(); }
+  // bars
+  const bw=(x1-x0)/BINS;
+  for(let i=0;i<BINS;i++){ if(!bins[i]) continue; const h=(y1-y0)*bins[i]/maxc; ctx.fillStyle='#7dd3fc'; ctx.fillRect(x0+i*bw+0.5,y1-h,bw-1,h); }
+  // marker lines
+  const mean=avg(ratios);
+  function vline(r,color,lw,label,ly){ const X=SX(r); ctx.strokeStyle=color; ctx.lineWidth=lw; ctx.setLineDash([]); ctx.beginPath(); ctx.moveTo(X,y0); ctx.lineTo(X,y1); ctx.stroke(); ctx.fillStyle=color; ctx.font='bold 10px monospace'; ctx.textAlign='center'; ctx.fillText(label,Math.max(x0+16,Math.min(x1-16,X)),ly); }
+  vline(1,'#16a34a',2.4,'1.0',y0+11);
+  vline(mean,'#dc2626',2,'mean',y0+24);
+  // axes + x ticks
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x0,y0);ctx.lineTo(x0,y1);ctx.lineTo(x1,y1);ctx.stroke();
+  ctx.fillStyle='#94a3b8'; ctx.font='9px monospace'; ctx.textAlign='center';
+  for(let r=0.4;r<=1.6001;r+=0.2){ ctx.fillText(fmt(r,1),SX(r),y1+11); }
+  ctx.fillStyle='#64748b'; ctx.font='10px sans-serif'; ctx.fillText('distance ratio  projected ÷ original  (→)',(x0+x1)/2,H-3);
+  // metrics
+  const std=Math.sqrt(avg(ratios.map(r=>(r-mean)*(r-mean))));
+  let inb=0,mxd=0; for(const r of ratios){ if(Math.abs(r-1)<=HG.eps) inb++; if(Math.abs(r-1)>mxd)mxd=Math.abs(r-1); }
+  const pct=100*inb/ratios.length;
+  el('hgMean').textContent=fmt(mean,3); el('hgStd').textContent=fmt(std,3);
+  el('hgIn').textContent=fmt(pct,0)+'%'; el('hgMax').textContent=fmt(mxd*100,0)+'%';
+  hgDiag(pct,std,mxd);
+}
+function hgDiag(pct,std,mxd){
+  const box=el('hgDiag');
+  if(pct>=95){
+    setDiag(box,'diag-good',`✅ ${fmt(pct,0)}% of pairs inside the (1 ± ${fmt(HG.eps,2)}) band`,
+      `At <b>k = ${HG.k}</b> the ratio histogram is a tight spike on <b>1.0</b> (std <b>${fmt(std,3)}</b>) and nearly every distance lands inside the shaded <b>(1 ± ε)</b> tolerance — worst pair only <b>${fmt(mxd*100,0)}%</b> off. That green band <em>is</em> the Johnson–Lindenstrauss guarantee, and the projection met it. The spike sharpens as <b>k</b> grows because the projected squared distance averages <b>${HG.k}</b> independent terms — more terms, tighter concentration.`);
+  } else if(pct>=70){
+    setDiag(box,'diag-warn',`⚠️ Only ${fmt(pct,0)}% of pairs inside the band (std ${fmt(std,3)})`,
+      `With <b>k = ${HG.k}</b> the spike has widened and its tails are spilling past the <b>(1 ± ${fmt(HG.eps,2)})</b> tolerance — the worst pair is <b>${fmt(mxd*100,0)}%</b> off. Either raise <b>k</b> to sharpen the spike, or loosen <b>ε</b> to widen the band; both push the fraction inside toward the JL promise.`);
+  } else {
+    setDiag(box,'diag-bad',`🔴 Just ${fmt(pct,0)}% inside — the spike has collapsed (std ${fmt(std,3)})`,
+      `At <b>k = ${HG.k}</b> there are too few random directions, so the ratio spreads wide (worst pair <b>${fmt(mxd*100,0)}%</b> off) and most distances fall outside the <b>(1 ± ${fmt(HG.eps,2)})</b> band. This is the regime where the JL bound insists on more dimensions — slide <b>k</b> up and watch the mass rush back into the green band.`);
+  }
+}
+el('hgKs').addEventListener('input',e=>{ HG.k=+e.target.value; el('hgKsV').textContent=HG.k; hgDraw(); });
+el('hgEps').addEventListener('input',e=>{ HG.eps=+e.target.value; el('hgEpsV').textContent=fmt(HG.eps,2); hgDraw(); });
+
+/* ================================================================
+   MODULE JL — distortion vs k, and the JL bound
+   ================================================================ */
+const JL={ D:96, N:70, eps:0.25, kind:'blobs', mtype:'gaussian', seed:7 };
+const JL_KS=[2,3,4,6,8,12,16,24,32,48,64,96];
+function jlSweep(){
+  const X=makeData(JL.N,JL.D,JL.kind,mulberry32(1234)); const res=[];
+  for(const k of JL_KS){
+    const R=makeProjection(k,JL.D,JL.mtype,mulberry32(JL.seed+k*7));
+    const Y=project(X,JL.N,JL.D,R,k);
+    let s2=0,cnt=0; for(let i=0;i<JL.N;i++) for(let j=i+1;j<JL.N;j++){ const o=dist(X,i,j,JL.D); if(o<1e-9)continue; const dd=dist(Y,i,j,k)/o-1; s2+=dd*dd; cnt++; }
+    res.push({k, rms:Math.sqrt(s2/cnt)});
+  }
+  return res;
+}
+function jlDraw(){
+  const cv=el('jlCanvas'); if(!cv) return; const ctx=cv.getContext('2d'); const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H); ctx.setLineDash([]);
+  const ml=42,mr=14,mt=16,mb=32, x0=ml,x1=W-mr,y0=mt,y1=H-mb;
+  const res=jlSweep();
+  const KMAX=96; let ymax=JL.eps*1.35; for(const r of res) if(r.rms>ymax) ymax=r.rms; ymax*=1.08;
+  const SX=k=>x0+(x1-x0)*k/KMAX, SY=v=>y1-(y1-y0)*Math.min(v,ymax)/ymax;
+  // grid
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1;
+  for(let g=0;g<=4;g++){ const yy=y0+(y1-y0)*g/4; ctx.beginPath();ctx.moveTo(x0,yy);ctx.lineTo(x1,yy);ctx.stroke(); }
+  // ε target line
+  ctx.strokeStyle='#dc2626'; ctx.lineWidth=1.6; ctx.setLineDash([5,4]); ctx.beginPath(); ctx.moveTo(x0,SY(JL.eps)); ctx.lineTo(x1,SY(JL.eps)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle='#dc2626'; ctx.font='bold 10px monospace'; ctx.textAlign='left'; ctx.fillText('ε = '+fmt(JL.eps,2), x0+6, SY(JL.eps)-4);
+  // theory curve 1/√(2k)
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1.6; ctx.setLineDash([3,3]); ctx.beginPath();
+  for(let k=2;k<=KMAX;k++){ const y=1/Math.sqrt(2*k); const X=SX(k),Y=SY(y); if(k===2)ctx.moveTo(X,Y); else ctx.lineTo(X,Y); } ctx.stroke(); ctx.setLineDash([]);
+  // measured RMS curve
+  ctx.strokeStyle='#0ea5e9'; ctx.lineWidth=2.6; ctx.beginPath();
+  res.forEach((r,i)=>{ const X=SX(r.k),Y=SY(r.rms); if(i===0)ctx.moveTo(X,Y); else ctx.lineTo(X,Y); }); ctx.stroke();
+  ctx.fillStyle='#0ea5e9'; for(const r of res){ ctx.beginPath(); ctx.arc(SX(r.k),SY(r.rms),3,0,7); ctx.fill(); }
+  // empirical k where RMS crosses ε (linear interpolation on the sweep)
+  let kEmp=null;
+  for(let i=1;i<res.length;i++){ if(res[i-1].rms>=JL.eps && res[i].rms<JL.eps){ const t=(res[i-1].rms-JL.eps)/(res[i-1].rms-res[i].rms); kEmp=res[i-1].k+t*(res[i].k-res[i-1].k); break; } }
+  if(kEmp===null && res[0].rms<JL.eps) kEmp=res[0].k;
+  if(kEmp!==null){ ctx.strokeStyle='#16a34a'; ctx.lineWidth=2; ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(SX(kEmp),y0); ctx.lineTo(SX(kEmp),y1); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#16a34a'; ctx.font='bold 10px monospace'; ctx.textAlign='center'; ctx.fillText('k≈'+Math.round(kEmp), Math.min(x1-18,SX(kEmp)), y0+11); }
+  // axes + x ticks
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x0,y0);ctx.lineTo(x0,y1);ctx.lineTo(x1,y1);ctx.stroke();
+  ctx.fillStyle='#94a3b8'; ctx.font='9px monospace'; ctx.textAlign='center';
+  for(const k of [2,16,32,48,64,80,96]){ ctx.fillText(k,SX(k),y1+11); }
+  ctx.fillStyle='#64748b'; ctx.font='10px sans-serif'; ctx.fillText('target dimension k  →',(x0+x1)/2,H-3);
+  ctx.save(); ctx.translate(12,(y0+y1)/2); ctx.rotate(-Math.PI/2); ctx.fillText('RMS distance distortion',0,0); ctx.restore();
+  // JL worst-case bound  k ≈ 8 ln n / ε²  (report scikit-learn's tighter constant too)
+  const kTh=Math.ceil(8*Math.log(JL.N)/(JL.eps*JL.eps));
+  el('jlN').textContent=JL.N; el('jlEps').textContent=fmt(JL.eps,2);
+  el('jlKemp').textContent = kEmp!==null ? Math.round(kEmp) : '>96';
+  el('jlKth').textContent = kTh;
+  jlDiag(kEmp,kTh);
+}
+function jlDiag(kEmp,kTh){
+  const box=el('jlDiag');
+  const empTxt = kEmp!==null ? `<b>k ≈ ${Math.round(kEmp)}</b>` : '<b>more than 96</b>';
+  setDiag(box,'diag-info',`📉 typical distortion hits ε = ${fmt(JL.eps,2)} at k ≈ ${kEmp!==null?Math.round(kEmp):'>96'} — JL worst-case bound wants ${kTh}`,
+    `The <span style="color:#0ea5e9;font-weight:700">measured RMS distortion</span> follows the <span style="color:#94a3b8;font-weight:700">1/√(2k)</span> theory almost exactly, so the <em>typical</em> distance is preserved within <b>ε = ${fmt(JL.eps,2)}</b> once ${empTxt}. The Johnson–Lindenstrauss <em>worst-case</em> bound <code>k ≈ 8·ln(${JL.N})/ε² = ${kTh}</code> is far larger because it must protect <b>every one</b> of the ${JL.N*(JL.N-1)/2} pairs at once — the union bound makes it pessimistic, which is why practitioners use a fraction of it. The one number both agree on: <b>k never mentions D</b>. Whether these points lived in 96 or 96,000 dimensions, this curve is identical.`);
+}
+el('jlNs').addEventListener('input',e=>{ JL.N=+e.target.value; el('jlNsV').textContent=JL.N; jlDraw(); });
+el('jlEpss').addEventListener('input',e=>{ JL.eps=+e.target.value; el('jlEpsV').textContent=fmt(JL.eps,2); jlDraw(); });
+
+/* ================================================================
+   sub-nav wiring
+   ================================================================ */
+const subBtns=document.querySelectorAll("#subnav [data-mod]");
+function showMod(m){
+  document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden"));
+  el("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m));
+  if(m==="scatter") rpDraw();
+  if(m==="hist") hgDraw();
+  if(m==="jl") jlDraw();
+}
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+/* ================================================================
+   init
+   ================================================================ */
+rpMakeData(); rpBuildDataButtons(); rpBuildMatButtons();
+document.querySelector('[data-mod="scatter"]').classList.add("on");
+showMod("scatter");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. Why high dimensions hurt — and the wild idea", why:"Real data often lives in thousands or millions of dimensions: a bag-of-words vector has one coordinate per vocabulary word, an image one per pixel. Everything that touches distances — nearest neighbours, clustering, similarity search — slows to a crawl and, thanks to the curse of dimensionality, loses contrast. The obvious cure is to reduce the dimension, and the obvious tool is PCA: look at the data, find the directions of greatest variance, keep those. But PCA must compute a covariance matrix and an eigen-decomposition — expensive, and it needs to see all the data. Random projection asks a heretical question: what if we DON'T look at the data at all, and just multiply every point by a fixed matrix of random numbers, throwing away all but k of the output coordinates? It sounds like it should destroy the geometry. The astonishing fact — the whole subject — is that it very nearly doesn't.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">data in D dims (D = 10⁴…10⁶) → distances slow &amp; lose contrast<br><br>PCA: inspect data → eigenvectors (expensive, data-dependent)<br><br>random projection: y = R·x, R = random numbers<br>throw away all but k coordinates — WITHOUT looking at data<br>…and the distances barely change 🤯</div>`, code:`# a random matrix that never sees the data
+import numpy as np
+D, k = 10000, 100
+R = np.random.randn(k, D) / np.sqrt(k)   # fixed BEFORE seeing X
+y = R @ x                                # D-dim  ->  k-dim, one matmul` },
+ { title:"2. A random direction preserves length, in expectation", why:"Start with a single vector and a single random direction — one row of R, a vector of independent standard normals r scaled by 1/√k. The projection onto it is the dot product r·x. What is the expected squared length of that one coordinate? Because the components of r are independent with mean 0 and variance 1/k, the cross terms vanish in expectation and you are left with (1/k)·Σxⱼ² = ‖x‖²/k. So each of the k output coordinates carries, on average, a 1/k share of the original squared length. That is the entire reason for the 1/√k scaling: it makes a single random direction an UNBIASED probe of length. One direction is noisy, but it is centred on the truth — and anything unbiased can be sharpened by averaging more of it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">one random row r (mean 0, var 1/k per entry)<br>one output coord = r · x<br><br>E[(r·x)²] = Σⱼ Var(rⱼ)·xⱼ²  (cross terms → 0)<br>            = (1/k)·Σⱼ xⱼ² = ‖x‖² / k<br><br>each coordinate = an unbiased 1/k-share of the length</div>`, code:`# one random direction is an unbiased length probe
+r = np.random.randn(D) / np.sqrt(k)   # var 1/k per entry
+coord = r @ x                          # one projected coordinate
+# E[coord**2] == (x @ x) / k   — centred on the truth, but noisy` },
+ { title:"3. Averaging k directions → concentration", why:"Now use all k rows. The projected squared length ‖y‖² is the SUM of the k coordinate-squares, and since each has expectation ‖x‖²/k, the sum has expectation ‖x‖² exactly — the projection preserves squared length on average with no bias. But expectation is not enough; we need it to actually LAND near ‖x‖² almost every time. It does, because ‖y‖² is a sum of k independent contributions, so its relative fluctuation shrinks as 1/√k: the variance of ‖y‖²/‖x‖² is proportional to 1/k. This is concentration of measure — the same statistical law that makes a poll of more people more accurate. Keep k=4 directions and the estimate is jittery; keep k=100 and ‖y‖² is glued to ‖x‖². The distortion you saw fall like 1/√k in the LOOK tab is exactly this variance shrinking.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">‖y‖² = Σ (k coordinates)²  ⇒  E‖y‖² = ‖x‖²  (unbiased)<br><br>k independent terms ⇒ Var( ‖y‖²/‖x‖² ) ∝ 1/k<br>relative error ∝ 1/√k  — concentration of measure<br><br>more directions kept → tighter around the true length</div>`, code:`# k coordinates: the sum concentrates on the true length
+R = np.random.randn(k, D) / np.sqrt(k)
+y = R @ x
+ratio = (y @ y) / (x @ x)          # ≈ 1, with spread ∝ 1/√k
+# large k  ->  ratio glued to 1.0` },
+ { title:"4. From lengths to distances — apply it to differences", why:"We showed the map preserves the LENGTH of any fixed vector. But we care about DISTANCES between points, ‖xᵢ − xⱼ‖. The trick is that a linear map turns a difference of images into the image of the difference: R·xᵢ − R·xⱼ = R·(xᵢ − xⱼ). So the projected distance between two points is just the projected LENGTH of their difference vector — and we already proved lengths are preserved. Apply the length result to the vector (xᵢ − xⱼ) and you immediately get that the distance ‖yᵢ − yⱼ‖ concentrates on ‖xᵢ − xⱼ‖. Linearity is doing the heavy lifting: one theorem about lengths becomes a theorem about every pairwise distance, for free.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">linearity:  R·xᵢ − R·xⱼ = R·(xᵢ − xⱼ)<br><br>projected distance = projected LENGTH of the difference<br>and lengths are preserved (steps 2–3)<br><br>⇒ ‖yᵢ − yⱼ‖ ≈ ‖xᵢ − xⱼ‖  for every pair</div>`, code:`# distance preservation is length preservation of the difference
+diff = x_i - x_j
+d_before = np.linalg.norm(diff)
+d_after  = np.linalg.norm(R @ diff)   # = ‖y_i - y_j‖
+d_after / d_before                    # ≈ 1  (same concentration)` },
+ { title:"5. The Johnson–Lindenstrauss lemma — the exact size", why:"How large must k be so that EVERY one of the n(n−1)/2 pairwise distances is preserved within (1±ε) simultaneously? Each single distance fails to concentrate only with a probability that decays exponentially in k·ε². To make all pairs safe at once you take a union bound over the (fewer than n²) pairs, which multiplies the failure probability by n² — absorbed by requiring k proportional to (log n)/ε². That is the Johnson–Lindenstrauss lemma: for any n points there is a projection into k = O(log n / ε²) dimensions preserving all pairwise distances within (1±ε). Read the formula carefully: k grows only with the LOG of the number of points and the inverse square of the tolerance — and it contains NO D. The original dimension is irrelevant. This is why a random projection can crush a million-dimensional dataset to a few hundred coordinates with a guarantee.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">one pair fails with prob ≈ e^(−c·k·ε²)<br>union bound over &lt; n² pairs ⇒ need k ∝ (log n)/ε²<br><br>JL:  k = O( log n / ε² )   — and NO D anywhere<br><br>1M points, ε=0.1  →  k ≈ 15,000  (regardless of D)</div>`, code:`# scikit-learn's exact JL minimum dimension
+from sklearn.random_projection import johnson_lindenstrauss_min_dim
+johnson_lindenstrauss_min_dim(n_samples=1_000_000, eps=0.1)  # ~15k
+johnson_lindenstrauss_min_dim(n_samples=1_000_000, eps=0.3)  # ~1.7k
+#                       ^ depends on n and eps only — never on D` },
+ { title:"6. Gaussian or sparse ±1 — the matrix has options", why:"The proof only needs the matrix entries to be independent, zero-mean, and appropriately scaled — it does NOT need them to be Gaussian. Achlioptas' celebrated result: draw each entry as √3·{+1 with prob 1/6, 0 with prob 2/3, −1 with prob 1/6}. This satisfies the JL guarantee identically, yet two-thirds of the entries are exactly zero (so you skip those multiplications entirely) and the non-zero ones are ±1 — no floating-point Gaussian sampling, just adds and subtracts. It is dramatically faster and database-friendly. Even simpler dense ±1 entries (Rademacher) work too. The LOOK tab lets you switch between Gaussian, sparse ±1, and dense ±1 and see the histogram concentrate the same way for all three — the guarantee is about the statistics of the entries, not their exact distribution.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">proof needs only: independent, mean 0, right variance<br><br>Achlioptas sparse:  √3 · { +1 : ⅙,  0 : ⅔,  −1 : ⅙ }<br>⅔ zeros → skip those multiplies · ±1 → adds, not mults<br><br>Gaussian ≈ sparse ±1 ≈ dense ±1  — same JL guarantee</div>`, code:`# Achlioptas sparse ±1: same guarantee, far faster
+def sparse_matrix(k, D, rng):
+    U = rng.random((k, D))
+    R = np.zeros((k, D))
+    R[U < 1/6]  =  np.sqrt(3/k)
+    R[U > 5/6]  = -np.sqrt(3/k)     # the other ⅔ stay zero
+    return R
+# sklearn: SparseRandomProjection is the production version` },
+ { title:"7. Where random projection fits — choosing your reducer", why:"Random projection is the reducer you reach for when D is enormous, you need SPEED, and it's DISTANCES you must protect. Its one matmul beats PCA's SVD by a wide margin, it never touches the data's values (so it streams, parallelises, and even works when you can't fit the data in memory), and it comes with a distance guarantee that ignores D entirely — which is why it is the standard front-end for approximate nearest neighbours, locality-sensitive hashing, and fast k-means on text and genomics data. Its honest limits: it preserves distances but not the 'best' low-dimensional structure the way PCA maximises variance or UMAP reveals clusters, so for visualisation or maximum compression at fixed k, the data-dependent methods win. And because the guarantee is probabilistic, a given random draw could be unlucky (re-roll and it's fixed). But when you have a hundred-thousand-dimensional problem and want a fast, provable, distance-preserving squeeze, nothing is simpler than multiplying by random noise.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">huge D, need speed, distances matter → RANDOM PROJECTION ✅<br>linear, want max variance in few dims → PCA (Day 14)<br>visualise clusters in 2-D → t-SNE / UMAP (Days 23–24)<br>rich nonlinear code, lots of data → autoencoder<br><br>one matmul · data-oblivious · k ⟂ D · streams &amp; parallelises</div>`, code:`# production random projection — three lines
+from sklearn.random_projection import SparseRandomProjection
+rp = SparseRandomProjection(n_components='auto', eps=0.2, random_state=0)
+X_small = rp.fit_transform(X)     # 'auto' sizes k from n_samples & eps
+# front-end for kNN / LSH / k-means on very high-D data` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>

@@ -55,6 +55,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 51 — RANSAC](https://dev48v.infy.uk/ml/day51-ransac.html) — `day51-ransac.html`
 - [MachineLearningFromZero · Day 52 — Huber Regression](https://dev48v.infy.uk/ml/day52-huber-regression.html) — `day52-huber-regression.html`
 - [MachineLearningFromZero · Day 53 — Theil-Sen Estimator](https://dev48v.infy.uk/ml/day53-theil-sen.html) — `day53-theil-sen.html`
+- [MachineLearningFromZero · Day 54 — Random Projections (Johnson–Lindenstrauss)](https://dev48v.infy.uk/ml/day54-random-projections.html) — `day54-random-projections.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
