@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 55 — Nyström Method (low-rank kernel approximation)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:170px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .swatch-box { display:inline-block; width:14px; height:10px; border-radius:3px; vertical-align:0; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .ds-btn { border:1px solid #e2e8f0; background:#fff; font-weight:800; font-size:12px; padding:6px 11px; border-radius:9px; transition:all .15s; }
+  .ds-btn.on { color:#fff; border-color:transparent; background:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  .btn-run { background:#16a34a; color:#fff; }
+  .btn-run:hover { background:#15803d; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 55</div>
+      <h1 class="text-xl font-bold">🧩 The Nyström method — the trick that lets <strong>kernel machines survive at scale</strong>. Every kernel method — SVM, Gaussian processes, kernel PCA, spectral clustering — never looks at your raw features; it looks only at the <code>n×n</code> matrix <code>K</code> of pairwise similarities <code>Kᵢⱼ = k(xᵢ,xⱼ)</code>. That matrix is a monster: <code>n = 100,000</code> points is <strong>10 billion entries</strong> — tens of gigabytes you can't store and an <code>O(n³)</code> solve you can't afford. Nyström buys its way out by <strong>sampling</strong>: pick <code>m ≪ n</code> <span style="color:#0ea5e9;font-weight:700">landmark points</span>, compute only the thin <code>n×m</code> block <code>C</code> of kernel values from <em>every</em> point to the landmarks and the tiny <code>m×m</code> block <code>W</code> among the landmarks themselves, and reconstruct the <em>entire</em> matrix as <code>K ≈ C W⁺ Cᵀ</code>. The whole giant is rebuilt from a strip of columns and one small pseudo-inverse. It is <strong>exact when the landmarks are all the points</strong> (<code>m = n ⇒ C = W = K</code> and <code>K W⁺ Kᵀ = K</code>), and the reconstruction error <code>‖K − K̃‖_F / ‖K‖_F</code> <span style="color:#16a34a;font-weight:700">falls fast as <code>m</code> grows</span> because a smooth RBF kernel's eigenvalues decay quickly — the matrix is <em>nearly low-rank</em>, so a handful of well-spread landmarks already capture it. Everything below <strong>runs live in your browser</strong>: real 2-D points, an RBF kernel built by hand, landmarks chosen at random or spread out farthest-point style, a from-scratch Jacobi eigen-solve for the tiny <code>W⁺</code>, the reconstruction <code>C W⁺ Cᵀ</code>, side-by-side <span style="color:#0369a1;font-weight:700">kernel heatmaps</span> with an error map, and an error-vs-<code>m</code> curve diving toward zero — the same "approximate the expensive object" bet as <span style="color:#0ea5e9;font-weight:700">random projections (Day 54)</span>, but pointed at the kernel matrix instead of the distances.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>You can rebuild a giant kernel matrix from a few landmark points.</strong> Sample <code>m ≪ n</code> landmarks, measure the kernel only from every point to those landmarks (<code>C</code>, size <code>n×m</code>) and among the landmarks (<code>W</code>, size <code>m×m</code>), and the whole <code>n×n</code> matrix comes back as <code>K ≈ C W⁺ Cᵀ</code>. That is the <span style="color:#0ea5e9;font-weight:700">Nyström method</span>, and it works because a smooth kernel matrix is <strong>nearly low-rank</strong> — its eigenvalues decay, so a few landmarks span almost everything. Below it is <strong>built from scratch, live</strong> — the RBF kernel, the landmark sampler, the tiny hand-rolled pseudo-inverse of <code>W</code>, the reconstruction, the error heatmap, and the error-vs-<code>m</code> curve — on data you choose and reshape yourself.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Landmarks &amp; reconstruction</strong> scatters real 2-D points, marks the <span style="color:#0ea5e9;font-weight:700">landmarks</span>, and colours every other point by how well the Nyström formula rebuilds its row of the kernel — <span style="color:#16a34a;font-weight:700">green where the landmarks explain it</span>, <span style="color:#dc2626;font-weight:700">red in the gaps far from any landmark</span>; slide <code>m</code>, switch random vs spread-out sampling, and watch the error drain away. <strong>Kernel heatmaps</strong> shows the true kernel <code>K</code>, the Nyström reconstruction <code>K̃</code>, and the error map <code>|K − K̃|</code> side by side — <code>K̃</code> snaps into a near-copy of <code>K</code> and the error map goes dark as <code>m</code> climbs. <strong>Error vs m</strong> sweeps the number of landmarks and traces the relative Frobenius error <code>‖K − K̃‖/‖K‖</code> plunging toward <strong>zero</strong> — hitting exactly zero when <code>m = n</code> — and contrasts random sampling against farthest-point spread. Every pixel is computed in-browser.</p>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="points"  class="subnav-btn px-4 py-2 rounded-lg text-sm">📍 Landmarks &amp; reconstruction</button>
+        <button data-mod="heatmap"  class="subnav-btn px-4 py-2 rounded-lg text-sm">🔥 Kernel heatmaps</button>
+        <button data-mod="curve"    class="subnav-btn px-4 py-2 rounded-lg text-sm">📉 Error vs m</button>
+      </div>
+
+      <!-- ============ MODULE: LANDMARKS & RECONSTRUCTION ============ -->
+      <div id="mod-points" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="ptN" style="color:#64748b">—</div><div class="k">points n</div></div>
+          <div class="metric-pill"><div class="v" id="ptM" style="color:#0ea5e9">—</div><div class="k">landmarks m</div></div>
+          <div class="metric-pill"><div class="v" id="ptErr" style="color:#dc2626">—</div><div class="k">‖K − K̃‖ / ‖K‖</div></div>
+          <div class="metric-pill"><div class="v" id="ptComp" style="color:#16a34a">—</div><div class="k">storage vs full K</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE APPROXIMATION KNOBS</div>
+            <div class="ctl-row"><div class="ctl-name">📍 landmarks m</div><input type="range" id="ptMs" min="1" max="12" step="1" value="6"><div class="ctl-val" id="ptMsV">6</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔢 points n</div><input type="range" id="ptNs" min="40" max="120" step="2" value="80"><div class="ctl-val" id="ptNsV">80</div></div>
+            <div class="ctl-row"><div class="ctl-name">📶 kernel width γ</div><input type="range" id="ptGs" min="4" max="60" step="1" value="16"><div class="ctl-val" id="ptGsV">16</div></div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🎯 landmark selection</div>
+              <div id="ptSel" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🗂️ point cloud</div>
+              <div id="ptKind" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="ptRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New data / re-sample</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> The full RBF kernel <code>K</code> is built once. We keep only the columns to the <span style="color:#0ea5e9;font-weight:700">landmarks</span> (<code>C</code>) and the landmark-to-landmark block (<code>W</code>), invert the tiny <code>W</code> by hand, and rebuild <code>K̃ = C W⁺ Cᵀ</code>. Each non-landmark dot is tinted by its <b>row reconstruction error</b> — how far its rebuilt similarities drift from the truth. Points hugging a landmark come back <span style="color:#16a34a;font-weight:700">green</span>; points stranded in a landmark-free gap go <span style="color:#dc2626;font-weight:700">red</span>. Add landmarks or switch to spread sampling and the red drains out.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:600px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📍 point cloud, landmarks &amp; per-point reconstruction error &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">red = badly rebuilt, far from any landmark</span></div>
+            <canvas id="ptCanvas" width="576" height="360"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#0ea5e9"></span> landmark (sampled)</span>
+              <span><span class="swatch" style="background:#16a34a"></span> low row error</span>
+              <span><span class="swatch" style="background:#f59e0b"></span> medium</span>
+              <span><span class="swatch" style="background:#dc2626"></span> high row error</span>
+            </div>
+            <div id="ptDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: KERNEL HEATMAPS ============ -->
+      <div id="mod-heatmap" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="hmM" style="color:#0ea5e9">—</div><div class="k">landmarks m</div></div>
+          <div class="metric-pill"><div class="v" id="hmErr" style="color:#dc2626">—</div><div class="k">rel. Frobenius error</div></div>
+          <div class="metric-pill"><div class="v" id="hmMax" style="color:#b91c1c">—</div><div class="k">max |K − K̃|</div></div>
+          <div class="metric-pill"><div class="v" id="hmMean" style="color:#0f172a">—</div><div class="k">mean |error|</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">HOW CLOSE IS K̃ TO K?</div>
+            <div class="text-[11px] text-slate-500 mb-2">Left is the true kernel <code>K</code>, middle is the Nyström reconstruction <code>K̃ = C W⁺ Cᵀ</code>, right is the absolute error <code>|K − K̃|</code>. Perfect approximation makes the middle a copy of the left and the right go black.</div>
+            <div class="ctl-row"><div class="ctl-name">📍 landmarks m</div><input type="range" id="hmMs" min="1" max="12" step="1" value="6"><div class="ctl-val" id="hmMsV">6</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔢 points n</div><input type="range" id="hmNs" min="20" max="60" step="2" value="44"><div class="ctl-val" id="hmNsV">44</div></div>
+            <div class="ctl-row"><div class="ctl-name">📶 kernel width γ</div><input type="range" id="hmGs" min="4" max="60" step="1" value="16"><div class="ctl-val" id="hmGsV">16</div></div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🎯 landmark selection</div>
+              <div id="hmSel" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[12px] text-slate-600 leading-relaxed text-center font-mono">
+              K̃ = C · W⁺ · Cᵀ &nbsp; (C: n×m, W: m×m)
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Why it rebuilds.</strong> Rows are ordered so the <code>m</code> landmarks sit first — the top-left <code>m×m</code> corner of <code>K̃</code> is reproduced <em>exactly</em> (that is <code>W</code>), and the rest is extrapolated through the landmarks. The error map is brightest for pairs of points that are both far from every landmark. Raise <b>m</b> and the bright band collapses; reach <b>m = n</b> and the error map is uniformly black.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:600px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🔥 true kernel K &nbsp;·&nbsp; reconstruction K̃ &nbsp;·&nbsp; error |K − K̃|</div>
+            <canvas id="hmCanvas" width="576" height="228"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-box" style="background:#0369a1"></span> similarity ≈ 1</span>
+              <span><span class="swatch-box" style="background:#f8fafc;border:1px solid #cbd5e1"></span> similarity ≈ 0</span>
+              <span><span class="swatch-box" style="background:#dc2626"></span> large error</span>
+              <span><span class="swatch-box" style="background:#111827"></span> zero error</span>
+            </div>
+            <div id="hmDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: ERROR VS m ============ -->
+      <div id="mod-curve" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="cvN" style="color:#64748b">—</div><div class="k">points n</div></div>
+          <div class="metric-pill"><div class="v" id="cvE4" style="color:#dc2626">—</div><div class="k">error @ m = 4 (spread)</div></div>
+          <div class="metric-pill"><div class="v" id="cvEn" style="color:#16a34a">—</div><div class="k">error @ m = n</div></div>
+          <div class="metric-pill"><div class="v" id="cvMfor" style="color:#0ea5e9">—</div><div class="k">m for error &lt; 10%</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">MORE LANDMARKS → LESS ERROR</div>
+            <div class="text-[11px] text-slate-500 mb-2">Sweeping the landmark count <b>m</b> from 1 up to <b>n</b> and measuring the relative Frobenius error traces a clean decay toward <b>0</b> — the RBF kernel is nearly low-rank, so a few good landmarks already capture it.</div>
+            <div class="ctl-row"><div class="ctl-name">🔢 points n</div><input type="range" id="cvNs" min="20" max="48" step="2" value="40"><div class="ctl-val" id="cvNsV">40</div></div>
+            <div class="ctl-row"><div class="ctl-name">📶 kernel width γ</div><input type="range" id="cvGs" min="4" max="60" step="1" value="16"><div class="ctl-val" id="cvGsV">16</div></div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🗂️ point cloud</div>
+              <div id="cvKind" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[12px] text-slate-600 leading-relaxed text-center font-mono">
+              error(m) = ‖K − CW⁺Cᵀ‖_F / ‖K‖_F → 0
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Spread beats random.</strong> The <span style="color:#16a34a;font-weight:700">farthest-point / spread</span> sampler places landmarks to cover the cloud, so for the same <b>m</b> it reconstructs the kernel far better than <span style="color:#9333ea;font-weight:700">uniform random</span> sampling, which clumps and wastes landmarks. Both curves hit <b>exactly 0</b> at <b>m = n</b>, where <code>C = W = K</code> and <code>K W⁺ Kᵀ = K</code>. A smaller <b>γ</b> (wider kernel) makes <code>K</code> lower-rank, so the error drops even faster.</div>
+          </div>
+          <div class="panel hero text-left" style="width:460px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📉 relative Frobenius error vs landmark count m</div>
+            <canvas id="cvCanvas" width="436" height="340"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> spread (farthest-point)</span>
+              <span><span class="swatch-line" style="border-color:#9333ea"></span> uniform random</span>
+              <span><span class="swatch-line" style="border-color:#dc2626"></span> 10% error</span>
+            </div>
+            <div id="cvDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From "the kernel matrix is too big to store" to "rebuild it from a few columns"</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">The Nyström method is short — the exact routine the LOOK tab runs, no scikit-learn black box. Below is the runnable core: the RBF kernel and the two cheap blocks <code>C</code> and <code>W</code>, a from-scratch Jacobi eigen-decomposition of the tiny symmetric <code>W</code>, the pseudo-inverse <code>W⁺</code> built from those eigenpairs (with a whisker of diagonal jitter for stability), the reconstruction <code>C W⁺ Cᵀ</code>, the two landmark samplers, and the Frobenius error. Every heatmap and curve the LOOK tab draws comes from these snippets.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The RBF kernel and the two cheap blocks C and W</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The kernel is one line: <code>k(x,y) = exp(−γ‖x−y‖²)</code>. The whole point of Nyström is to <em>never</em> form the full <code>n×n</code> matrix. Instead we compute only <code>C</code> — kernel values from every point to the <code>m</code> landmarks (<code>n×m</code>) — and <code>W</code>, the landmark-to-landmark block (<code>m×m</code>). Both are cheap: <code>O(nm)</code> and <code>O(m²)</code>. Note <code>W</code> is exactly the landmark rows of <code>C</code>, so it is symmetric positive semi-definite.</p>
+        <div class="relative"><pre>// RBF kernel between two 2-D points
+function rbf(ax, ay, bx, by, gamma) {
+  const dx = ax - bx, dy = ay - by;
+  return Math.exp(-gamma * (dx*dx + dy*dy));
+}
+// C: n×m kernel to landmarks   ·   W: m×m among landmarks
+function buildCW(xs, ys, land, n, m, gamma) {
+  const C = new Float64Array(n * m), W = new Float64Array(m * m);
+  for (let i = 0; i < n; i++)
+    for (let a = 0; a < m; a++) {
+      const l = land[a];
+      C[i*m + a] = rbf(xs[i], ys[i], xs[l], ys[l], gamma);
+    }
+  for (let a = 0; a < m; a++)
+    for (let b = 0; b < m; b++) {
+      const la = land[a], lb = land[b];
+      W[a*m + b] = rbf(xs[la], ys[la], xs[lb], ys[lb], gamma);
+    }
+  return { C, W };                       // never build the full n×n K
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Diagonalise the tiny W — a hand-rolled Jacobi eigensolver</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Because <code>W</code> is small (<code>m ≤ 12</code>) and symmetric, the classic <strong>Jacobi rotation</strong> algorithm diagonalises it with nothing but sines and cosines — repeatedly rotating away the largest off-diagonal entry until <code>W = V Λ Vᵀ</code>. No library, no SVD. The columns of <code>V</code> are the eigenvectors, <code>Λ</code> the eigenvalues — everything we need to build a pseudo-inverse.</p>
+        <div class="relative"><pre>// Jacobi eigen-decomposition of a symmetric m×m matrix
+function jacobiEigen(Ain, m) {
+  const A = Float64Array.from(Ain);
+  const V = new Float64Array(m*m);
+  for (let i = 0; i < m; i++) V[i*m + i] = 1;         // V starts as I
+  for (let sweep = 0; sweep < 100; sweep++) {
+    let off = 0;
+    for (let p = 0; p < m; p++) for (let q = p+1; q < m; q++) off += A[p*m+q]**2;
+    if (off < 1e-24) break;                            // converged
+    for (let p = 0; p < m; p++) for (let q = p+1; q < m; q++) {
+      const apq = A[p*m+q]; if (Math.abs(apq) < 1e-300) continue;
+      const theta = (A[q*m+q] - A[p*m+p]) / (2*apq);   // stable rotation
+      const t = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta*theta + 1));
+      const c = 1 / Math.sqrt(t*t + 1), s = t*c;
+      for (let k = 0; k < m; k++) {                    // rotate columns p,q
+        const akp = A[k*m+p], akq = A[k*m+q];
+        A[k*m+p] = c*akp - s*akq;  A[k*m+q] = s*akp + c*akq;
+      }
+      for (let k = 0; k < m; k++) {                    // rotate rows p,q
+        const apk = A[p*m+k], aqk = A[q*m+k];
+        A[p*m+k] = c*apk - s*aqk;  A[q*m+k] = s*apk + c*aqk;
+      }
+      for (let k = 0; k < m; k++) {                    // accumulate V
+        const vkp = V[k*m+p], vkq = V[k*m+q];
+        V[k*m+p] = c*vkp - s*vkq;  V[k*m+q] = s*vkp + c*vkq;
+      }
+    }
+  }
+  const vals = new Float64Array(m);
+  for (let i = 0; i < m; i++) vals[i] = A[i*m + i];    // eigenvalues on diagonal
+  return { vals, vecs: V };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The pseudo-inverse W⁺ — invert the eigenvalues, drop the tiny ones</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A kernel block <code>W</code> can be rank-deficient (two landmarks nearly identical ⇒ a near-zero eigenvalue), so a plain inverse blows up. The <strong>Moore–Penrose pseudo-inverse</strong> is the fix: <code>W⁺ = V Λ⁺ Vᵀ</code>, where <code>Λ⁺</code> inverts each eigenvalue above a tolerance and <em>zeros</em> the rest. A tiny jitter on the diagonal keeps everything positive and stable — exactly the trick the LOOK tab uses so the reconstruction never NaNs.</p>
+        <div class="relative"><pre>// Moore–Penrose pseudo-inverse of a symmetric PSD matrix W (m×m)
+function pinvSym(W, m, jitter) {
+  const A = Float64Array.from(W);
+  for (let i = 0; i < m; i++) A[i*m + i] += jitter;    // ridge for stability
+  const { vals, vecs } = jacobiEigen(A, m);
+  let maxv = 0; for (let i = 0; i < m; i++) if (vals[i] > maxv) maxv = vals[i];
+  const tol = maxv * 1e-9 + 1e-15;                      // rank cutoff
+  const inv = new Float64Array(m*m);
+  for (let a = 0; a < m; a++) for (let b = 0; b < m; b++) {
+    let s = 0;
+    for (let k = 0; k < m; k++) {
+      const lam = vals[k];
+      if (lam > tol) s += vecs[a*m+k] * vecs[b*m+k] / lam;   // 1/λ on kept modes
+    }
+    inv[a*m + b] = s;                                   // (V Λ⁺ Vᵀ)_ab
+  }
+  return inv;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The reconstruction — K̃ = C W⁺ Cᵀ</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The whole kernel comes back as <code>C W⁺ Cᵀ</code>. In practice you never materialise the <code>n×n</code> result — you keep the factor <code>M = C W⁺</code> (size <code>n×m</code>) and multiply on demand, so a kernel-SVM or GP solve costs <code>O(nm²)</code> instead of <code>O(n³)</code>. Here we do form entries just to measure the error. When the landmarks are all the points (<code>m = n</code>), <code>C = W = K</code> and <code>K W⁺ Kᵀ = K</code> exactly — the pseudo-inverse's defining property — so the approximation is perfect.</p>
+        <div class="relative"><pre>// M = C · W⁺   (n×m) — the compact factor you actually keep
+function reconstructFactor(C, Winv, n, m) {
+  const M = new Float64Array(n * m);
+  for (let i = 0; i < n; i++)
+    for (let a = 0; a < m; a++) {
+      let s = 0;
+      for (let b = 0; b < m; b++) s += C[i*m + b] * Winv[b*m + a];
+      M[i*m + a] = s;
+    }
+  return M;                              // K̃ = M · Cᵀ , never stored in full
+}
+// a single reconstructed kernel entry K̃[i][j]
+function ktilde(M, C, i, j, m) {
+  let s = 0;
+  for (let a = 0; a < m; a++) s += M[i*m + a] * C[j*m + a];
+  return s;                              // = row_i(C) · W⁺ · row_j(C)ᵀ
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Choosing landmarks — random vs farthest-point spread</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Which points become landmarks matters enormously. <strong>Uniform random</strong> is the classic baseline but clumps in dense regions. <strong>Farthest-point sampling</strong> (a k-means++/k-centers cousin) greedily grows the set by always adding the point most distant from those already chosen — it blankets the cloud, so the same <code>m</code> landmarks buy far lower error. Principled schemes (leverage-score sampling) go further, weighting by how "hard to reconstruct" each column is.</p>
+        <div class="relative"><pre>// uniform random landmarks — shuffle, take m
+function selectRandom(n, m, rng) {
+  const idx = [...Array(n).keys()];
+  for (let i = n-1; i > 0; i--) {
+    const j = Math.floor(rng() * (i+1));
+    [idx[i], idx[j]] = [idx[j], idx[i]];
+  }
+  return idx.slice(0, m);
+}
+// farthest-point / k-centers spread — cover the cloud
+function selectSpread(xs, ys, n, m, rng) {
+  const chosen = [Math.floor(rng() * n)];
+  const d2 = new Float64Array(n).fill(Infinity);
+  while (chosen.length < m) {
+    const last = chosen[chosen.length - 1];
+    let best = -1, bestD = -1;
+    for (let i = 0; i < n; i++) {
+      const dx = xs[i]-xs[last], dy = ys[i]-ys[last];
+      const dd = dx*dx + dy*dy;
+      if (dd < d2[i]) d2[i] = dd;             // distance to nearest chosen
+      if (d2[i] > bestD) { bestD = d2[i]; best = i; }
+    }
+    chosen.push(best);                         // add the most-distant point
+  }
+  return chosen;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Measuring the error, and putting it together</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Quality is the relative Frobenius error <code>‖K − K̃‖_F / ‖K‖_F</code> — square every entry's mismatch, sum, root, normalise. This is the number the error-vs-<code>m</code> curve plots. The full pipeline is six calls: build <code>C, W</code>, pinv <code>W</code>, form the factor, then sum the residual against the true kernel.</p>
+        <div class="relative"><pre>function nystromError(xs, ys, n, land, m, gamma) {
+  const { C, W } = buildCW(xs, ys, land, n, m, gamma);
+  const Winv = pinvSym(W, m, 1e-9);           // tiny jitter → never NaN
+  const M    = reconstructFactor(C, Winv, n, m);
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++)
+    for (let j = 0; j < n; j++) {
+      const ktrue = rbf(xs[i], ys[i], xs[j], ys[j], gamma);
+      const e = ktrue - ktilde(M, C, i, j, m);
+      num += e*e; den += ktrue*ktrue;
+    }
+  return Math.sqrt(num / den);                // relative Frobenius error → 0 as m→n
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">In practice — the standard tools</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You rarely hand-roll it. scikit-learn ships <code>Nystroem</code>, which returns the explicit feature map <code>Φ = C W^(−1/2)</code> so that <code>Φ Φᵀ ≈ K</code> — feed <code>Φ</code> straight into any <em>linear</em> model to get a kernel model at linear cost. Gaussian-process libraries use the same idea under the name <strong>inducing points</strong> (sparse GPs), and it is the workhorse behind large-scale spectral clustering and kernel PCA.</p>
+        <div class="relative"><pre># scikit-learn — Nyström feature map in three lines
+from sklearn.kernel_approximation import Nystroem
+from sklearn.linear_model import Ridge
+from sklearn.pipeline import make_pipeline
+
+model = make_pipeline(
+    Nystroem(kernel='rbf', gamma=0.2, n_components=100),  # m = 100 landmarks
+    Ridge())                                              # a LINEAR model on Φ
+model.fit(X, y)        # kernel-quality fit at linear O(n·m²) cost, not O(n³)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-10 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧭 Four ways to survive a giant kernel matrix — and where Nyström sits</h3>
+      <div style="overflow-x:auto">
+      <table class="cmp">
+        <tr><th style="width:150px"></th><th>🧩 Nyström (Day 55)</th><th>🌊 Random Fourier Features</th><th>🎲 Random Projection (Day 54)</th><th>🧮 Exact kernel / low-rank SVD</th></tr>
+        <tr><td class="cat">Core idea</td><td><b>sample m landmarks, K ≈ C W⁺ Cᵀ</b></td><td>random cosines approximate the RBF map</td><td>multiply data by a random matrix</td><td>form all of K, take its top eigenpairs</td></tr>
+        <tr><td class="cat">Approximates…</td><td><b>the kernel / Gram matrix K</b></td><td>the kernel via an explicit feature map</td><td>pairwise distances (1±ε)</td><td>K exactly (SVD = best rank-r)</td></tr>
+        <tr><td class="cat">Looks at the data?</td><td><b>✅ data-dependent (picks landmarks)</b></td><td>❌ data-oblivious random features</td><td>❌ data-oblivious</td><td>✅ (the whole matrix)</td></tr>
+        <tr><td class="cat">Cost</td><td><b>O(nm² ) — never forms n×n</b></td><td>O(n·d) feature map</td><td>one matmul, very fast</td><td>O(n²) memory, O(n³) solve</td></tr>
+        <tr><td class="cat">Accuracy vs m</td><td><b>excellent — exploits low rank, exact at m=n</b></td><td>improves like 1/√D features</td><td>preserves distances, not the kernel</td><td>optimal (it IS the truth)</td></tr>
+        <tr><td class="cat">Best when</td><td><b>huge n, kernel is (near) low-rank; SVM/GP/spectral</b></td><td>huge n, shift-invariant kernel, streaming</td><td>huge D, distances matter (kNN, LSH)</td><td>small n where you can afford it</td></tr>
+      </table>
+      </div>
+      <p class="text-xs text-slate-500 mt-3">All four are the same bet from Day 54 taken further: <em>approximate the expensive object so the algorithm scales</em>. <b>Random projection (Day 54)</b> approximates <em>distances</em> with a data-oblivious random map — it doesn't touch the kernel. <b>Nyström</b> and <b>Random Fourier Features</b> both approximate the <em>kernel</em>, but from opposite ends: Nyström is <span style="color:#0ea5e9;font-weight:700">data-dependent</span> — it looks at your points and places landmarks where they matter, so it exploits a genuinely low-rank <code>K</code> beautifully and is exact at <code>m = n</code>; RFF is <span style="color:#9333ea;font-weight:700">data-oblivious</span> — it draws random cosine features whose expected inner product equals the kernel, which streams and parallelises but can't adapt to structure. <b>Exact low-rank SVD</b> is the gold standard but must build and factor the full matrix. Nyström's genius is buying near-SVD quality for a near-low-rank kernel at a fraction of the cost — the reason it powers sparse Gaussian processes (inducing points), large-scale spectral clustering, and kernel SVMs on data far too big to hold <code>K</code> in memory.</p>
+    </div>
+
+    <div class="mt-8 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 55 of MachineLearningFromZero done — making kernels tractable with a handful of landmarks.</h3><p class="text-sm text-sky-700 mt-2">The <strong>Nyström method</strong> rescues kernel machines from the <code>O(n²)</code> memory and <code>O(n³)</code> compute of the full Gram matrix by <span style="color:#0ea5e9;font-weight:700">sampling landmarks</span>: keep only the thin block <code>C</code> of kernel values to <code>m</code> landmark points and the tiny block <code>W</code> among them, and rebuild the entire matrix as <code>K ≈ C W⁺ Cᵀ</code>. It is <span style="color:#16a34a;font-weight:700">exact when <code>m = n</code></span> and its relative Frobenius error decays fast as <code>m</code> grows because a smooth RBF kernel is <strong>nearly low-rank</strong> — its eigenvalues collapse, so a few well-spread landmarks capture almost all of it. <span style="color:#9333ea;font-weight:700">Farthest-point sampling</span> beats uniform random for the same budget by covering the cloud, and a hand-rolled Jacobi eigensolver plus a jittered pseudo-inverse make the tiny <code>W⁺</code> rock-solid. It sits beside <span style="color:#0ea5e9;font-weight:700">random projections (Day 54)</span> and Random Fourier Features as the toolbox for approximating the expensive linear-algebra object so the method scales. <strong>👉 When n is huge and you need kernels — SVM, Gaussian processes, spectral clustering — reach for Nyström.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+const el = id => document.getElementById(id);
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function randn(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function setDiag(box, c, t, b){ box.className="diag "+c+" mt-3 text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+const fmt=(x,d=2)=>Number(x).toFixed(d);
+const clamp01=v=>Math.max(0.02,Math.min(0.98,v));
+
+/* ================================================================
+   CORE: RBF kernel, point clouds, landmark samplers,
+         C & W blocks, Jacobi eigen, pseudo-inverse, reconstruction
+   ================================================================ */
+// RBF kernel between two 2-D points
+function rbf(ax,ay,bx,by,gamma){ const dx=ax-bx, dy=ay-by; return Math.exp(-gamma*(dx*dx+dy*dy)); }
+
+// generate n points in the unit square: blobs / gaussian cloud / two moons
+function makePoints(n, kind, rng){
+  const xs=new Float64Array(n), ys=new Float64Array(n);
+  if(kind==='cloud'){
+    for(let i=0;i<n;i++){ xs[i]=clamp01(0.5+0.22*randn(rng)); ys[i]=clamp01(0.5+0.22*randn(rng)); }
+  } else if(kind==='moons'){
+    for(let i=0;i<n;i++){ const t=Math.PI*rng();
+      if(i%2===0){ xs[i]=clamp01(0.34+0.30*Math.cos(t)+0.03*randn(rng)); ys[i]=clamp01(0.60-0.28*Math.sin(t)+0.03*randn(rng)); }
+      else       { xs[i]=clamp01(0.58+0.30*Math.cos(t)+0.03*randn(rng)); ys[i]=clamp01(0.40+0.28*Math.sin(t)+0.03*randn(rng)); }
+    }
+  } else {                                              // blobs (default)
+    const nC=4, cx=[], cy=[];
+    for(let c=0;c<nC;c++){ cx.push(0.18+0.64*rng()); cy.push(0.18+0.64*rng()); }
+    for(let i=0;i<n;i++){ const c=i%nC; xs[i]=clamp01(cx[c]+0.075*randn(rng)); ys[i]=clamp01(cy[c]+0.075*randn(rng)); }
+  }
+  return {xs,ys};
+}
+
+// uniform random landmarks — shuffle, take m
+function selectRandom(n, m, rng){
+  const idx=[...Array(n).keys()];
+  for(let i=n-1;i>0;i--){ const j=Math.floor(rng()*(i+1)); const tmp=idx[i]; idx[i]=idx[j]; idx[j]=tmp; }
+  return idx.slice(0,m);
+}
+// farthest-point / k-centers spread — cover the cloud
+function selectSpread(xs, ys, n, m, rng){
+  const chosen=[Math.floor(rng()*n)];
+  const d2=new Float64Array(n).fill(Infinity);
+  while(chosen.length<m){
+    const last=chosen[chosen.length-1];
+    let best=-1,bestD=-1;
+    for(let i=0;i<n;i++){
+      const dx=xs[i]-xs[last], dy=ys[i]-ys[last]; const dd=dx*dx+dy*dy;
+      if(dd<d2[i]) d2[i]=dd;
+      if(d2[i]>bestD){ bestD=d2[i]; best=i; }
+    }
+    chosen.push(best);
+  }
+  return chosen;
+}
+function pickLandmarks(pts, n, m, sel, rng){
+  return sel==='spread' ? selectSpread(pts.xs, pts.ys, n, m, rng) : selectRandom(n, m, rng);
+}
+
+// C: n×m kernel to landmarks ; W: m×m among landmarks
+function buildCW(pts, land, n, m, gamma){
+  const xs=pts.xs, ys=pts.ys;
+  const C=new Float64Array(n*m), W=new Float64Array(m*m);
+  for(let i=0;i<n;i++) for(let a=0;a<m;a++){ const l=land[a]; C[i*m+a]=rbf(xs[i],ys[i],xs[l],ys[l],gamma); }
+  for(let a=0;a<m;a++) for(let b=0;b<m;b++){ const la=land[a],lb=land[b]; W[a*m+b]=rbf(xs[la],ys[la],xs[lb],ys[lb],gamma); }
+  return {C,W};
+}
+
+// Jacobi eigen-decomposition of a symmetric m×m matrix → {vals, vecs}
+function jacobiEigen(Ain, m){
+  const A=Float64Array.from(Ain);
+  const V=new Float64Array(m*m); for(let i=0;i<m;i++) V[i*m+i]=1;
+  for(let sweep=0;sweep<100;sweep++){
+    let off=0; for(let p=0;p<m;p++) for(let q=p+1;q<m;q++){ const v=A[p*m+q]; off+=v*v; }
+    if(off<1e-24) break;
+    for(let p=0;p<m;p++) for(let q=p+1;q<m;q++){
+      const apq=A[p*m+q]; if(Math.abs(apq)<1e-300) continue;
+      const theta=(A[q*m+q]-A[p*m+p])/(2*apq);
+      const t=Math.sign(theta||1)/(Math.abs(theta)+Math.sqrt(theta*theta+1));
+      const c=1/Math.sqrt(t*t+1), s=t*c;
+      for(let k=0;k<m;k++){ const akp=A[k*m+p], akq=A[k*m+q]; A[k*m+p]=c*akp-s*akq; A[k*m+q]=s*akp+c*akq; }
+      for(let k=0;k<m;k++){ const apk=A[p*m+k], aqk=A[q*m+k]; A[p*m+k]=c*apk-s*aqk; A[q*m+k]=s*apk+c*aqk; }
+      for(let k=0;k<m;k++){ const vkp=V[k*m+p], vkq=V[k*m+q]; V[k*m+p]=c*vkp-s*vkq; V[k*m+q]=s*vkp+c*vkq; }
+    }
+  }
+  const vals=new Float64Array(m); for(let i=0;i<m;i++) vals[i]=A[i*m+i];
+  return {vals, vecs:V};
+}
+// Moore–Penrose pseudo-inverse of a symmetric PSD matrix (with diagonal jitter)
+function pinvSym(W, m, jitter){
+  const A=Float64Array.from(W);
+  for(let i=0;i<m;i++) A[i*m+i]+=jitter;
+  const {vals,vecs}=jacobiEigen(A,m);
+  let maxv=0; for(let i=0;i<m;i++) if(vals[i]>maxv) maxv=vals[i];
+  const tol=maxv*1e-9+1e-15;
+  const inv=new Float64Array(m*m);
+  for(let a=0;a<m;a++) for(let b=0;b<m;b++){
+    let s=0; for(let k=0;k<m;k++){ const lam=vals[k]; if(lam>tol) s+=vecs[a*m+k]*vecs[b*m+k]/lam; }
+    inv[a*m+b]=s;
+  }
+  return inv;
+}
+// M = C · W⁺  (n×m) — the compact factor; K̃ = M · Cᵀ
+function reconstructFactor(C, Winv, n, m){
+  const M=new Float64Array(n*m);
+  for(let i=0;i<n;i++) for(let a=0;a<m;a++){ let s=0; for(let b=0;b<m;b++) s+=C[i*m+b]*Winv[b*m+a]; M[i*m+a]=s; }
+  return M;
+}
+// full Nyström fit → factor M, block C, and true kernel K (for error/heatmap)
+function nystromFit(pts, n, land, m, gamma){
+  const {C,W}=buildCW(pts, land, n, m, gamma);
+  const Winv=pinvSym(W, m, 1e-9);
+  const M=reconstructFactor(C, Winv, n, m);
+  const xs=pts.xs, ys=pts.ys;
+  const K=new Float64Array(n*n);
+  for(let i=0;i<n;i++) for(let j=0;j<n;j++) K[i*n+j]=rbf(xs[i],ys[i],xs[j],ys[j],gamma);
+  return {C,W,Winv,M,K};
+}
+// relative Frobenius error + per-point (row) error, from factor M and block C
+function frobError(K, M, C, n, m){
+  let num=0, den=0; const rowErr=new Float64Array(n);
+  for(let i=0;i<n;i++){ let rn=0;
+    for(let j=0;j<n;j++){
+      let kt=0; for(let a=0;a<m;a++) kt+=M[i*m+a]*C[j*m+a];
+      const e=K[i*n+j]-kt; num+=e*e; den+=K[i*n+j]*K[i*n+j]; rn+=e*e;
+    }
+    rowErr[i]=Math.sqrt(rn);
+  }
+  return {relErr:Math.sqrt(num/den), rowErr};
+}
+
+// heat colours
+function kernelColor(v){ v=Math.max(0,Math.min(1,v));
+  const r=Math.round(248+(3-248)*v), g=Math.round(250+(105-250)*v), b=Math.round(252+(161-252)*v);
+  return `rgb(${r},${g},${b})`;
+}
+function errColor(v){ v=Math.max(0,Math.min(1,v));   // 0 → near-black, 1 → red
+  const r=Math.round(17+(220-17)*v), g=Math.round(24+(38-24)*v), b=Math.round(39+(38-39)*v);
+  return `rgb(${r},${g},${b})`;
+}
+// map normalized [0,1] point to canvas rect
+function mapX(x,x0,x1){ return x0+(x1-x0)*x; }
+function mapY(y,y0,y1){ return y1-(y1-y0)*y; }
+
+/* ================================================================
+   MODULE POINTS — landmarks & per-point reconstruction error
+   ================================================================ */
+const PT={ n:80, m:6, gamma:16, kind:'blobs', sel:'spread', seed:1 };
+function ptDraw(){
+  const cv=el('ptCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H); ctx.setLineDash([]);
+  const pad=22, x0=pad,x1=W-pad,y0=pad,y1=H-pad;
+  const m=Math.min(PT.m, PT.n);
+  const pts=makePoints(PT.n, PT.kind, mulberry32(PT.seed));
+  const land=pickLandmarks(pts, PT.n, m, PT.sel, mulberry32(PT.seed*7+11));
+  const fit=nystromFit(pts, PT.n, land, m, PT.gamma);
+  const {relErr,rowErr}=frobError(fit.K, fit.M, fit.C, PT.n, m);
+  const isLand=new Uint8Array(PT.n); land.forEach(i=>isLand[i]=1);
+  let maxRow=1e-9; for(let i=0;i<PT.n;i++) if(!isLand[i] && rowErr[i]>maxRow) maxRow=rowErr[i];
+  // faint link from each non-landmark point to its nearest landmark
+  ctx.strokeStyle='rgba(148,163,184,0.16)'; ctx.lineWidth=1;
+  for(let i=0;i<PT.n;i++){ if(isLand[i]) continue;
+    let bl=land[0], bd=Infinity;
+    for(const l of land){ const dx=pts.xs[i]-pts.xs[l], dy=pts.ys[i]-pts.ys[l]; const dd=dx*dx+dy*dy; if(dd<bd){bd=dd; bl=l;} }
+    ctx.beginPath(); ctx.moveTo(mapX(pts.xs[i],x0,x1),mapY(pts.ys[i],y0,y1)); ctx.lineTo(mapX(pts.xs[bl],x0,x1),mapY(pts.ys[bl],y0,y1)); ctx.stroke();
+  }
+  // non-landmark points, coloured by row error
+  for(let i=0;i<PT.n;i++){ if(isLand[i]) continue;
+    const f=rowErr[i]/maxRow;
+    ctx.fillStyle = f<0.28 ? 'rgba(22,163,74,0.85)' : f<0.6 ? 'rgba(245,158,11,0.88)' : 'rgba(220,38,38,0.85)';
+    ctx.beginPath(); ctx.arc(mapX(pts.xs[i],x0,x1),mapY(pts.ys[i],y0,y1),4,0,7); ctx.fill();
+  }
+  // landmarks: blue ring + core
+  for(const l of land){ const X=mapX(pts.xs[l],x0,x1), Y=mapY(pts.ys[l],y0,y1);
+    ctx.beginPath(); ctx.arc(X,Y,8,0,7); ctx.fillStyle='rgba(14,165,233,0.20)'; ctx.fill();
+    ctx.beginPath(); ctx.arc(X,Y,5.2,0,7); ctx.fillStyle='#0ea5e9'; ctx.fill();
+    ctx.lineWidth=1.6; ctx.strokeStyle='#0369a1'; ctx.stroke();
+  }
+  // metrics
+  el('ptN').textContent=PT.n; el('ptM').textContent=m;
+  el('ptErr').textContent=fmt(relErr,3);
+  const comp=100*(PT.n*m+m*m)/(PT.n*PT.n);
+  el('ptComp').textContent=fmt(comp,0)+'%';
+  ptDiag(relErr, m, maxRow);
+}
+function ptDiag(relErr, m, maxRow){
+  const box=el('ptDiag');
+  const selName = PT.sel==='spread' ? 'farthest-point spread' : 'uniform random';
+  if(relErr<0.08){
+    setDiag(box,'diag-good',`✅ Kernel rebuilt — relative error ${fmt(relErr,3)} from ${m} landmarks`,
+      `The <b>${m}</b> <span style="color:#0369a1;font-weight:700">landmarks</span> (${selName}) reconstruct the entire <b>${PT.n}×${PT.n}</b> kernel to within <b>${fmt(relErr*100,1)}%</b> — almost every point is <span style="color:#16a34a;font-weight:700">green</span>, its row of similarities recovered from just the columns to those landmarks. This is Nyström exploiting a <em>nearly low-rank</em> kernel: a handful of well-placed points span it. And you stored only <b>${fmt(100*(PT.n*m+m*m)/(PT.n*PT.n),0)}%</b> of the full matrix to do it.`);
+  } else if(relErr<0.25){
+    setDiag(box,'diag-warn',`⚠️ Getting there — relative error ${fmt(relErr,3)} at m = ${m}`,
+      `With <b>${m}</b> landmarks the reconstruction is decent but <span style="color:#f59e0b;font-weight:700">amber/red</span> points remain — those sit in gaps far from any landmark, so their kernel rows are extrapolated poorly. Add a landmark or two, or switch to <b>spread</b> sampling to blanket the cloud, and the error drops quickly.`);
+  } else {
+    setDiag(box,'diag-bad',`🔴 Too few landmarks — relative error ${fmt(relErr,3)} at m = ${m}`,
+      `At <b>m = ${m}</b> the landmarks can't span the kernel: large stretches of the cloud are <span style="color:#dc2626;font-weight:700">red</span>, their similarities badly rebuilt. This is the regime where Nyström is starved — the low-rank picture only holds once enough landmarks cover the data. Slide <b>m</b> up (or use spread sampling) and watch the red drain away.`);
+  }
+}
+function ptButtons(){
+  const sw=el('ptSel'); sw.innerHTML='';
+  [['spread','🌐 spread (farthest-point)'],['random','🎲 uniform random']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(PT.sel===id?' on':''); b.textContent=label;
+    b.onclick=()=>{ PT.sel=id; ptButtons(); ptDraw(); }; sw.appendChild(b);
+  });
+  const kw=el('ptKind'); kw.innerHTML='';
+  [['blobs','🫧 blobs'],['cloud','☁️ cloud'],['moons','🌙 moons']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(PT.kind===id?' on':''); b.textContent=label;
+    b.onclick=()=>{ PT.kind=id; PT.seed=(Math.random()*1e9)>>>0; ptButtons(); ptDraw(); }; kw.appendChild(b);
+  });
+}
+el('ptMs').addEventListener('input',e=>{ PT.m=+e.target.value; el('ptMsV').textContent=PT.m; ptDraw(); });
+el('ptNs').addEventListener('input',e=>{ PT.n=+e.target.value; el('ptNsV').textContent=PT.n; ptDraw(); });
+el('ptGs').addEventListener('input',e=>{ PT.gamma=+e.target.value; el('ptGsV').textContent=PT.gamma; ptDraw(); });
+el('ptRoll').onclick=()=>{ PT.seed=(Math.random()*1e9)>>>0; ptDraw(); };
+
+/* ================================================================
+   MODULE HEATMAP — K, K̃, and |K − K̃| side by side
+   ================================================================ */
+const HM={ n:44, m:6, gamma:16, kind:'blobs', sel:'spread', seed:2 };
+function hmDraw(){
+  const cv=el('hmCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H); ctx.setLineDash([]);
+  const n=HM.n, m=Math.min(HM.m,n);
+  const pts=makePoints(n, HM.kind, mulberry32(HM.seed));
+  // order points so landmarks come first (nice top-left exact corner)
+  const land0=pickLandmarks(pts, n, m, HM.sel, mulberry32(HM.seed*7+11));
+  const landSet=new Set(land0);
+  const order=[...land0]; for(let i=0;i<n;i++) if(!landSet.has(i)) order.push(i);
+  const xs=new Float64Array(n), ys=new Float64Array(n);
+  for(let i=0;i<n;i++){ xs[i]=pts.xs[order[i]]; ys[i]=pts.ys[order[i]]; }
+  const opts={xs,ys}; const land=[]; for(let a=0;a<m;a++) land.push(a);
+  const fit=nystromFit(opts, n, land, m, HM.gamma);
+  const {relErr}=frobError(fit.K, fit.M, fit.C, n, m);
+  // layout: three S×S heatmaps
+  const S=158, gap=16, totalW=3*S+2*gap, left=(W-totalW)/2, top=34;
+  const cs=S/n;
+  const titles=['K  (true)','K̃  (Nyström)','|K − K̃|  (error)'];
+  // compute max abs error for scaling the error map
+  let maxE=1e-9, sumE=0;
+  for(let i=0;i<n;i++) for(let j=0;j<n;j++){ let kt=0; for(let a=0;a<m;a++) kt+=fit.M[i*m+a]*fit.C[j*m+a]; const e=Math.abs(fit.K[i*n+j]-kt); if(e>maxE)maxE=e; sumE+=e; }
+  const meanE=sumE/(n*n);
+  for(let g=0; g<3; g++){
+    const bx=left+g*(S+gap);
+    ctx.fillStyle='#334155'; ctx.font='bold 11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(titles[g], bx+S/2, top-10);
+    for(let i=0;i<n;i++) for(let j=0;j<n;j++){
+      let val;
+      if(g===0){ val=fit.K[i*n+j]; ctx.fillStyle=kernelColor(val); }
+      else if(g===1){ let kt=0; for(let a=0;a<m;a++) kt+=fit.M[i*m+a]*fit.C[j*m+a]; ctx.fillStyle=kernelColor(kt); }
+      else { let kt=0; for(let a=0;a<m;a++) kt+=fit.M[i*m+a]*fit.C[j*m+a]; ctx.fillStyle=errColor(Math.abs(fit.K[i*n+j]-kt)/maxE); }
+      ctx.fillRect(bx+j*cs, top+i*cs, Math.ceil(cs), Math.ceil(cs));
+    }
+    ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1; ctx.strokeRect(bx-0.5, top-0.5, S+1, S+1);
+    // mark the exact m×m landmark corner
+    ctx.strokeStyle='rgba(14,165,233,0.9)'; ctx.lineWidth=1.4; ctx.strokeRect(bx, top, cs*m, cs*m);
+  }
+  el('hmM').textContent=m; el('hmErr').textContent=fmt(relErr,3);
+  el('hmMax').textContent=fmt(maxE,3); el('hmMean').textContent=fmt(meanE,4);
+  hmDiag(relErr, maxE, m, n);
+}
+function hmDiag(relErr, maxE, m, n){
+  const box=el('hmDiag');
+  if(relErr<0.08){
+    setDiag(box,'diag-good',`✅ K̃ ≈ K — relative error ${fmt(relErr,3)}, worst entry off by ${fmt(maxE,3)}`,
+      `The middle heatmap is a near-perfect copy of the true kernel on the left, and the error map on the right is almost uniformly dark — <b>${m}</b> landmarks are enough to reconstruct all <b>${n}×${n}</b> similarities. The <span style="color:#0ea5e9;font-weight:700">blue box</span> marks the top-left <b>${m}×${m}</b> landmark corner, which Nyström reproduces exactly; the rest is faithfully extrapolated through it.`);
+  } else if(relErr<0.25){
+    setDiag(box,'diag-warn',`⚠️ Visible error band — relative error ${fmt(relErr,3)}`,
+      `<code>K̃</code> captures the block structure but the error map still glows for point pairs both far from any landmark (worst entry off by <b>${fmt(maxE,3)}</b>). Raise <b>m</b> and the bright regions collapse toward black.`);
+  } else {
+    setDiag(box,'diag-bad',`🔴 K̃ is a coarse sketch — relative error ${fmt(relErr,3)}`,
+      `With only <b>${m}</b> landmarks the reconstruction misses whole regions of the kernel — the error map is bright far from the landmark corner (worst entry <b>${fmt(maxE,3)}</b>). This is too aggressive a compression for this kernel width; add landmarks or widen the kernel (lower γ) to make <code>K</code> more low-rank.`);
+  }
+}
+function hmButtons(){
+  const sw=el('hmSel'); sw.innerHTML='';
+  [['spread','🌐 spread'],['random','🎲 random']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(HM.sel===id?' on':''); b.textContent=label;
+    b.onclick=()=>{ HM.sel=id; hmButtons(); hmDraw(); }; sw.appendChild(b);
+  });
+}
+el('hmMs').addEventListener('input',e=>{ HM.m=+e.target.value; el('hmMsV').textContent=HM.m; hmDraw(); });
+el('hmNs').addEventListener('input',e=>{ HM.n=+e.target.value; el('hmNsV').textContent=HM.n; hmDraw(); });
+el('hmGs').addEventListener('input',e=>{ HM.gamma=+e.target.value; el('hmGsV').textContent=HM.gamma; hmDraw(); });
+
+/* ================================================================
+   MODULE CURVE — relative Frobenius error vs landmark count m
+   ================================================================ */
+const CV={ n:40, gamma:16, kind:'blobs', seed:3 };
+function cvMlist(n){
+  const base=[1,2,3,4,6,8,10,12,16,20,28,36,n];
+  const out=[]; for(const v of base){ if(v<=n && out.indexOf(v)<0) out.push(v); }
+  if(out.indexOf(n)<0) out.push(n);
+  return out.sort((a,b)=>a-b);
+}
+function cvSweep(){
+  const n=CV.n;
+  const pts=makePoints(n, CV.kind, mulberry32(CV.seed));
+  const xs=pts.xs, ys=pts.ys;
+  const K=new Float64Array(n*n);
+  for(let i=0;i<n;i++) for(let j=0;j<n;j++) K[i*n+j]=rbf(xs[i],ys[i],xs[j],ys[j],CV.gamma);
+  const ms=cvMlist(n);
+  const spread=[], random=[];
+  for(const m of ms){
+    const ls=selectSpread(xs,ys,n,m,mulberry32(CV.seed*7+11));
+    const lr=selectRandom(n,m,mulberry32(CV.seed*13+5));
+    for(const [land,arr] of [[ls,spread],[lr,random]]){
+      const {C,W}=buildCW(pts, land, n, m, CV.gamma);
+      const Winv=pinvSym(W, m, 1e-9);
+      const Mf=reconstructFactor(C, Winv, n, m);
+      let num=0,den=0;
+      for(let i=0;i<n;i++) for(let j=0;j<n;j++){ let kt=0; for(let a=0;a<m;a++) kt+=Mf[i*m+a]*C[j*m+a]; const e=K[i*n+j]-kt; num+=e*e; den+=K[i*n+j]*K[i*n+j]; }
+      arr.push(Math.sqrt(num/den));
+    }
+  }
+  return {ms, spread, random};
+}
+function cvDraw(){
+  const cv=el('cvCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H); ctx.setLineDash([]);
+  const ml=46,mr=14,mt=16,mb=34, x0=ml,x1=W-mr,y0=mt,y1=H-mb;
+  const {ms,spread,random}=cvSweep();
+  const KMAX=CV.n; let ymax=0.05; for(const v of spread) if(v>ymax)ymax=v; for(const v of random) if(v>ymax)ymax=v; ymax*=1.08;
+  const SX=k=>x0+(x1-x0)*k/KMAX, SY=v=>y1-(y1-y0)*Math.min(v,ymax)/ymax;
+  // grid
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1;
+  for(let g=0;g<=4;g++){ const yy=y0+(y1-y0)*g/4; ctx.beginPath();ctx.moveTo(x0,yy);ctx.lineTo(x1,yy);ctx.stroke(); }
+  // y tick labels
+  ctx.fillStyle='#94a3b8'; ctx.font='9px monospace'; ctx.textAlign='right';
+  for(let g=0;g<=4;g++){ const yy=y0+(y1-y0)*g/4; const v=ymax*(1-g/4); ctx.fillText(fmt(v,2),x0-5,yy+3); }
+  // 10% error line
+  if(0.10<ymax){ ctx.strokeStyle='#dc2626'; ctx.lineWidth=1.4; ctx.setLineDash([5,4]); ctx.beginPath(); ctx.moveTo(x0,SY(0.10)); ctx.lineTo(x1,SY(0.10)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#dc2626'; ctx.font='bold 10px monospace'; ctx.textAlign='left'; ctx.fillText('10% error', x0+6, SY(0.10)-4); }
+  // random curve
+  ctx.strokeStyle='#9333ea'; ctx.lineWidth=2.2; ctx.beginPath();
+  ms.forEach((k,i)=>{ const X=SX(k),Y=SY(random[i]); if(i===0)ctx.moveTo(X,Y); else ctx.lineTo(X,Y); }); ctx.stroke();
+  ctx.fillStyle='#9333ea'; ms.forEach((k,i)=>{ ctx.beginPath(); ctx.arc(SX(k),SY(random[i]),2.6,0,7); ctx.fill(); });
+  // spread curve
+  ctx.strokeStyle='#16a34a'; ctx.lineWidth=2.6; ctx.beginPath();
+  ms.forEach((k,i)=>{ const X=SX(k),Y=SY(spread[i]); if(i===0)ctx.moveTo(X,Y); else ctx.lineTo(X,Y); }); ctx.stroke();
+  ctx.fillStyle='#16a34a'; ms.forEach((k,i)=>{ ctx.beginPath(); ctx.arc(SX(k),SY(spread[i]),3,0,7); ctx.fill(); });
+  // axes + x ticks
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x0,y0);ctx.lineTo(x0,y1);ctx.lineTo(x1,y1);ctx.stroke();
+  ctx.fillStyle='#94a3b8'; ctx.font='9px monospace'; ctx.textAlign='center';
+  const xticks=[1,8,16,24,32,40,48].filter(k=>k<=KMAX); if(xticks.indexOf(KMAX)<0) xticks.push(KMAX);
+  for(const k of xticks) ctx.fillText(k,SX(k),y1+12);
+  ctx.fillStyle='#64748b'; ctx.font='10px sans-serif'; ctx.fillText('landmark count m  →  (m = n at right edge)',(x0+x1)/2,H-4);
+  ctx.save(); ctx.translate(12,(y0+y1)/2); ctx.rotate(-Math.PI/2); ctx.fillText('relative Frobenius error',0,0); ctx.restore();
+  // metrics
+  const idx4=ms.indexOf(4); const e4 = idx4>=0? spread[idx4] : spread[Math.min(2,spread.length-1)];
+  const en=spread[spread.length-1];
+  let mFor=null; for(let i=0;i<ms.length;i++){ if(spread[i]<0.10){ mFor=ms[i]; break; } }
+  el('cvN').textContent=CV.n;
+  el('cvE4').textContent=fmt(e4,3);
+  el('cvEn').textContent=fmt(en,3);
+  el('cvMfor').textContent = mFor!==null ? mFor : '> n';
+  cvDiag(e4, en, mFor);
+}
+function cvDiag(e4, en, mFor){
+  const box=el('cvDiag');
+  const mForTxt = mFor!==null ? `<b>m = ${mFor}</b>` : '<b>more than n</b>';
+  setDiag(box,'diag-info',`📉 error falls to ${fmt(en*100,1)}% at m = n, and under 10% by ${mFor!==null?('m = '+mFor):'> n'}`,
+    `The <span style="color:#16a34a;font-weight:700">spread</span> sampler drives the relative Frobenius error under 10% by ${mForTxt} and to <b>${fmt(en*100,2)}%</b> — essentially machine-zero — at <b>m = n = ${CV.n}</b>, where <code>C = W = K</code> and the pseudo-inverse identity <code>K W⁺ Kᵀ = K</code> makes the reconstruction exact. <span style="color:#9333ea;font-weight:700">Uniform random</span> sits above it at every budget because it clumps landmarks and leaves gaps. The decay is fast because a smooth RBF kernel is <em>nearly low-rank</em> — its eigenvalues collapse, so a few landmarks already span it. This is the same "approximate the expensive object" bet as random projections (Day 54), aimed at the kernel matrix instead of the distances.`);
+}
+function cvButtons(){
+  const kw=el('cvKind'); kw.innerHTML='';
+  [['blobs','🫧 blobs'],['cloud','☁️ cloud'],['moons','🌙 moons']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(CV.kind===id?' on':''); b.textContent=label;
+    b.onclick=()=>{ CV.kind=id; CV.seed=(Math.random()*1e9)>>>0; cvButtons(); cvDraw(); }; kw.appendChild(b);
+  });
+}
+el('cvNs').addEventListener('input',e=>{ CV.n=+e.target.value; el('cvNsV').textContent=CV.n; cvDraw(); });
+el('cvGs').addEventListener('input',e=>{ CV.gamma=+e.target.value; el('cvGsV').textContent=CV.gamma; cvDraw(); });
+
+/* ================================================================
+   sub-nav wiring
+   ================================================================ */
+const subBtns=document.querySelectorAll("#subnav [data-mod]");
+function showMod(m){
+  document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden"));
+  el("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m));
+  if(m==="points") ptDraw();
+  if(m==="heatmap") hmDraw();
+  if(m==="curve") cvDraw();
+}
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+/* ================================================================
+   init
+   ================================================================ */
+ptButtons(); hmButtons(); cvButtons();
+document.querySelector('[data-mod="points"]').classList.add("on");
+showMod("points");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. The kernel matrix is the bottleneck", why:"Every kernel method — SVM, Gaussian processes, kernel PCA, spectral clustering — is defined purely through the n×n Gram matrix K, where Kᵢⱼ = k(xᵢ,xⱼ) measures the similarity of points i and j. The features φ(x) may be huge or infinite-dimensional, but the algorithm only ever touches these pairwise similarities (the 'kernel trick', Day 42). The catch: K has n² entries. At n = 100,000 that is ten billion numbers — tens of gigabytes just to store, before you even try to invert it (an O(n³) operation) as an SVM or a GP requires. Kernel methods are gorgeous at small n and completely intractable at large n. The whole game of Day 55 is to avoid ever forming, storing, or inverting the full K — while still solving the problem it defines.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">kernel method sees ONLY  K  (n×n),  Kᵢⱼ = k(xᵢ,xⱼ)<br><br>n = 100,000  ⇒  K has 10,000,000,000 entries<br>store: tens of GB · solve (SVM/GP): O(n³) 😱<br><br>goal: never build, store, or invert the full K</div>`, code:`# the full kernel is quadratic in n — often impossible to even store
+import numpy as np
+X = np.random.randn(100_000, 50)
+# K = rbf_kernel(X, X)   # (100000, 100000) → ~80 GB.  Don't.
+# kernel SVM / GP then need an O(n^3) solve on top. Intractable.` },
+ { title:"2. Sample m landmark points", why:"Nyström's move is disarmingly simple: pick a small set of m ≪ n 'landmark' points (also called inducing points or anchors). Instead of the full K, compute only two much smaller pieces. C is the n×m block of kernel values from EVERY point to the m landmarks — cost O(nm). W is the m×m block of kernel values AMONG the landmarks — cost O(m²). Both are tiny and cheap: for n = 100,000 and m = 100, C is 100,000×100 (a thin strip) and W is a trivial 100×100. Crucially W is exactly the landmark rows of C, and being a kernel sub-matrix it is symmetric positive semi-definite. We have sampled a strip of columns of the giant matrix and its little diagonal block — nothing more.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">pick m ≪ n landmarks (inducing points)<br><br>C = kernel(all points, landmarks)   n×m   — a thin strip<br>W = kernel(landmarks, landmarks)    m×m   — tiny block<br><br>cost: O(nm) + O(m²)   ·   never the full O(n²)</div>`, code:`m = 100
+land = rng.choice(n, size=m, replace=False)     # landmark indices
+C = rbf_kernel(X, X[land])          # n×m  (every point → landmarks)
+W = rbf_kernel(X[land], X[land])    # m×m  (landmarks → landmarks)
+# these two small blocks are ALL we compute` },
+ { title:"3. Rebuild the whole matrix: K ≈ C W⁺ Cᵀ", why:"Here is the magic formula. The Nyström approximation of the entire n×n kernel is K̃ = C W⁺ Cᵀ, where W⁺ is the pseudo-inverse of the small landmark block. Read the shapes: (n×m)·(m×m)·(m×n) = n×n — a rank-≤m matrix that fills in every one of the n² similarities from just the sampled strip. Where does it come from? Think of the kernel as φ(x)·φ(y). The landmarks span a subspace of feature space; W⁺ orthogonalises within that subspace, and C projects every point onto it, so C W⁺ Cᵀ is exactly the kernel restricted to the span of the landmarks. If a point lies in that span, its similarities are recovered perfectly; otherwise you lose only its component orthogonal to all landmarks — which is small when the kernel is low-rank.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">K̃ = C · W⁺ · Cᵀ<br>(n×m)·(m×m)·(m×n) = n×n , rank ≤ m<br><br>= the kernel PROJECTED onto the landmark span<br>points in the span → recovered exactly<br>the rest → only the orthogonal part is lost</div>`, code:`from numpy.linalg import pinv
+K_tilde = C @ pinv(W) @ C.T          # (n×n) rank-≤m reconstruction
+# but you NEVER form this n×n product in practice —
+# keep the factor  M = C @ pinv(W)  (n×m) and apply on demand` },
+ { title:"4. Exact when the landmarks are everything", why:"Why trust C W⁺ Cᵀ at all? Because at the extreme m = n — when the landmarks ARE all the points — it is not an approximation but an identity. Then C = K (kernel of all points to all points) and W = K too, so K̃ = K K⁺ K. The defining property of the Moore–Penrose pseudo-inverse is exactly A A⁺ A = A, so K K⁺ K = K and the reconstruction is perfect. Nyström is therefore a continuous dial from a crude rank-1 sketch (m = 1) all the way to the exact matrix (m = n), and everything in between is a rank-m best-effort. That single fact — exactness at m = n — is what the 'Error vs m' curve confirms by diving to machine-zero at its right edge, and it is why more landmarks can only help.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">m = n  ⇒  C = K  and  W = K<br><br>K̃ = K · K⁺ · K = K      (since A A⁺ A = A)<br><br>⇒ EXACT reconstruction, zero error<br>m from 1 → n : rank-1 sketch → the true matrix</div>`, code:`# sanity: landmarks = all points  ⇒  error ≈ 0
+land = np.arange(n)                  # every point is a landmark
+C = W = rbf_kernel(X, X)             # both equal the full K
+K_tilde = C @ pinv(W) @ C.T
+np.linalg.norm(K - K_tilde) / np.linalg.norm(K)   # ≈ 1e-12` },
+ { title:"5. Why W⁺, and the eigen-view", why:"Why the PSEUDO-inverse and not a plain inverse? Because W is often rank-deficient: place two landmarks almost on top of each other and their rows of W are nearly identical, giving a near-zero eigenvalue that a true inverse would divide by, exploding the reconstruction. The Moore–Penrose pseudo-inverse handles this gracefully: diagonalise W = V Λ Vᵀ, then W⁺ = V Λ⁺ Vᵀ inverts each eigenvalue above a tolerance and simply drops the rest. A whisper of jitter added to W's diagonal keeps it positive-definite and the arithmetic stable — the same trick as ridge regularisation. This eigen-view also reveals the bonus: (1/λ)·C·vₖ are approximate eigenvectors of the full K, so Nyström hands you cheap approximate kernel-PCA / spectral embeddings for free.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">W can be near-singular (close landmarks) → plain inverse blows up<br><br>W = V Λ Vᵀ  ⇒  W⁺ = V Λ⁺ Vᵀ<br>invert λ &gt; tol , drop the rest · add tiny diagonal jitter<br><br>bonus: (1/λ)·C·vₖ ≈ eigenvectors of the full K</div>`, code:`vals, V = np.linalg.eigh(W + 1e-9*np.eye(m))   # symmetric eigen + jitter
+inv = np.zeros_like(W)
+keep = vals > vals.max()*1e-9                  # drop tiny eigenvalues
+inv += (V[:,keep] / vals[keep]) @ V[:,keep].T  # W⁺ = V Λ⁺ Vᵀ
+# approx eigvecs of K:  U ≈ C @ V[:,keep] / vals[keep]` },
+ { title:"6. Landmark selection makes or breaks it", why:"For a fixed budget m, WHICH points you choose as landmarks dominates the error. Uniform random sampling is the classic, analysed baseline — cheap and unbiased, but it clumps in dense regions and leaves sparse regions unrepresented, so points far from every landmark are reconstructed badly (the red dots and bright error bands in the LOOK tab). Farthest-point / k-centers sampling greedily adds the point most distant from those already chosen, blanketing the cloud so every point has a nearby landmark — for the same m it slashes the error. The principled optimum is LEVERAGE-SCORE sampling: weight each column by how much unique information it carries (its influence on the top eigenspace), which provably minimises the expected error but costs more to estimate. The rule of thumb: spend a little effort spreading landmarks and you buy a lot of accuracy.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">same m, different landmarks → very different error<br><br>uniform random  : cheap, clumps, wastes budget<br>farthest-point  : covers the cloud → far lower error<br>leverage scores : provably optimal, costs more to compute</div>`, code:`# farthest-point (k-centers) landmarks — cover the space
+land = [rng.integers(n)]
+d2 = np.full(n, np.inf)
+while len(land) < m:
+    d2 = np.minimum(d2, ((X - X[land[-1]])**2).sum(1))
+    land.append(int(d2.argmax()))     # add the most-distant point
+# sklearn Nystroem samples uniformly; k-means centers also common` },
+ { title:"7. Where Nyström fits — the scaling toolbox", why:"Nyström is the reducer you reach for when n is huge, you're committed to a kernel method, and the kernel is (near) low-rank. Its cost is O(nm²) — linear in the data — versus the O(n³) of an exact kernel solve, and it never forms the n×n matrix. It powers kernel SVMs, kernel PCA, large-scale spectral clustering, and — under the name INDUCING POINTS — sparse Gaussian processes. It is a data-dependent cousin of two ideas you've met: Random Fourier Features approximate the SAME kernel with data-OBLIVIOUS random cosine features (great for streaming, but they can't adapt to structure the way landmarks do), and Random Projection (Day 54) approximates DISTANCES, not the kernel, with a random matrix. All three share one philosophy — approximate the expensive linear-algebra object so the algorithm scales — which is the thread running through the back half of this series. When K is genuinely low-rank, Nyström gives you near-exact kernel machines at a fraction of the price.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">huge n, kernel method, low-rank K → NYSTRÖM ✅ (data-dependent)<br>huge n, shift-invariant kernel, streaming → Random Fourier Features<br>huge D, distances matter → Random Projection (Day 54)<br>small n, can afford it → exact kernel / SVD<br><br>O(nm²) not O(n³) · powers sparse GPs, spectral, kernel SVM</div>`, code:`# production: sklearn's Nyström feature map → any linear model
+from sklearn.kernel_approximation import Nystroem
+from sklearn.svm import LinearSVC
+from sklearn.pipeline import make_pipeline
+clf = make_pipeline(Nystroem('rbf', gamma=.2, n_components=200), LinearSVC())
+clf.fit(X, y)     # kernel-SVM quality at linear cost — scales to huge n` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
