@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 57 — Local Outlier Factor (LOF)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:170px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .swatch-box { display:inline-block; width:14px; height:10px; border-radius:3px; vertical-align:0; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .ds-btn { border:1px solid #e2e8f0; background:#fff; font-weight:800; font-size:12px; padding:6px 11px; border-radius:9px; transition:all .15s; }
+  .ds-btn.on { color:#fff; border-color:transparent; background:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; cursor:crosshair; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  table.anat { border-collapse:collapse; width:100%; font-size:11.5px; font-variant-numeric:tabular-nums; }
+  table.anat th, table.anat td { border:1px solid #e2e8f0; padding:4px 7px; text-align:right; }
+  table.anat th { background:#f1f5f9; font-weight:800; text-align:right; }
+  table.anat td:first-child, table.anat th:first-child { text-align:left; }
+  .btn-run { background:#16a34a; color:#fff; }
+  .btn-run:hover { background:#15803d; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 57</div>
+      <h1 class="text-xl font-bold">🔦 The <strong>Local Outlier Factor (LOF)</strong> — outlier detection that refuses to use a single global ruler. Every distance-based flag before it (and the <span style="color:#0ea5e9;font-weight:700">Elliptic Envelope (D56)</span>) asks one <em>global</em> question — "how far is this point from the bulk?" — and that question breaks the moment your data has <strong>regions of different density</strong>: a point sitting a perfectly normal distance from its neighbours inside a <em>loose</em> cluster looks, to a global cutoff, exactly like a genuine anomaly hovering just outside a <em>tight</em> one. LOF's whole idea is to make the comparison <strong>local</strong>: score each point by how its own neighbourhood density compares to the density of <em>its neighbours'</em> neighbourhoods. Concretely it builds up four quantities by hand — the <strong>k-distance</strong> (distance to the k-th nearest neighbour, which sets a per-point notion of "near"), the <strong>reachability distance</strong> <code>reach-dist<sub>k</sub>(A,B) = max(k-distance(B), d(A,B))</code> (a smoothing trick that stops a point's density estimate from spiking when it happens to fall right on top of a neighbour), the <strong>local reachability density</strong> <code>lrd<sub>k</sub>(A) = 1 / mean<sub>B∈N<sub>k</sub></sub> reach-dist<sub>k</sub>(A,B)</code> (inverse average reach-distance — big when the point is crowded, small when it's lonely), and finally the score itself, the ratio <code>LOF<sub>k</sub>(A) = mean<sub>B∈N<sub>k</sub></sub> lrd<sub>k</sub>(B) / lrd<sub>k</sub>(A)</code> — <em>how much denser are my neighbours than I am?</em> The payoff is a calibrated, self-normalising number: <strong>LOF ≈ 1</strong> means "just as dense as my crowd" (inlier), <strong>LOF ≫ 1</strong> means "my neighbours live in a far denser place than I do" (a local outlier), and LOF &lt; 1 means you're in a denser pocket than your neighbours. Because the reference is always the local crowd, LOF flags a point that is anomalous <em>relative to its own cluster's density</em> even when it isn't globally far at all — the exact case a global distance threshold or the one-ellipse D56 model gets wrong. Everything below <strong>runs live in your browser</strong>: clusters of deliberately different density you can add points to, hand-rolled kNN / k-distance / reachability / lrd / the LOF ratio, the k-neighbour links drawn on hover, a k slider whose choice visibly changes the scores, and a head-to-head against a global distance cutoff that false-alarms on the sparse cluster and misses the dense-fringe outlier LOF catches. It is the <strong>density-ratio</strong>, shape-free member of the outlier-detection family alongside <span style="color:#0ea5e9;font-weight:700">Isolation Forest (D26)</span> and the <span style="color:#0ea5e9;font-weight:700">Elliptic Envelope (D56)</span>.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>Score every point by how its local density compares to its neighbours'.</strong> Find each point's <code>k</code> nearest neighbours, measure how crowded it is with the <span style="color:#0ea5e9;font-weight:700">local reachability density</span> <code>lrd</code>, then divide the average <code>lrd</code> of its neighbours by its own. That ratio is the <strong>LOF score</strong>: <code>≈1</code> means "as dense as my crowd" (inlier), <code>≫1</code> means "my neighbours live somewhere far denser than I do" (a <em>local</em> outlier). Because the yardstick is always the local crowd, LOF flags a point that is abnormal <em>for its cluster</em> even when a global distance ruler — or a single fitted ellipse — would wave it through. Every quantity below — <code>k</code>-distance, reachability distance, <code>lrd</code>, and the LOF ratio — is <strong>built from scratch, live</strong>, on clusters of different density and points you place yourself.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Score &amp; flag</strong> scatters a <em>tight</em> cluster next to a <em>loose</em> one, computes every point's LOF, and colours &amp; sizes each dot by its score — <span style="color:#16a34a;font-weight:700">green ≈ 1 (inlier)</span> fading through amber to <span style="color:#dc2626;font-weight:700">red (outlier)</span> — <em>hover</em> any point to see its <code>k</code>-neighbour links and full LOF breakdown, <em>click the canvas</em> to drop new points, and slide <code>k</code> to watch the scores shift. <strong>LOF vs global</strong> pits LOF against a single global distance cutoff on the <em>same</em> data: the global rule false-alarms on the entire sparse cluster (every point there is "far" from its neighbours in absolute terms) and misses the dense-fringe point, while LOF gets both right — the whole reason a <em>local</em> method exists. <strong>Anatomy</strong> opens up one point: its <code>k</code>-distance neighbourhood, the reachability distances to each neighbour, its <code>lrd</code>, its neighbours' <code>lrd</code>, and the final ratio — the arithmetic, live. Every pixel is computed in-browser, no libraries.</p>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="score"   class="subnav-btn px-4 py-2 rounded-lg text-sm">🔦 Score &amp; flag</button>
+        <button data-mod="compare" class="subnav-btn px-4 py-2 rounded-lg text-sm">⚔️ LOF vs global</button>
+        <button data-mod="anat"    class="subnav-btn px-4 py-2 rounded-lg text-sm">🔬 Anatomy of one score</button>
+      </div>
+
+      <!-- ============ MODULE: SCORE & FLAG ============ -->
+      <div id="mod-score" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="scN" style="color:#64748b">—</div><div class="k">points n</div></div>
+          <div class="metric-pill"><div class="v" id="scK" style="color:#0ea5e9">—</div><div class="k">neighbours k</div></div>
+          <div class="metric-pill"><div class="v" id="scMax" style="color:#dc2626">—</div><div class="k">max LOF</div></div>
+          <div class="metric-pill"><div class="v" id="scFlag" style="color:#b45309">—</div><div class="k">flagged (LOF &gt; τ)</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE LOF KNOBS</div>
+            <div class="ctl-row"><div class="ctl-name">👥 neighbours k</div><input type="range" id="scKs" min="2" max="25" step="1" value="8"><div class="ctl-val" id="scKsV">8</div></div>
+            <div class="ctl-row"><div class="ctl-name">🚩 flag threshold τ</div><input type="range" id="scTs" min="110" max="300" step="5" value="150"><div class="ctl-val" id="scTsV">1.50</div></div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🗂️ starting data</div>
+              <div id="scKind" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="scRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New data</button>
+              <button id="scClear" class="bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-300">🧹 Clear</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> For each point we find its <code>k</code> nearest neighbours, its <code>k</code>-distance, then the reachability distances, then <code>lrd = 1 / mean reach-dist</code>, and finally <code>LOF = mean(neighbour lrd) / lrd</code>. Colour &amp; radius scale with LOF (<span style="color:#16a34a;font-weight:700">green ≈ 1</span> → <span style="color:#dc2626;font-weight:700">red ≫ 1</span>). <b>Hover</b> a point to draw its neighbour links and read its score; <b>click</b> the canvas to add a point anywhere — drop one on the edge of the <em>tight</em> cluster and watch it flag, even though the same spacing is perfectly normal inside the <em>loose</em> one.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:600px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🔦 LOF field &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">hover for k-links · click to add · red = high LOF (local outlier)</span></div>
+            <canvas id="scCanvas" width="600" height="420"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#16a34a"></span> LOF ≈ 1 (inlier)</span>
+              <span><span class="swatch" style="background:#f59e0b"></span> LOF elevated</span>
+              <span><span class="swatch" style="background:#dc2626"></span> LOF ≫ 1 (outlier)</span>
+              <span><span class="swatch-line" style="border-color:#0ea5e9"></span> k-neighbour link</span>
+            </div>
+            <div id="scDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: LOF VS GLOBAL ============ -->
+      <div id="mod-compare" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="cpBoth" style="color:#dc2626">—</div><div class="k">flagged by both</div></div>
+          <div class="metric-pill"><div class="v" id="cpLof" style="color:#7c3aed">—</div><div class="k">LOF only (the win)</div></div>
+          <div class="metric-pill"><div class="v" id="cpGlob" style="color:#f59e0b">—</div><div class="k">global only (false alarm)</div></div>
+          <div class="metric-pill"><div class="v" id="cpK" style="color:#0ea5e9">—</div><div class="k">neighbours k</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">LOCAL RATIO vs GLOBAL RULER</div>
+            <div class="text-[11px] text-slate-500 mb-2">The same tight+loose clusters, scored two ways. <b>Global</b>: flag any point whose distance to its <code>k</code>-th neighbour exceeds one fixed cutoff. <b>LOF</b>: flag any point whose density ratio exceeds <code>τ</code>. Slide the global cutoff and watch it be unable to win: set it low enough to catch the real anomalies and it condemns the whole loose cluster; set it high enough to spare them and it sails right past the dense-fringe outlier.</div>
+            <div class="ctl-row"><div class="ctl-name">👥 neighbours k</div><input type="range" id="cpKs" min="2" max="25" step="1" value="8"><div class="ctl-val" id="cpKsV">8</div></div>
+            <div class="ctl-row"><div class="ctl-name">🌐 global cutoff</div><input type="range" id="cpGs" min="4" max="30" step="1" value="12"><div class="ctl-val" id="cpGsV">0.12</div></div>
+            <div class="ctl-row"><div class="ctl-name">🚩 LOF threshold τ</div><input type="range" id="cpTs" min="110" max="300" step="5" value="150"><div class="ctl-val" id="cpTsV">1.50</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="cpRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New data</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Why global loses.</strong> A single distance cutoff assumes one uniform density. But the loose cluster's points are legitimately <em>far</em> from each other, so the global rule brands them all outliers (<span style="color:#f59e0b;font-weight:700">amber</span> false alarms). Meanwhile a point on the fringe of the tight cluster is only moderately far — below the cutoff — so global misses it, yet LOF sees its neighbours are <em>much</em> denser and flags it (<span style="color:#7c3aed;font-weight:700">violet</span>). That gap is the entire reason LOF exists.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:600px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">⚔️ local density-ratio (LOF) vs one global distance cutoff</div>
+            <canvas id="cpCanvas" width="600" height="420"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#16a34a"></span> neither (inlier)</span>
+              <span><span class="swatch" style="background:#7c3aed"></span> LOF only — local win</span>
+              <span><span class="swatch" style="background:#f59e0b"></span> global only — false alarm</span>
+              <span><span class="swatch" style="background:#dc2626"></span> both flag</span>
+            </div>
+            <div id="cpDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: ANATOMY ============ -->
+      <div id="mod-anat" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="anKd" style="color:#0ea5e9">—</div><div class="k">k-distance</div></div>
+          <div class="metric-pill"><div class="v" id="anLrd" style="color:#16a34a">—</div><div class="k">lrd(point)</div></div>
+          <div class="metric-pill"><div class="v" id="anNbLrd" style="color:#7c3aed">—</div><div class="k">mean neighbour lrd</div></div>
+          <div class="metric-pill"><div class="v" id="anLof" style="color:#dc2626">—</div><div class="k">LOF = ratio</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">ONE POINT, THE WHOLE ARITHMETIC</div>
+            <div class="text-[11px] text-slate-500 mb-2"><b>Click any point</b> on the canvas to inspect it (or leave it on the auto-picked highest-LOF point). The table below is its full LOF computation — the <code>k</code>-distance neighbourhood, the distance and reachability distance to each neighbour, and how they combine into <code>lrd</code> and the final ratio.</div>
+            <div class="ctl-row"><div class="ctl-name">👥 neighbours k</div><input type="range" id="anKs" min="2" max="20" step="1" value="6"><div class="ctl-val" id="anKsV">6</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="anRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New data</button>
+              <button id="anWorst" class="bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-300">🎯 Jump to worst</button>
+            </div>
+            <div class="mt-3 overflow-x-auto">
+              <table class="anat"><thead><tr><th>neighbour</th><th>d(A,B)</th><th>k-dist(B)</th><th>reach</th><th>lrd(B)</th></tr></thead><tbody id="anTable"></tbody></table>
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:600px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🔬 selected point (◆), its k-neighbourhood &amp; reach circles</div>
+            <canvas id="anCanvas" width="600" height="420"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span>◆ selected point A</span>
+              <span><span class="swatch" style="background:#0ea5e9"></span> its k neighbours</span>
+              <span><span class="swatch-line" style="border-color:#94a3b8"></span> k-distance radius</span>
+              <span><span class="swatch-line" style="border-color:#7c3aed"></span> neighbour k-dist (reach floor)</span>
+            </div>
+            <div id="anDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From "one global distance ruler breaks on varying density" to "a self-normalising local density ratio"</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">LOF is a stack of four small ideas, each a few lines — the exact routine the LOOK tab runs, no scikit-learn black box. Below is the runnable core: brute-force kNN and the <code>k</code>-distance neighbourhood (with ties), the reachability distance that smooths density estimates, the local reachability density <code>lrd</code>, the LOF ratio that compares a point to its neighbours, and the one driver that returns every quantity the LOOK tab draws. It is <code>O(n²)</code> here for clarity; production LOF uses a KD-/ball-tree for the neighbour search.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Distances and brute-force kNN</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Everything starts with, for each point, the sorted list of every other point by distance. Plain Euclidean here. This <code>O(n²)</code> loop is fine for a few hundred points; libraries swap in a spatial tree, but the LOF quantities on top are identical.</p>
+        <div class="relative"><pre>// euclidean distance in normalised [0,1] coordinates
+function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+// for each point i, all other points sorted nearest-first: [{ j, d }, ...]
+function knnAll(pts) {
+  const n = pts.length, nbrs = [];
+  for (let i = 0; i < n; i++) {
+    const ds = [];
+    for (let j = 0; j < n; j++) if (j !== i) ds.push({ j, d: dist(pts[i], pts[j]) });
+    ds.sort((a, b) => a.d - b.d);   // nearest first
+    nbrs.push(ds);
+  }
+  return nbrs;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">k-distance and the k-distance neighbourhood</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The <strong>k-distance</strong> of a point is the distance to its <code>k</code>-th nearest neighbour — a per-point notion of "how far is near here". The <strong>k-distance neighbourhood</strong> <code>N<sub>k</sub></code> is every point at most that far away; it can hold <em>more</em> than <code>k</code> points if several tie at the boundary, which is exactly the definition Breunig et al. use.</p>
+        <div class="relative"><pre>// k-distance = distance to the k-th neighbour (index k-1 in the sorted list)
+function kDistance(nbrsRow, k) {
+  const kk = Math.min(k, nbrsRow.length);
+  return nbrsRow[kk - 1].d;
+}
+// N_k = all neighbours within the k-distance (ties at the edge are included)
+function kNeighbourhood(nbrsRow, kdist) {
+  const out = [];
+  for (const o of nbrsRow) { if (o.d <= kdist + 1e-12) out.push(o.j); else break; }
+  return out;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Reachability distance — the smoothing trick</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The reachability distance of <code>A</code> from <code>B</code> is <code>max(k-distance(B), d(A,B))</code>. If <code>A</code> is well inside <code>B</code>'s neighbourhood the raw distance is replaced by <code>B</code>'s k-distance — a floor. This stops the density estimate from exploding when two points happen to sit almost on top of each other, and makes <code>lrd</code> vary smoothly. It is deliberately <em>asymmetric</em>: <code>reach(A,B) ≠ reach(B,A)</code> in general.</p>
+        <div class="relative"><pre>// reach-dist_k(A, B) = max( k-distance(B), d(A,B) )   — floored by B's k-distance
+function reachDist(i, j, pts, kdist) {
+  return Math.max(kdist[j], dist(pts[i], pts[j]));
+}
+// note the floor: if A is closer to B than B's own k-distance,
+// we PRETEND it's exactly k-distance(B). This smooths lrd.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Local reachability density (lrd)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A point's density is the <strong>inverse of its average reachability distance</strong> to its neighbourhood: <code>lrd(A) = 1 / mean<sub>B∈N<sub>k</sub></sub> reach-dist(A,B)</code>. Small average reach-distance ⇒ crowded ⇒ high <code>lrd</code>; big average ⇒ lonely ⇒ low <code>lrd</code>. This is an <em>absolute</em> local density; the LOF ratio in the next step is what makes it comparable across regions of different density.</p>
+        <div class="relative"><pre>// lrd(i) = 1 / average reach-dist from i to each point in its neighbourhood
+function localReachDensity(i, Nk, pts, kdist) {
+  const nb = Nk[i];
+  let s = 0;
+  for (const j of nb) s += reachDist(i, j, pts, kdist);
+  const avg = s / Math.max(1, nb.length);
+  return avg > 1e-12 ? 1 / avg : 1e12;   // crowded → big, lonely → small
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">The LOF ratio — density relative to your neighbours</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The score itself: <strong>divide the average <code>lrd</code> of your neighbours by your own <code>lrd</code></strong>. <code>LOF ≈ 1</code> means you're as dense as the crowd around you (inlier). <code>LOF ≫ 1</code> means your neighbours live somewhere far denser than you do — you are a <strong>local outlier</strong>. <code>LOF &lt; 1</code> means you're in a <em>denser</em> pocket than your neighbours. This ratio is the whole point: it self-normalises, so a loose cluster and a tight cluster both score ≈ 1 internally, and only the genuinely-anomalous-for-their-region points spike.</p>
+        <div class="relative"><pre>// LOF(i) = mean( lrd(neighbour) ) / lrd(i)
+function lofScore(i, Nk, lrd) {
+  const nb = Nk[i];
+  let s = 0;
+  for (const j of nb) s += lrd[j];
+  const meanNbLrd = s / Math.max(1, nb.length);
+  return meanNbLrd / (lrd[i] > 1e-12 ? lrd[i] : 1e-12);
+}
+// ≈1 inlier · ≫1 local outlier · <1 in a denser pocket than the neighbours</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Putting it together — score every point</h3></div>
+        <p class="text-sm text-slate-600 mb-3">One driver: neighbours → k-distances → neighbourhoods → every <code>lrd</code> → every LOF. Order matters — all k-distances must exist before any reachability distance, and all <code>lrd</code>s before any ratio. This one function feeds all three LOOK demos.</p>
+        <div class="relative"><pre>function computeLOF(pts, k) {
+  const n = pts.length;
+  k = Math.max(1, Math.min(k, n - 1));
+  const nbrs  = knnAll(pts);
+  const kdist = nbrs.map(row => kDistance(row, k));                 // step 2
+  const Nk    = nbrs.map((row, i) => kNeighbourhood(row, kdist[i]));// step 2
+  const lrd   = pts.map((_, i) => localReachDensity(i, Nk, pts, kdist)); // steps 3–4
+  const lof   = pts.map((_, i) => lofScore(i, Nk, lrd));           // step 5
+  return { nbrs, kdist, Nk, lrd, lof, k };
+}
+// sanity: a point deep inside either cluster → LOF ≈ 1 (NaN-free);
+// a dense-cluster fringe point → LOF > 1 even though it isn't globally far;
+// a lone point far from everything → the largest LOF of all.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">In practice — the standard tool</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You rarely hand-roll it. scikit-learn ships <code>LocalOutlierFactor</code>, which does exactly this with a spatial tree for the neighbour search. Note it is transductive by default — <code>fit_predict</code> scores the training set and there is no <code>predict</code> unless you set <code>novelty=True</code>. The single most important knob is <code>n_neighbors</code> (<code>k</code>): too small and it chases noise, too large and it blurs local structure back toward a global method.</p>
+        <div class="relative"><pre># scikit-learn — local outlier factor in three lines
+from sklearn.neighbors import LocalOutlierFactor
+
+lof = LocalOutlierFactor(n_neighbors=20, contamination="auto")
+labels = lof.fit_predict(X)          # +1 inlier, −1 outlier (transductive)
+scores = -lof.negative_outlier_factor_   # the LOF value; ~1 inlier, ≫1 outlier</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-10 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧭 Four ways to flag an outlier — and where LOF sits</h3>
+      <div style="overflow-x:auto">
+      <table class="cmp">
+        <tr><th style="width:150px"></th><th>🔦 Local Outlier Factor (Day 57)</th><th>🥚 Elliptic Envelope (Day 56)</th><th>🌲 Isolation Forest (Day 26)</th><th>🛡️ One-Class SVM</th></tr>
+        <tr><td class="cat">Core idea</td><td><b>compare a point's local density to its neighbours' — a ratio</b></td><td>robust Gaussian ellipse, flag by Mahalanobis + χ²</td><td>random splits isolate outliers in few cuts</td><td>learn a tight boundary around the normal data</td></tr>
+        <tr><td class="cat">Shape assumed</td><td><b>none — local, any shape, varying density</b></td><td>one elliptical (Gaussian) blob</td><td>none — axis-aligned partitions</td><td>flexible (kernel), any shape</td></tr>
+        <tr><td class="cat">Local vs global</td><td><b>✅ fully local — its whole reason to exist</b></td><td>global — one ellipse for all</td><td>global-ish — averaged over the whole tree</td><td>global boundary</td></tr>
+        <tr><td class="cat">Gives a score?</td><td><b>✅ LOF ratio (≈1 inlier, ≫1 outlier)</b></td><td>✅ Mahalanobis distance (calibrated to χ²)</td><td>✅ path-length anomaly score</td><td>✅ signed distance to boundary</td></tr>
+        <tr><td class="cat">Best when</td><td><b>clusters of differing density; local anomalies</b></td><td>data is ~unimodal Gaussian, want a stat cutoff</td><td>high-dim, big n, no shape prior</td><td>complex boundary, moderate n</td></tr>
+        <tr><td class="cat">Weak when</td><td><b>picking k; high-dim (distances blur); O(n²) naïvely</b></td><td>multi-modal / non-elliptical normal data</td><td>very local anomalies</td><td>tuning ν &amp; kernel, scaling</td></tr>
+      </table>
+      </div>
+      <p class="text-xs text-slate-500 mt-3">LOF is the <b>density-ratio, fully-local</b> corner of outlier detection: it makes no shape assumption and, crucially, no <em>uniform-density</em> assumption — the exact blind spot of the <b>Elliptic Envelope (Day 56)</b>, whose single fitted ellipse assumes one global scale of "normal spread." Where D56 buys a calibrated <span style="color:#7c3aed;font-weight:700">χ² cutoff</span> by committing to one Gaussian, LOF trades that tidy statistical guarantee for the flexibility to handle <span style="color:#0ea5e9;font-weight:700">clusters of different density</span> and to flag a point that is anomalous only <em>relative to its own neighbourhood</em>. It is the natural companion to <b>Isolation Forest (Day 26)</b> — both are shape-free anomaly scorers — but LOF's reference frame is strictly local, which is its superpower on varying-density data and its weakness in high dimensions, where all distances blur (the <b>curse of dimensionality, Day 46</b>) and the density ratio loses contrast. Its one real knob is <code>k</code>: too small chases sampling noise, too large drags the "local" comparison back toward the global one it was built to escape.</p>
+    </div>
+
+    <div class="mt-8 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 57 of MachineLearningFromZero done — an outlier score that asks "denser than me?" of your neighbours, not of the whole dataset.</h3><p class="text-sm text-sky-700 mt-2">The <strong>Local Outlier Factor</strong> abandons the single global distance ruler that every earlier distance method — and the one-ellipse <span style="color:#0ea5e9;font-weight:700">Elliptic Envelope (D56)</span> — relies on, because that ruler breaks the instant your data has regions of different density. Instead it scores each point <em>locally</em>: find its <code>k</code> nearest neighbours, set a per-point <span style="color:#0ea5e9;font-weight:700">k-distance</span>, floor the raw distances into <span style="color:#7c3aed;font-weight:700">reachability distances</span> <code>max(k-dist(B), d(A,B))</code> to keep the estimate smooth, invert the average into a <span style="color:#16a34a;font-weight:700">local reachability density</span> <code>lrd</code>, and finally take the ratio <code>LOF = mean(neighbour lrd) / lrd</code>. That ratio self-normalises so both a tight and a loose cluster read <strong>≈ 1</strong> inside, and only points that are genuinely sparse <em>for their own region</em> spike to <strong>≫ 1</strong> — catching a dense-cluster fringe point a global cutoff waves through, and sparing a loose-cluster point a global cutoff would wrongly condemn. It joins <span style="color:#0ea5e9;font-weight:700">Isolation Forest (D26)</span> and the <span style="color:#0ea5e9;font-weight:700">Elliptic Envelope (D56)</span> as the shape-free, density-ratio member of the outlier-detection toolbox. <strong>👉 When your "normal" data has clusters of differing density and you care about anomalies relative to the local crowd, reach for LOF — and tune k.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+const el = id => document.getElementById(id);
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function randn(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function setDiag(box, c, t, b){ box.className="diag "+c+" mt-3 text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+const fmt=(x,d=2)=>Number(x).toFixed(d);
+const clamp01=v=>Math.max(0.03,Math.min(0.97,v));
+
+/* ================================================================
+   CORE: kNN, k-distance, reachability distance, lrd, LOF ratio
+   — all hand-rolled, no libraries
+   ================================================================ */
+function dist(a, b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+
+// for each point i, every other point sorted nearest-first
+function knnAll(pts){
+  const n=pts.length, nbrs=[];
+  for(let i=0;i<n;i++){
+    const ds=[];
+    for(let j=0;j<n;j++){ if(j!==i) ds.push({ j, d:dist(pts[i],pts[j]) }); }
+    ds.sort((a,b)=>a.d-b.d);
+    nbrs.push(ds);
+  }
+  return nbrs;
+}
+// k-distance = distance to the k-th neighbour
+function kDistance(row, k){ const kk=Math.min(k,row.length); return kk>0 ? row[kk-1].d : 0; }
+// k-distance neighbourhood: all points within the k-distance (ties included)
+function kNeighbourhood(row, kd){
+  const out=[];
+  for(const o of row){ if(o.d<=kd+1e-12) out.push(o.j); else break; }
+  return out;
+}
+// reach-dist_k(A,B) = max( k-distance(B), d(A,B) )
+function reachDist(i, j, pts, kdist){ return Math.max(kdist[j], dist(pts[i],pts[j])); }
+
+// full LOF: returns every intermediate quantity
+function computeLOF(pts, k){
+  const n=pts.length;
+  const out={ nbrs:[], kdist:[], Nk:[], lrd:[], lof:[], k:Math.max(1,Math.min(k,Math.max(1,n-1))) };
+  if(n<2){ for(let i=0;i<n;i++){ out.nbrs.push([]); out.kdist.push(0); out.Nk.push([]); out.lrd.push(1); out.lof.push(1); } return out; }
+  const kk=out.k;
+  const nbrs=knnAll(pts);
+  const kdist=nbrs.map(row=>kDistance(row,kk));
+  const Nk=nbrs.map((row,i)=>kNeighbourhood(row,kdist[i]));
+  // lrd = 1 / mean reach-dist over the neighbourhood
+  const lrd=new Array(n);
+  for(let i=0;i<n;i++){
+    const nb=Nk[i]; let s=0;
+    for(const j of nb) s+=reachDist(i,j,pts,kdist);
+    const avg=s/Math.max(1,nb.length);
+    lrd[i]= avg>1e-12 ? 1/avg : 1e12;
+  }
+  // LOF = mean(neighbour lrd) / lrd
+  const lof=new Array(n);
+  for(let i=0;i<n;i++){
+    const nb=Nk[i]; let s=0;
+    for(const j of nb) s+=lrd[j];
+    const meanNb=s/Math.max(1,nb.length);
+    lof[i]= meanNb/(lrd[i]>1e-12?lrd[i]:1e-12);
+    if(!isFinite(lof[i])) lof[i]=1;
+  }
+  out.nbrs=nbrs; out.kdist=kdist; out.Nk=Nk; out.lrd=lrd; out.lof=lof;
+  return out;
+}
+
+/* ---------------- data generation: clusters of DIFFERENT density ---------------- */
+function makeData(kind, rng){
+  const pts=[];
+  function blob(cx, cy, s, m){ for(let i=0;i<m;i++){ pts.push({ x:clamp01(cx+s*randn(rng)), y:clamp01(cy+s*randn(rng)) }); } }
+  // a TIGHT cluster and a LOOSE cluster — the whole point of LOF
+  blob(0.30, 0.34, 0.040, 46);     // dense / tight
+  blob(0.73, 0.66, 0.105, 26);     // sparse / loose
+  if(kind==='outliers' || kind==='local'){
+    pts.push({ x:0.14, y:0.86 });  // a clear global outlier
+    pts.push({ x:0.90, y:0.12 });  // another
+  }
+  if(kind==='local'){
+    // the star of the show: a LOCAL outlier — sits just off the tight cluster.
+    // Not globally far (its spacing is normal for the loose cluster), but
+    // abnormally sparse relative to the DENSE cluster it neighbours → LOF > 1.
+    pts.push({ x:0.30, y:0.50 });
+  }
+  return pts;
+}
+
+/* ---------------- canvas mapping ---------------- */
+function squareRegion(cv, pad){ const S=Math.min(cv.width,cv.height)-2*pad; return { x0:(cv.width-S)/2, x1:(cv.width-S)/2+S, y0:(cv.height-S)/2, y1:(cv.height-S)/2+S }; }
+function mapX(x,x0,x1){ return x0+(x1-x0)*x; }
+function mapY(y,y0,y1){ return y1-(y1-y0)*y; }
+function invMap(px,py,reg){ return { x:(px-reg.x0)/(reg.x1-reg.x0), y:(reg.y1-py)/(reg.y1-reg.y0) }; }
+function drawGrid(ctx, reg){
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1;
+  for(let g=0;g<=4;g++){ const xx=reg.x0+(reg.x1-reg.x0)*g/4, yy=reg.y0+(reg.y1-reg.y0)*g/4;
+    ctx.beginPath(); ctx.moveTo(xx,reg.y0); ctx.lineTo(xx,reg.y1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(reg.x0,yy); ctx.lineTo(reg.x1,yy); ctx.stroke();
+  }
+  ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1; ctx.strokeRect(reg.x0,reg.y0,reg.x1-reg.x0,reg.y1-reg.y0);
+}
+// colour by LOF: green (≈1) → amber → red (≫1)
+function lofColor(v, cut){
+  const hi=Math.max(cut,1.4);
+  const t=Math.max(0,Math.min(1,(v-1)/(hi-1)));
+  const hue=140-140*t;      // 140 green → 0 red
+  const light=48-8*t;
+  return `hsl(${hue.toFixed(0)},72%,${light.toFixed(0)}%)`;
+}
+function lofRadius(v){ return 3.4 + Math.max(0,Math.min(3.2,(v-1)))*3.0; }
+function nearestIndex(pts, p){
+  let bi=-1, bd=Infinity;
+  for(let i=0;i<pts.length;i++){ const d=dist(pts[i],p); if(d<bd){ bd=d; bi=i; } }
+  return { i:bi, d:bd };
+}
+
+/* ================================================================
+   MODULE SCORE — score & flag, hover for links, click to add
+   ================================================================ */
+const SC={ k:8, tau:1.50, kind:'local', seed:7, pts:[], hover:-1 };
+function scRegen(){ SC.pts=makeData(SC.kind, mulberry32(SC.seed)); }
+function scDraw(){
+  const cv=el('scCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const reg=squareRegion(cv,16); drawGrid(ctx,reg);
+  const pts=SC.pts, n=pts.length;
+  if(n<3){
+    el('scN').textContent=n; el('scK').textContent=SC.k; el('scMax').textContent='—'; el('scFlag').textContent='—';
+    setDiag(el('scDiag'),'diag-info','Add some points','Click the canvas to scatter at least a handful of points, or hit New data — LOF needs neighbours to compare against.'); return;
+  }
+  const R=computeLOF(pts, SC.k);
+  // hovered point's k-links drawn under the dots
+  if(SC.hover>=0 && SC.hover<n){
+    const i=SC.hover, X=mapX(pts[i].x,reg.x0,reg.x1), Y=mapY(pts[i].y,reg.y0,reg.y1);
+    ctx.strokeStyle='rgba(14,165,233,0.55)'; ctx.lineWidth=1.4;
+    for(const j of R.Nk[i]){ const Xj=mapX(pts[j].x,reg.x0,reg.x1), Yj=mapY(pts[j].y,reg.y0,reg.y1);
+      ctx.beginPath(); ctx.moveTo(X,Y); ctx.lineTo(Xj,Yj); ctx.stroke(); }
+    // k-distance circle
+    const rr=R.kdist[i]*(reg.x1-reg.x0);
+    ctx.strokeStyle='rgba(148,163,184,0.7)'; ctx.setLineDash([4,3]); ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.arc(X,Y,rr,0,7); ctx.stroke(); ctx.setLineDash([]);
+  }
+  let maxLof=0, nFlag=0;
+  for(let i=0;i<n;i++){
+    const v=R.lof[i]; if(v>maxLof) maxLof=v; if(v>SC.tau) nFlag++;
+    const X=mapX(pts[i].x,reg.x0,reg.x1), Y=mapY(pts[i].y,reg.y0,reg.y1);
+    ctx.fillStyle=lofColor(v, SC.tau);
+    ctx.beginPath(); ctx.arc(X,Y,lofRadius(v),0,7); ctx.fill();
+    if(v>SC.tau){ ctx.strokeStyle='#7f1d1d'; ctx.lineWidth=1; ctx.stroke(); }
+  }
+  if(SC.hover>=0 && SC.hover<n){
+    const i=SC.hover, X=mapX(pts[i].x,reg.x0,reg.x1), Y=mapY(pts[i].y,reg.y0,reg.y1);
+    ctx.strokeStyle='#0ea5e9'; ctx.lineWidth=2.4; ctx.beginPath(); ctx.arc(X,Y,lofRadius(R.lof[i])+3,0,7); ctx.stroke();
+  }
+  el('scN').textContent=n; el('scK').textContent=R.k;
+  el('scMax').textContent=fmt(maxLof,2); el('scFlag').textContent=nFlag;
+  scDiag(R, n, nFlag, maxLof);
+}
+function scDiag(R, n, nFlag, maxLof){
+  const box=el('scDiag');
+  if(SC.hover>=0 && SC.hover<n){
+    const i=SC.hover, v=R.lof[i];
+    const cls= v>SC.tau ? 'diag-bad' : (v>1.15?'diag-warn':'diag-good');
+    setDiag(box,cls,`🔦 point #${i}: LOF = ${fmt(v,2)} · ${v>SC.tau?'flagged outlier':(v>1.15?'slightly sparse':'inlier')}`,
+      `Its <b>${R.Nk[i].length}</b> k-neighbours (k=${R.k}) are linked in <span style="color:#0ea5e9;font-weight:700">blue</span>; the dashed circle is its <b>k-distance ${fmt(R.kdist[i],3)}</b>. Its own local density <code>lrd=${fmt(R.lrd[i],2)}</code> versus the mean neighbour density <code>${fmt(v*R.lrd[i],2)}</code> gives the ratio <b>LOF=${fmt(v,2)}</b>. ${v>SC.tau?`Above the threshold τ=${fmt(SC.tau,2)} — its neighbours live somewhere much denser, so it is a <span style="color:#dc2626;font-weight:700">local outlier</span>.`:`Around 1 means it is about as dense as its crowd — an <span style="color:#16a34a;font-weight:700">inlier</span>.`}`);
+    return;
+  }
+  setDiag(box,'diag-info',`🔦 ${nFlag} of ${n} flagged · max LOF ${fmt(maxLof,2)} · k=${R.k}`,
+    `Every dot is coloured &amp; sized by its LOF: <span style="color:#16a34a;font-weight:700">green ≈ 1</span> (as dense as its crowd) through amber to <span style="color:#dc2626;font-weight:700">red ≫ 1</span> (far sparser than its neighbours). Notice the <em>loose</em> cluster stays green even though its points are absolutely far apart — LOF judges each point against its own local density, not a global scale. <b>Hover</b> any point for its k-links and full breakdown; <b>click</b> to drop a point on the tight cluster's edge and watch it flag while the same spacing inside the loose cluster does not.`);
+}
+function scButtons(){
+  const kw=el('scKind'); kw.innerHTML='';
+  [['local','🎯 tight+loose+local outlier'],['outliers','☣️ + global outliers'],['plain','⚖️ tight + loose only']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(SC.kind===id?' on':''); b.textContent=label;
+    b.onclick=()=>{ SC.kind=id; SC.seed=(Math.random()*1e9)>>>0; scRegen(); scButtons(); scDraw(); }; kw.appendChild(b);
+  });
+}
+el('scKs').addEventListener('input',e=>{ SC.k=+e.target.value; el('scKsV').textContent=e.target.value; scDraw(); });
+el('scTs').addEventListener('input',e=>{ SC.tau=(+e.target.value)/100; el('scTsV').textContent=fmt(SC.tau,2); scDraw(); });
+el('scRoll').onclick=()=>{ SC.seed=(Math.random()*1e9)>>>0; scRegen(); SC.hover=-1; scDraw(); };
+el('scClear').onclick=()=>{ SC.pts=[]; SC.hover=-1; scDraw(); };
+el('scCanvas').addEventListener('pointerdown',e=>{
+  const cv=el('scCanvas'), rect=cv.getBoundingClientRect();
+  const px=(e.clientX-rect.left)*(cv.width/rect.width), py=(e.clientY-rect.top)*(cv.height/rect.height);
+  const reg=squareRegion(cv,16), p=invMap(px,py,reg);
+  SC.pts.push({ x:clamp01(p.x), y:clamp01(p.y) }); SC.hover=SC.pts.length-1; scDraw();
+});
+el('scCanvas').addEventListener('pointermove',e=>{
+  const cv=el('scCanvas'), rect=cv.getBoundingClientRect();
+  const px=(e.clientX-rect.left)*(cv.width/rect.width), py=(e.clientY-rect.top)*(cv.height/rect.height);
+  const reg=squareRegion(cv,16), p=invMap(px,py,reg);
+  const nr=nearestIndex(SC.pts,p); const h=(nr.i>=0 && nr.d<0.05)?nr.i:-1;
+  if(h!==SC.hover){ SC.hover=h; scDraw(); }
+});
+el('scCanvas').addEventListener('pointerleave',()=>{ if(SC.hover!==-1){ SC.hover=-1; scDraw(); } });
+
+/* ================================================================
+   MODULE COMPARE — LOF vs a single global distance cutoff
+   ================================================================ */
+const CMP={ k:8, gcut:0.12, tau:1.50, kind:'local', seed:7, pts:[] };
+function cmpRegen(){ CMP.pts=makeData(CMP.kind, mulberry32(CMP.seed)); }
+function cmpDraw(){
+  const cv=el('cpCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const reg=squareRegion(cv,16); drawGrid(ctx,reg);
+  const pts=CMP.pts, n=pts.length;
+  if(n<3){ el('cpBoth').textContent='—'; el('cpLof').textContent='—'; el('cpGlob').textContent='—'; el('cpK').textContent=CMP.k;
+    setDiag(el('cpDiag'),'diag-info','No data','Hit New data.'); return; }
+  const R=computeLOF(pts, CMP.k);
+  // global score = distance to k-th neighbour (a single fixed cutoff)
+  const gscore=R.kdist;
+  let nBoth=0,nLof=0,nGlob=0;
+  for(let i=0;i<n;i++){
+    const lofFlag=R.lof[i]>CMP.tau, globFlag=gscore[i]>CMP.gcut;
+    const X=mapX(pts[i].x,reg.x0,reg.x1), Y=mapY(pts[i].y,reg.y0,reg.y1);
+    let col='rgba(22,163,74,0.82)', r=3.6, ring=null;
+    if(lofFlag && globFlag){ col='rgba(220,38,38,0.9)'; r=5.2; ring='#7f1d1d'; nBoth++; }
+    else if(lofFlag && !globFlag){ col='rgba(124,58,237,0.92)'; r=5.6; ring='#4c1d95'; nLof++; }
+    else if(!lofFlag && globFlag){ col='rgba(245,158,11,0.92)'; r=5.0; ring='#b45309'; nGlob++; }
+    ctx.fillStyle=col; ctx.beginPath(); ctx.arc(X,Y,r,0,7); ctx.fill();
+    if(ring){ ctx.strokeStyle=ring; ctx.lineWidth=1.3; ctx.stroke(); }
+  }
+  el('cpBoth').textContent=nBoth; el('cpLof').textContent=nLof; el('cpGlob').textContent=nGlob; el('cpK').textContent=R.k;
+  cmpDiag(nBoth,nLof,nGlob);
+}
+function cmpDiag(nBoth,nLof,nGlob){
+  const box=el('cpDiag');
+  if(nGlob>0 && nLof>0){
+    setDiag(box,'diag-bad',`🔴 global ruler fails both ways — ${nGlob} false alarm${nGlob>1?'s':''}, and it misses ${nLof} that LOF catches`,
+      `The <span style="color:#f59e0b;font-weight:700">amber</span> points are the loose cluster: legitimately far apart, so the single global cutoff brands them outliers — <b>false alarms</b>. The <span style="color:#7c3aed;font-weight:700">violet</span> point(s) sit on the dense cluster's fringe: only moderately far, so global lets them pass, yet LOF sees their neighbours are far denser and flags them — the <b>local win</b>. No single global cutoff can fix both at once; that impossibility is why LOF measures density <em>locally</em>.`);
+  } else if(nGlob>0){
+    setDiag(box,'diag-warn',`⚠️ global false-alarms on ${nGlob} loose-cluster point${nGlob>1?'s':''}`,
+      `At this cutoff the global rule is condemning points in the sparse cluster just for being spread out (<span style="color:#f59e0b;font-weight:700">amber</span>), while LOF correctly leaves them green — they are perfectly normal <em>for their own density</em>. Lower the global cutoff further and it will flag even more of the loose cluster; raise it and it starts missing the genuine local outlier.`);
+  } else if(nLof>0){
+    setDiag(box,'diag-good',`✅ LOF catches ${nLof} local outlier${nLof>1?'s':''} the global cutoff misses`,
+      `The <span style="color:#7c3aed;font-weight:700">violet</span> point(s) are close enough to escape the global distance cutoff, but LOF compares them to their dense neighbourhood and flags them anyway. Slide the <b>global cutoff</b> down to try to catch them and watch it start false-alarming on the whole loose cluster instead.`);
+  } else {
+    setDiag(box,'diag-info',`both agree right now — ${nBoth} flagged by both`,
+      `At these settings the two methods happen to agree. Nudge the <b>global cutoff</b>: there is a band where it either false-alarms on the loose cluster (amber) or misses the dense-fringe outlier (violet) — LOF handles both because its yardstick is local density, not one global distance.`);
+  }
+}
+function cpButtons(){}
+el('cpKs').addEventListener('input',e=>{ CMP.k=+e.target.value; el('cpKsV').textContent=e.target.value; cmpDraw(); });
+el('cpGs').addEventListener('input',e=>{ CMP.gcut=(+e.target.value)/100; el('cpGsV').textContent=fmt(CMP.gcut,2); cmpDraw(); });
+el('cpTs').addEventListener('input',e=>{ CMP.tau=(+e.target.value)/100; el('cpTsV').textContent=fmt(CMP.tau,2); cmpDraw(); });
+el('cpRoll').onclick=()=>{ CMP.seed=(Math.random()*1e9)>>>0; cmpRegen(); cmpDraw(); };
+
+/* ================================================================
+   MODULE ANAT — anatomy of one LOF score
+   ================================================================ */
+const AN={ k:6, seed:7, kind:'local', pts:[], sel:-1 };
+function anRegen(){ AN.pts=makeData(AN.kind, mulberry32(AN.seed)); AN.sel=-1; }
+function anPickWorst(){
+  const R=computeLOF(AN.pts, AN.k); let bi=0,bv=-1;
+  for(let i=0;i<R.lof.length;i++){ if(R.lof[i]>bv){ bv=R.lof[i]; bi=i; } }
+  AN.sel=bi;
+}
+function anDraw(){
+  const cv=el('anCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const reg=squareRegion(cv,16); drawGrid(ctx,reg);
+  const pts=AN.pts, n=pts.length;
+  if(n<3){ setDiag(el('anDiag'),'diag-info','No data','Hit New data.'); return; }
+  const R=computeLOF(pts, AN.k);
+  if(AN.sel<0||AN.sel>=n) { anPickWorst(); }
+  const i=AN.sel, X=mapX(pts[i].x,reg.x0,reg.x1), Y=mapY(pts[i].y,reg.y0,reg.y1);
+  const nb=R.Nk[i];
+  // neighbour k-distance circles (reach floor) + links
+  for(const j of nb){
+    const Xj=mapX(pts[j].x,reg.x0,reg.x1), Yj=mapY(pts[j].y,reg.y0,reg.y1);
+    const rj=R.kdist[j]*(reg.x1-reg.x0);
+    ctx.strokeStyle='rgba(124,58,237,0.28)'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(Xj,Yj,rj,0,7); ctx.stroke();
+    ctx.strokeStyle='rgba(14,165,233,0.6)'; ctx.lineWidth=1.4; ctx.beginPath(); ctx.moveTo(X,Y); ctx.lineTo(Xj,Yj); ctx.stroke();
+  }
+  // selected point's own k-distance circle
+  const ri=R.kdist[i]*(reg.x1-reg.x0);
+  ctx.strokeStyle='rgba(148,163,184,0.9)'; ctx.setLineDash([5,4]); ctx.lineWidth=1.4; ctx.beginPath(); ctx.arc(X,Y,ri,0,7); ctx.stroke(); ctx.setLineDash([]);
+  // all points
+  for(let q=0;q<n;q++){
+    const Xq=mapX(pts[q].x,reg.x0,reg.x1), Yq=mapY(pts[q].y,reg.y0,reg.y1);
+    if(q===i) continue;
+    ctx.fillStyle = nb.includes(q) ? 'rgba(14,165,233,0.95)' : 'rgba(148,163,184,0.6)';
+    ctx.beginPath(); ctx.arc(Xq,Yq, nb.includes(q)?4.4:3.2, 0,7); ctx.fill();
+  }
+  // selected point (diamond)
+  ctx.fillStyle='#b91c1c'; ctx.strokeStyle='#7f1d1d'; ctx.lineWidth=1.6;
+  ctx.beginPath(); ctx.moveTo(X,Y-7); ctx.lineTo(X+7,Y); ctx.lineTo(X,Y+7); ctx.lineTo(X-7,Y); ctx.closePath(); ctx.fill(); ctx.stroke();
+  // metrics + table
+  const meanNbLrd=R.lof[i]*R.lrd[i];
+  el('anKd').textContent=fmt(R.kdist[i],3);
+  el('anLrd').textContent=fmt(R.lrd[i],2);
+  el('anNbLrd').textContent=fmt(meanNbLrd,2);
+  el('anLof').textContent=fmt(R.lof[i],2);
+  const tb=el('anTable'); tb.innerHTML='';
+  nb.slice(0,10).forEach(j=>{
+    const d=dist(pts[i],pts[j]), rd=reachDist(i,j,pts,R.kdist);
+    tb.insertAdjacentHTML('beforeend',`<tr><td>#${j}</td><td>${fmt(d,3)}</td><td>${fmt(R.kdist[j],3)}</td><td>${fmt(rd,3)}</td><td>${fmt(R.lrd[j],2)}</td></tr>`);
+  });
+  if(nb.length>10) tb.insertAdjacentHTML('beforeend',`<tr><td colspan="5" style="text-align:center;color:#94a3b8">… ${nb.length-10} more</td></tr>`);
+  anDiag(R,i,meanNbLrd);
+}
+function anDiag(R,i,meanNbLrd){
+  const box=el('anDiag'); const v=R.lof[i];
+  const cls= v>1.5?'diag-bad':(v>1.15?'diag-warn':'diag-good');
+  setDiag(box,cls,`🔬 point #${i} · LOF = mean-neighbour-lrd ${fmt(meanNbLrd,2)} ÷ own-lrd ${fmt(R.lrd[i],2)} = ${fmt(v,2)}`,
+    `Its <b>${R.Nk[i].length}</b> neighbours (k=${R.k}) each contribute a reachability distance <code>max(their k-dist, d)</code>; averaged and inverted that gives this point's density <code>lrd=${fmt(R.lrd[i],2)}</code>. The neighbours' own densities average to <code>${fmt(meanNbLrd,2)}</code>. Dividing, <b>LOF=${fmt(v,2)}</b> — ${v>1.5?'its crowd is far denser than it is, so it is a <span style="color:#dc2626;font-weight:700">local outlier</span>.':(v>1.15?'slightly sparser than its neighbours.':'about as dense as its neighbours — an <span style="color:#16a34a;font-weight:700">inlier</span>.')} <b>Click another point</b> to inspect it, or hit <b>Jump to worst</b>.`);
+}
+el('anKs').addEventListener('input',e=>{ AN.k=+e.target.value; el('anKsV').textContent=e.target.value; anDraw(); });
+el('anRoll').onclick=()=>{ AN.seed=(Math.random()*1e9)>>>0; anRegen(); anDraw(); };
+el('anWorst').onclick=()=>{ anPickWorst(); anDraw(); };
+el('anCanvas').addEventListener('pointerdown',e=>{
+  const cv=el('anCanvas'), rect=cv.getBoundingClientRect();
+  const px=(e.clientX-rect.left)*(cv.width/rect.width), py=(e.clientY-rect.top)*(cv.height/rect.height);
+  const reg=squareRegion(cv,16), p=invMap(px,py,reg);
+  const nr=nearestIndex(AN.pts,p); if(nr.i>=0){ AN.sel=nr.i; anDraw(); }
+});
+
+/* ================================================================
+   sub-nav wiring
+   ================================================================ */
+const subBtns=document.querySelectorAll("#subnav [data-mod]");
+function showMod(m){
+  document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden"));
+  el("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m));
+  if(m==="score") scDraw();
+  if(m==="compare") cmpDraw();
+  if(m==="anat") anDraw();
+}
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+/* ================================================================
+   init
+   ================================================================ */
+scRegen(); cmpRegen(); anRegen();
+scButtons(); cpButtons();
+document.querySelector('[data-mod="score"]').classList.add("on");
+showMod("score");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. One global distance ruler breaks on varying density", why:"The intuitive way to flag an outlier is 'far from everything else' — a single global distance threshold, which is essentially what the Elliptic Envelope (Day 56) does with one fitted ellipse. That works only if the data has ONE uniform density. The moment you have a tight cluster next to a loose one, a single ruler is impossible to set: pick a threshold small enough to catch a point hovering just outside the tight cluster and you will also condemn every point in the loose cluster (they are legitimately far from each other); pick one large enough to spare the loose cluster and the tight-cluster anomaly sails right through. There is no global cutoff that is right everywhere. LOF's answer: stop asking a global question. Ask, for each point, 'how does my density compare to my neighbours'?'", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">tight cluster ○○○  ·  loose cluster  O   O   O<br><br>global cutoff too small → whole loose cluster flagged (false alarms)<br>global cutoff too big → tight-cluster anomaly missed<br><br>no single global distance works → go LOCAL</div>`, code:`# the trap: one global k-distance threshold on mixed densities
+kdist = np.array([distance_to_kth_neighbor(x, X, k) for x in X])
+# loose-cluster points have big kdist even though they're normal
+# tight-cluster fringe has small kdist even though it's anomalous
+# ANY single 'kdist > t' cutoff is wrong somewhere` },
+ { title:"2. k-distance and the k-distance neighbourhood", why:"LOF's local unit of scale is the k-distance: the distance from a point to its k-th nearest neighbour. In a tight cluster this is small; in a loose cluster it is large — automatically adapting to local density. The k-distance neighbourhood N_k is every point within that radius. Breunig et al. include ties, so N_k can contain more than k points if several sit exactly at the boundary — a detail that keeps the definition well-posed on gridded or duplicated data. k is the single most important hyperparameter: it sets how many neighbours define 'local'. Too small and the estimate is noisy (a couple of neighbours); too large and 'local' creeps back toward 'global'.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">k-distance(A) = distance to A's k-th nearest neighbour<br><br>N_k(A) = { all points within k-distance(A) }   (ties included)<br><br>tight region → small k-distance · loose region → large<br>the scale ADAPTS to local density, per point</div>`, code:`d = sorted(euclidean(A, x) for x in X if x is not A)
+k_distance = d[k-1]                       # distance to the k-th neighbour
+N_k = [x for x in X if euclidean(A, x) <= k_distance and x is not A]
+# |N_k| can exceed k when several neighbours tie at the boundary` },
+ { title:"3. Reachability distance — smoothing the density estimate", why:"Before averaging distances into a density, LOF floors each one: reach-dist_k(A,B) = max(k-distance(B), d(A,B)). If A lies well inside B's neighbourhood, its raw distance to B is replaced by B's k-distance. Why? Without the floor, two points that happen to land almost on top of each other would produce a near-zero distance and an exploding density estimate — LOF would become wildly noisy in dense regions. The floor caps how 'close' a neighbour can count as, so lrd varies smoothly. It is deliberately asymmetric: reach-dist(A,B) uses B's k-distance, not A's, so reach-dist(A,B) ≠ reach-dist(B,A) in general. It is not a true metric; it is a smoothing device.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">reach-dist_k(A,B) = max( k-distance(B), d(A,B) )<br><br>A inside B's k-neighbourhood → floored to k-distance(B)<br>A outside → just the raw distance d(A,B)<br><br>stops density from blowing up when points nearly coincide<br>asymmetric: reach(A,B) ≠ reach(B,A)</div>`, code:`def reach_dist(A, B, k_distance_of):
+    return max(k_distance_of[B], euclidean(A, B))
+# the max() is a FLOOR: a very-close B still counts as
+# at least k-distance(B) away → smooths the density estimate` },
+ { title:"4. Local reachability density (lrd) — how crowded am I?", why:"Now turn distances into a density. The local reachability density of A is the inverse of its average reachability distance over its neighbourhood: lrd(A) = 1 / mean_{B in N_k(A)} reach-dist(A,B). Small average reach-distance means A's neighbours are close ⇒ A sits in a crowded region ⇒ high lrd. Large average means A is lonely ⇒ low lrd. This is still an ABSOLUTE quantity — lrd is large everywhere in the tight cluster and small everywhere in the loose one — so lrd alone can't tell an outlier from a legitimately-sparse-region inlier. That comparison is the job of the final ratio. The reachability flooring from step 3 is what makes lrd stable rather than spiky.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">lrd(A) = 1 / average( reach-dist(A,B) for B in N_k(A) )<br><br>neighbours close  → small avg reach-dist → HIGH lrd (crowded)<br>neighbours far    → large avg reach-dist → LOW  lrd (lonely)<br><br>still ABSOLUTE: tight cluster high everywhere, loose low everywhere</div>`, code:`def lrd(A, N_k, k_distance_of):
+    avg = mean(reach_dist(A, B, k_distance_of) for B in N_k[A])
+    return 1.0 / avg if avg > 0 else float("inf")
+# high lrd = dense neighbourhood, low lrd = sparse one` },
+ { title:"5. The LOF ratio — density relative to your neighbours", why:"The masterstroke. LOF(A) = mean_{B in N_k(A)} lrd(B) / lrd(A): divide the average density of A's neighbours by A's own density. This ratio is self-normalising, which is exactly what the absolute lrd could not do. Inside the tight cluster, A and its neighbours are all dense → ratio ≈ 1. Inside the loose cluster, A and its neighbours are all sparse → ratio ≈ 1 as well. But a point on the fringe of the tight cluster has LOW lrd while its neighbours (deep in the cluster) have HIGH lrd → ratio ≫ 1: a local outlier. So LOF ≈ 1 means 'as dense as my crowd' (inlier), LOF ≫ 1 means 'my neighbours are far denser than I am' (outlier), and LOF < 1 means 'I'm in a denser pocket than my neighbours'. The comparison is always local, so the same score is meaningful in both clusters.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">LOF(A) = average( lrd(B) for B in N_k(A) )  /  lrd(A)<br><br>≈ 1  → as dense as my neighbours (INLIER)<br>≫ 1  → neighbours far denser than me (LOCAL OUTLIER)<br>< 1  → I'm in a denser pocket than my neighbours<br><br>self-normalising → both clusters read ≈1 internally</div>`, code:`def lof(A, N_k, lrd_of):
+    return mean(lrd_of[B] for B in N_k[A]) / lrd_of[A]
+# ratio of neighbours' density to mine:
+# tight cluster ≈1, loose cluster ≈1, fringe/lonely ≫1` },
+ { title:"6. Reading LOF and choosing k", why:"LOF is a score, not a hard label — you threshold it. There is no universal cutoff, but ≈1 is inlier and values pushing 1.5–2+ are increasingly anomalous; in practice you flag the top fraction (contamination) or set a threshold from a validation set. The one knob that really matters is k (n_neighbors). Too small (k=1–2) and LOF chases sampling noise — every slightly-isolated point spikes. Too large and the neighbourhood spans multiple clusters, 'local' becomes 'global', and LOF loses the very advantage it was built for; it can even flag whole small clusters. A common default is k≈20, or a range of k with the max LOF taken per point (as in the original paper). And like all distance methods, LOF degrades in high dimensions (curse of dimensionality, Day 46) where distances lose contrast — scale features first.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">LOF ≈ 1 inlier · 1.5–2+ increasingly outlier · threshold or top-c%<br><br>k too small → noisy, every lonely point spikes<br>k too large → 'local' → 'global', advantage lost<br><br>default k≈20 · scale features · beware high-D (D46)</div>`, code:`from sklearn.neighbors import LocalOutlierFactor
+for k in (5, 20, 50):                     # sweep k — scores shift a LOT
+    lof = LocalOutlierFactor(n_neighbors=k)
+    labels = lof.fit_predict(X)           # -1 outlier, +1 inlier
+    scores = -lof.negative_outlier_factor_
+# small k: noisy · large k: local structure washed out` },
+ { title:"7. Where LOF fits among outlier detectors", why:"LOF is the density-ratio, fully-local member of the outlier-detection family. Reach for it when your 'normal' data has clusters of DIFFERENT density and you care about anomalies relative to the local crowd — the exact case the Elliptic Envelope (Day 56) mishandles, since its single Gaussian ellipse assumes one global scale of spread. Compared to Isolation Forest (Day 26), also shape-free, LOF's reference frame is strictly local (its strength on varying density, its cost in speed — O(n²) naïvely, O(n log n) with a tree). Compared to One-Class SVM, LOF needs no boundary-fitting or kernel tuning, just k. Its weaknesses: choosing k, the O(n²) neighbour search, transductivity (classic LOF scores a fixed set; use novelty=True for new points), and the curse of dimensionality (Day 46) — in high-D all distances converge and the density ratio loses contrast, so reduce dimensions or scale features first.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">varying-density clusters, local anomalies → LOF ✅<br>~one Gaussian blob, want a stat cutoff → Elliptic Envelope (D56)<br>high-dim, big n, no shape prior → Isolation Forest (D26)<br>flexible learned boundary → One-Class SVM<br><br>knob: k · costs: O(n²), transductive, high-D blur</div>`, code:`from sklearn.neighbors import LocalOutlierFactor
+lof = LocalOutlierFactor(n_neighbors=20)
+y = lof.fit_predict(X)          # -1 outlier / +1 inlier (transductive)
+# for scoring NEW points: LocalOutlierFactor(novelty=True).fit(X).predict(Xnew)
+# varying density? LOF. one Gaussian? EllipticEnvelope. huge n? IsolationForest.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
