@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 56 — Elliptic Envelope (robust-covariance outlier detection)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:170px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .swatch-box { display:inline-block; width:14px; height:10px; border-radius:3px; vertical-align:0; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .ds-btn { border:1px solid #e2e8f0; background:#fff; font-weight:800; font-size:12px; padding:6px 11px; border-radius:9px; transition:all .15s; }
+  .ds-btn.on { color:#fff; border-color:transparent; background:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; cursor:crosshair; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  .btn-run { background:#16a34a; color:#fff; }
+  .btn-run:hover { background:#15803d; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 56</div>
+      <h1 class="text-xl font-bold">🥚 The <strong>Elliptic Envelope</strong> — outlier detection that draws one ellipse around "normal" and flags whatever falls outside. Its one modelling bet is simple: assume the <em>inliers</em> are drawn from a single <span style="color:#0ea5e9;font-weight:700">Gaussian</span>. Under that assumption every contour of constant density is an <strong>ellipse</strong>, and "how far out is this point?" has a precise, scale-and-correlation-aware answer — the <strong>Mahalanobis distance</strong> <code>d²(x) = (x − μ)ᵀ Σ⁻¹ (x − μ)</code>, which stretches and rotates ordinary Euclidean distance by the data's own covariance so that one unit means "one standard deviation <em>in that direction</em>." For genuinely Gaussian data those squared distances follow a <strong>chi-square</strong> law with <code>p</code> degrees of freedom, so a clean statistical cutoff drops out: flag every point whose <code>d²</code> exceeds the <code>χ²ₚ</code> quantile at <code>1 − contamination</code> — for 2-D that threshold is exactly <code>−2·ln(contamination)</code>, and sliding <em>contamination</em> literally grows or shrinks the decision ellipse. The catch, and the whole reason this is a <em>robust</em>-stats method, is <strong>estimating <code>μ</code> and <code>Σ</code></strong>: the plain empirical covariance is destroyed by outliers — a single gross point drags the mean toward it and inflates the covariance so much that the point ends up <em>inside</em> its own bloated ellipse (<span style="color:#dc2626;font-weight:700">masking</span>). The fix is a <strong>robust covariance</strong> — a Minimum-Covariance-Determinant-style estimate that iteratively keeps the tight majority of points and refits, so the outlier never gets a vote. Below it all <strong>runs live in your browser</strong>: a 2-D scatter you click to fill, a hand-rolled mean / covariance / 2×2 inverse / Mahalanobis / 2×2 eigen for the ellipse, plain-vs-robust envelopes that visibly diverge when one outlier is tossed in, a contamination slider resizing the boundary, and the classic distance-distance plot that unmasks the points the plain estimate misses. It belongs to the same robust-stats thread as <span style="color:#0ea5e9;font-weight:700">RANSAC (D51)</span>, <span style="color:#0ea5e9;font-weight:700">Huber (D52)</span> and <span style="color:#0ea5e9;font-weight:700">Theil–Sen (D53)</span> — but here the object being made robust is the <strong>covariance</strong>.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>Draw one ellipse around the "normal" cloud, flag everything outside it.</strong> Assume the inliers are <span style="color:#0ea5e9;font-weight:700">Gaussian</span>, estimate a center <code>μ</code> and a covariance <code>Σ</code>, and score each point by its <strong>Mahalanobis distance</strong> <code>d² = (x−μ)ᵀ Σ⁻¹ (x−μ)</code>. Those squared distances are <code>χ²</code>-distributed for clean Gaussian data, so the decision boundary is the ellipse <code>d² = χ²</code>-cutoff — and the <em>contamination</em> you expect sets that cutoff. The twist is robustness: a single outlier wrecks the plain covariance, so we fit a <strong>robust</strong> one that quietly ignores the extremes. Everything below — <code>μ</code>, <code>Σ</code>, the <code>2×2</code> inverse, the Mahalanobis score, the eigen-decomposition that orients the ellipse, and the MCD-style robust estimate — is <strong>built from scratch, live</strong>, on points you place yourself.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Fit &amp; flag</strong> scatters a Gaussian cloud plus stray outliers, fits the envelope, draws the decision ellipse and colours every point <span style="color:#16a34a;font-weight:700">green (inlier)</span> or <span style="color:#dc2626;font-weight:700">red (flagged)</span> live — <em>click the canvas to drop your own points</em>, slide the contamination to grow/shrink the ellipse, and toggle the robust vs plain covariance. <strong>Plain vs robust</strong> pits the two estimators against each other on the <em>same</em> data with one gross outlier you drag outward: the <span style="color:#dc2626;font-weight:700">plain ellipse</span> lunges and bloats toward the outlier until it <span style="color:#9a3412;font-weight:700">masks</span> it, while the <span style="color:#16a34a;font-weight:700">robust ellipse</span> barely flinches and flags it cleanly. <strong>Distance-distance plot</strong> is the classic MCD diagnostic — classical Mahalanobis distance on the x-axis, robust on the y-axis, cutoff lines on both — where masked outliers sit low-left-but-high-up, exposed by the robust estimate that the plain one hides. Every pixel is computed in-browser.</p>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="fit"     class="subnav-btn px-4 py-2 rounded-lg text-sm">🥚 Fit &amp; flag</button>
+        <button data-mod="compare" class="subnav-btn px-4 py-2 rounded-lg text-sm">⚔️ Plain vs robust</button>
+        <button data-mod="ddplot"  class="subnav-btn px-4 py-2 rounded-lg text-sm">📈 Distance-distance plot</button>
+      </div>
+
+      <!-- ============ MODULE: FIT & FLAG ============ -->
+      <div id="mod-fit" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="eeN" style="color:#64748b">—</div><div class="k">points n</div></div>
+          <div class="metric-pill"><div class="v" id="eeC" style="color:#0ea5e9">—</div><div class="k">contamination</div></div>
+          <div class="metric-pill"><div class="v" id="eeThr" style="color:#7c3aed">—</div><div class="k">χ² threshold d²</div></div>
+          <div class="metric-pill"><div class="v" id="eeFlag" style="color:#dc2626">—</div><div class="k">flagged outliers</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE ENVELOPE KNOBS</div>
+            <div class="ctl-row"><div class="ctl-name">☣️ contamination</div><input type="range" id="eeCs" min="1" max="40" step="1" value="10"><div class="ctl-val" id="eeCsV">10%</div></div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🛡️ covariance estimator</div>
+              <div id="eeRob" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🗂️ starting cloud</div>
+              <div id="eeKind" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="eeRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New data</button>
+              <button id="eeClear" class="bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-300">🧹 Clear</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> We estimate a center <code>μ</code> and covariance <code>Σ</code> (robust or plain), invert the <code>2×2</code> <code>Σ</code> by hand, and score each point by <code>d² = (x−μ)ᵀΣ⁻¹(x−μ)</code>. The <span style="color:#7c3aed;font-weight:700">decision ellipse</span> is the level set <code>d² = −2·ln(contamination)</code> — the <code>χ²₂</code> quantile at <code>1 − contamination</code>. Points with <code>d²</code> beyond it turn <span style="color:#dc2626;font-weight:700">red</span>. <b>Click the canvas</b> to add a point anywhere — drop one far out and watch the robust envelope flag it while its own centre barely moves.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:600px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🥚 fitted envelope &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">click to add points · red = Mahalanobis distance beyond the χ² cutoff</span></div>
+            <canvas id="eeCanvas" width="600" height="420"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#16a34a"></span> inlier (inside)</span>
+              <span><span class="swatch" style="background:#dc2626"></span> flagged outlier</span>
+              <span><span class="swatch-line" style="border-color:#7c3aed"></span> decision ellipse (χ² cutoff)</span>
+              <span><span class="swatch" style="background:#0ea5e9"></span> fitted centre μ</span>
+            </div>
+            <div id="eeDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: PLAIN VS ROBUST ============ -->
+      <div id="mod-compare" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="cpDist" style="color:#64748b">—</div><div class="k">outlier distance (σ)</div></div>
+          <div class="metric-pill"><div class="v" id="cpDp" style="color:#dc2626">—</div><div class="k">outlier d² · plain</div></div>
+          <div class="metric-pill"><div class="v" id="cpDr" style="color:#16a34a">—</div><div class="k">outlier d² · robust</div></div>
+          <div class="metric-pill"><div class="v" id="cpMask" style="color:#9a3412">—</div><div class="k">plain result</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">ONE OUTLIER, TWO ESTIMATORS</div>
+            <div class="text-[11px] text-slate-500 mb-2">A clean Gaussian cloud plus a <b>single</b> outlier you push outward. Both envelopes use the same contamination cutoff. Watch the <span style="color:#dc2626;font-weight:700">plain</span> ellipse stretch and swell toward the outlier — eventually swallowing it (masking) — while the <span style="color:#16a34a;font-weight:700">robust</span> ellipse ignores it entirely.</div>
+            <div class="ctl-row"><div class="ctl-name">🚀 outlier distance</div><input type="range" id="cpShift" min="0" max="45" step="1" value="30"><div class="ctl-val" id="cpShiftV">0.30</div></div>
+            <div class="ctl-row"><div class="ctl-name">☣️ contamination</div><input type="range" id="cpCs" min="1" max="40" step="1" value="10"><div class="ctl-val" id="cpCsV">10%</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="cpRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New cloud</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[12px] text-slate-600 leading-relaxed text-center font-mono">
+              masking:&nbsp; plain d²(outlier) &lt; cutoff<br>robust d²(outlier) ≫ cutoff
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Why plain fails.</strong> The empirical covariance averages over <em>all</em> points, so the outlier both pulls <code>μ</code> toward it and inflates <code>Σ</code> in its direction. That bloated ellipse gives the outlier a <em>small</em> Mahalanobis distance — it hides inside its own influence. The robust (MCD) estimate fits only the tight majority, so the outlier never distorts <code>Σ</code> and lands far outside.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:600px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">⚔️ plain (empirical) vs robust (MCD) envelope on identical data</div>
+            <canvas id="cpCanvas" width="600" height="420"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#dc2626"></span> plain ellipse (all points)</span>
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> robust ellipse (MCD)</span>
+              <span>◆ the gross outlier</span>
+              <span><span class="swatch" style="background:#94a3b8"></span> inliers</span>
+            </div>
+            <div id="cpDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: DISTANCE-DISTANCE PLOT ============ -->
+      <div id="mod-ddplot" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="ddN" style="color:#64748b">—</div><div class="k">points n</div></div>
+          <div class="metric-pill"><div class="v" id="ddC" style="color:#0ea5e9">—</div><div class="k">contamination</div></div>
+          <div class="metric-pill"><div class="v" id="ddFlag" style="color:#dc2626">—</div><div class="k">robust-flagged</div></div>
+          <div class="metric-pill"><div class="v" id="ddMask" style="color:#9a3412">—</div><div class="k">masked by plain</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">CLASSICAL vs ROBUST DISTANCE</div>
+            <div class="text-[11px] text-slate-500 mb-2">Each point plotted by its <b>classical</b> Mahalanobis distance (x, plain covariance) against its <b>robust</b> distance (y, MCD). The cutoff <code>√(χ² threshold)</code> is drawn on both axes, carving four regions.</div>
+            <div class="ctl-row"><div class="ctl-name">☣️ contamination</div><input type="range" id="ddCs" min="1" max="40" step="1" value="10"><div class="ctl-val" id="ddCsV">10%</div></div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🗂️ point cloud</div>
+              <div id="ddKind" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="ddRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New data</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Reading it.</strong> <span style="color:#16a34a;font-weight:700">Bottom-left</span>: inliers (both distances small). <span style="color:#dc2626;font-weight:700">Top-right</span>: obvious outliers (both large). <span style="color:#9a3412;font-weight:700">Top-left</span>: the payoff — points with a <em>small</em> classical distance but a <em>large</em> robust one. The plain covariance <b>masked</b> them; the robust estimate drags them up above the cutoff where they belong.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:460px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📈 robust vs classical Mahalanobis distance</div>
+            <canvas id="ddCanvas" width="436" height="380"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#16a34a"></span> inlier</span>
+              <span><span class="swatch" style="background:#dc2626"></span> robust-flagged</span>
+              <span><span class="swatch" style="background:#f59e0b"></span> masked (plain missed)</span>
+              <span><span class="swatch-line" style="border-color:#7c3aed"></span> χ² cutoff</span>
+            </div>
+            <div id="ddDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From "outliers destroy the mean and covariance" to "one robust ellipse that flags them"</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">The Elliptic Envelope is short — the exact routine the LOOK tab runs, no scikit-learn black box. Below is the runnable core: mean and the <code>2×2</code> covariance by hand, a jitter-guarded <code>2×2</code> inverse and the Mahalanobis distance, the chi-square cutoff that turns a contamination fraction into a decision boundary, a <code>2×2</code> symmetric eigen-decomposition to orient and size the decision ellipse, the MCD-style robust covariance (concentration steps that drop the extremes and refit, plus a consistency rescale), and the plain-vs-robust fit that flags every point. Every ellipse and dot the LOOK tab draws comes from these snippets.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Mean and the 2×2 covariance — by hand</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Everything starts with a center <code>μ</code> and a spread <code>Σ</code>. For 2-D points, <code>Σ</code> is a symmetric <code>2×2</code>: the two variances on the diagonal and one covariance off it. We compute them over a chosen subset of indices (the whole set for the plain estimate, a clean subset for the robust one).</p>
+        <div class="relative"><pre>// mean + 2x2 covariance over a subset of point indices
+function meanCov(pts, idx) {
+  const N = idx.length;
+  let mx = 0, my = 0;
+  for (const i of idx) { mx += pts[i].x; my += pts[i].y; }
+  mx /= N; my /= N;                              // the center μ
+  let cxx = 0, cyy = 0, cxy = 0;
+  for (const i of idx) {
+    const dx = pts[i].x - mx, dy = pts[i].y - my;
+    cxx += dx*dx; cyy += dy*dy; cxy += dx*dy;    // Σ = [[cxx,cxy],[cxy,cyy]]
+  }
+  const d = Math.max(1, N - 1);                  // unbiased divisor
+  return { mx, my, cxx: cxx/d, cyy: cyy/d, cxy: cxy/d };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The 2×2 inverse (ridge-guarded) and the Mahalanobis distance</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Mahalanobis distance is the whole scoring function: <code>d²(x) = (x−μ)ᵀ Σ⁻¹ (x−μ)</code>. It measures distance in units of standard deviation <em>along each correlated direction</em>, so a point two σ out along a thin axis is as "far" as one two σ out along a fat one. Inverting a <code>2×2</code> is a one-liner via the adjugate over the determinant — but a nearly-collinear cloud makes <code>Σ</code> singular, so we add a whisker of ridge to the diagonal and guard the determinant. That is exactly why the LOOK tab never NaNs. Note <code>d²(μ) = 0</code> by construction.</p>
+        <div class="relative"><pre>// inverse of a symmetric 2x2 covariance, with a tiny ridge for stability
+function inv2(cxx, cyy, cxy) {
+  const tr = cxx + cyy;
+  const r  = 1e-9 + 1e-7 * tr;          // ridge scales with the data
+  const a = cxx + r, c = cyy + r, b = cxy;
+  let det = a*c - b*b;
+  if (!(Math.abs(det) > 1e-14)) det = (det >= 0 ? 1 : -1) * 1e-14;  // never divide by 0
+  return { i00: c/det, i01: -b/det, i11: a/det, det };   // Σ⁻¹ (symmetric)
+}
+// squared Mahalanobis distance of a centered vector (dx,dy)
+function maha2(dx, dy, inv) {
+  return inv.i00*dx*dx + 2*inv.i01*dx*dy + inv.i11*dy*dy;   // = 0 at the mean
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The chi-square cutoff — contamination becomes a boundary</h3></div>
+        <p class="text-sm text-slate-600 mb-3">If the inliers really are Gaussian, their squared Mahalanobis distances follow a <strong>chi-square</strong> law with <code>p</code> degrees of freedom (<code>p = 2</code> here). So "flag the outer <code>c</code> fraction" becomes "flag <code>d²</code> above the <code>χ²ₚ</code> quantile at <code>1 − c</code>." For <code>p = 2</code> the chi-square CDF is the clean <code>F(x) = 1 − e^{−x/2}</code>, so that quantile is just <code>−2·ln(c)</code> — a closed form, no tables. Sliding the contamination directly resizes the ellipse.</p>
+        <div class="relative"><pre>// χ² cutoff on squared Mahalanobis distance for p = 2 dimensions.
+// χ²₂ CDF is F(x) = 1 − e^(−x/2)  ⇒  quantile at prob q is −2·ln(1−q).
+// We want the (1−c) quantile, so the cutoff is −2·ln(c).
+function chiCut2(contamination) {
+  const c = Math.min(0.999, Math.max(1e-4, contamination));
+  return -2 * Math.log(c);              // e.g. c=0.10 → 4.605 ; c=0.50 → 1.386
+}
+// flag = outside the ellipse
+function flag(d2, cut) { return d2 > cut; }</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">2×2 eigen-decomposition — orient and size the ellipse</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The decision boundary <code>d² = cut</code> is an ellipse. To draw it we diagonalise <code>Σ = V Λ Vᵀ</code>: the eigenvectors are the ellipse's axes and the eigenvalues their squared lengths. For a symmetric <code>2×2</code> the eigenvalues are a closed form from the trace and determinant, and the eigenvectors follow immediately. The semi-axes are <code>√(λ · cut)</code>, so a larger cutoff (smaller contamination) inflates the ellipse.</p>
+        <div class="relative"><pre>// eigen-decomposition of symmetric [[a,b],[b,c]] — closed form
+function eig2(a, b, c) {
+  const tr = a + c, det = a*c - b*b;
+  const disc = Math.sqrt(Math.max(0, tr*tr/4 - det));
+  const l1 = Math.max(tr/2 + disc, 1e-12);       // larger eigenvalue
+  const l2 = Math.max(tr/2 - disc, 1e-12);       // smaller eigenvalue
+  let vx, vy;
+  if (Math.abs(b) > 1e-14) { vx = l1 - c; vy = b; }         // eigenvector of l1
+  else if (a >= c)         { vx = 1; vy = 0; }
+  else                     { vx = 0; vy = 1; }
+  const nn = Math.hypot(vx, vy) || 1; vx /= nn; vy /= nn;
+  return { l1, l2, v1x: vx, v1y: vy, v2x: -vy, v2y: vx };   // axes are orthonormal
+}
+// ellipse point at angle t on the boundary d² = cut
+function ellipsePt(est, e, cut, t) {
+  const r1 = Math.sqrt(e.l1 * cut), r2 = Math.sqrt(e.l2 * cut);
+  return [ est.mx + Math.cos(t)*r1*e.v1x + Math.sin(t)*r2*e.v2x,
+           est.my + Math.cos(t)*r1*e.v1y + Math.sin(t)*r2*e.v2y ];
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Robust covariance — MCD by concentration (C-steps)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The heart of the method. The <strong>Minimum Covariance Determinant</strong> estimate looks for the tight subset of <code>h</code> points whose covariance has the smallest determinant — the densest core, immune to outliers. We find it with <strong>concentration steps</strong>: from a current subset, compute <code>μ, Σ</code>, score <em>all</em> points, keep the <code>h</code> with smallest Mahalanobis distance, refit — each step provably shrinks the determinant. A few random starts avoid local minima; a final rescale by the median distance makes <code>Σ</code> consistent for Gaussian data so the chi-square cutoff stays honest.</p>
+        <div class="relative"><pre>// Minimum-Covariance-Determinant location & scatter via C-steps
+function mcd(pts, contamination) {
+  const n = pts.length;
+  const drop = Math.min(0.5, Math.max(contamination, 0.05));  // ≥ breakdown budget
+  const h = Math.max(3, Math.min(n, Math.round((1 - drop) * n)));  // support size
+  const all = [...Array(n).keys()];
+  const rng = mulberry32(12345);
+  const starts = [all];                              // + random h-subset starts
+  for (let s = 0; s < 6; s++) {
+    const sh = all.slice();
+    for (let i = n-1; i > 0; i--) { const j = (rng()*(i+1))|0; [sh[i],sh[j]]=[sh[j],sh[i]]; }
+    starts.push(sh.slice(0, h));
+  }
+  let best = null, bestDet = Infinity;
+  for (const start of starts) {
+    let idx = start.slice(), est = meanCov(pts, idx);
+    for (let it = 0; it < 12; it++) {                // C-steps: shrink |Σ|
+      const inv = inv2(est.cxx, est.cyy, est.cxy);
+      const d = all.map(i => ({ i, d: maha2(pts[i].x-est.mx, pts[i].y-est.my, inv) }));
+      d.sort((a, b) => a.d - b.d);                   // keep the h closest points
+      idx = d.slice(0, h).map(o => o.i);
+      est = meanCov(pts, idx);
+    }
+    const det = est.cxx*est.cyy - est.cxy*est.cxy;
+    if (det < bestDet && isFinite(det)) { bestDet = det; best = { est, support: idx }; }
+  }
+  // consistency rescale: make the support's median d² match the χ²₂ median (1.386)
+  const inv = inv2(best.est.cxx, best.est.cyy, best.est.cxy);
+  const ds = best.support.map(i => maha2(pts[i].x-best.est.mx, pts[i].y-best.est.my, inv))
+                         .sort((a, b) => a - b);
+  const scale = (ds[ds.length >> 1] || 1) / 1.3862943611;
+  if (isFinite(scale) && scale > 1e-9) { best.est.cxx*=scale; best.est.cyy*=scale; best.est.cxy*=scale; }
+  best.est.support = best.support;
+  return best.est;                                   // robust μ and Σ
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Putting it together — fit and flag</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The whole envelope is five calls: pick the estimator (robust MCD or plain empirical), invert <code>Σ</code>, score every point, get the chi-square cutoff, flag. This one function drives all three LOOK demos — the fitted ellipse, the plain-vs-robust contrast, and the distance-distance plot.</p>
+        <div class="relative"><pre>function fitEnvelope(pts, contamination, robust) {
+  const n = pts.length;
+  const est = (robust && n >= 6) ? mcd(pts, contamination)
+                                 : meanCov(pts, [...Array(n).keys()]);
+  const inv = inv2(est.cxx, est.cyy, est.cxy);
+  const cut = chiCut2(contamination);
+  const d2  = pts.map(p => maha2(p.x - est.mx, p.y - est.my, inv));
+  const flags = d2.map(d => d > cut);
+  return { est, inv, cut, d2, flags };
+}
+// sanity: d²(μ) = 0 ; a point 6σ out gets a huge d² and is flagged;
+// one gross outlier barely moves the robust ellipse but bloats the plain one.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">In practice — the standard tool</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You rarely hand-roll it. scikit-learn ships <code>EllipticEnvelope</code>, which fits a robust <code>MinCovDet</code> location and covariance under the hood, then flags by the chi-square cutoff at your <code>contamination</code>. It is a one-liner — and its one assumption is the same one you just coded: the inliers are a single Gaussian blob. For multi-modal or non-elliptical normal data you reach for a density- or distance-based detector instead.</p>
+        <div class="relative"><pre># scikit-learn — the robust Gaussian envelope in three lines
+from sklearn.covariance import EllipticEnvelope
+
+ee = EllipticEnvelope(contamination=0.1)   # robust MinCovDet + χ² cutoff
+ee.fit(X)                                  # X: (n, 2) — assumes ONE Gaussian
+labels = ee.predict(X)                     # +1 inlier, −1 outlier
+dist   = ee.mahalanobis(X)                 # the same d² you computed by hand</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-10 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧭 Four ways to flag an outlier — and where the Elliptic Envelope sits</h3>
+      <div style="overflow-x:auto">
+      <table class="cmp">
+        <tr><th style="width:150px"></th><th>🥚 Elliptic Envelope (Day 56)</th><th>🌲 Isolation Forest (Day 26)</th><th>🔦 Local Outlier Factor</th><th>🛡️ One-Class SVM</th></tr>
+        <tr><td class="cat">Core idea</td><td><b>robust Gaussian ellipse, flag by Mahalanobis + χ²</b></td><td>random splits isolate outliers in few cuts</td><td>compare a point's density to its neighbours'</td><td>learn a tight boundary around the normal data</td></tr>
+        <tr><td class="cat">Shape assumed</td><td><b>one elliptical (Gaussian) blob</b></td><td>none — axis-aligned partitions</td><td>none — local, any shape</td><td>flexible (kernel), any shape</td></tr>
+        <tr><td class="cat">Robust to masking?</td><td><b>✅ yes — MCD covariance</b></td><td>✅ ensemble averaging</td><td>✅ purely local</td><td>⚠️ sensitive to ν &amp; kernel</td></tr>
+        <tr><td class="cat">Gives a score?</td><td><b>✅ Mahalanobis distance (calibrated to χ²)</b></td><td>✅ path-length anomaly score</td><td>✅ LOF ratio</td><td>✅ signed distance to boundary</td></tr>
+        <tr><td class="cat">Best when</td><td><b>data is ~unimodal Gaussian, want a stat cutoff</b></td><td>high-dim, big n, no shape prior</td><td>varying local density, clusters</td><td>complex boundary, moderate n</td></tr>
+        <tr><td class="cat">Weak when</td><td><b>multi-modal / non-elliptical normal data</b></td><td>very local anomalies</td><td>picking k, global structure</td><td>tuning, scaling</td></tr>
+      </table>
+      </div>
+      <p class="text-xs text-slate-500 mt-3">The Elliptic Envelope is the <b>parametric, robust-statistics</b> corner of outlier detection: it commits to a single Gaussian model of "normal," which buys it a <span style="color:#7c3aed;font-weight:700">calibrated chi-square cutoff</span> and a clean, interpretable Mahalanobis score — and the robust MCD covariance is what keeps that model from being sabotaged by the very outliers it is meant to catch (<span style="color:#dc2626;font-weight:700">masking</span>). It is the natural companion to <b>Isolation Forest (Day 26)</b>, which makes no shape assumption at all, and to <b>Local Outlier Factor</b> and <b>One-Class SVM</b>, which trade the tidy statistical guarantee for flexibility. And it is the covariance-flavoured member of the robust-stats family you have been building — <b>RANSAC (D51)</b> makes a fit robust by consensus, <b>Huber (D52)</b> by down-weighting big residuals, <b>Theil–Sen (D53)</b> by taking a median of slopes; the <b>Elliptic Envelope</b> makes the <em>covariance</em> robust so the notion of "far" itself stops being fooled.</p>
+    </div>
+
+    <div class="mt-8 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 56 of MachineLearningFromZero done — one robust ellipse that draws the line around "normal".</h3><p class="text-sm text-sky-700 mt-2">The <strong>Elliptic Envelope</strong> assumes the inliers are a single <span style="color:#0ea5e9;font-weight:700">Gaussian</span>, so their level sets are ellipses and "how far out?" is the <span style="color:#7c3aed;font-weight:700">Mahalanobis distance</span> <code>d² = (x−μ)ᵀΣ⁻¹(x−μ)</code> — distance measured in the data's own correlated units. For Gaussian data <code>d²</code> is <strong>chi-square</strong> distributed, so the decision boundary is the ellipse <code>d² = χ²ₚ</code>-cutoff at <code>1 − contamination</code> — for 2-D, exactly <code>−2·ln(contamination)</code>, which is why the contamination slider grows and shrinks the ellipse. The whole game is <span style="color:#16a34a;font-weight:700">robust estimation</span>: the plain empirical covariance is destroyed by even one gross outlier (<span style="color:#dc2626;font-weight:700">masking</span> — the point bloats <code>Σ</code> and hides inside its own ellipse), so a <strong>Minimum-Covariance-Determinant</strong> estimate fits only the tight majority via concentration steps and never lets the outlier vote. It joins <span style="color:#0ea5e9;font-weight:700">RANSAC (D51)</span>, <span style="color:#0ea5e9;font-weight:700">Huber (D52)</span> and <span style="color:#0ea5e9;font-weight:700">Theil–Sen (D53)</span> in the robust-stats toolbox — the covariance/Mahalanobis method for detecting outliers. <strong>👉 When your "normal" data is roughly one Gaussian cloud and you want a principled, calibrated outlier flag, reach for the Elliptic Envelope.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+const el = id => document.getElementById(id);
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function randn(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function setDiag(box, c, t, b){ box.className="diag "+c+" mt-3 text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+const fmt=(x,d=2)=>Number(x).toFixed(d);
+const clamp01=v=>Math.max(0.03,Math.min(0.97,v));
+
+/* ================================================================
+   CORE: mean/cov, 2x2 inverse, Mahalanobis, chi-square cutoff,
+         2x2 eigen for the ellipse, MCD robust covariance
+   ================================================================ */
+// mean + 2x2 covariance over a subset of indices
+function meanCov(pts, idx){
+  const N=idx.length;
+  let mx=0,my=0;
+  for(const i of idx){ mx+=pts[i].x; my+=pts[i].y; }
+  mx/=N; my/=N;
+  let cxx=0,cyy=0,cxy=0;
+  for(const i of idx){ const dx=pts[i].x-mx, dy=pts[i].y-my; cxx+=dx*dx; cyy+=dy*dy; cxy+=dx*dy; }
+  const d=Math.max(1,N-1);
+  return { mx, my, cxx:cxx/d, cyy:cyy/d, cxy:cxy/d };
+}
+// inverse of symmetric 2x2 covariance with a tiny ridge; guard singular
+function inv2(cxx, cyy, cxy){
+  const tr=cxx+cyy;
+  const r=1e-9 + 1e-7*tr;
+  const a=cxx+r, c=cyy+r, b=cxy;
+  let det=a*c-b*b;
+  if(!(Math.abs(det)>1e-14)) det=(det>=0?1:-1)*1e-14;
+  return { i00:c/det, i01:-b/det, i11:a/det, det };
+}
+// squared Mahalanobis distance of centered vector (dx,dy)
+function maha2(dx, dy, inv){ return inv.i00*dx*dx + 2*inv.i01*dx*dy + inv.i11*dy*dy; }
+// χ² cutoff on d² for p=2 dims at (1-contamination) quantile  →  -2 ln(c)
+function chiCut2(contamination){ const c=Math.min(0.999,Math.max(1e-4,contamination)); return -2*Math.log(c); }
+// eigen-decomposition of symmetric [[a,b],[b,c]]
+function eig2(a, b, c){
+  const tr=a+c, det=a*c-b*b;
+  const disc=Math.sqrt(Math.max(0, tr*tr/4-det));
+  const l1=Math.max(tr/2+disc,1e-12), l2=Math.max(tr/2-disc,1e-12);
+  let vx,vy;
+  if(Math.abs(b)>1e-14){ vx=l1-c; vy=b; }
+  else if(a>=c){ vx=1; vy=0; } else { vx=0; vy=1; }
+  const nn=Math.hypot(vx,vy)||1; vx/=nn; vy/=nn;
+  return { l1, l2, v1x:vx, v1y:vy, v2x:-vy, v2y:vx };
+}
+// Minimum-Covariance-Determinant robust μ, Σ via concentration steps
+function mcd(pts, contamination){
+  const n=pts.length;
+  const drop=Math.min(0.5, Math.max(contamination,0.05));
+  const h=Math.max(3, Math.min(n, Math.round((1-drop)*n)));
+  const all=[...Array(n).keys()];
+  const rng=mulberry32(12345);
+  const starts=[all];
+  for(let s=0;s<6;s++){
+    const sh=all.slice();
+    for(let i=n-1;i>0;i--){ const j=(rng()*(i+1))|0; const tmp=sh[i]; sh[i]=sh[j]; sh[j]=tmp; }
+    starts.push(sh.slice(0,h));
+  }
+  let best=null, bestDet=Infinity;
+  for(const start of starts){
+    let idx=start.slice(), est=meanCov(pts, idx);
+    for(let it=0; it<12; it++){
+      const inv=inv2(est.cxx,est.cyy,est.cxy);
+      const d=all.map(i=>({ i, d:maha2(pts[i].x-est.mx, pts[i].y-est.my, inv) }));
+      d.sort((a,b)=>a.d-b.d);
+      idx=d.slice(0,h).map(o=>o.i);
+      est=meanCov(pts, idx);
+    }
+    const det=est.cxx*est.cyy-est.cxy*est.cxy;
+    if(det<bestDet && isFinite(det)){ bestDet=det; best={ est, support:idx }; }
+  }
+  if(!best) best={ est:meanCov(pts, all), support:all };
+  // consistency rescale so support median d² matches χ²₂ median (1.386)
+  const inv=inv2(best.est.cxx,best.est.cyy,best.est.cxy);
+  const ds=best.support.map(i=>maha2(pts[i].x-best.est.mx, pts[i].y-best.est.my, inv)).sort((a,b)=>a-b);
+  const med=ds[ds.length>>1]||1;
+  const scale=med/1.3862943611;
+  if(isFinite(scale) && scale>1e-9){ best.est.cxx*=scale; best.est.cyy*=scale; best.est.cxy*=scale; }
+  best.est.support=best.support;
+  return best.est;
+}
+// full envelope fit
+function fitEnvelope(pts, contamination, robust){
+  const n=pts.length;
+  const est=(robust && n>=6) ? mcd(pts, contamination) : meanCov(pts, [...Array(n).keys()]);
+  const inv=inv2(est.cxx,est.cyy,est.cxy);
+  const cut=chiCut2(contamination);
+  const d2=pts.map(p=>maha2(p.x-est.mx, p.y-est.my, inv));
+  const flags=d2.map(d=>d>cut);
+  return { est, inv, cut, d2, flags };
+}
+
+/* ---------------- data generation ---------------- */
+function makeData(kind, n, rng){
+  const pts=[];
+  const cx=0.5, cy=0.52;
+  const sx = kind==='skew'?0.135:0.085;
+  const sy = 0.065;
+  const rho = kind==='skew'?0.78:0.42;
+  let nOut = kind==='clean'?0 : kind==='outliers'?Math.round(n*0.13):Math.round(n*0.09);
+  const nIn=n-nOut;
+  for(let i=0;i<nIn;i++){
+    const z1=randn(rng), z2=randn(rng);
+    const x=cx+sx*z1;
+    const y=cy+sy*(rho*z1+Math.sqrt(1-rho*rho)*z2);
+    pts.push({ x:clamp01(x), y:clamp01(y) });
+  }
+  for(let i=0;i<nOut;i++){
+    let x,y,tries=0;
+    do{ x=0.06+0.88*rng(); y=0.06+0.88*rng(); tries++; }while(Math.hypot(x-cx,y-cy)<0.30 && tries<40);
+    pts.push({ x, y });
+  }
+  return pts;
+}
+
+/* ---------------- canvas mapping ---------------- */
+function squareRegion(cv, pad){ const S=Math.min(cv.width,cv.height)-2*pad; return { x0:(cv.width-S)/2, x1:(cv.width-S)/2+S, y0:(cv.height-S)/2, y1:(cv.height-S)/2+S }; }
+function mapX(x,x0,x1){ return x0+(x1-x0)*x; }
+function mapY(y,y0,y1){ return y1-(y1-y0)*y; }
+function invMap(px,py,reg){ return { x:(px-reg.x0)/(reg.x1-reg.x0), y:(reg.y1-py)/(reg.y1-reg.y0) }; }
+
+// draw the boundary ellipse d² = cut for estimate est
+function drawEllipse(ctx, est, cut, reg, style){
+  const e=eig2(est.cxx, est.cxy, est.cyy);
+  const r1=Math.sqrt(Math.max(1e-12,e.l1*cut)), r2=Math.sqrt(Math.max(1e-12,e.l2*cut));
+  ctx.beginPath();
+  for(let k=0;k<=72;k++){
+    const t=k/72*2*Math.PI;
+    const dx=Math.cos(t)*r1*e.v1x + Math.sin(t)*r2*e.v2x;
+    const dy=Math.cos(t)*r1*e.v1y + Math.sin(t)*r2*e.v2y;
+    const px=mapX(est.mx+dx,reg.x0,reg.x1), py=mapY(est.my+dy,reg.y0,reg.y1);
+    if(k===0)ctx.moveTo(px,py); else ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+  if(style.fill){ ctx.fillStyle=style.fill; ctx.fill(); }
+  ctx.setLineDash(style.dash||[]); ctx.lineWidth=style.w||2; ctx.strokeStyle=style.stroke; ctx.stroke(); ctx.setLineDash([]);
+}
+function drawGrid(ctx, reg){
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1;
+  for(let g=0;g<=4;g++){ const xx=reg.x0+(reg.x1-reg.x0)*g/4, yy=reg.y0+(reg.y1-reg.y0)*g/4;
+    ctx.beginPath(); ctx.moveTo(xx,reg.y0); ctx.lineTo(xx,reg.y1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(reg.x0,yy); ctx.lineTo(reg.x1,yy); ctx.stroke();
+  }
+  ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1; ctx.strokeRect(reg.x0,reg.y0,reg.x1-reg.x0,reg.y1-reg.y0);
+}
+function drawCenter(ctx, est, reg, color){
+  const X=mapX(est.mx,reg.x0,reg.x1), Y=mapY(est.my,reg.y0,reg.y1);
+  ctx.strokeStyle=color; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(X-7,Y); ctx.lineTo(X+7,Y); ctx.moveTo(X,Y-7); ctx.lineTo(X,Y+7); ctx.stroke();
+}
+
+/* ================================================================
+   MODULE FIT — fit & flag, click to add points
+   ================================================================ */
+const FIT={ contam:0.10, robust:true, kind:'outliers', seed:11, pts:[] };
+function fitRegen(){ FIT.pts=makeData(FIT.kind, 60, mulberry32(FIT.seed)); }
+function fitDraw(){
+  const cv=el('eeCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const reg=squareRegion(cv,16); drawGrid(ctx,reg);
+  const pts=FIT.pts, n=pts.length;
+  if(n<2){ el('eeN').textContent=n; el('eeC').textContent=fmt(FIT.contam*100,0)+'%'; el('eeThr').textContent='—'; el('eeFlag').textContent='—';
+    setDiag(el('eeDiag'),'diag-info','Add some points','Click the canvas to scatter at least a handful of points, then the envelope will fit.'); return; }
+  const f=fitEnvelope(pts, FIT.contam, FIT.robust);
+  // ellipse (faint fill + purple boundary)
+  drawEllipse(ctx, f.est, f.cut, reg, { fill:'rgba(124,58,237,0.06)', stroke:'#7c3aed', w:2.4 });
+  // points
+  let nFlag=0;
+  for(let i=0;i<n;i++){
+    const X=mapX(pts[i].x,reg.x0,reg.x1), Y=mapY(pts[i].y,reg.y0,reg.y1);
+    if(f.flags[i]){ nFlag++;
+      ctx.fillStyle='rgba(220,38,38,0.9)'; ctx.beginPath(); ctx.arc(X,Y,4.6,0,7); ctx.fill();
+      ctx.strokeStyle='#991b1b'; ctx.lineWidth=1; ctx.stroke();
+    } else {
+      ctx.fillStyle='rgba(22,163,74,0.85)'; ctx.beginPath(); ctx.arc(X,Y,4,0,7); ctx.fill();
+    }
+  }
+  drawCenter(ctx, f.est, reg, '#0ea5e9');
+  el('eeN').textContent=n;
+  el('eeC').textContent=fmt(FIT.contam*100,0)+'%';
+  el('eeThr').textContent=fmt(f.cut,2);
+  el('eeFlag').textContent=nFlag;
+  fitDiag(f, n, nFlag);
+}
+function fitDiag(f, n, nFlag){
+  const box=el('eeDiag');
+  const est=(FIT.robust?'robust MCD':'plain empirical')+' covariance';
+  const pct=fmt(100*nFlag/n,0);
+  if(FIT.robust){
+    setDiag(box,'diag-good',`✅ ${nFlag} of ${n} points flagged (${pct}%) · ${est}`,
+      `The <span style="color:#7c3aed;font-weight:700">decision ellipse</span> is the level set <code>d² = ${fmt(f.cut,2)}</code> — the χ²₂ cutoff at <b>${fmt((1-FIT.contam)*100,0)}%</b>. Every point inside is scored <span style="color:#16a34a;font-weight:700">inlier</span>; the <b>${nFlag}</b> beyond it are <span style="color:#dc2626;font-weight:700">flagged</span>. Because we fit the <b>robust</b> covariance, the ellipse hugs the dense core and stray points can't inflate it — try clicking a point far out and watch it flag while the centre <span style="color:#0ea5e9;font-weight:700">μ</span> barely twitches.`);
+  } else {
+    setDiag(box,'diag-warn',`⚠️ ${nFlag} of ${n} flagged (${pct}%) · ${est} — fragile`,
+      `This is the <b>plain</b> empirical covariance over <em>all</em> points. Drop a point far out and the ellipse lunges toward it and swells, so the outlier can end up <span style="color:#9a3412;font-weight:700">masked</span> — inside its own bloated envelope — while genuine inliers on the far side get pushed out. Flip the estimator to <b>robust</b> to see the ellipse snap back to the core.`);
+  }
+}
+function fitButtons(){
+  const rb=el('eeRob'); rb.innerHTML='';
+  [['robust','🛡️ robust (MCD)',true],['plain','📉 plain (empirical)',false]].forEach(([id,label,val])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+((FIT.robust===val)?' on':''); b.textContent=label;
+    b.onclick=()=>{ FIT.robust=val; fitButtons(); fitDraw(); }; rb.appendChild(b);
+  });
+  const kw=el('eeKind'); kw.innerHTML='';
+  [['outliers','☣️ cloud + outliers'],['clean','☁️ clean gaussian'],['skew','↗️ correlated']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(FIT.kind===id?' on':''); b.textContent=label;
+    b.onclick=()=>{ FIT.kind=id; FIT.seed=(Math.random()*1e9)>>>0; fitRegen(); fitButtons(); fitDraw(); }; kw.appendChild(b);
+  });
+}
+el('eeCs').addEventListener('input',e=>{ FIT.contam=(+e.target.value)/100; el('eeCsV').textContent=e.target.value+'%'; fitDraw(); });
+el('eeRoll').onclick=()=>{ FIT.seed=(Math.random()*1e9)>>>0; fitRegen(); fitDraw(); };
+el('eeClear').onclick=()=>{ FIT.pts=[]; fitDraw(); };
+el('eeCanvas').addEventListener('pointerdown',e=>{
+  const cv=el('eeCanvas'); const rect=cv.getBoundingClientRect();
+  const px=(e.clientX-rect.left)*(cv.width/rect.width), py=(e.clientY-rect.top)*(cv.height/rect.height);
+  const reg=squareRegion(cv,16); const p=invMap(px,py,reg);
+  FIT.pts.push({ x:clamp01(p.x), y:clamp01(p.y) }); fitDraw();
+});
+
+/* ================================================================
+   MODULE COMPARE — plain vs robust with one gross outlier
+   ================================================================ */
+const CMP={ contam:0.10, shift:0.30, seed:21, cloud:null, cleanEst:null, sigma0:1 };
+function cmpRegen(){
+  CMP.cloud=makeData('clean', 55, mulberry32(CMP.seed));
+  CMP.cleanEst=meanCov(CMP.cloud, [...Array(CMP.cloud.length).keys()]);
+  CMP.sigma0=Math.sqrt(Math.max(1e-9,(CMP.cleanEst.cxx+CMP.cleanEst.cyy)/2));
+}
+function cmpDraw(){
+  const cv=el('cpCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const reg=squareRegion(cv,16); drawGrid(ctx,reg);
+  // outlier along a fixed direction from the clean center
+  const th=35*Math.PI/180;
+  const ox=clamp01(CMP.cleanEst.mx+CMP.shift*Math.cos(th));
+  const oy=clamp01(CMP.cleanEst.my+CMP.shift*Math.sin(th));
+  const pts=CMP.cloud.concat([{x:ox,y:oy}]);
+  const oi=pts.length-1;
+  const plain=fitEnvelope(pts, CMP.contam, false);
+  const robust=fitEnvelope(pts, CMP.contam, true);
+  // ellipses
+  drawEllipse(ctx, plain.est,  plain.cut,  reg, { stroke:'#dc2626', w:2.4, dash:[6,4] });
+  drawEllipse(ctx, robust.est, robust.cut, reg, { fill:'rgba(22,163,74,0.06)', stroke:'#16a34a', w:2.6 });
+  // inliers
+  for(let i=0;i<oi;i++){ const X=mapX(pts[i].x,reg.x0,reg.x1), Y=mapY(pts[i].y,reg.y0,reg.y1);
+    ctx.fillStyle='rgba(100,116,139,0.8)'; ctx.beginPath(); ctx.arc(X,Y,3.6,0,7); ctx.fill(); }
+  // the outlier (diamond)
+  const OX=mapX(ox,reg.x0,reg.x1), OY=mapY(oy,reg.y0,reg.y1);
+  ctx.fillStyle='#b91c1c'; ctx.strokeStyle='#7f1d1d'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(OX,OY-7); ctx.lineTo(OX+7,OY); ctx.lineTo(OX,OY+7); ctx.lineTo(OX-7,OY); ctx.closePath(); ctx.fill(); ctx.stroke();
+  drawCenter(ctx, plain.est, reg, '#dc2626');
+  drawCenter(ctx, robust.est, reg, '#16a34a');
+  const dp=plain.d2[oi], dr=robust.d2[oi];
+  const sigDist=Math.hypot(ox-CMP.cleanEst.mx, oy-CMP.cleanEst.my)/CMP.sigma0;
+  el('cpDist').textContent=fmt(sigDist,1);
+  el('cpDp').textContent=fmt(dp,1);
+  el('cpDr').textContent=fmt(dr,1);
+  const plainFlags=dp>plain.cut;
+  el('cpMask').textContent = plainFlags ? 'flagged ✓' : 'MISSED';
+  el('cpMask').style.color = plainFlags ? '#16a34a' : '#dc2626';
+  cmpDiag(dp, dr, plain.cut, robust.cut, plainFlags, sigDist);
+}
+function cmpDiag(dp, dr, pcut, rcut, plainFlags, sigDist){
+  const box=el('cpDiag');
+  const robFlags=dr>rcut;
+  if(!plainFlags && robFlags){
+    setDiag(box,'diag-bad',`🔴 Masking! plain d²=${fmt(dp,1)} &lt; cutoff ${fmt(pcut,2)} — the plain fit MISSES it`,
+      `The outlier sits <b>${fmt(sigDist,1)}σ</b> from the clean centre, yet the <span style="color:#dc2626;font-weight:700">plain</span> ellipse has stretched so far toward it that its own Mahalanobis distance (<b>${fmt(dp,1)}</b>) fell <em>below</em> the cutoff — it is hidden inside its own influence. The <span style="color:#16a34a;font-weight:700">robust</span> estimate excluded it from the fit, so it scores <b>${fmt(dr,1)}</b> ≫ cutoff and is flagged cleanly. This is exactly the failure the Elliptic Envelope's robust covariance is built to prevent.`);
+  } else if(plainFlags && robFlags){
+    setDiag(box,'diag-warn',`⚠️ Both flag it — plain d²=${fmt(dp,1)}, robust d²=${fmt(dr,1)}`,
+      `At <b>${fmt(sigDist,1)}σ</b> both estimators still catch the outlier, but look at the gap: the <span style="color:#16a34a;font-weight:700">robust</span> distance is far larger and its ellipse barely moved, while the <span style="color:#dc2626;font-weight:700">plain</span> ellipse is already leaning toward the point. Push the outlier further out and the plain fit will bloat enough to mask it entirely.`);
+  } else {
+    setDiag(box,'diag-good',`✅ Outlier close in (${fmt(sigDist,1)}σ) — nothing to flag yet`,
+      `With the outlier still near the cloud both ellipses agree. Drag the <b>outlier distance</b> slider up and watch the <span style="color:#dc2626;font-weight:700">plain</span> ellipse lunge toward it while the <span style="color:#16a34a;font-weight:700">robust</span> one holds its ground — the moment plain d² dips under the cutoff, the plain fit has been fooled.`);
+  }
+}
+el('cpShift').addEventListener('input',e=>{ CMP.shift=(+e.target.value)/100; el('cpShiftV').textContent=fmt(CMP.shift,2); cmpDraw(); });
+el('cpCs').addEventListener('input',e=>{ CMP.contam=(+e.target.value)/100; el('cpCsV').textContent=e.target.value+'%'; cmpDraw(); });
+el('cpRoll').onclick=()=>{ CMP.seed=(Math.random()*1e9)>>>0; cmpRegen(); cmpDraw(); };
+
+/* ================================================================
+   MODULE DDPLOT — classical vs robust Mahalanobis distance
+   ================================================================ */
+const DD={ contam:0.10, kind:'outliers', seed:31, pts:[] };
+function ddRegen(){ DD.pts=makeData(DD.kind, 70, mulberry32(DD.seed)); }
+function ddDraw(){
+  const cv=el('ddCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height; ctx.clearRect(0,0,W,H); ctx.setLineDash([]);
+  const ml=46,mr=16,mt=16,mb=40, x0=ml,x1=W-mr,y0=mt,y1=H-mb;
+  const pts=DD.pts, n=pts.length;
+  const plain=fitEnvelope(pts, DD.contam, false);
+  const robust=fitEnvelope(pts, DD.contam, true);
+  const cd=plain.d2.map(Math.sqrt), rd=robust.d2.map(Math.sqrt);
+  const cut=Math.sqrt(chiCut2(DD.contam));
+  let mx=cut*1.15, my=cut*1.15;
+  for(const v of cd) if(v>mx)mx=v; for(const v of rd) if(v>my)my=v;
+  mx*=1.08; my*=1.08;
+  const SX=v=>x0+(x1-x0)*Math.min(v,mx)/mx, SY=v=>y1-(y1-y0)*Math.min(v,my)/my;
+  // grid
+  ctx.strokeStyle='#eef2f7'; ctx.lineWidth=1;
+  for(let g=0;g<=4;g++){ const xx=x0+(x1-x0)*g/4, yy=y0+(y1-y0)*g/4;
+    ctx.beginPath(); ctx.moveTo(xx,y0); ctx.lineTo(xx,y1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x0,yy); ctx.lineTo(x1,yy); ctx.stroke(); }
+  // shaded masking region (classical < cut, robust > cut)  → top-left
+  ctx.fillStyle='rgba(245,158,11,0.10)'; ctx.fillRect(x0,y0,SX(cut)-x0,SY(cut)-y0);
+  // cutoff lines
+  ctx.strokeStyle='#7c3aed'; ctx.lineWidth=1.6; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(SX(cut),y0); ctx.lineTo(SX(cut),y1); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x0,SY(cut)); ctx.lineTo(x1,SY(cut)); ctx.stroke(); ctx.setLineDash([]);
+  // points
+  let nFlag=0, nMask=0;
+  for(let i=0;i<n;i++){
+    const flagged=rd[i]>cut, masked=flagged && cd[i]<=cut;
+    if(flagged) nFlag++; if(masked) nMask++;
+    ctx.fillStyle = masked?'rgba(245,158,11,0.95)' : flagged?'rgba(220,38,38,0.9)' : 'rgba(22,163,74,0.8)';
+    ctx.beginPath(); ctx.arc(SX(cd[i]),SY(rd[i]),3.4,0,7); ctx.fill();
+    if(masked){ ctx.strokeStyle='#b45309'; ctx.lineWidth=1; ctx.stroke(); }
+  }
+  // axes + labels
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x0,y0);ctx.lineTo(x0,y1);ctx.lineTo(x1,y1);ctx.stroke();
+  ctx.fillStyle='#7c3aed'; ctx.font='bold 9px monospace'; ctx.textAlign='center';
+  ctx.fillText('cutoff', SX(cut), y1+12);
+  ctx.fillStyle='#64748b'; ctx.font='10px sans-serif';
+  ctx.fillText('classical Mahalanobis distance  →', (x0+x1)/2, H-6);
+  ctx.save(); ctx.translate(12,(y0+y1)/2); ctx.rotate(-Math.PI/2); ctx.fillText('robust Mahalanobis distance', 0, 0); ctx.restore();
+  el('ddN').textContent=n; el('ddC').textContent=fmt(DD.contam*100,0)+'%';
+  el('ddFlag').textContent=nFlag; el('ddMask').textContent=nMask;
+  ddDiag(nFlag, nMask, n);
+}
+function ddDiag(nFlag, nMask, n){
+  const box=el('ddDiag');
+  if(nMask>0){
+    setDiag(box,'diag-bad',`🔴 ${nMask} masked outlier${nMask>1?'s':''} exposed — plain covariance missed ${nMask==1?'it':'them'}`,
+      `The <span style="color:#f59e0b;font-weight:700">amber</span> points in the top-left band have a <em>small</em> classical distance (left of the cutoff) but a <em>large</em> robust distance (above it): the plain covariance was inflated by the outliers themselves, so it <b>masked</b> them. The robust MCD distance lifts them above the cutoff where they belong. In total <b>${nFlag}</b> of <b>${n}</b> points are flagged as outliers.`);
+  } else {
+    setDiag(box,'diag-info',`📈 ${nFlag} of ${n} flagged · no masking on this sample`,
+      `Points spread along the diagonal — classical and robust distances roughly agree here. <span style="color:#dc2626;font-weight:700">Red</span> points sit beyond the cutoff on both axes (clear outliers); <span style="color:#16a34a;font-weight:700">green</span> stay in the bottom-left inlier square. Switch to the <b>cloud + outliers</b> data or lower the contamination and masked (amber) points tend to appear top-left, where the robust estimate earns its keep.`);
+  }
+}
+function ddButtons(){
+  const kw=el('ddKind'); kw.innerHTML='';
+  [['outliers','☣️ cloud + outliers'],['skew','↗️ correlated'],['clean','☁️ clean gaussian']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(DD.kind===id?' on':''); b.textContent=label;
+    b.onclick=()=>{ DD.kind=id; DD.seed=(Math.random()*1e9)>>>0; ddRegen(); ddButtons(); ddDraw(); }; kw.appendChild(b);
+  });
+}
+el('ddCs').addEventListener('input',e=>{ DD.contam=(+e.target.value)/100; el('ddCsV').textContent=e.target.value+'%'; ddDraw(); });
+el('ddRoll').onclick=()=>{ DD.seed=(Math.random()*1e9)>>>0; ddRegen(); ddDraw(); };
+
+/* ================================================================
+   sub-nav wiring
+   ================================================================ */
+const subBtns=document.querySelectorAll("#subnav [data-mod]");
+function showMod(m){
+  document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden"));
+  el("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m));
+  if(m==="fit") fitDraw();
+  if(m==="compare") cmpDraw();
+  if(m==="ddplot") ddDraw();
+}
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+/* ================================================================
+   init
+   ================================================================ */
+fitRegen(); cmpRegen(); ddRegen();
+fitButtons(); ddButtons();
+document.querySelector('[data-mod="fit"]').classList.add("on");
+showMod("fit");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. Outliers destroy the mean and the covariance", why:"The obvious way to describe 'normal' 2-D data is its mean μ and covariance Σ — a center and an ellipse of spread. The problem is that both are AVERAGES, and averages have a breakdown point of zero: a single point dragged far enough moves the mean arbitrarily and inflates the covariance without bound. So the very ellipse you would use to flag outliers is itself deformed by those outliers. This is the same fragility that motivated the rest of the robust-stats series — least-squares regression collapses under one bad point (RANSAC D51, Huber D52, Theil–Sen D53). The Elliptic Envelope is the answer for the covariance: keep the elegant Gaussian model, but estimate its parameters in a way outliers cannot corrupt.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">normal data ≈ Gaussian(μ, Σ)  → an ellipse of spread<br><br>but μ and Σ are AVERAGES · breakdown point = 0<br>one gross point → μ shifts, Σ balloons<br><br>the outlier deforms the very ellipse meant to catch it</div>`, code:`import numpy as np
+X = np.random.randn(200, 2)              # clean Gaussian
+X = np.vstack([X, [12, 12]])             # ONE gross outlier
+mu  = X.mean(0)                          # dragged toward (12,12)
+cov = np.cov(X.T)                        # variance inflated hugely
+# the empirical ellipse is now useless for flagging` },
+ { title:"2. Assume Gaussian inliers → the contours are ellipses", why:"The modelling bet is that the inliers come from one multivariate Gaussian. Its density depends on the point only through the quadratic form (x−μ)ᵀΣ⁻¹(x−μ), so every contour of equal density is an ellipse centered at μ, oriented by the eigenvectors of Σ, with axis lengths set by its eigenvalues. 'Normal' is the inside of such an ellipse; 'outlier' is outside. This is why the method is called an ELLIPTIC envelope — it wraps the data in the smallest sensible ellipse and calls everything beyond it anomalous. The assumption is strong (unimodal, elliptical) but when it holds it gives you something the shape-free detectors can't: a calibrated, interpretable score.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Gaussian density ∝ exp(−½ (x−μ)ᵀ Σ⁻¹ (x−μ))<br><br>equal-density contour  ⇔  (x−μ)ᵀ Σ⁻¹ (x−μ) = const<br>= an ELLIPSE (axes = eigenvectors of Σ)<br><br>inside = normal · outside = outlier</div>`, code:`# eigen-decomposition of Σ gives the ellipse geometry
+vals, vecs = np.linalg.eigh(cov)         # eigenvalues, eigenvectors
+angle = np.arctan2(vecs[1,0], vecs[0,0]) # orientation of the ellipse
+axes  = np.sqrt(vals)                    # half-axis lengths (× a radius)
+# every level set of the Gaussian is this ellipse, scaled` },
+ { title:"3. Mahalanobis distance — the right ruler", why:"How 'far out' is a point? Euclidean distance is wrong here: it treats a step along a thin, low-variance direction the same as a step along a fat one. The Mahalanobis distance d²(x) = (x−μ)ᵀΣ⁻¹(x−μ) fixes that by measuring distance in units of standard deviation along each correlated direction — Σ⁻¹ un-rotates and re-scales space so the Gaussian becomes a unit circle. A point two σ out along the minor axis and one two σ out along the major axis have the SAME Mahalanobis distance, exactly as they should. At the center d²=0, and the level set d²=r is precisely the ellipse from step 2. Computing it needs only the 2×2 inverse of Σ (guarded with a whisker of ridge so a near-collinear cloud can't make it blow up).", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">d²(x) = (x − μ)ᵀ Σ⁻¹ (x − μ)<br><br>Euclidean: circles · Mahalanobis: the data's own ellipses<br>1 unit = 1 std-dev ALONG THAT DIRECTION<br><br>d²(μ) = 0   ·   d² = r  ⇔  the ellipse of 'radius' r</div>`, code:`from scipy.spatial.distance import mahalanobis
+VI = np.linalg.inv(cov + 1e-9*np.eye(2)) # ridge-guarded inverse
+d2 = np.array([ (x-mu) @ VI @ (x-mu) for x in X ])   # squared distances
+# d2 at the mean is exactly 0; it grows as an ellipse, not a circle` },
+ { title:"4. The chi-square cutoff — turning contamination into a boundary", why:"Where do you draw the line? Here the Gaussian assumption pays off precisely: if x is Gaussian, its squared Mahalanobis distance d² follows a CHI-SQUARE distribution with p degrees of freedom (p = number of dimensions). So to flag the outer fraction c ('contamination'), set the threshold to the χ²ₚ quantile at 1−c and flag every d² above it. For p=2 the chi-square CDF is the tidy F(x)=1−e^{−x/2}, so the cutoff is the closed form −2·ln(c) — no tables needed (c=0.1 → 4.61, c=0.05 → 6.0). This is why the contamination slider directly grows or shrinks the decision ellipse: a smaller c means a larger quantile means a bigger ellipse and fewer flags.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Gaussian x  ⇒  d² ~ χ²  with p degrees of freedom<br><br>flag if  d²  >  χ²ₚ quantile at (1 − contamination)<br>p = 2 :  cutoff = −2·ln(contamination)<br><br>c=0.10 → 4.61 · c=0.05 → 6.0 · smaller c → bigger ellipse</div>`, code:`from scipy.stats import chi2
+c = 0.10                                  # contamination
+cut = chi2.ppf(1 - c, df=2)               # = 4.605  (= -2*np.log(c))
+outliers = d2 > cut                       # boolean flags
+# the decision boundary is the ellipse  d² = cut` },
+ { title:"5. Masking — why the plain estimate fails", why:"Now the trap. Suppose you flag with the PLAIN empirical Σ. A gross outlier does two things: it pulls μ toward itself, and it inflates Σ in its own direction. Both effects shrink the outlier's Mahalanobis distance — it burrows inside the very ellipse it should be outside of. This is MASKING: the outlier hides itself (and, worse, the bloated ellipse can push genuine inliers on the opposite side across the boundary — 'swamping'). With several outliers the effect compounds. Masking is exactly why a naive mean-and-covariance outlier detector is untrustworthy, and it is the phenomenon the 'Plain vs robust' demo and the distance-distance plot are built to expose.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">plain Σ uses ALL points, outlier included<br><br>outlier → pulls μ toward it AND inflates Σ<br>⇒ its own d² SHRINKS below the cutoff = MASKING<br><br>bonus damage: inliers opposite get pushed out (swamping)</div>`, code:`# the outlier's OWN distance under the contaminated fit is small:
+d2_out_plain = (X[-1]-mu) @ VI @ (X[-1]-mu)   # surprisingly < cutoff!
+# it inflated Σ enough to hide inside its own ellipse → masked
+# a robust μ,Σ that excludes it would score it as huge` },
+ { title:"6. Robust covariance — MCD by concentration steps", why:"The cure is to estimate μ and Σ from only the tight, dense majority of points, giving outliers no vote. That is the MINIMUM COVARIANCE DETERMINANT estimator: among all subsets of h points (h a chosen fraction, e.g. 1−contamination of n), find the one whose covariance has the smallest determinant — the most concentrated core. Brute force is impossible, so FastMCD uses CONCENTRATION STEPS ('C-steps'): from a current subset compute μ,Σ, score every point, keep the h with smallest Mahalanobis distance, refit — each step provably lowers the determinant, so a few iterations from several random starts converge to a robust core. A final rescale makes Σ consistent for Gaussian data so the chi-square cutoff stays honest. Its breakdown point can reach ~50% — it tolerates almost half the data being garbage.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">MCD: find the h-subset with the SMALLEST |Σ| (densest core)<br><br>C-step: fit μ,Σ → score all → keep h closest → refit<br>each C-step shrinks |Σ| · repeat from a few random starts<br><br>breakdown point up to ~50% · outliers never get a vote</div>`, code:`from sklearn.covariance import MinCovDet
+mcd = MinCovDet(support_fraction=0.75).fit(X)
+mu_r, cov_r = mcd.location_, mcd.covariance_   # robust μ, Σ
+VI_r = np.linalg.inv(cov_r)
+d2_r = mcd.mahalanobis(X)                       # robust distances
+# now the outlier scores HUGE and is flagged; the core is untouched` },
+ { title:"7. Where the Elliptic Envelope fits", why:"EllipticEnvelope in scikit-learn is exactly this: a robust MinCovDet fit plus the chi-square cutoff at your contamination. Reach for it when your 'normal' data is roughly one Gaussian blob and you want a principled, calibrated flag with an interpretable Mahalanobis score. Its limitation is its assumption — for multi-modal or curved 'normal' regions the single ellipse is too crude, and you switch to a shape-free detector: Isolation Forest (Day 26) isolates points with random splits, Local Outlier Factor compares local densities, One-Class SVM learns a flexible boundary. And it is the covariance member of the robust-stats family threaded through the back half of this series: RANSAC (D51) robustifies a fit by consensus, Huber (D52) by down-weighting residuals, Theil–Sen (D53) by a median of slopes — the Elliptic Envelope robustifies the COVARIANCE so that 'distance from normal' itself can't be gamed.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">unimodal Gaussian normal, want a stat cutoff → ELLIPTIC ENVELOPE ✅<br>multi-modal / any shape → Isolation Forest (D26), LOF<br>flexible boundary → One-Class SVM<br><br>robust-stats family: RANSAC(51) · Huber(52) · Theil–Sen(53) · covariance(56)</div>`, code:`from sklearn.covariance import EllipticEnvelope
+ee = EllipticEnvelope(contamination=0.1).fit(X)   # robust MCD + χ² cutoff
+y = ee.predict(X)          # +1 inlier / −1 outlier
+# assumption: ONE Gaussian blob. Multi-modal? use IsolationForest / LOF.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
