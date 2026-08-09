@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 58 — One-Class SVM (novelty / anomaly detection)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:170px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .swatch-box { display:inline-block; width:14px; height:10px; border-radius:3px; vertical-align:0; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .ds-btn { border:1px solid #e2e8f0; background:#fff; font-weight:800; font-size:12px; padding:6px 11px; border-radius:9px; transition:all .15s; }
+  .ds-btn.on { color:#fff; border-color:transparent; background:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; cursor:crosshair; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  .honest { background:#fffbeb; border:1px solid #fcd34d; color:#92400e; border-radius:12px; padding:10px 13px; font-size:12px; line-height:1.5; }
+  .btn-run { background:#16a34a; color:#fff; }
+  .btn-run:hover { background:#15803d; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 58</div>
+      <h1 class="text-xl font-bold">🛡️ The <strong>One-Class SVM</strong> — novelty detection that stops <em>describing</em> the normal data and instead <strong>wraps a boundary around it</strong>, then flags anything outside as anomaly. Every anomaly detector so far answered the question with a summary of the bulk: the <span style="color:#0ea5e9;font-weight:700">Elliptic Envelope (D56)</span> fits <em>one Gaussian ellipse</em>, the <span style="color:#0ea5e9;font-weight:700">Local Outlier Factor (D57)</span> compares each point's <em>local density</em> to its neighbours', the <span style="color:#0ea5e9;font-weight:700">Isolation Forest (D26)</span> counts how few random cuts <em>isolate</em> a point. The One-Class SVM takes the <span style="color:#0ea5e9;font-weight:700">Support Vector Machine (D12)</span> idea — a max-margin frontier — and turns it inward: with only "normal" examples and no anomalies to learn from, it learns the <strong>support</strong> of the data, a curved frontier that hugs the inliers as tightly as it can while allowing a controlled fraction to spill outside. Concretely (Schölkopf's formulation) it maps points through an <span style="color:#0ea5e9;font-weight:700">RBF kernel</span> <code>K(x,y)=exp(−γ‖x−y‖²)</code> — the <span style="color:#0ea5e9;font-weight:700">kernel trick (D42)</span>, so the feature map <code>φ</code> is never built — and separates the data from the origin with maximum margin <code>ρ</code>, solving the dual <code>min ½ Σᵢⱼ αᵢαⱼ K(xᵢ,xⱼ)</code> subject to <code>Σαᵢ = 1</code> and the box <code>0 ≤ αᵢ ≤ 1/(νn)</code>. The points that end up with <code>αᵢ &gt; 0</code> are the <strong>support vectors</strong> — the only ones that shape the frontier — and the offset <code>ρ</code> is read off the ones sitting exactly on it. The decision function <code>f(x) = Σᵢ αᵢ K(x,xᵢ) − ρ</code> then paints the whole plane: <code>f(x) ≥ 0</code> is <span style="color:#16a34a;font-weight:700">inside — normal</span>, <code>f(x) &lt; 0</code> is <span style="color:#dc2626;font-weight:700">outside — anomaly</span>, and the <strong>decision boundary</strong> is the contour <code>f = 0</code>. Two knobs govern everything: <strong>ν</strong> is a beautiful hyperparameter with a hard guarantee — it is simultaneously an <em>upper bound on the fraction of outliers</em> and a <em>lower bound on the fraction of support vectors</em> — and <strong>γ</strong> sets the RBF width, so raising it tightens the frontier and makes it wigglier, lowering it smooths it toward a single round blob. Everything below <strong>runs live in your browser</strong>: click to scatter normal data, watch a hand-rolled kernel model fit the boundary and light up the support vectors, slide ν and γ to feel the frontier breathe, pit the kernel boundary against a single Gaussian ellipse on a <em>ring</em> and <em>two blobs</em> it physically cannot wrap, and read the decision function as a landscape of summed kernel bumps. It is the <strong>kernel-boundary</strong>, shape-flexible member of the anomaly-detection family — the one that learns a frontier rather than a density or a distance. <span class="text-amber-700 font-semibold">(Honest note: the maths above — the dual QP for a sparse <code>α</code>, support vectors, the ν-property — is real libsvm one-class SVM. The <em>live</em> demo implements the same decision-function form <code>f(x)=Σαᵢk(x,xᵢ)−ρ</code> as an <em>SVDD / kernel-density</em> model with uniform weights <code>αᵢ=1/n</code> and a ν-quantile offset ρ — a faithful <em>didactic approximation</em> of libsvm's SMO, tuned so ν and γ behave exactly as they should, robust and transparent rather than the exact sparse solve.)</span></h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>Learn a boundary around "normal", flag whatever falls outside.</strong> With only inliers to learn from, the One-Class SVM maps points through an <span style="color:#0ea5e9;font-weight:700">RBF kernel</span> <code>K(x,y)=exp(−γ‖x−y‖²)</code> and finds the tightest frontier that keeps most of them in, solving the dual for weights <code>αᵢ</code>. The nonzero-<code>α</code> points are the <strong>support vectors</strong> that define the frontier; the decision function <code>f(x)=ΣαᵢK(x,xᵢ)−ρ</code> is <span style="color:#16a34a;font-weight:700">≥0 inside (normal)</span> and <span style="color:#dc2626;font-weight:700">&lt;0 outside (anomaly)</span>, with the boundary the contour <code>f=0</code>. Two knobs: <strong>ν</strong> upper-bounds the outlier fraction and lower-bounds the support-vector fraction; <strong>γ</strong> sets the RBF width. Every pixel below — kernel, dual solve, ρ, and the <code>f=0</code> contour — is <strong>built from scratch, live</strong>.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Fit &amp; flag</strong> scatters normal data, runs a hand-rolled SVDD / kernel-density fit, and paints the plane by the decision function — <span style="color:#16a34a;font-weight:700">green inside (normal)</span>, <span style="color:#dc2626;font-weight:700">red outside (anomaly)</span> — with the <code>f=0</code> boundary drawn crisp on top and every support vector ringed; slide <strong>ν</strong> and <strong>γ</strong> and watch the frontier tighten, loosen and grow wiggly, <em>hover</em> a point for its decision value, <em>click</em> to add points anywhere. <strong>Kernel vs one ellipse</strong> puts the RBF boundary head-to-head with a single Gaussian ellipse (the <span style="color:#0ea5e9;font-weight:700">Elliptic Envelope (D56)</span> model) on a <em>ring</em> or <em>two blobs</em>: the ellipse must swallow the empty hole in the middle — accepting novelty probes sitting there — while the kernel boundary wraps the actual shape and rejects them. <strong>Decision surface</strong> drops the binary colouring and shows <code>f(x)</code> as a continuous landscape of summed kernel bumps, so you can see the frontier <em>emerge</em> as the level set at height ρ. Everything is computed in-browser, no libraries.</p>
+
+      <div class="honest max-w-4xl mx-auto mb-5 text-left">⚠️ <strong>Didactic approximation.</strong> The real one-class SVM (its dual QP <code>min ½αᵀKα</code> s.t. <code>Σα=1, 0≤α≤1/(νn)</code>, sparse <code>αᵢ</code>, support vectors, the ν-property) is taught in full under UNDERSTAND. The <em>live</em> demo implements the <strong>same decision-function form</strong> <code>f(x)=Σᵢαᵢk(x,xᵢ)−ρ</code> as a from-scratch <strong>SVDD / kernel-density</strong> model — uniform weights <code>αᵢ=1/n</code> (a Parzen density) with the offset ρ set at the ν-quantile of the scores. This is a faithful teaching stand-in for libsvm's <strong>SMO</strong>: ν and γ behave exactly right, the boundary is crisp and high-contrast, and every kernel contribution stays visible — but it is not the exact sparse solve, and it is tuned for clarity on a few hundred points, not speed at scale.</div>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="fit"  class="subnav-btn px-4 py-2 rounded-lg text-sm">🛡️ Fit &amp; flag</button>
+        <button data-mod="vs"   class="subnav-btn px-4 py-2 rounded-lg text-sm">⚔️ Kernel vs one ellipse</button>
+        <button data-mod="surf" class="subnav-btn px-4 py-2 rounded-lg text-sm">🌄 Decision surface</button>
+      </div>
+
+      <!-- ============ MODULE: FIT & FLAG ============ -->
+      <div id="mod-fit" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="fN" style="color:#64748b">—</div><div class="k">points n</div></div>
+          <div class="metric-pill"><div class="v" id="fSV" style="color:#0ea5e9">—</div><div class="k">support vectors</div></div>
+          <div class="metric-pill"><div class="v" id="fOut" style="color:#dc2626">—</div><div class="k">flagged (f &lt; 0)</div></div>
+          <div class="metric-pill"><div class="v" id="fNu" style="color:#7c3aed">—</div><div class="k">ν target</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE TWO KNOBS</div>
+            <div class="ctl-row"><div class="ctl-name">🎚️ ν (outlier bound)</div><input type="range" id="fNus" min="2" max="60" step="1" value="10"><div class="ctl-val" id="fNusV">0.10</div></div>
+            <div class="ctl-row"><div class="ctl-name">📡 γ (RBF width)</div><input type="range" id="fGs" min="5" max="120" step="5" value="10"><div class="ctl-val" id="fGsV">80</div></div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🗂️ starting data</div>
+              <div id="fKind" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="fRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New data</button>
+              <button id="fClear" class="bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-300">🧹 Clear</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> We score each point by its RBF kernel density <code>sᵢ=(1/n)Σⱼ K(xᵢ,xⱼ)</code>, set <code>ρ</code> at the ν-quantile of those scores, then evaluate <code>f(x)=(1/n)Σⱼ K(x,xⱼ)−ρ</code> on a grid to paint <span style="color:#16a34a;font-weight:700">green inside</span> / <span style="color:#dc2626;font-weight:700">red outside</span> and draw the <code>f=0</code> boundary. Ringed dots are support vectors — the points on or outside the frontier (<span style="color:#0ea5e9;font-weight:700">sky = on the margin</span>, <span style="color:#dc2626;font-weight:700">red = strictly outside</span>). <b>Hover</b> for a point's decision value; <b>click</b> to add points and watch the frontier redraw.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:600px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🛡️ decision field &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">green = normal · red = anomaly · black line = boundary f=0 · rings = support vectors</span></div>
+            <canvas id="fitCanvas" width="600" height="420"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#16a34a"></span> inside — normal (f≥0)</span>
+              <span><span class="swatch" style="background:#dc2626"></span> outside — anomaly (f&lt;0)</span>
+              <span><span class="swatch-line" style="border-color:#0f172a"></span> boundary f=0</span>
+              <span>◯ support vector</span>
+            </div>
+            <div id="fDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: KERNEL VS ELLIPSE ============ -->
+      <div id="mod-vs" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="vP" style="color:#64748b">—</div><div class="k">novelty probes</div></div>
+          <div class="metric-pill"><div class="v" id="vEll" style="color:#7c3aed">—</div><div class="k">ellipse accepts (✗)</div></div>
+          <div class="metric-pill"><div class="v" id="vSvm" style="color:#16a34a">—</div><div class="k">OC-SVM rejects (✓)</div></div>
+          <div class="metric-pill"><div class="v" id="vG" style="color:#0ea5e9">—</div><div class="k">γ</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">CURVED FRONTIER vs ONE ELLIPSE</div>
+            <div class="text-[11px] text-slate-500 mb-2">The same non-convex data, wrapped two ways. The <span style="color:#7c3aed;font-weight:700">violet dashed ellipse</span> is the Elliptic Envelope (D56) model — one Gaussian, so its "normal" region is always a filled blob. The <span style="color:#0f172a;font-weight:700">black curve</span> is the RBF One-Class SVM boundary. On a ring or two blobs the ellipse must include the empty middle, so it <b>accepts</b> the <span style="color:#7c3aed;font-weight:700">✗ novelty probes</span> sitting in the hole — the kernel boundary wraps the shape and <b>rejects</b> them.</div>
+            <div class="ctl-row"><div class="ctl-name">🎚️ ν</div><input type="range" id="vNus" min="2" max="40" step="1" value="8"><div class="ctl-val" id="vNusV">0.08</div></div>
+            <div class="ctl-row"><div class="ctl-name">📡 γ (RBF width)</div><input type="range" id="vGs" min="10" max="120" step="5" value="30"><div class="ctl-val" id="vGsV">240</div></div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🗂️ shape</div>
+              <div id="vKind" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="vRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New data</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>Why the ellipse loses.</strong> A single Gaussian can only carve out a convex, filled ellipse — it has no way to leave a hole in the middle or split into two islands. The RBF kernel gives the One-Class SVM a boundary that follows the data's actual support, so it flags the centre of a ring and the gap between two clusters as anomalous, exactly where the ellipse waves novelty through. This is the same shape-freedom the kernel bought plain SVMs in D12.
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:600px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">⚔️ RBF One-Class SVM boundary vs a single Gaussian ellipse</div>
+            <canvas id="vsCanvas" width="600" height="420"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#0f172a"></span> OC-SVM boundary</span>
+              <span><span class="swatch-line" style="border-color:#7c3aed"></span> Gaussian ellipse</span>
+              <span style="color:#7c3aed;font-weight:700">✗ probe: ellipse accepts, SVM rejects</span>
+              <span style="color:#16a34a;font-weight:700">✓ both reject</span>
+            </div>
+            <div id="vDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: DECISION SURFACE ============ -->
+      <div id="mod-surf" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="sN" style="color:#64748b">—</div><div class="k">points n</div></div>
+          <div class="metric-pill"><div class="v" id="sSV" style="color:#0ea5e9">—</div><div class="k">support vectors</div></div>
+          <div class="metric-pill"><div class="v" id="sRho" style="color:#7c3aed">—</div><div class="k">offset ρ</div></div>
+          <div class="metric-pill"><div class="v" id="sG" style="color:#dc2626">—</div><div class="k">γ</div></div>
+        </div>
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:320px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">f(x) AS A LANDSCAPE</div>
+            <div class="text-[11px] text-slate-500 mb-2">Same fit, but now the whole plane is shaded by the raw decision value <code>f(x)=ΣαᵢK(x,xᵢ)−ρ</code> — a <span style="color:#0d9488;font-weight:700">teal ridge</span> over the data fading to <span style="color:#dc2626;font-weight:700">red</span> where it drops below zero. Each support vector (◯) drops a little RBF bump; the surface is their weighted sum, and the boundary is simply the level set where the ridge crosses height <code>ρ</code>. Raise <b>γ</b> and the ridge breaks into separate peaks — the frontier gets wiggly; lower it and the peaks merge into one smooth dome.</div>
+            <div class="ctl-row"><div class="ctl-name">🎚️ ν</div><input type="range" id="sNus" min="2" max="60" step="1" value="10"><div class="ctl-val" id="sNusV">0.10</div></div>
+            <div class="ctl-row"><div class="ctl-name">📡 γ (RBF width)</div><input type="range" id="sGs" min="5" max="120" step="5" value="10"><div class="ctl-val" id="sGsV">80</div></div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🗂️ starting data</div>
+              <div id="sKind" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="sRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New data</button>
+            </div>
+          </div>
+          <div class="panel hero text-left" style="width:600px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🌄 the raw decision function f(x), with the f=0 boundary and support-vector bumps</div>
+            <canvas id="surfCanvas" width="600" height="420"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#0d9488"></span> high f (deep inside)</span>
+              <span><span class="swatch" style="background:#a7f3d0"></span> near boundary</span>
+              <span><span class="swatch" style="background:#dc2626"></span> low f (anomaly)</span>
+              <span><span class="swatch-line" style="border-color:#0f172a"></span> f=0</span>
+            </div>
+            <div id="sDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">From "describe the normal data" to "learn a max-margin boundary around it"</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">A One-Class SVM is a kernel, a decision function of the form <code>f(x)=Σᵢαᵢk(x,xᵢ)−ρ</code>, and an offset. Below is the runnable core the LOOK tab actually uses — the RBF kernel, the <strong>SVDD / kernel-density score</strong> that realizes that decision function with the transparent uniform weight <code>αᵢ=1/n</code>, the <strong>ν-quantile offset ρ</strong>, the support-vector test, the decision function itself, and the marching-squares routine that turns <code>f=0</code> into a drawn boundary. It is a <strong>faithful didactic approximation</strong>: production libsvm solves a sparse dual QP with SMO for non-uniform <code>αᵢ</code> (the maths is in UNDERSTAND); this version keeps the identical decision-function form but uses uniform weights + a quantile offset so ν and γ behave exactly as the textbook says and every kernel contribution is visible — robust and readable on a few hundred points.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The RBF kernel and the kernel matrix</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Everything touches the data only through the RBF (Gaussian) kernel <code>K(x,y)=exp(−γ‖x−y‖²)</code> — the kernel trick (D42), so the infinite-dimensional feature map is never built. <code>γ</code> is the width: large γ ⇒ each point's influence decays fast ⇒ a wiggly, local frontier; small γ ⇒ broad influence ⇒ one smooth dome. The <code>n×n</code> matrix <code>Kᵢⱼ</code> is all the solver ever sees.</p>
+        <div class="relative"><pre>// RBF kernel in normalised [0,1] coordinates
+function rbf(a, b, g) {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.exp(-g * (dx * dx + dy * dy));   // 1 when identical → 0 when far
+}
+// full kernel matrix K[i][j] = rbf(x_i, x_j, gamma)
+function kernelMatrix(pts, gamma) {
+  const n = pts.length, K = [];
+  for (let i = 0; i < n; i++) {
+    const row = new Float64Array(n);
+    for (let j = 0; j < n; j++) row[j] = rbf(pts[i], pts[j], gamma);
+    K.push(row);
+  }
+  return K;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The SVDD / kernel-density score</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The decision function is <code>f(x)=Σⱼ αⱼ K(x,xⱼ) − ρ</code>. libsvm's SMO finds a <em>sparse</em> set of weights <code>αⱼ</code> by solving the dual QP <code>min ½αᵀKα</code> s.t. <code>Σα=1, 0≤α≤1/(νn)</code> (see UNDERSTAND). Here we take the transparent <strong>SVDD / Parzen</strong> choice <code>αⱼ = 1/n</code>, so the raw score of a point is simply its <strong>RBF kernel density</strong> <code>sᵢ = (1/n) Σⱼ K(xᵢ,xⱼ)</code> — high in the crowded core, low out on the fringe. Same decision-function form, every point contributing visibly.</p>
+        <div class="relative"><pre>// SVDD / Parzen score of each point = its RBF kernel density
+//   s_i = (1/n) * sum_j K(x_i, x_j)      (uniform weight alpha_j = 1/n)
+// high  -> crowded / normal region      low -> isolated / candidate anomaly
+function densityScores(pts, gamma) {
+  const n = pts.length, s = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    let acc = 0;
+    for (let j = 0; j < n; j++) acc += rbf(pts[i], pts[j], gamma);
+    s[i] = acc / n;
+  }
+  return s;
+}
+// (libsvm instead learns a SPARSE alpha via SMO on the dual — same f(x) form)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The ν-quantile offset ρ — the ν guarantee</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Now place the offset <code>ρ</code>. The <strong>ν-property</strong> says a ν-fraction of points end up outside the boundary, so we set <code>ρ</code> to the <strong>ν-quantile</strong> of the scores: exactly <code>⌊ν·n⌋</code> points fall strictly below it and are flagged. This realizes the property directly, is perfectly monotone in ν, and (unlike reading ρ off a near-flat SMO margin on smooth data) gives a crisp, high-contrast boundary. In the exact SMO solution this same ρ is the common score of the margin support vectors.</p>
+        <div class="relative"><pre>// rho = the nu-quantile of the scores  ->  floor(nu*n) points fall outside
+function chooseRho(scores, nu) {
+  const sorted = Array.from(scores).sort((a, b) => a - b);   // ascending
+  const kOut = Math.min(sorted.length - 1, Math.floor(nu * sorted.length));
+  return sorted[kOut];               // exactly kOut points score below rho
+}
+// nu is an UPPER bound on the flagged (outlier) fraction here, by construction,
+// and a LOWER bound on the support-vector fraction (next step) — the nu-property.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The support vectors — the frontier points</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In a one-class SVM the support vectors are the points that <em>touch or cross</em> the boundary — the ones that pin where ρ sits; deep-interior points (with <code>αᵢ=0</code> in the sparse solve) are irrelevant. With the quantile offset that set is simply the lowest-scoring points: everything strictly below ρ (the flagged margin errors) plus a thin band just above it (points sitting on the frontier). Their count is <code>≥ ν·n</code>, the other half of the ν-property.</p>
+        <div class="relative"><pre>// support vectors = points on or outside the frontier (lowest scores)
+function supportVectors(scores, nu, bandFrac = 0.12) {
+  const n = scores.length;
+  const order = [...scores.keys()].sort((a, b) => scores[a] - scores[b]); // asc
+  const kOut = Math.floor(nu * n);                     // strictly outside (flagged)
+  const kSV  = Math.min(n, kOut + Math.max(1, Math.round(bandFrac * n)));
+  const isSV = new Array(n).fill(false);
+  for (let r = 0; r < kSV; r++) isSV[order[r]] = true; // the kSV lowest scores
+  return isSV;                                          // |SV| / n  >=  nu
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Put it together — fit, then the decision function</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The fit is just the three pieces: score every point, choose ρ, mark the support vectors. Then the decision function paints the whole plane — and because every point carries the same weight <code>1/n</code>, it is exactly a thresholded kernel density: <code>f(x) = (1/n) Σⱼ K(x,xⱼ) − ρ</code>, positive inside, negative outside. It is inductive: score any brand-new point the same way (no self-term games, so isolated novelties are caught).</p>
+        <div class="relative"><pre>function fit(pts, nu, gamma) {
+  const scores = densityScores(pts, gamma);   // step 2
+  const rho    = chooseRho(scores, nu);        // step 3  (the nu-quantile)
+  const isSV   = supportVectors(scores, nu);   // step 4  (frontier points)
+  return { pts, gamma, rho, scores, isSV };
+}
+// signed decision value at ANY point x — every training point drops an equal bump
+function decision(x, M) {
+  let s = 0; for (const p of M.pts) s += rbf(x, p, M.gamma);
+  return s / M.pts.length - M.rho;   // >=0 normal · <0 anomaly (a signed score)
+}
+// sanity: boundary encloses the dense core; a far point scores < 0;
+// raising gamma makes the boundary wigglier; raising nu flags more; never NaN.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Draw the boundary — marching squares on f=0</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The boundary is the contour <code>f(x)=0</code>. Evaluate <code>f</code> on a grid, then for every cell look at the sign of its four corners: wherever a sign flips along an edge, linearly interpolate the crossing point and connect them. That is marching squares — a few lines that turn a scalar field into a crisp curve, no library.</p>
+        <div class="relative"><pre>// draw the f=0 contour from a grid of node values (marching squares)
+function drawContour(ctx, vals, nx, ny, x0, y0, sx, sy) {
+  const V = (r, c) => vals[r * nx + c];
+  ctx.beginPath();
+  for (let r = 0; r < ny - 1; r++) for (let c = 0; c < nx - 1; c++) {
+    const tl = V(r,c), tr = V(r,c+1), br = V(r+1,c+1), bl = V(r+1,c);
+    const X = x0 + c*sx, Y = y0 + r*sy, P = [];
+    if ((tl<0)!==(tr<0)) P.push([X + sx*(-tl)/(tr-tl), Y]);            // top
+    if ((tr<0)!==(br<0)) P.push([X + sx,               Y + sy*(-tr)/(br-tr)]); // right
+    if ((bl<0)!==(br<0)) P.push([X + sx*(-bl)/(br-bl), Y + sy]);      // bottom
+    if ((tl<0)!==(bl<0)) P.push([X,                    Y + sy*(-tl)/(bl-tl)]); // left
+    if (P.length >= 2) { ctx.moveTo(P[0][0],P[0][1]); ctx.lineTo(P[1][0],P[1][1]); }
+  }
+  ctx.stroke();
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">In practice — the standard tool</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You rarely hand-roll it. scikit-learn wraps libsvm's SMO in <code>OneClassSVM</code>. The knobs are the same two you slid above: <code>nu</code> (the outlier / support-vector bound) and <code>gamma</code> (RBF width). Because it is distance-based, <strong>scale your features first</strong>, and remember there is no cross-validation target — you tune ν and γ by how the flagged fraction and boundary look, or against a small labelled validation set.</p>
+        <div class="relative"><pre># scikit-learn — one-class SVM in three lines
+from sklearn.svm import OneClassSVM
+
+oc = OneClassSVM(kernel="rbf", nu=0.1, gamma="scale")
+oc.fit(X_train_normal)                 # trained on inliers only
+labels = oc.predict(X_new)             # +1 inlier / −1 novelty
+scores = oc.decision_function(X_new)   # signed distance to the boundary (f)
+# nu ≈ upper bound on outliers & lower bound on support vectors; scale X first</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-10 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧭 Four ways to flag an outlier — and where the One-Class SVM sits</h3>
+      <div style="overflow-x:auto">
+      <table class="cmp">
+        <tr><th style="width:150px"></th><th>🛡️ One-Class SVM (Day 58)</th><th>🔦 Local Outlier Factor (Day 57)</th><th>🥚 Elliptic Envelope (Day 56)</th><th>🌲 Isolation Forest (Day 26)</th></tr>
+        <tr><td class="cat">Core idea</td><td><b>learn a max-margin kernel boundary around the normal data</b></td><td>compare a point's local density to its neighbours' — a ratio</td><td>robust Gaussian ellipse, flag by Mahalanobis + χ²</td><td>random splits isolate outliers in few cuts</td></tr>
+        <tr><td class="cat">Shape assumed</td><td><b>flexible (RBF kernel) — any smooth shape, even holes / islands</b></td><td>none — local, any shape, varying density</td><td>one elliptical (Gaussian) blob</td><td>none — axis-aligned partitions</td></tr>
+        <tr><td class="cat">What it fits</td><td><b>a frontier (support of the data)</b></td><td>a density ratio per point</td><td>a density (one Gaussian)</td><td>an isolation score</td></tr>
+        <tr><td class="cat">Gives a score?</td><td><b>✅ signed decision f(x), distance to boundary</b></td><td>✅ LOF ratio (≈1 inlier, ≫1 outlier)</td><td>✅ Mahalanobis distance (calibrated to χ²)</td><td>✅ path-length anomaly score</td></tr>
+        <tr><td class="cat">New points?</td><td><b>✅ inductive — predict novelty on unseen x</b></td><td>transductive by default (novelty=True to extend)</td><td>✅ inductive</td><td>✅ inductive</td></tr>
+        <tr><td class="cat">Best when</td><td><b>complex / non-convex normal region, moderate n</b></td><td>clusters of differing density; local anomalies</td><td>data is ~unimodal Gaussian, want a stat cutoff</td><td>high-dim, big n, no shape prior</td></tr>
+        <tr><td class="cat">Weak when</td><td><b>tuning ν &amp; γ; scaling; O(n²)–O(n³); sensitive to contamination</b></td><td>picking k; high-dim (distances blur); O(n²) naïvely</td><td>multi-modal / non-elliptical normal data</td><td>very local anomalies</td></tr>
+      </table>
+      </div>
+      <p class="text-xs text-slate-500 mt-3">The One-Class SVM is the <b>kernel-boundary</b> corner of anomaly detection: instead of summarising the normal data with a density (<b>Elliptic Envelope D56</b>) or a local-density ratio (<b>LOF D57</b>), it <em>learns a frontier</em> that wraps the support of the data as tightly as ν allows. That RBF flexibility is its superpower — it can carve out a ring, two islands, a crescent — the exact shapes the single ellipse of D56 cannot represent. It reuses the max-margin machinery of the <b>Support Vector Machine (D12)</b> and the <b>kernel trick (D42)</b>, and unlike LOF it is naturally <em>inductive</em>: once fit, it scores brand-new points, which is why it is a go-to for genuine <b>novelty detection</b> (train on clean data, flag drift later). Its costs are the flip side of that power: two coupled knobs (ν and γ) with no label to cross-validate against, real sensitivity to feature scaling and to contamination in the training set, and an <code>O(n²)</code>–<code>O(n³)</code> solve that makes it a moderate-<em>n</em> tool, not a millions-of-rows one (that's where <b>Isolation Forest D26</b> wins).</p>
+    </div>
+
+    <div class="mt-8 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 58 of MachineLearningFromZero done — an anomaly detector that draws a curved boundary around "normal" and calls everything outside a novelty.</h3><p class="text-sm text-sky-700 mt-2">The <strong>One-Class SVM</strong> takes the max-margin idea from the <span style="color:#0ea5e9;font-weight:700">SVM (D12)</span>, pushes the data through an <span style="color:#0ea5e9;font-weight:700">RBF kernel (D42)</span> <code>K(x,y)=exp(−γ‖x−y‖²)</code>, and separates it from the origin with maximum margin — solving the dual <code>min ½αᵀKα</code> s.t. <code>Σα=1, 0≤α≤1/(νn)</code> for the weights that light up the <span style="color:#0ea5e9;font-weight:700">support vectors</span>. The decision function <code>f(x)=ΣαᵢK(x,xᵢ)−ρ</code> then carves the plane at <code>f=0</code>: <span style="color:#16a34a;font-weight:700">inside is normal</span>, <span style="color:#dc2626;font-weight:700">outside is anomaly</span>. Its two knobs are unusually principled — <strong>ν</strong> is both an upper bound on the outlier fraction and a lower bound on the support-vector fraction, and <strong>γ</strong> trades a smooth round frontier for a tight wiggly one. Because it fits a <em>boundary</em> rather than a density or a distance, it wraps non-convex shapes a single <span style="color:#0ea5e9;font-weight:700">Elliptic Envelope (D56)</span> cannot, and unlike the transductive <span style="color:#0ea5e9;font-weight:700">LOF (D57)</span> it scores brand-new points — the natural fit for novelty detection. It joins <span style="color:#0ea5e9;font-weight:700">Isolation Forest (D26)</span>, the Elliptic Envelope and LOF as the kernel-boundary member of the outlier-detection toolbox. <strong>👉 When your "normal" region is complex or non-convex and you need to flag unseen novelties, reach for the One-Class SVM — and budget time to tune ν and γ.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+const el = id => document.getElementById(id);
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function randn(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function setDiag(box, c, t, b){ box.className="diag "+c+" mt-3 text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+const fmt=(x,d=2)=>Number(x).toFixed(d);
+const clamp01=v=>Math.max(0.03,Math.min(0.97,v));
+
+/* ================================================================
+   CORE: RBF kernel + the SVDD / kernel-density realization of the
+   one-class-SVM decision function  f(x) = Σᵢ αᵢ K(x,xᵢ) − ρ.
+   Instead of running libsvm's SMO for a SPARSE α, this didactic
+   version uses the uniform SVDD weight αᵢ = 1/n (a Parzen density)
+   and places the offset ρ at the ν-quantile of the training scores.
+   That realizes the ν-property directly (a ν-fraction flagged) and
+   gives a crisp, high-contrast boundary that behaves exactly right
+   under ν and γ — a faithful stand-in, NOT the exact sparse solve.
+   No libraries.
+   ================================================================ */
+function rbf(a, b, g){ const dx=a.x-b.x, dy=a.y-b.y; return Math.exp(-g*(dx*dx+dy*dy)); }
+
+// fit: score every training point by its RBF kernel density, then set ρ at
+// the ν-quantile so exactly ⌊ν·n⌋ points fall outside; support vectors are the
+// points on or outside that frontier (the ones that pin ρ).
+function fitOCSVM(pts, nu, gamma){
+  const n=pts.length;
+  const out={ pts, gamma, nu, score:new Float64Array(Math.max(0,n)), rho:0,
+              sv:[], svFlag:[], marginFlag:[], flagged:[], nSV:0, nOut:0 };
+  if(n<2){ for(let i=0;i<n;i++){ out.svFlag.push(false); out.marginFlag.push(false); out.flagged.push(false); } return out; }
+  // uniform-weight SVDD / Parzen score  sᵢ = (1/n) Σⱼ K(xᵢ,xⱼ)  ( = Σⱼ αⱼK, αⱼ=1/n )
+  const score=new Float64Array(n);
+  for(let i=0;i<n;i++){ let s=0; for(let j=0;j<n;j++) s+=rbf(pts[i],pts[j],gamma); score[i]=s/n; }
+  // ρ = ν-quantile of the scores → ⌊ν·n⌋ points strictly outside (the ν-property)
+  const order=Array.from({length:n},(_,i)=>i).sort((a,b)=>score[a]-score[b]);
+  const kOut=Math.min(n-1,Math.max(0,Math.floor(nu*n)));
+  const rho=score[order[kOut]];
+  const bandN=Math.max(1,Math.round(0.12*n));            // margin band above ρ
+  const kSV=Math.min(n, kOut+bandN);
+  const rankOf=new Int32Array(n); for(let r=0;r<n;r++) rankOf[order[r]]=r;
+  let nOut=0, nSV=0; const sv=[];
+  for(let i=0;i<n;i++){
+    const isOut=(score[i]-rho)<0;      // strictly outside → margin error / bounded SV
+    const isSV=rankOf[i]<kSV;          // on or outside the frontier → support vector
+    out.flagged.push(isOut); out.svFlag.push(isSV); out.marginFlag.push(isSV&&!isOut);
+    if(isOut) nOut++; if(isSV){ nSV++; sv.push(i); }
+  }
+  out.score=score; out.rho=rho; out.sv=sv; out.nSV=nSV; out.nOut=nOut;
+  return out;
+}
+// signed decision value at any point x — every point drops an equal RBF bump
+function decisionAt(p, M){ let s=0; for(const q of M.pts) s+=rbf(p,q,M.gamma); return s/M.pts.length - M.rho; }
+
+/* ---------------- canvas mapping ---------------- */
+function squareRegion(cv, pad){ const S=Math.min(cv.width,cv.height)-2*pad; return { x0:(cv.width-S)/2, x1:(cv.width-S)/2+S, y0:(cv.height-S)/2, y1:(cv.height-S)/2+S }; }
+function mapX(x,x0,x1){ return x0+(x1-x0)*x; }
+function mapY(y,y0,y1){ return y1-(y1-y0)*y; }
+function invMap(px,py,reg){ return { x:(px-reg.x0)/(reg.x1-reg.x0), y:(reg.y1-py)/(reg.y1-reg.y0) }; }
+function drawGrid(ctx, reg){
+  ctx.strokeStyle='#e2e8f0'; ctx.lineWidth=1;
+  for(let g=0;g<=4;g++){ const xx=reg.x0+(reg.x1-reg.x0)*g/4, yy=reg.y0+(reg.y1-reg.y0)*g/4;
+    ctx.beginPath(); ctx.moveTo(xx,reg.y0); ctx.lineTo(xx,reg.y1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(reg.x0,yy); ctx.lineTo(reg.x1,yy); ctx.stroke();
+  }
+  ctx.strokeStyle='#cbd5e1'; ctx.lineWidth=1; ctx.strokeRect(reg.x0,reg.y0,reg.x1-reg.x0,reg.y1-reg.y0);
+}
+function nearestIndex(pts, p){
+  let bi=-1, bd=Infinity;
+  for(let i=0;i<pts.length;i++){ const d=Math.hypot(pts[i].x-p.x,pts[i].y-p.y); if(d<bd){ bd=d; bi=i; } }
+  return { i:bi, d:bd };
+}
+
+/* ---------------- decision field over a grid ---------------- */
+function computeField(M, reg, step){
+  const w=reg.x1-reg.x0, h=reg.y1-reg.y0;
+  const cols=Math.max(1,Math.round(w/step)), rows=Math.max(1,Math.round(h/step));
+  const nx=cols+1, ny=rows+1, sx=w/cols, sy=h/rows;
+  const vals=new Float64Array(nx*ny); let maxAbs=1e-9;
+  for(let r=0;r<ny;r++){ for(let c=0;c<nx;c++){
+    const px=reg.x0+c*sx, py=reg.y0+r*sy; const dp=invMap(px,py,reg);
+    const f=decisionAt(dp, M); vals[r*nx+c]=f; const a=Math.abs(f); if(a>maxAbs)maxAbs=a;
+  }}
+  return { cols, rows, nx, ny, sx, sy, vals, maxAbs };
+}
+function heatColor(t){ t=Math.max(-1,Math.min(1,t)); if(t>=0){ const l=(94-46*t).toFixed(0); return `hsl(172,64%,${l}%)`; } const l=(94-46*(-t)).toFixed(0); return `hsl(4,78%,${l}%)`; }
+function fillField(ctx, fld, reg, mode){
+  for(let r=0;r<fld.rows;r++) for(let c=0;c<fld.cols;c++){
+    const v=(fld.vals[r*fld.nx+c]+fld.vals[r*fld.nx+c+1]+fld.vals[(r+1)*fld.nx+c]+fld.vals[(r+1)*fld.nx+c+1])/4;
+    const X=reg.x0+c*fld.sx, Y=reg.y0+r*fld.sy;
+    if(mode==='heat'){ ctx.fillStyle=heatColor(v/fld.maxAbs); }
+    else { const tt=Math.min(1,Math.abs(v)/fld.maxAbs);
+      ctx.fillStyle = v>=0 ? `rgba(16,185,129,${(0.10+0.34*tt).toFixed(3)})` : `rgba(244,63,94,${(0.10+0.34*tt).toFixed(3)})`; }
+    ctx.fillRect(X,Y,fld.sx+0.7,fld.sy+0.7);
+  }
+}
+function drawContour(ctx, fld, reg, color, lw){
+  ctx.strokeStyle=color||'#0f172a'; ctx.lineWidth=lw||2.4; ctx.beginPath();
+  const V=(r,c)=>fld.vals[r*fld.nx+c];
+  for(let r=0;r<fld.rows;r++) for(let c=0;c<fld.cols;c++){
+    const tl=V(r,c), tr=V(r,c+1), br=V(r+1,c+1), bl=V(r+1,c);
+    const X=reg.x0+c*fld.sx, Y=reg.y0+r*fld.sy, P=[];
+    if((tl<0)!==(tr<0)) P.push([X+fld.sx*(-tl)/(tr-tl), Y]);
+    if((tr<0)!==(br<0)) P.push([X+fld.sx, Y+fld.sy*(-tr)/(br-tr)]);
+    if((bl<0)!==(br<0)) P.push([X+fld.sx*(-bl)/(br-bl), Y+fld.sy]);
+    if((tl<0)!==(bl<0)) P.push([X, Y+fld.sy*(-tl)/(bl-tl)]);
+    if(P.length>=2){ ctx.moveTo(P[0][0],P[0][1]); ctx.lineTo(P[1][0],P[1][1]); if(P.length===4){ ctx.moveTo(P[2][0],P[2][1]); ctx.lineTo(P[3][0],P[3][1]); } }
+  }
+  ctx.stroke();
+}
+
+/* ---------------- data shapes ---------------- */
+function makeData(kind, rng){
+  const pts=[];
+  const blob=(cx,cy,s,m)=>{ for(let i=0;i<m;i++) pts.push({ x:clamp01(cx+s*randn(rng)), y:clamp01(cy+s*randn(rng)) }); };
+  if(kind==='blob'){ blob(0.5,0.52,0.11,80); }
+  else if(kind==='blobout'){ blob(0.46,0.5,0.10,70); for(let i=0;i<5;i++) pts.push({ x:clamp01(rng()), y:clamp01(rng()) }); }
+  else if(kind==='two'){ blob(0.30,0.36,0.062,42); blob(0.71,0.65,0.062,42); }
+  else if(kind==='moons'){
+    for(let i=0;i<50;i++){ const t=Math.PI*rng(); pts.push({ x:clamp01(0.34+0.24*Math.cos(t)+0.03*randn(rng)), y:clamp01(0.40+0.24*Math.sin(t)+0.03*randn(rng)) }); }
+    for(let i=0;i<50;i++){ const t=Math.PI*rng(); pts.push({ x:clamp01(0.62+0.24*Math.cos(t)+0.03*randn(rng)), y:clamp01(0.60-0.24*Math.sin(t)+0.03*randn(rng)) }); }
+  }
+  else if(kind==='ring'){ for(let i=0;i<82;i++){ const t=2*Math.PI*rng(), rr=0.30+0.024*randn(rng); pts.push({ x:clamp01(0.5+rr*Math.cos(t)), y:clamp01(0.5+rr*Math.sin(t)) }); } }
+  return pts;
+}
+function probesFor(kind){
+  if(kind==='ring')  return [{x:0.5,y:0.5},{x:0.43,y:0.55},{x:0.57,y:0.45}];
+  if(kind==='two')   return [{x:0.505,y:0.505},{x:0.45,y:0.46},{x:0.56,y:0.55}];
+  if(kind==='moons') return [{x:0.47,y:0.5},{x:0.5,y:0.44}];
+  return [{x:0.5,y:0.5}];
+}
+
+/* ---------------- elliptic-envelope helpers (for the contrast) ---------------- */
+function meanCov(pts){
+  const n=pts.length; let mx=0,my=0; for(const p of pts){ mx+=p.x; my+=p.y; } mx/=n; my/=n;
+  let sxx=0,sxy=0,syy=0; for(const p of pts){ const dx=p.x-mx, dy=p.y-my; sxx+=dx*dx; sxy+=dx*dy; syy+=dy*dy; }
+  const d=Math.max(1,n-1); sxx=sxx/d+1e-6; sxy/=d; syy=syy/d+1e-6;
+  return { mx,my,sxx,sxy,syy };
+}
+function invCov(c){ const det=c.sxx*c.syy-c.sxy*c.sxy, id=Math.abs(det)>1e-12?1/det:1e12; return { a:c.syy*id, b:-c.sxy*id, d:c.sxx*id }; }
+function maha2(p,c,ic){ const dx=p.x-c.mx, dy=p.y-c.my; return ic.a*dx*dx + 2*ic.b*dx*dy + ic.d*dy*dy; }
+function eig2(sxx,sxy,syy){
+  const tr=sxx+syy, det=sxx*syy-sxy*sxy, disc=Math.sqrt(Math.max(0,tr*tr/4-det));
+  const l1=tr/2+disc, l2=Math.max(1e-9,tr/2-disc);
+  let vx,vy; if(Math.abs(sxy)>1e-9){ vx=l1-syy; vy=sxy; } else { vx=1; vy=0; }
+  const nrm=Math.hypot(vx,vy)||1; return { l1, l2, ang:Math.atan2(vy/nrm,vx/nrm) };
+}
+function drawEllipse(ctx,reg,c,e,q,color){
+  const R1=Math.sqrt(Math.max(0,q*e.l1)), R2=Math.sqrt(Math.max(0,q*e.l2));
+  const ex1=Math.cos(e.ang), ey1=Math.sin(e.ang), ex2=-Math.sin(e.ang), ey2=Math.cos(e.ang);
+  ctx.beginPath();
+  for(let t=0;t<=72;t++){ const a=2*Math.PI*t/72, ca=Math.cos(a), sa=Math.sin(a);
+    const gx=c.mx+R1*ca*ex1+R2*sa*ex2, gy=c.my+R1*ca*ey1+R2*sa*ey2;
+    const X=mapX(gx,reg.x0,reg.x1), Y=mapY(gy,reg.y0,reg.y1);
+    if(t===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y); }
+  ctx.closePath(); ctx.strokeStyle=color; ctx.lineWidth=2.2; ctx.setLineDash([6,4]); ctx.stroke(); ctx.setLineDash([]);
+}
+
+/* ================================================================
+   MODULE FIT — fit the boundary, flag inside/outside
+   ================================================================ */
+const FIT={ nu:0.10, gamma:80, kind:'blobout', seed:7, pts:[], hover:-1 };
+function fitRegen(){ FIT.pts=makeData(FIT.kind, mulberry32(FIT.seed)); }
+function fitDraw(){
+  const cv=el('fitCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const reg=squareRegion(cv,16); const pts=FIT.pts, n=pts.length;
+  if(n<3){ drawGrid(ctx,reg);
+    el('fN').textContent=n; el('fSV').textContent='—'; el('fOut').textContent='—'; el('fNu').textContent=fmt(FIT.nu,2);
+    setDiag(el('fDiag'),'diag-info','Add some points','Click the canvas to scatter at least a handful of normal points, or hit New data — the SVM needs data to wrap a boundary around.'); return; }
+  const M=fitOCSVM(pts, FIT.nu, FIT.gamma);
+  const fld=computeField(M, reg, 7);
+  fillField(ctx, fld, reg, 'sign');
+  drawGrid(ctx,reg);
+  drawContour(ctx, fld, reg, '#0f172a', 2.6);
+  for(let i=0;i<n;i++){
+    const X=mapX(pts[i].x,reg.x0,reg.x1), Y=mapY(pts[i].y,reg.y0,reg.y1);
+    const f=M.score[i]-M.rho;
+    ctx.fillStyle = f>=0 ? '#16a34a' : '#dc2626';
+    ctx.beginPath(); ctx.arc(X,Y,4,0,7); ctx.fill();
+    if(M.flagged[i]){ ctx.strokeStyle='#dc2626'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(X,Y,6.6,0,7); ctx.stroke(); }
+    else if(M.marginFlag[i]){ ctx.strokeStyle='#0ea5e9'; ctx.lineWidth=2; ctx.beginPath(); ctx.arc(X,Y,6.6,0,7); ctx.stroke(); }
+  }
+  if(FIT.hover>=0 && FIT.hover<n){
+    const i=FIT.hover, X=mapX(pts[i].x,reg.x0,reg.x1), Y=mapY(pts[i].y,reg.y0,reg.y1);
+    ctx.strokeStyle='#0f172a'; ctx.lineWidth=2.4; ctx.beginPath(); ctx.arc(X,Y,9,0,7); ctx.stroke();
+  }
+  el('fN').textContent=n; el('fSV').textContent=M.nSV; el('fOut').textContent=M.nOut; el('fNu').textContent=fmt(FIT.nu,2);
+  fitDiag(M,n);
+}
+function fitDiag(M,n){
+  const box=el('fDiag');
+  if(FIT.hover>=0 && FIT.hover<n){
+    const i=FIT.hover, f=M.score[i]-M.rho, sv=M.svFlag[i];
+    const cls= f>=0 ? 'diag-good' : 'diag-bad';
+    setDiag(box,cls,`🛡️ point #${i}: f(x) = ${fmt(f,3)} · ${f>=0?'inside — normal':'outside — anomaly'}`,
+      `Its signed distance to the boundary is <b>${fmt(f,3)}</b> (the decision function <code>ΣⱼαⱼK(x,xⱼ)−ρ</code> with ρ=${fmt(M.rho,3)}). ${sv?`It is a <b>support vector</b> — one of the ${M.nSV} points on or outside the frontier that pin ρ${M.flagged[i]?', and it sits strictly outside, so it counts against the ν budget as a margin error.':', sitting right on the margin.'}`:`It sits comfortably inside the frontier, well clear of the boundary.`}`);
+    return;
+  }
+  const outFrac=M.nOut/n, svFrac=M.nSV/n;
+  setDiag(box,'diag-info',`🛡️ ${M.nSV} support vectors · ${M.nOut} flagged as anomaly · ν=${fmt(FIT.nu,2)} · γ=${FIT.gamma}`,
+    `The <span style="color:#16a34a;font-weight:700">green region</span> is where <code>f(x)≥0</code> (normal), the <span style="color:#dc2626;font-weight:700">red region</span> where <code>f(x)&lt;0</code> (anomaly); the black curve is the boundary <code>f=0</code>. The ν guarantee in action: outlier fraction <b>${fmt(outFrac,2)}</b> ≤ ν <b>${fmt(FIT.nu,2)}</b> ≤ support-vector fraction <b>${fmt(svFrac,2)}</b>. <b>Raise ν</b> and the frontier tightens — more points spill outside and more become support vectors; <b>raise γ</b> and the RBF narrows so the boundary hugs individual points and grows wiggly. <b>Hover</b> a point for its decision value, <b>click</b> to add one and watch the frontier redraw.`);
+}
+function fitButtons(){
+  const kw=el('fKind'); kw.innerHTML='';
+  [['blobout','☣️ blob + outliers'],['blob','⬤ one blob'],['two','⬤⬤ two blobs'],['moons','🌙 two moons'],['ring','⭕ ring']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(FIT.kind===id?' on':''); b.textContent=label;
+    b.onclick=()=>{ FIT.kind=id; FIT.seed=(Math.random()*1e9)>>>0; fitRegen(); FIT.hover=-1; fitButtons(); fitDraw(); }; kw.appendChild(b);
+  });
+}
+el('fNus').addEventListener('input',e=>{ FIT.nu=(+e.target.value)/100; el('fNusV').textContent=fmt(FIT.nu,2); fitDraw(); });
+el('fGs').addEventListener('input',e=>{ FIT.gamma=(+e.target.value)*8; el('fGsV').textContent=FIT.gamma; fitDraw(); });
+el('fRoll').onclick=()=>{ FIT.seed=(Math.random()*1e9)>>>0; fitRegen(); FIT.hover=-1; fitDraw(); };
+el('fClear').onclick=()=>{ FIT.pts=[]; FIT.hover=-1; fitDraw(); };
+el('fitCanvas').addEventListener('pointerdown',e=>{
+  const cv=el('fitCanvas'), rect=cv.getBoundingClientRect();
+  const px=(e.clientX-rect.left)*(cv.width/rect.width), py=(e.clientY-rect.top)*(cv.height/rect.height);
+  const reg=squareRegion(cv,16), p=invMap(px,py,reg);
+  FIT.pts.push({ x:clamp01(p.x), y:clamp01(p.y) }); FIT.hover=FIT.pts.length-1; fitDraw();
+});
+el('fitCanvas').addEventListener('pointermove',e=>{
+  const cv=el('fitCanvas'), rect=cv.getBoundingClientRect();
+  const px=(e.clientX-rect.left)*(cv.width/rect.width), py=(e.clientY-rect.top)*(cv.height/rect.height);
+  const reg=squareRegion(cv,16), p=invMap(px,py,reg);
+  const nr=nearestIndex(FIT.pts,p); const h=(nr.i>=0 && nr.d<0.045)?nr.i:-1;
+  if(h!==FIT.hover){ FIT.hover=h; fitDraw(); }
+});
+el('fitCanvas').addEventListener('pointerleave',()=>{ if(FIT.hover!==-1){ FIT.hover=-1; fitDraw(); } });
+
+/* ================================================================
+   MODULE VS — kernel boundary vs a single Gaussian ellipse
+   ================================================================ */
+const VS={ nu:0.08, gamma:240, kind:'ring', seed:5, pts:[] };
+function vsRegen(){ VS.pts=makeData(VS.kind, mulberry32(VS.seed)); }
+function vsDraw(){
+  const cv=el('vsCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const reg=squareRegion(cv,16); const pts=VS.pts, n=pts.length;
+  if(n<3){ drawGrid(ctx,reg); setDiag(el('vDiag'),'diag-info','No data','Hit New data.'); return; }
+  const M=fitOCSVM(pts, VS.nu, VS.gamma);
+  const fld=computeField(M, reg, 8);
+  fillField(ctx, fld, reg, 'sign');
+  drawGrid(ctx,reg);
+  // ellipse (Elliptic Envelope model)
+  const c=meanCov(pts), ic=invCov(c), e=eig2(c.sxx,c.sxy,c.syy), q=-2*Math.log(VS.nu);
+  drawEllipse(ctx,reg,c,e,q,'#7c3aed');
+  // OC-SVM boundary
+  drawContour(ctx, fld, reg, '#0f172a', 2.6);
+  // data points, coloured by OC-SVM
+  for(let i=0;i<n;i++){ const X=mapX(pts[i].x,reg.x0,reg.x1), Y=mapY(pts[i].y,reg.y0,reg.y1);
+    ctx.fillStyle=(M.score[i]-M.rho>=0)?'rgba(22,163,74,0.9)':'rgba(220,38,38,0.9)'; ctx.beginPath(); ctx.arc(X,Y,3.4,0,7); ctx.fill(); }
+  // novelty probes in the hole/gap
+  const pr=probesFor(VS.kind); let ellAccept=0, svmReject=0;
+  for(const p of pr){
+    const inE=maha2(p,c,ic)<=q, inS=decisionAt(p,M)>=0;
+    const X=mapX(p.x,reg.x0,reg.x1), Y=mapY(p.y,reg.y0,reg.y1);
+    const win = inE && !inS;   // ellipse accepts novelty the SVM correctly rejects
+    if(inE) ellAccept++; if(!inS) svmReject++;
+    ctx.strokeStyle = win ? '#7c3aed' : (!inS ? '#16a34a' : '#94a3b8');
+    ctx.lineWidth=3; const r=7;
+    ctx.beginPath(); ctx.moveTo(X-r,Y-r); ctx.lineTo(X+r,Y+r); ctx.moveTo(X+r,Y-r); ctx.lineTo(X-r,Y+r); ctx.stroke();
+  }
+  el('vP').textContent=pr.length; el('vEll').textContent=ellAccept; el('vSvm').textContent=svmReject; el('vG').textContent=VS.gamma;
+  vsDiag(pr.length, ellAccept, svmReject);
+}
+function vsDiag(nP, ellAccept, svmReject){
+  const box=el('vDiag');
+  if(ellAccept>0 && svmReject>0){
+    setDiag(box,'diag-good',`✅ the kernel boundary wins — ellipse accepts ${ellAccept}/${nP} novelty probes the OC-SVM rejects`,
+      `The <span style="color:#7c3aed;font-weight:700">violet ellipse</span> is forced to be a filled convex blob, so it swallows the empty hole and marks the <span style="color:#7c3aed;font-weight:700">✗ probes</span> there as normal — a false accept. The <span style="color:#0f172a;font-weight:700">black RBF boundary</span> wraps the actual support of the data and flags those same probes as anomalies. This is the shape-freedom the kernel buys, exactly what a single Gaussian (Elliptic Envelope D56) cannot do.`);
+  } else {
+    setDiag(box,'diag-info',`ellipse accepts ${ellAccept}/${nP} probes · OC-SVM rejects ${svmReject}/${nP} · γ=${VS.gamma}`,
+      `Tune <b>γ</b> up so the RBF boundary tightens around the ring/gap, and the ✗ probes in the hole will flip: the ellipse keeps accepting them (it must cover its centre) while the kernel boundary rejects them. If γ is too low the OC-SVM frontier is a smooth dome and behaves like the ellipse — the contrast appears as you sharpen the kernel.`);
+  }
+}
+function vsButtons(){
+  const kw=el('vKind'); kw.innerHTML='';
+  [['ring','⭕ ring'],['two','⬤⬤ two blobs'],['moons','🌙 two moons']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(VS.kind===id?' on':''); b.textContent=label;
+    b.onclick=()=>{ VS.kind=id; VS.seed=(Math.random()*1e9)>>>0; vsRegen(); vsButtons(); vsDraw(); }; kw.appendChild(b);
+  });
+}
+el('vNus').addEventListener('input',e=>{ VS.nu=(+e.target.value)/100; el('vNusV').textContent=fmt(VS.nu,2); vsDraw(); });
+el('vGs').addEventListener('input',e=>{ VS.gamma=(+e.target.value)*8; el('vGsV').textContent=VS.gamma; vsDraw(); });
+el('vRoll').onclick=()=>{ VS.seed=(Math.random()*1e9)>>>0; vsRegen(); vsDraw(); };
+
+/* ================================================================
+   MODULE SURF — the raw decision function as a landscape
+   ================================================================ */
+const SF={ nu:0.10, gamma:80, kind:'blob', seed:7, pts:[] };
+function sfRegen(){ SF.pts=makeData(SF.kind, mulberry32(SF.seed)); }
+function sfDraw(){
+  const cv=el('surfCanvas'); if(!cv) return; const ctx=cv.getContext('2d');
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const reg=squareRegion(cv,16); const pts=SF.pts, n=pts.length;
+  if(n<3){ drawGrid(ctx,reg);
+    el('sN').textContent=n; el('sSV').textContent='—'; el('sRho').textContent='—'; el('sG').textContent=SF.gamma;
+    setDiag(el('sDiag'),'diag-info','No data','Hit New data.'); return; }
+  const M=fitOCSVM(pts, SF.nu, SF.gamma);
+  const fld=computeField(M, reg, 6);
+  fillField(ctx, fld, reg, 'heat');
+  drawGrid(ctx,reg);
+  drawContour(ctx, fld, reg, '#0f172a', 2.6);
+  // support-vector bump centres
+  for(const j of M.sv){ const X=mapX(pts[j].x,reg.x0,reg.x1), Y=mapY(pts[j].y,reg.y0,reg.y1);
+    ctx.strokeStyle='#0f172a'; ctx.lineWidth=1.4; ctx.beginPath(); ctx.arc(X,Y,4.2,0,7); ctx.stroke(); }
+  // non-SV points faint
+  for(let i=0;i<n;i++){ if(M.svFlag[i]) continue; const X=mapX(pts[i].x,reg.x0,reg.x1), Y=mapY(pts[i].y,reg.y0,reg.y1);
+    ctx.fillStyle='rgba(15,23,42,0.35)'; ctx.beginPath(); ctx.arc(X,Y,2.4,0,7); ctx.fill(); }
+  el('sN').textContent=n; el('sSV').textContent=M.nSV; el('sRho').textContent=fmt(M.rho,3); el('sG').textContent=SF.gamma;
+  setDiag(el('sDiag'),'diag-info',`🌄 f(x) landscape · ${n} kernel bumps · ${M.nSV} frontier support vectors · ρ=${fmt(M.rho,3)} · γ=${SF.gamma}`,
+    `Each point drops an equal RBF bump <code>(1/n)exp(−γ‖x−xⱼ‖²)</code>; the surface is their sum, <span style="color:#0d9488;font-weight:700">teal</span> where it is high (deep inside the normal region) fading to <span style="color:#dc2626;font-weight:700">red</span> where it falls below zero. The black curve is the level set at height ρ — the boundary — and the <b>ringed</b> points are the support vectors it rests on (on or outside the frontier). <b>Raise γ</b> and the single dome fractures into separate peaks (a wiggly, local frontier); <b>lower γ</b> and they merge into one smooth hill.`);
+}
+function sfButtons(){
+  const kw=el('sKind'); kw.innerHTML='';
+  [['blob','⬤ one blob'],['blobout','☣️ blob + outliers'],['two','⬤⬤ two blobs'],['ring','⭕ ring']].forEach(([id,label])=>{
+    const b=document.createElement('button'); b.className='ds-btn'+(SF.kind===id?' on':''); b.textContent=label;
+    b.onclick=()=>{ SF.kind=id; SF.seed=(Math.random()*1e9)>>>0; sfRegen(); sfButtons(); sfDraw(); }; kw.appendChild(b);
+  });
+}
+el('sNus').addEventListener('input',e=>{ SF.nu=(+e.target.value)/100; el('sNusV').textContent=fmt(SF.nu,2); sfDraw(); });
+el('sGs').addEventListener('input',e=>{ SF.gamma=(+e.target.value)*8; el('sGsV').textContent=SF.gamma; sfDraw(); });
+el('sRoll').onclick=()=>{ SF.seed=(Math.random()*1e9)>>>0; sfRegen(); sfDraw(); };
+
+/* ================================================================
+   sub-nav wiring
+   ================================================================ */
+const subBtns=document.querySelectorAll("#subnav [data-mod]");
+function showMod(m){
+  document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden"));
+  el("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m));
+  if(m==="fit") fitDraw();
+  if(m==="vs") vsDraw();
+  if(m==="surf") sfDraw();
+}
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+/* ================================================================
+   init
+   ================================================================ */
+fitRegen(); vsRegen(); sfRegen();
+fitButtons(); vsButtons(); sfButtons();
+document.querySelector('[data-mod="fit"]').classList.add("on");
+showMod("fit");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. Novelty detection — learn the support of 'normal'", why:"Ordinary classification learns a boundary between labelled classes. Novelty / anomaly detection has only ONE class to learn from — 'normal' — and must flag anything unlike it, with no examples of what 'unlike' looks like. The One-Class SVM's answer is geometric: instead of describing the normal data with a density (Elliptic Envelope D56) or a local-density ratio (LOF D57), learn a BOUNDARY that encloses it as tightly as possible, then anything outside is a novelty. It is the direct one-class cousin of the max-margin Support Vector Machine (D12): same margin idea, turned inward to wrap a single class.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">only 'normal' data — no anomaly labels<br><br>describe it (density) ……… D56 ellipse · D57 LOF<br>OR wrap it (boundary) ……… One-Class SVM ← here<br><br>inside the boundary = normal · outside = novelty</div>`, code:`# one class in, a novelty flag out
+from sklearn.svm import OneClassSVM
+oc = OneClassSVM(kernel="rbf", nu=0.1, gamma="scale")
+oc.fit(X_normal)                 # NO anomaly labels needed
+oc.predict(X_new)                # +1 inlier / -1 novelty` },
+ { title:"2. The primal — max margin from the origin", why:"Schölkopf's formulation maps points through a feature map φ and finds a hyperplane w·φ(x)=ρ that separates the data from the ORIGIN with maximum margin ρ/‖w‖. Points are pushed to the far side (w·φ(x) ≥ ρ); slack variables ξᵢ let a controlled few fall short, penalised by 1/(νn). Minimising ½‖w‖² − ρ + (1/νn)Σξᵢ balances a tight boundary against how many points you allow to spill out. In RBF feature space 'far from the origin' means 'in a dense region of data', so the plane becomes a closed frontier back in input space.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">min ½‖w‖² − ρ + (1/νn) Σ ξᵢ<br>s.t.  w·φ(xᵢ) ≥ ρ − ξᵢ ,  ξᵢ ≥ 0<br><br>separate the data from the ORIGIN, margin ρ/‖w‖<br>ξᵢ = how far point i falls short (an allowed outlier)</div>`, code:`# primal (conceptual): push data away from the origin
+# minimise  0.5*||w||^2 - rho + (1/(nu*n)) * sum(xi)
+# subject to  w . phi(x_i) >= rho - xi_i ,  xi_i >= 0
+# nu trades margin size against how many points may spill out` },
+ { title:"3. The RBF kernel — never build φ(x)", why:"The feature map φ for the RBF kernel is infinite-dimensional, so we never build it. The kernel trick (D42): every place the algorithm needs φ(x)·φ(y), substitute K(x,y)=exp(−γ‖x−y‖²). γ is the width knob — large γ means each point's influence decays quickly (a bumpy, local frontier that can trace fine detail and overfit), small γ means broad influence (a smooth, near-spherical boundary). Because the RBF kernel is positive semidefinite (Mercer), the resulting optimisation is a well-posed convex program.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">K(x,y) = exp( −γ · ‖x − y‖² )<br><br>large γ → narrow bumps → wiggly, local, can overfit<br>small γ → wide bumps  → smooth, round boundary<br><br>φ never built — the kernel IS the dot product</div>`, code:`def rbf(a, b, gamma):
+    return exp(-gamma * ((a.x-b.x)**2 + (a.y-b.y)**2))
+K = [[rbf(xi, xj, gamma) for xj in X] for xi in X]   # n x n
+# the solver only ever touches K, never phi(x)` },
+ { title:"4. The dual — a QP in the weights α", why:"Lagrangian duality turns the primal into a small convex quadratic program in the weights αᵢ (one per point): minimise ½ Σᵢⱼ αᵢαⱼ K(xᵢ,xⱼ) subject to Σαᵢ = 1 and the box 0 ≤ αᵢ ≤ 1/(νn). The box cap C = 1/(νn) is the whole mechanism of ν: shrinking C forces the unit of total weight to be shared across MORE points. The points that end up with αᵢ > 0 are the SUPPORT VECTORS — the only ones that appear in the decision function; everything with αᵢ = 0 could be deleted without changing the boundary. This page solves this exact QP by projected-gradient descent (a faithful stand-in for libsvm's SMO).", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">min  ½ Σᵢⱼ αᵢ αⱼ K(xᵢ,xⱼ)<br>s.t.  Σ αᵢ = 1 ,  0 ≤ αᵢ ≤ C = 1/(νn)<br><br>αᵢ &gt; 0  → support vector (shapes the frontier)<br>αᵢ = 0  → irrelevant, could be deleted</div>`, code:`C = 1.0 / (nu * n)
+alpha = [1/n]*n                       # feasible start
+for _ in range(iters):                # projected gradient on ½αᵀKα
+    g = K @ alpha                     # gradient = K α
+    alpha = alpha - eta * g
+    alpha = project_capped_simplex(alpha, C, total=1)  # 0≤α≤C, Σα=1
+support = [i for i,a in enumerate(alpha) if a > 1e-7]` },
+ { title:"5. ν — the two-sided guarantee, and ρ", why:"ν (0 < ν ≤ 1) is the One-Class SVM's beautifully interpretable knob, with a theorem attached: it is an UPPER bound on the fraction of outliers (margin errors) AND a LOWER bound on the fraction of support vectors. So ν=0.1 means 'at most ~10% of my training data may be flagged, and at least ~10% will be support vectors'. The offset ρ is recovered from the MARGIN support vectors — those with 0 < αᵢ < C, which sit exactly on the boundary — where Σⱼ αⱼ K(xᵢ,xⱼ) = ρ. Averaging over them pins the frontier's height. Equivalently, ρ is the ν-quantile of the scores — which is exactly how the live SVDD/kernel-density demo on the LOOK tab sets it, giving the ν upper bound by construction.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">outlier fraction  ≤  ν  ≤  support-vector fraction<br><br>margin SV:  0 &lt; αᵢ &lt; C   → lies ON the boundary<br>bounded SV: αᵢ = C        → an outlier / margin error<br><br>ρ = average of Σⱼ αⱼ K(xᵢ,xⱼ) over the margin SVs</div>`, code:`cap = C * (1 - 1e-4)
+margin = [i for i in support if alpha[i] < cap]   # 0 < a < C
+raw = lambda i: sum(alpha[j]*K[i][j] for j in support)
+rho = mean(raw(i) for i in margin)                # offset
+# check: outliers/n <= nu <= len(support)/n` },
+ { title:"6. The decision function and the boundary", why:"Everything comes together in f(x) = Σᵢ αᵢ K(x,xᵢ) − ρ. It is positive where the summed, weighted kernel bumps of the support vectors rise above ρ (inside the normal region) and negative where they fall below (outside). sign f(x) is the label: +1 normal, −1 novelty; the magnitude is a usable anomaly score — a signed distance to the boundary. The BOUNDARY itself is the contour f(x)=0, which the LOOK tab draws with marching squares. Because only support vectors have αᵢ > 0, f(x) is cheap to evaluate on any new point — the model is inductive.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">f(x) = Σᵢ αᵢ K(x, xᵢ) − ρ<br><br>f(x) ≥ 0 → inside (normal)<br>f(x) &lt; 0 → outside (anomaly)<br>f(x) = 0 → the decision boundary (drawn contour)<br><br>only support vectors contribute → cheap on new x</div>`, code:`def decision(x):
+    return sum(alpha[j]*rbf(x, X[j], gamma) for j in support) - rho
+label = +1 if decision(x) >= 0 else -1     # normal / novelty
+# boundary = { x : decision(x) == 0 }  → marching squares to draw it` },
+ { title:"7. Where the One-Class SVM fits", why:"Reach for it when your 'normal' region is complex or non-convex — a ring, two clusters, a crescent — the shapes a single Gaussian ellipse (Elliptic Envelope D56) cannot represent, and when you need to score BRAND-NEW points (novelty detection), which the transductive LOF (D57) does not do out of the box. Its costs are real: two coupled knobs (ν and γ) with no label to cross-validate against, genuine sensitivity to feature scaling and to any contamination in the training set, and an O(n²)–O(n³) solve that keeps it a moderate-n method. For millions of rows with no shape prior, Isolation Forest (D26) is faster; for varying-density local anomalies, LOF; for clean unimodal Gaussian data with a wanted statistical cutoff, the Elliptic Envelope.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">non-convex normal region, novelty on new x → One-Class SVM ✅<br>varying-density local anomalies → LOF (D57)<br>~one Gaussian blob, stat cutoff → Elliptic Envelope (D56)<br>huge n, high-dim, no shape prior → Isolation Forest (D26)<br><br>knobs: ν &amp; γ · scale features · O(n²)–O(n³)</div>`, code:`from sklearn.svm import OneClassSVM
+oc = OneClassSVM(kernel="rbf", nu=0.1, gamma="scale").fit(X_norm)
+y = oc.predict(X_new)              # +1 inlier / -1 novelty (inductive)
+# non-convex? OC-SVM. varying density? LOF. one Gaussian? EllipticEnvelope.
+# millions of rows? IsolationForest. always scale features first.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>

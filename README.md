@@ -59,6 +59,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 55 — Nyström Method (low-rank kernel approximation)](https://dev48v.infy.uk/ml/day55-nystrom.html) — `day55-nystrom.html`
 - [MachineLearningFromZero · Day 56 — Elliptic Envelope](https://dev48v.infy.uk/ml/day56-elliptic-envelope.html) — `day56-elliptic-envelope.html`
 - [MachineLearningFromZero · Day 57 — Local Outlier Factor](https://dev48v.infy.uk/ml/day57-local-outlier-factor.html) — `day57-local-outlier-factor.html`
+- [MachineLearningFromZero · Day 58 — One-Class SVM](https://dev48v.infy.uk/ml/day58-one-class-svm.html) — `day58-one-class-svm.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
