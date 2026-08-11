@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 59 — Hidden Markov Models (forward, Viterbi, Baum-Welch)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:170px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .swatch-box { display:inline-block; width:14px; height:10px; border-radius:3px; vertical-align:0; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 8px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; }
+  .metric-pill .v { font-size:19px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .ds-btn { border:1px solid #e2e8f0; background:#fff; font-weight:800; font-size:12px; padding:6px 11px; border-radius:9px; transition:all .15s; }
+  .ds-btn.on { color:#fff; border-color:transparent; background:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; cursor:crosshair; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  .honest { background:#fffbeb; border:1px solid #fcd34d; color:#92400e; border-radius:12px; padding:10px 13px; font-size:12px; line-height:1.5; }
+  .btn-run { background:#16a34a; color:#fff; }
+  .btn-run:hover { background:#15803d; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 59</div>
+      <h1 class="text-xl font-bold">🎲 The <strong>Hidden Markov Model</strong> — the first model in this series where the thing you want to know is <em>never in the data</em>. Everything so far mapped a row of features to an answer: <span style="color:#0ea5e9;font-weight:700">Logistic Regression (D2)</span> read a feature vector and returned a class, <span style="color:#0ea5e9;font-weight:700">K-Means (D4)</span> grouped independent points, even <span style="color:#0ea5e9;font-weight:700">GMM/EM (D22)</span> treated every sample as a fresh draw with no memory of the last one. An HMM assumes the opposite: your observations were produced by a <strong>hidden sequence of states</strong> that you cannot see, that evolves in time, and where <em>what happens next depends on where you are now</em>. A casino quietly swaps a fair die for a loaded one and swaps back; you only ever see the rolls. A phone hears an acoustic waveform; the words are hidden. A gene sequencer reads bases; whether you are inside a coding region is hidden. An HMM is exactly three tables — <code>π</code> (where the chain starts), <code>A</code> (how hidden states follow each other), <code>B</code> (what each hidden state tends to emit) — plus two independence assumptions that make everything computable: the <strong>Markov property</strong> (the next state depends only on the current one, not the whole past) and <strong>output independence</strong> (an observation depends only on the state that emitted it). Those two assumptions buy you an enormous prize. The honest question "how likely is this observation sequence?" means summing over <em>every</em> hidden path — <code>Nᵀ</code> of them, which is 10<sup>30</sup> paths for 100 steps of a 2-state chain — and yet the <span style="color:#0ea5e9;font-weight:700">forward algorithm</span> answers it exactly in <code>O(T·N²)</code> by refusing to re-walk shared prefixes, carrying one number <code>αₜ(i)</code> per state per timestep. Swap that sum for a max and keep backpointers and you get <span style="color:#0ea5e9;font-weight:700">Viterbi</span>, which returns the single most likely hidden path exactly. Run forward <em>and</em> backward, turn the products into expected counts, and re-estimate the three tables: that is <span style="color:#0ea5e9;font-weight:700">Baum-Welch</span>, the <strong>EM</strong> algorithm (D22's engine) applied to sequences — it learns <code>π, A, B</code> from observations alone, with <em>no labelled hidden states at all</em>, and its likelihood is mathematically guaranteed never to go down. Everything below <strong>runs live in your browser</strong> with no libraries: watch Viterbi recover a hidden FAIR/LOADED track from nothing but dice rolls, step through the forward trellis while the page <em>simultaneously enumerates all Nᵀ paths by brute force and proves the two agree to 12 decimal places</em>, and start Baum-Welch from deliberately wrong parameters and watch the log-likelihood climb, monotonically, to the true model's line. <span class="text-emerald-700 font-semibold">(Everything here is the real algorithm — exact forward with scaling, exact log-space Viterbi with backpointers, exact forward-backward posteriors and exact Baum-Welch re-estimation. Nothing is approximated or faked, and the brute-force check inside the page is your proof.)</span></h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>You see the emissions. You want the states.</strong> An HMM is <code>π</code> (start), <code>A</code> (state → state), <code>B</code> (state → observation). Three questions follow, and each has an exact dynamic-programming answer: <span style="color:#0ea5e9;font-weight:700">how likely is this sequence?</span> — the <strong>forward</strong> algorithm, <code>O(T·N²)</code> instead of <code>Nᵀ</code>; <span style="color:#0ea5e9;font-weight:700">what hidden path best explains it?</span> — <strong>Viterbi</strong>, the same recursion with <code>max</code> replacing <code>Σ</code> plus backpointers; <span style="color:#0ea5e9;font-weight:700">what are <code>π, A, B</code> if nobody told me?</span> — <strong>Baum-Welch</strong>, EM driven by forward-backward expected counts. All three are implemented from scratch below and run live.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Decode the hidden track</strong> simulates a real HMM, hides the states, and hands only the observations to Viterbi — the decoded ribbon lines up under the true one so you can count the mistakes yourself, with the smoothed posterior <code>γₜ(i)</code> drawn underneath and a per-step <em>surprise</em> bar showing which observations the model found unlikely. <strong>Forward trellis vs brute force</strong> draws the actual DP lattice — node size is <code>α̂ₜ(i)</code>, edge weight is the transition mass flowing into it, the Viterbi path is lit up — and then <em>enumerates every one of the <code>Nᵀ</code> paths in your browser</em> and prints both numbers side by side to twelve decimals. <strong>Baum-Welch learns the model</strong> throws away the true parameters, starts from a random guess, and runs EM: the log-likelihood curve climbs monotonically toward the dashed line marking the true model's fit, while the <code>A</code> and <code>B</code> heatmaps morph from noise into the real tables. No libraries, no canned animation — every pixel is computed from the arithmetic on this page.</p>
+
+      <div class="honest max-w-4xl mx-auto mb-5 text-left">✅ <strong>No approximation on this page.</strong> Unlike models that need a solver stand-in, every HMM algorithm here is the exact textbook one: forward with per-step scaling (Rabiner's <code>cₜ</code>, so long sequences cannot underflow), backward with the matching scale factors, posteriors <code>γₜ(i)=α̂ₜ(i)β̂ₜ(i)cₜ</code> and <code>ξₜ(i,j)=α̂ₜ(i)Aᵢⱼ Bⱼ(oₜ₊₁)β̂ₜ₊₁(j)</code>, Viterbi in log space with backpointers, and Baum-Welch re-estimation from those expected counts. The trellis demo <em>proves</em> it: it also brute-forces the full <code>Nᵀ</code> path enumeration and shows the two agree. The same core, run in Node against that brute-force baseline on three different HMMs, passes 38/38 assertions.</div>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="dec"  class="subnav-btn px-4 py-2 rounded-lg text-sm">🔍 Decode the hidden track</button>
+        <button data-mod="tre"  class="subnav-btn px-4 py-2 rounded-lg text-sm">🕸️ Forward trellis vs brute force</button>
+        <button data-mod="lrn"  class="subnav-btn px-4 py-2 rounded-lg text-sm">🎓 Baum-Welch learns the model</button>
+      </div>
+
+      <!-- ============ MODULE: DECODE ============ -->
+      <div id="mod-dec" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="dT" style="color:#64748b">—</div><div class="k">timesteps T</div></div>
+          <div class="metric-pill"><div class="v" id="dAcc" style="color:#16a34a">—</div><div class="k">Viterbi accuracy</div></div>
+          <div class="metric-pill"><div class="v" id="dLL" style="color:#0ea5e9">—</div><div class="k">log P(O | λ)</div></div>
+          <div class="metric-pill"><div class="v" id="dSw" style="color:#7c3aed">—</div><div class="k">true state switches</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE HIDDEN PROCESS</div>
+            <div class="ctl-row"><div class="ctl-name">📏 sequence length T</div><input type="range" id="dTs" min="30" max="160" step="2" value="90"><div class="ctl-val" id="dTsV">90</div></div>
+            <div class="ctl-row"><div class="ctl-name">🧲 state stickiness</div><input type="range" id="dSs" min="50" max="97" step="1" value="88"><div class="ctl-val" id="dSsV">0.88</div></div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🗂️ hidden process</div>
+              <div id="dKind" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="dRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New sequence</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> We sample a hidden state path from <code>π</code> and <code>A</code>, emit one observation per step from <code>B</code>, then <em>throw the states away</em>. Only the observation row is fed to <code>viterbi(o, π, A, B)</code>, which returns the single highest-probability hidden path, and to <code>posteriors(...)</code>, which returns <code>γₜ(i)=P(state i at t | the WHOLE sequence)</code>. <b>Stickiness</b> rewrites the diagonal of <code>A</code>: high = long lazy runs that are easy to spot, low = rapid flicker that even a perfect decoder cannot track. <b>Hover</b> any column for its numbers.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:620px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🔍 observations in, hidden states out &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">row 2 is the truth · row 3 is what Viterbi guessed from row 1 alone</span></div>
+            <canvas id="decCanvas" width="620" height="420"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-box" style="background:#f59e0b"></span> state 0</span>
+              <span><span class="swatch-box" style="background:#6366f1"></span> state 1</span>
+              <span><span class="swatch-box" style="background:#10b981"></span> state 2</span>
+              <span><span class="swatch-box" style="background:#ef4444"></span> decoding mistake</span>
+              <span><span class="swatch-line" style="border-color:#0f172a"></span> filtered (forward only)</span>
+            </div>
+            <div id="dDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: TRELLIS ============ -->
+      <div id="mod-tre" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="tPaths" style="color:#dc2626">—</div><div class="k">paths (brute force)</div></div>
+          <div class="metric-pill"><div class="v" id="tOps" style="color:#16a34a">—</div><div class="k">forward operations</div></div>
+          <div class="metric-pill"><div class="v" id="tLL" style="color:#0ea5e9">—</div><div class="k">forward log P(O)</div></div>
+          <div class="metric-pill"><div class="v" id="tErr" style="color:#7c3aed">—</div><div class="k">disagreement</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE LATTICE</div>
+            <div class="ctl-row"><div class="ctl-name">📏 sequence length T</div><input type="range" id="tTs" min="4" max="12" step="1" value="9"><div class="ctl-val" id="tTsV">9</div></div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🗂️ hidden process</div>
+              <div id="tKind" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="tRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New sequence</button>
+              <button id="tBrute" class="btn-run px-3 py-1.5 rounded-lg font-bold text-xs">🔎 Re-run brute force</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> Each circle is one DP cell <code>α̂ₜ(i)</code> (radius ∝ its scaled forward probability); each edge carries the mass <code>α̂ₜ₋₁(i)·Aᵢⱼ·Bⱼ(oₜ)</code> that flows into the next cell, and the bold sky path is Viterbi's argmax. Then the page <em>literally enumerates all <code>Nᵀ</code> hidden paths</em>, multiplies out each one's probability, and sums them — the honest, exponential way — and compares that with the forward algorithm's answer. Raise T and watch the brute-force count explode while the forward op count grows like a straight line.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:620px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🕸️ the forward lattice &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">circle size = α̂ₜ(i) · edge thickness = mass flowing in · sky = Viterbi path</span></div>
+            <canvas id="treCanvas" width="620" height="420"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#f59e0b"></span> state 0 cell</span>
+              <span><span class="swatch" style="background:#6366f1"></span> state 1 cell</span>
+              <span><span class="swatch" style="background:#10b981"></span> state 2 cell</span>
+              <span><span class="swatch-line" style="border-color:#0ea5e9"></span> Viterbi best path</span>
+            </div>
+            <div id="tDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: LEARN ============ -->
+      <div id="mod-lrn" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="lIt" style="color:#64748b">—</div><div class="k">EM iteration</div></div>
+          <div class="metric-pill"><div class="v" id="lLL" style="color:#0ea5e9">—</div><div class="k">log-likelihood</div></div>
+          <div class="metric-pill"><div class="v" id="lD" style="color:#16a34a">—</div><div class="k">Δ this step</div></div>
+          <div class="metric-pill"><div class="v" id="lErr" style="color:#7c3aed">—</div><div class="k">max param error</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px;">
+            <div class="text-xs font-bold text-slate-500 mb-2">EM FROM NOTHING</div>
+            <div class="ctl-row"><div class="ctl-name">📏 training length T</div><input type="range" id="lTs" min="200" max="4000" step="100" value="1500"><div class="ctl-val" id="lTsV">1500</div></div>
+            <div class="ctl-row"><div class="ctl-name">🎲 random restart</div><input type="range" id="lRs" min="1" max="12" step="1" value="1"><div class="ctl-val" id="lRsV">1</div></div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">🗂️ true (hidden) process</div>
+              <div id="lKind" class="flex flex-wrap gap-1.5"></div>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="lRun" class="btn-run px-3 py-1.5 rounded-lg font-bold text-xs">▶ Run EM</button>
+              <button id="lStep" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">↻ One iteration</button>
+              <button id="lReset" class="bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-300">🧹 Reset</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> A sequence is generated from the true HMM, the true parameters are hidden, and EM starts from a <em>random</em> <code>π, A, B</code>. Each iteration runs forward-backward to get expected counts <code>γ</code> and <code>ξ</code>, then re-estimates all three tables from them. The curve is the real log-likelihood after each iteration — it can flatten but <strong>never</strong> drops, that is EM's theorem. The dashed line is the log-likelihood of the <em>true</em> model on this same data; EM routinely finishes slightly <em>above</em> it, because the maximum-likelihood fit of a finite sample is not the process that generated it. Change the restart seed to land in a different local optimum.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:620px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🎓 the likelihood climbs, the tables sharpen &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">top = log P(O|λ) per iteration · below = learned A and B vs the truth</span></div>
+            <canvas id="lrnCanvas" width="620" height="440"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#0ea5e9"></span> log-likelihood per EM iteration</span>
+              <span><span class="swatch-line" style="border-color:#94a3b8"></span> true model's log-likelihood</span>
+              <span><span class="swatch-box" style="background:#0ea5e9"></span> learned probability</span>
+              <span>small grey number = the truth</span>
+            </div>
+            <div id="lDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-6xl mx-auto p-8 grid md:grid-cols-2 gap-8">
+    <div>
+      <h3 class="font-bold text-lg mb-3">From "a chain you can see" to "a chain you must infer"</h3>
+      <p class="text-sm text-slate-500 mb-4">Eleven steps: the assumptions, the three tables, the three canonical questions, the combinatorial wall, and the three exact algorithms that walk straight through it.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="flex gap-2 mt-4">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </div>
+    <div class="space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">An HMM is three tables and four routines. Below is the exact runnable core the LOOK tab uses — sampling, the scaled forward pass, the matching backward pass, the posteriors, log-space Viterbi, one Baum-Welch iteration, and the brute-force enumeration you check it against. Roughly 90 lines of arithmetic, no dependencies.</p>
+    <ol class="space-y-6">
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The model is three tables — and one sampler</h3></div>
+        <p class="text-sm text-slate-600 mb-3">An HMM <code>λ = (π, A, B)</code> is nothing but three row-stochastic tables: <code>π[i]</code> = probability the chain starts in state <code>i</code>; <code>A[i][j]</code> = probability of moving from <code>i</code> to <code>j</code>; <code>B[i][k]</code> = probability that state <code>i</code> emits symbol <code>k</code>. Sampling from it is the clearest way to see what the model <em>believes</em>: pick a start state, emit, hop, emit, hop. Keep the hidden states so you can score a decoder against them later — but never let the algorithms see them.</p>
+        <div class="relative"><pre>// λ = (π, A, B). Rows of every table sum to 1.
+const model = {
+  states: ["FAIR", "LOADED"],
+  pi: [0.85, 0.15],
+  A:  [[0.95, 0.05],      // FAIR   -> FAIR / LOADED
+       [0.10, 0.90]],     // LOADED -> FAIR / LOADED
+  B:  [[1/6,1/6,1/6,1/6,1/6,1/6],            // FAIR die
+       [0.10,0.10,0.10,0.10,0.10,0.50]]      // LOADED die: sixes
+};
+
+function pick(rng, probs) {              // sample an index from a row
+  let u = rng(), acc = 0;
+  for (let i = 0; i &lt; probs.length; i++) { acc += probs[i]; if (u &lt; acc) return i; }
+  return probs.length - 1;
+}
+
+function sample(model, T, rng) {
+  const { pi, A, B } = model, states = [], obs = [];
+  let s = pick(rng, pi);
+  for (let t = 0; t &lt; T; t++) {
+    states.push(s);                      // the HIDDEN truth
+    obs.push(pick(rng, B[s]));           // the only thing you get to see
+    if (t &lt; T - 1) s = pick(rng, A[s]);  // hop
+  }
+  return { states, obs };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The honest but hopeless way — enumerate every path</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The definition of <code>P(O|λ)</code> is a sum over every hidden path: <code>Σ_q P(O,q|λ)</code>. Written literally that is <code>Nᵀ</code> terms. It is worth coding once, because it is the ground truth everything else is checked against — and because watching it die at <code>T=25</code> is the most persuasive argument for dynamic programming you will ever get. Keep it for tests only.</p>
+        <div class="relative"><pre>// N^T paths. Correct, and unusable past ~T=20.
+function brute(o, pi, A, B) {
+  const T = o.length, N = pi.length, cur = new Array(T);
+  let total = 0, bestP = -Infinity, bestPath = null;
+  (function rec(t) {
+    if (t === T) {
+      let p = pi[cur[0]] * B[cur[0]][o[0]];
+      for (let s = 1; s &lt; T; s++) p *= A[cur[s-1]][cur[s]] * B[cur[s]][o[s]];
+      total += p;                                   // the SUM  -> forward
+      if (p &gt; bestP) { bestP = p; bestPath = cur.slice(); }   // the MAX -> Viterbi
+      return;
+    }
+    for (let i = 0; i &lt; N; i++) { cur[t] = i; rec(t + 1); }
+  })(0);
+  return { logLik: Math.log(total), bestPath, bestLogProb: Math.log(bestP) };
+}
+// T=9, N=2  ->      512 paths   (instant)
+// T=40, N=2  -> 1.1e12 paths    (hours)
+// T=100,N=2  -> 1.3e30 paths    (never)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The forward algorithm, with scaling</h3></div>
+        <p class="text-sm text-slate-600 mb-3">All those paths share prefixes, so stop re-walking them. <code>αₜ(i) = P(o₀..oₜ, qₜ=i)</code> can be built from the previous column alone: <code>αₜ(j) = [Σᵢ αₜ₋₁(i)·A[i][j]] · B[j][oₜ]</code>. That is <code>T·N²</code> multiplications total. One practical wrinkle matters more than it sounds: <code>α</code> shrinks by a factor of roughly <code>P(obs)</code> every step and underflows to exactly 0 within a few hundred timesteps, so normalise each column, keep the normaliser <code>cₜ</code>, and recover <code>log P(O) = Σ log cₜ</code>.</p>
+        <div class="relative"><pre>// O(T*N^2), numerically safe for any T.
+function forward(o, pi, A, B) {
+  const T = o.length, N = pi.length, alpha = [], c = [];
+  const a0 = new Array(N); let s = 0;
+  for (let i = 0; i &lt; N; i++) { a0[i] = pi[i] * B[i][o[0]]; s += a0[i]; }
+  c.push(s); for (let i = 0; i &lt; N; i++) a0[i] /= s;      // normalise column 0
+  alpha.push(a0);
+  for (let t = 1; t &lt; T; t++) {
+    const at = new Array(N).fill(0); let st = 0;
+    for (let j = 0; j &lt; N; j++) {
+      let sum = 0;
+      for (let i = 0; i &lt; N; i++) sum += alpha[t-1][i] * A[i][j];   // hop
+      at[j] = sum * B[j][o[t]];                                     // emit
+      st += at[j];
+    }
+    c.push(st); for (let j = 0; j &lt; N; j++) at[j] /= st;   // normalise, remember cₜ
+    alpha.push(at);
+  }
+  let ll = 0; for (const x of c) ll += Math.log(x);        // log P(O|λ) = Σ log cₜ
+  return { alpha, c, logLik: ll };
+}
+// alpha[t][i] is now P(state i at t | o_0..o_t) — the FILTERED belief.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The backward pass — and the posteriors it unlocks</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Forward knows the past. <code>βₜ(i) = P(oₜ₊₁..o_{T−1} | qₜ=i)</code> knows the future, computed by the same recursion run right-to-left. Multiply them and you get the <em>smoothed</em> posterior <code>γₜ(i)</code>: the probability of being in state <code>i</code> at time <code>t</code> given the <strong>entire</strong> sequence, including everything that happened afterwards. Reuse the forward pass's <code>cₜ</code> as backward's scale factors and the bookkeeping collapses to the two clean lines below.</p>
+        <div class="relative"><pre>function backward(o, A, B, c) {          // reuse forward's scale factors
+  const T = o.length, N = A.length;
+  const beta = Array.from({length:T}, () =&gt; new Array(N).fill(0));
+  for (let i = 0; i &lt; N; i++) beta[T-1][i] = 1 / c[T-1];
+  for (let t = T-2; t &gt;= 0; t--)
+    for (let i = 0; i &lt; N; i++) {
+      let s = 0;
+      for (let j = 0; j &lt; N; j++) s += A[i][j] * B[j][o[t+1]] * beta[t+1][j];
+      beta[t][i] = s / c[t];
+    }
+  return beta;
+}
+
+function posteriors(o, pi, A, B) {
+  const F = forward(o, pi, A, B), be = backward(o, A, B, F.c);
+  const T = o.length, N = pi.length;
+  // γₜ(i) = P(state i at t | the WHOLE sequence)
+  const gamma = Array.from({length:T}, (_, t) =&gt;
+    Array.from({length:N}, (_, i) =&gt; F.alpha[t][i] * be[t][i] * F.c[t]));
+  // ξₜ(i,j) = P(i at t AND j at t+1 | the whole sequence)
+  const xi = Array.from({length:T-1}, (_, t) =&gt;
+    Array.from({length:N}, (_, i) =&gt;
+      Array.from({length:N}, (_, j) =&gt;
+        F.alpha[t][i] * A[i][j] * B[j][o[t+1]] * be[t+1][j])));
+  return { gamma, xi, logLik: F.logLik, alpha: F.alpha, c: F.c };
+}
+// Σᵢ γₜ(i) = 1 for every t.  Σⱼ ξₜ(i,j) = γₜ(i).  Both are asserted in the tests.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Viterbi — the same recursion with max, plus backpointers</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Replace the sum with a maximum and you stop asking "how much total probability reaches this cell?" and start asking "what is the best single path that reaches it?". Record which predecessor won (<code>ψ</code>), and when you reach the end, walk the winners backwards to reconstruct the path. Do it all in <strong>log space</strong>: multiplying hundreds of probabilities underflows, adding hundreds of logs does not, and because <code>log</code> is monotone the argmax is untouched.</p>
+        <div class="relative"><pre>function viterbi(o, pi, A, B) {
+  const T = o.length, N = pi.length, L = x =&gt; x &gt; 0 ? Math.log(x) : -Infinity;
+  const d   = Array.from({length:T}, () =&gt; new Array(N).fill(-Infinity)); // best log-prob
+  const psi = Array.from({length:T}, () =&gt; new Array(N).fill(0));         // backpointer
+  for (let i = 0; i &lt; N; i++) d[0][i] = L(pi[i]) + L(B[i][o[0]]);
+  for (let t = 1; t &lt; T; t++)
+    for (let j = 0; j &lt; N; j++) {
+      let best = -Infinity, arg = 0;
+      for (let i = 0; i &lt; N; i++) {          // MAX where forward had a SUM
+        const v = d[t-1][i] + L(A[i][j]);
+        if (v &gt; best) { best = v; arg = i; }
+      }
+      d[t][j] = best + L(B[j][o[t]]);
+      psi[t][j] = arg;                        // remember who won
+    }
+  let best = -Infinity, arg = 0;
+  for (let i = 0; i &lt; N; i++) if (d[T-1][i] &gt; best) { best = d[T-1][i]; arg = i; }
+  const path = new Array(T); path[T-1] = arg;
+  for (let t = T-2; t &gt;= 0; t--) path[t] = psi[t+1][path[t+1]];   // walk back
+  return { path, logProb: best };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Baum-Welch — one EM iteration</h3></div>
+        <p class="text-sm text-slate-600 mb-3">If you could see the hidden states, fitting the model would be counting: how often did state <code>i</code> start a sequence, how often did <code>i</code> lead to <code>j</code>, how often did <code>i</code> emit symbol <code>k</code>. You cannot see them — so use <em>expected</em> counts instead. The E-step is exactly the forward-backward pass (<code>γ</code> and <code>ξ</code> ARE those expected counts); the M-step normalises them into new tables. Repeat. The likelihood provably never decreases.</p>
+        <div class="relative"><pre>function bwStep(o, pi, A, B, M) {              // M = number of symbols
+  const N = pi.length, T = o.length;
+  const { gamma, xi, logLik } = posteriors(o, pi, A, B);   // ---- E-step ----
+
+  const npi = gamma[0].slice();                            // ---- M-step ----
+
+  const nA = Array.from({length:N}, () =&gt; new Array(N).fill(0));
+  for (let i = 0; i &lt; N; i++) {
+    let den = 0; for (let t = 0; t &lt; T-1; t++) den += gamma[t][i];   // times in i
+    for (let j = 0; j &lt; N; j++) {
+      let num = 0; for (let t = 0; t &lt; T-1; t++) num += xi[t][i][j]; // i -> j
+      nA[i][j] = den &gt; 0 ? num / den : 1 / N;
+    }
+  }
+
+  const nB = Array.from({length:N}, () =&gt; new Array(M).fill(0));
+  for (let i = 0; i &lt; N; i++) {
+    let den = 0; for (let t = 0; t &lt; T; t++) den += gamma[t][i];
+    for (let k = 0; k &lt; M; k++) {
+      let num = 0; for (let t = 0; t &lt; T; t++) if (o[t] === k) num += gamma[t][i];
+      nB[i][k] = den &gt; 0 ? num / den : 1 / M;
+    }
+  }
+  return { pi: npi, A: nA, B: nB, logLik };   // logLik is BEFORE this update
+}
+
+let pi = randomRow(N), A = randomRows(N,N), B = randomRows(N,M);
+for (let it = 0; it &lt; 200; it++) {
+  const st = bwStep(obs, pi, A, B, M);
+  pi = st.pi; A = st.A; B = st.B;       // st.logLik never decreases
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Prove it — check the DP against brute force</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Dynamic programming is easy to write and easy to get subtly wrong; an off-by-one in the backward recursion or a misplaced scale factor still produces plausible-looking numbers. The cure is a test with an independent baseline. For small <code>T</code> the brute-force enumeration <em>is</em> that baseline — it is the definition, coded literally — so assert that forward matches its sum, Viterbi matches its argmax, and the posteriors match its marginals. This exact suite runs on three different HMMs and passes 38/38.</p>
+        <div class="relative"><pre>const T = 9;                                  // 2^9 = 512 paths — enumerable
+const { obs } = sample(model, T, rng);
+const P  = posteriors(obs, pi, A, B);
+const V  = viterbi(obs, pi, A, B);
+const BF = brute(obs, pi, A, B);              // the definition, literally
+
+assert(Math.abs(P.logLik   - BF.logLik)      &lt; 1e-10);  // forward == Σ over paths
+assert(Math.abs(V.logProb  - BF.bestLogProb) &lt; 1e-10);  // viterbi == max over paths
+assert(V.path.join() === BF.bestPath.join());           // and the SAME path
+assert(maxAbs(P.gamma, BF.gamma) &lt; 1e-12);              // γ == exact marginals
+assert(P.gamma.every(r =&gt; Math.abs(sum(r) - 1) &lt; 1e-12));
+
+// EM's theorem, checked empirically over 6 random inits x 150 iterations:
+let prev = -Infinity;
+for (const ll of logLikHistory) { assert(ll &gt;= prev - 1e-9); prev = ll; }</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">In practice — the standard tools and the traps</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In Python you would reach for <code>hmmlearn</code> (discrete <code>CategoricalHMM</code>, continuous <code>GaussianHMM</code>) or <code>pomegranate</code>. Three traps catch everyone: EM is local, so use many random restarts and keep the best likelihood; probabilities that hit exactly zero can never come back, so smooth your counts; and the number of hidden states is a <em>modelling choice</em> you must select, typically by BIC or held-out likelihood, not something EM discovers for you.</p>
+        <div class="relative"><pre>from hmmlearn.hmm import CategoricalHMM
+import numpy as np
+
+X = obs.reshape(-1, 1)                 # (T, 1) integer symbols
+lengths = [len(obs)]                   # concatenate many sequences here
+
+best = None
+for seed in range(10):                                   # EM is LOCAL — restart
+    m = CategoricalHMM(n_components=2, n_iter=200, tol=1e-4,
+                       random_state=seed, init_params="ste")
+    m.fit(X, lengths)
+    if best is None or m.score(X, lengths) &gt; best.score(X, lengths):
+        best = m
+
+print(best.score(X, lengths))          # log P(O | λ)  — the forward algorithm
+print(best.predict(X, lengths))        # the Viterbi path
+print(best.predict_proba(X, lengths))  # the γ posteriors
+print(best.transmat_, best.emissionprob_)
+
+# choose n_components by BIC / held-out likelihood, never by "it fit better"
+# smooth: emissionprob_ = (counts + 1e-3); rows renormalised
+# state LABELS are arbitrary — state 0 of a refit may be state 1 of this one</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-8 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧭 The three questions an HMM answers — and the algorithm for each</h3>
+      <table class="cmp">
+        <tr><th>Question</th><th>Name</th><th>Recursion</th><th>Cost</th><th>What you get</th></tr>
+        <tr><td class="cat">How likely is this sequence?</td><td><strong>Forward</strong> (evaluation)</td><td><code>αₜ(j) = [Σᵢ αₜ₋₁(i)Aᵢⱼ]·Bⱼ(oₜ)</code></td><td><code>O(T·N²)</code></td><td><code>log P(O|λ)</code> — a score you can compare across models, use for classification, or maximise</td></tr>
+        <tr><td class="cat">Which hidden path explains it?</td><td><strong>Viterbi</strong> (decoding)</td><td><code>δₜ(j) = maxᵢ[δₜ₋₁(i)Aᵢⱼ]·Bⱼ(oₜ)</code></td><td><code>O(T·N²)</code></td><td>the single most probable state sequence, guaranteed globally consistent</td></tr>
+        <tr><td class="cat">What is the state right now?</td><td><strong>Forward only</strong> (filtering)</td><td><code>α̂ₜ(i)</code> normalised</td><td><code>O(t·N²)</code></td><td>a belief using only the past — the online, real-time answer</td></tr>
+        <tr><td class="cat">What was the state back then?</td><td><strong>Forward-backward</strong> (smoothing)</td><td><code>γₜ(i) = α̂ₜ(i)β̂ₜ(i)cₜ</code></td><td><code>O(T·N²)</code></td><td>a per-timestep belief using the whole sequence — sharper, but offline</td></tr>
+        <tr><td class="cat">What are π, A, B?</td><td><strong>Baum-Welch</strong> (learning)</td><td>re-estimate from <code>γ</code>, <code>ξ</code></td><td><code>O(I·T·N²)</code></td><td>a fitted model from unlabelled sequences; likelihood never decreases</td></tr>
+      </table>
+      <p class="text-xs text-slate-500 mt-3">Viterbi and smoothing answer different questions and can disagree: γ picks the best state at each timestep <em>independently</em>, so stitching those choices together can produce a path the model considers impossible (a transition with probability 0). Viterbi's answer is always a legal path. Use Viterbi when the whole sequence must be coherent (speech, tagging, gene annotation); use γ when you want per-timestep confidence.</p>
+    </div>
+
+    <div class="mt-6 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧬 Where the HMM sits among sequence models</h3>
+      <table class="cmp">
+        <tr><th>Model</th><th>Hidden state</th><th>Trained on</th><th>Reach for it when</th></tr>
+        <tr><td class="cat">Markov chain</td><td>none — states are observed</td><td>counting</td><td>the thing you care about is directly in the data</td></tr>
+        <tr><td class="cat"><strong>HMM</strong> (here)</td><td>discrete, latent</td><td>unlabelled sequences (EM)</td><td>small data, discrete latent regimes, and you want the states to <em>mean</em> something</td></tr>
+        <tr><td class="cat">Kalman filter</td><td>continuous, Gaussian</td><td>known dynamics</td><td>the hidden state is a physical quantity moving smoothly (position, velocity)</td></tr>
+        <tr><td class="cat">CRF</td><td>discrete, latent</td><td>labelled sequences</td><td>you HAVE labels and want rich overlapping features — it models <code>P(y|x)</code>, not <code>P(x,y)</code></td></tr>
+        <tr><td class="cat">RNN / LSTM (DL D10-11)</td><td>continuous vector</td><td>labelled sequences (SGD)</td><td>lots of data, long dependencies, and interpretability is not the goal</td></tr>
+        <tr><td class="cat">Transformer (DL D13)</td><td>attention over all positions</td><td>huge corpora</td><td>you have scale and want to drop the Markov assumption entirely</td></tr>
+      </table>
+      <p class="text-xs text-slate-500 mt-3">The HMM is not obsolete. It stays the right answer when data is scarce, when the latent states must be interpretable ("regime 1 is a bull market", "state 3 is a coding region"), when you need calibrated probabilities rather than a point prediction, and when you must train with no labels at all. Its machinery is also the ancestor of much of modern sequence modelling — the forward pass is the message-passing that reappears in linear-time state-space models like Mamba, and Viterbi still runs inside decoders everywhere.</p>
+    </div>
+
+    <div class="mt-8 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 59 of MachineLearningFromZero done — the model that infers a hidden story from the evidence it leaves behind.</h3><p class="text-sm text-sky-700 mt-2">A <strong>Hidden Markov Model</strong> is three tables — <code>π</code>, <code>A</code>, <code>B</code> — plus two assumptions (Markov transitions, output independence) that turn an impossible sum over <code>Nᵀ</code> paths into three exact <code>O(T·N²)</code> recursions. <span style="color:#0ea5e9;font-weight:700">Forward</span> answers <em>how likely is this sequence</em> by carrying one column of numbers through time instead of re-walking shared prefixes; <span style="color:#0ea5e9;font-weight:700">Viterbi</span> answers <em>which hidden path explains it</em> by swapping the sum for a max and keeping backpointers; <span style="color:#0ea5e9;font-weight:700">forward-backward</span> answers <em>what was the state at time t</em> by multiplying past and future evidence; and <span style="color:#0ea5e9;font-weight:700">Baum-Welch</span> — EM (the engine behind <span style="color:#0ea5e9;font-weight:700">GMM D22</span>) applied to sequences — learns all three tables from raw observations with <strong>no labels whatsoever</strong>, its log-likelihood provably never decreasing. The costs are the usual EM ones: local optima that demand random restarts, a state count you must choose yourself, and the strong Markov assumption that a single current state summarises the entire past. <strong>👉 When your data is a sequence, the thing you actually care about is hidden, and you want latent states that mean something rather than a black box, reach for the HMM.</strong></p></div>
+
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+const el = id => document.getElementById(id);
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function setDiag(box, c, t, b){ box.className="diag "+c+" mt-3 text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+const SC = ["#f59e0b","#6366f1","#10b981"];      // state colours
+const SCL= ["#fef3c7","#e0e7ff","#d1fae5"];      // light versions
+const fmt = (x,d=3)=> (x===undefined||x===null||!isFinite(x)) ? "—" : x.toFixed(d);
+
+/* ================================================================
+   HMM CORE — the real algorithms, used by every demo on this page
+   ================================================================ */
+function pick(rng, probs){ let u=rng(), acc=0; for(let i=0;i<probs.length;i++){ acc+=probs[i]; if(u<acc) return i; } return probs.length-1; }
+
+function sample(model, T, rng){
+  const {pi,A,B}=model, states=[], obs=[];
+  let s=pick(rng,pi);
+  for(let t=0;t<T;t++){ states.push(s); obs.push(pick(rng,B[s])); if(t<T-1) s=pick(rng,A[s]); }
+  return {states, obs};
+}
+
+function forward(o, pi, A, B){
+  const T=o.length, N=pi.length, alpha=[], c=[];
+  const a0=new Array(N); let s=0;
+  for(let i=0;i<N;i++){ a0[i]=pi[i]*B[i][o[0]]; s+=a0[i]; }
+  c.push(s); for(let i=0;i<N;i++) a0[i]=s>0?a0[i]/s:0;
+  alpha.push(a0);
+  for(let t=1;t<T;t++){
+    const at=new Array(N).fill(0); let st=0;
+    for(let j=0;j<N;j++){ let sum=0; for(let i=0;i<N;i++) sum+=alpha[t-1][i]*A[i][j]; at[j]=sum*B[j][o[t]]; st+=at[j]; }
+    c.push(st); for(let j=0;j<N;j++) at[j]=st>0?at[j]/st:0;
+    alpha.push(at);
+  }
+  let ll=0; for(const x of c) ll+=Math.log(x);
+  return {alpha, c, logLik:ll};
+}
+
+function backward(o, A, B, c){
+  const T=o.length, N=A.length;
+  const beta=Array.from({length:T},()=>new Array(N).fill(0));
+  for(let i=0;i<N;i++) beta[T-1][i]=1/c[T-1];
+  for(let t=T-2;t>=0;t--)
+    for(let i=0;i<N;i++){
+      let s=0; for(let j=0;j<N;j++) s+=A[i][j]*B[j][o[t+1]]*beta[t+1][j];
+      beta[t][i]=s/c[t];
+    }
+  return beta;
+}
+
+function posteriors(o, pi, A, B){
+  const F=forward(o,pi,A,B), be=backward(o,A,B,F.c), T=o.length, N=pi.length;
+  const g=Array.from({length:T},()=>new Array(N).fill(0));
+  for(let t=0;t<T;t++) for(let i=0;i<N;i++) g[t][i]=F.alpha[t][i]*be[t][i]*F.c[t];
+  const xi=Array.from({length:Math.max(0,T-1)},()=>Array.from({length:N},()=>new Array(N).fill(0)));
+  for(let t=0;t<T-1;t++) for(let i=0;i<N;i++) for(let j=0;j<N;j++)
+    xi[t][i][j]=F.alpha[t][i]*A[i][j]*B[j][o[t+1]]*be[t+1][j];
+  return {gamma:g, xi, logLik:F.logLik, alpha:F.alpha, c:F.c, beta:be};
+}
+
+function viterbi(o, pi, A, B){
+  const T=o.length, N=pi.length, L=x=> x>0?Math.log(x):-Infinity;
+  const d=Array.from({length:T},()=>new Array(N).fill(-Infinity));
+  const psi=Array.from({length:T},()=>new Array(N).fill(0));
+  for(let i=0;i<N;i++) d[0][i]=L(pi[i])+L(B[i][o[0]]);
+  for(let t=1;t<T;t++) for(let j=0;j<N;j++){
+    let best=-Infinity, arg=0;
+    for(let i=0;i<N;i++){ const v=d[t-1][i]+L(A[i][j]); if(v>best){ best=v; arg=i; } }
+    d[t][j]=best+L(B[j][o[t]]); psi[t][j]=arg;
+  }
+  let best=-Infinity, arg=0;
+  for(let i=0;i<N;i++) if(d[T-1][i]>best){ best=d[T-1][i]; arg=i; }
+  const path=new Array(T); path[T-1]=arg;
+  for(let t=T-2;t>=0;t--) path[t]=psi[t+1][path[t+1]];
+  return {path, logProb:best, delta:d, psi};
+}
+
+function bwStep(o, pi, A, B, M){
+  const N=pi.length, T=o.length;
+  const P=posteriors(o,pi,A,B), g=P.gamma, xi=P.xi;
+  const npi=g[0].slice();
+  const nA=Array.from({length:N},()=>new Array(N).fill(0));
+  for(let i=0;i<N;i++){
+    let den=0; for(let t=0;t<T-1;t++) den+=g[t][i];
+    for(let j=0;j<N;j++){ let num=0; for(let t=0;t<T-1;t++) num+=xi[t][i][j]; nA[i][j]= den>0 ? num/den : 1/N; }
+  }
+  const nB=Array.from({length:N},()=>new Array(M).fill(0));
+  for(let i=0;i<N;i++){
+    let den=0; for(let t=0;t<T;t++) den+=g[t][i];
+    for(let k=0;k<M;k++){ let num=0; for(let t=0;t<T;t++) if(o[t]===k) num+=g[t][i]; nB[i][k]= den>0 ? num/den : 1/M; }
+  }
+  return {pi:npi, A:nA, B:nB, logLik:P.logLik};
+}
+
+// the definition, coded literally — the baseline everything is checked against
+function brute(o, pi, A, B){
+  const T=o.length, N=pi.length;
+  let total=0, bestP=-Infinity, bestPath=null, paths=0;
+  const cur=new Array(T);
+  (function rec(t){
+    if(t===T){
+      paths++;
+      let p=pi[cur[0]]*B[cur[0]][o[0]];
+      for(let s=1;s<T;s++) p*=A[cur[s-1]][cur[s]]*B[cur[s]][o[s]];
+      total+=p;
+      if(p>bestP){ bestP=p; bestPath=cur.slice(); }
+      return;
+    }
+    for(let i=0;i<N;i++){ cur[t]=i; rec(t+1); }
+  })(0);
+  return {total, logLik:Math.log(total), bestPath, bestLogProb:Math.log(bestP), paths};
+}
+
+/* ================================================================
+   the three worlds the demos share
+   ================================================================ */
+const WORLDS = {
+  casino: { label:"🎰 dishonest casino", states:["FAIR","LOADED"], syms:["⚀","⚁","⚂","⚃","⚄","⚅"], M:6,
+    pi:[0.85,0.15], A:[[0.95,0.05],[0.10,0.90]],
+    B:[[1/6,1/6,1/6,1/6,1/6,1/6],[0.10,0.10,0.10,0.10,0.10,0.50]],
+    blurb:"a croupier swaps a fair die for one that rolls sixes half the time, and swaps back" },
+  weather:{ label:"🌦️ weather & activity", states:["Sunny","Rainy"], syms:["🚶","🛒","🧹"], M:3,
+    pi:[0.6,0.4], A:[[0.7,0.3],[0.4,0.6]],
+    B:[[0.6,0.3,0.1],[0.1,0.4,0.5]],
+    blurb:"you never see the weather, only what your friend did that day" },
+  market: { label:"📈 three market regimes", states:["Bull","Flat","Bear"], syms:["▲▲","▲","▼","▼▼"], M:4,
+    pi:[0.5,0.3,0.2],
+    A:[[0.6,0.3,0.1],[0.2,0.5,0.3],[0.3,0.2,0.5]],
+    B:[[0.7,0.1,0.1,0.1],[0.1,0.6,0.2,0.1],[0.05,0.15,0.3,0.5]],
+    blurb:"the regime is latent; you only see the daily move" }
+};
+const WKEYS = Object.keys(WORLDS);
+function cloneWorld(k){ const w=WORLDS[k]; return { key:k, label:w.label, states:w.states, syms:w.syms, M:w.M,
+  pi:w.pi.slice(), A:w.A.map(r=>r.slice()), B:w.B.map(r=>r.slice()), blurb:w.blurb }; }
+function stickify(w, stick){                 // rewrite the diagonal of A, renormalise the rest
+  const N=w.pi.length, A=w.A.map(r=>r.slice());
+  for(let i=0;i<N;i++){
+    const off=1-stick; let s=0;
+    for(let j=0;j<N;j++) if(j!==i) s+=w.A[i][j];
+    for(let j=0;j<N;j++) A[i][j] = (j===i) ? stick : (s>0 ? off*w.A[i][j]/s : off/(N-1));
+  }
+  return A;
+}
+function worldButtons(container, current, onPick){
+  container.innerHTML="";
+  WKEYS.forEach(k=>{
+    const b=document.createElement("button");
+    b.className="ds-btn"+(k===current?" on":""); b.textContent=WORLDS[k].label;
+    b.onclick=()=>onPick(k); container.appendChild(b);
+  });
+}
+
+/* ================================================================
+   MODULE 1 — decode the hidden track
+   ================================================================ */
+const decC=el("decCanvas"), decX=decC.getContext("2d");
+let D={ key:"casino", T:90, stick:0.88, seed:7, hover:-1, data:null };
+
+function decFit(){
+  const w=cloneWorld(D.key);
+  w.A=stickify(w,D.stick);
+  const {states,obs}=sample(w,D.T,mulberry32(D.seed*7919+D.T));
+  const V=viterbi(obs,w.pi,w.A,w.B);
+  const P=posteriors(obs,w.pi,w.A,w.B);
+  let hit=0; for(let t=0;t<D.T;t++) if(V.path[t]===states[t]) hit++;
+  let sw=0; for(let t=1;t<D.T;t++) if(states[t]!==states[t-1]) sw++;
+  D.data={w,states,obs,V,P,acc:hit/D.T,sw};
+  decDraw(); decReport();
+}
+function decDraw(){
+  const d=D.data; if(!d) return;
+  const W=decC.width, H=decC.height, X=decX;
+  X.clearRect(0,0,W,H); X.fillStyle="#fbfdff"; X.fillRect(0,0,W,H);
+  const pad=12, iw=W-2*pad, T=d.obs.length, cw=iw/T, N=d.w.pi.length;
+  const lab=(txt,y,col)=>{ X.fillStyle=col||"#475569"; X.font="bold 10px ui-sans-serif,system-ui"; X.fillText(txt,pad,y); };
+
+  // ---- observations -------------------------------------------------
+  lab("① WHAT YOU SEE — the observation sequence",22);
+  const oy=28, oh=30;
+  for(let t=0;t<T;t++){
+    const x=pad+t*cw, k=d.obs[t];
+    X.fillStyle=`rgba(14,165,233,${0.18+0.62*(k/(Math.max(1,d.w.M-1)))})`;
+    X.fillRect(x,oy,Math.max(1,cw-0.6),oh);
+    if(cw>=13){ X.fillStyle="#0f172a"; X.font=`${Math.min(13,cw-2)}px ui-sans-serif,system-ui`;
+      X.textAlign="center"; X.fillText(d.w.syms[k],x+cw/2,oy+oh/2+5); X.textAlign="left"; }
+  }
+  X.strokeStyle="#cbd5e1"; X.strokeRect(pad,oy,iw,oh);
+
+  // ---- true hidden states -------------------------------------------
+  lab("② THE TRUTH — the hidden state that produced each observation",78);
+  const ty=84, th=26;
+  for(let t=0;t<T;t++){ X.fillStyle=SC[d.states[t]%3]; X.fillRect(pad+t*cw,ty,Math.max(1,cw+0.4),th); }
+  X.strokeStyle="#cbd5e1"; X.strokeRect(pad,ty,iw,th);
+
+  // ---- viterbi decoded ----------------------------------------------
+  lab("③ VITERBI'S GUESS — computed from row ① alone, states never seen",134);
+  const vy=140, vh=26;
+  for(let t=0;t<T;t++){ X.fillStyle=SC[d.V.path[t]%3]; X.fillRect(pad+t*cw,vy,Math.max(1,cw+0.4),vh); }
+  X.strokeStyle="#cbd5e1"; X.strokeRect(pad,vy,iw,vh);
+  for(let t=0;t<T;t++) if(d.V.path[t]!==d.states[t]){
+    X.fillStyle="#ef4444"; X.fillRect(pad+t*cw,vy+vh,Math.max(1.4,cw),5);
+  }
+
+  // ---- posteriors ----------------------------------------------------
+  lab("④ POSTERIOR γₜ(i) = P(state | the WHOLE sequence)  ·  black line = filtered, past only",194);
+  const py=200, ph=94;
+  X.fillStyle="#f8fafc"; X.fillRect(pad,py,iw,ph);
+  // stacked area of gamma
+  for(let t=0;t<T;t++){
+    let acc=0;
+    for(let i=0;i<N;i++){
+      const h=d.P.gamma[t][i]*ph;
+      X.fillStyle=SC[i%3]; X.globalAlpha=0.72;
+      X.fillRect(pad+t*cw,py+ph-acc-h,Math.max(1,cw+0.4),h);
+      acc+=h;
+    }
+  }
+  X.globalAlpha=1;
+  // filtered (forward only) belief in the LAST state, as a line
+  X.strokeStyle="#0f172a"; X.lineWidth=1.5; X.beginPath();
+  for(let t=0;t<T;t++){
+    const v=d.P.alpha[t][N-1], x=pad+t*cw+cw/2, y=py+ph-v*ph;
+    t===0?X.moveTo(x,y):X.lineTo(x,y);
+  }
+  X.stroke(); X.lineWidth=1;
+  X.strokeStyle="#cbd5e1"; X.strokeRect(pad,py,iw,ph);
+
+  // ---- surprise -------------------------------------------------------
+  lab("⑤ SURPRISE −log cₜ — how unexpected each observation was under the model",316);
+  const sy=322, sh2=74;
+  let mx=0; const sur=d.P.c.map(c=>-Math.log(c)); sur.forEach(v=>mx=Math.max(mx,v));
+  X.fillStyle="#f8fafc"; X.fillRect(pad,sy,iw,sh2);
+  for(let t=0;t<T;t++){
+    const h=mx>0?(sur[t]/mx)*sh2:0;
+    X.fillStyle= sur[t]>mx*0.72 ? "#f97316" : "#94a3b8";
+    X.fillRect(pad+t*cw,sy+sh2-h,Math.max(1,cw-0.6),h);
+  }
+  X.strokeStyle="#cbd5e1"; X.strokeRect(pad,sy,iw,sh2);
+
+  // ---- hover ----------------------------------------------------------
+  if(D.hover>=0 && D.hover<T){
+    const x=pad+D.hover*cw;
+    X.strokeStyle="#0f172a"; X.lineWidth=1.5;
+    X.beginPath(); X.moveTo(x+cw/2,22); X.lineTo(x+cw/2,H-8); X.stroke(); X.lineWidth=1;
+  }
+  // legend for state names
+  X.font="bold 10px ui-sans-serif,system-ui";
+  let lx=pad;
+  for(let i=0;i<N;i++){ X.fillStyle=SC[i%3]; X.fillRect(lx,H-12,10,8); X.fillStyle="#475569"; X.fillText(d.w.states[i],lx+13,H-4); lx+=13+X.measureText(d.w.states[i]).width+14; }
+}
+function decReport(){
+  const d=D.data; if(!d) return;
+  el("dT").textContent=d.obs.length;
+  el("dAcc").textContent=(d.acc*100).toFixed(1)+"%";
+  el("dLL").textContent=d.P.logLik.toFixed(1);
+  el("dSw").textContent=d.sw;
+  const N=d.w.pi.length;
+  let base=0; const cnt=new Array(N).fill(0); d.states.forEach(s=>cnt[s]++);
+  base=Math.max(...cnt)/d.states.length;
+  const t=D.hover;
+  let hov="";
+  if(t>=0&&t<d.obs.length){
+    const g=d.P.gamma[t].map((v,i)=>`${d.w.states[i]} ${(v*100).toFixed(1)}%`).join(" · ");
+    hov=`<br><span class="text-slate-700">t=${t} · saw <b>${d.w.syms[d.obs[t]]}</b> · truth <b>${d.w.states[d.states[t]]}</b> · Viterbi <b>${d.w.states[d.V.path[t]]}</b> · posterior ${g}</span>`;
+  }
+  const good=d.acc>base+0.08;
+  setDiag(el("dDiag"), good?"diag-good":"diag-warn",
+    good ? `✅ Viterbi recovered ${(d.acc*100).toFixed(1)}% of the hidden states from the observations alone`
+         : `⚠️ only ${(d.acc*100).toFixed(1)}% — the states are flickering too fast to be identifiable`,
+    `Always guessing the most common state would score <b>${(base*100).toFixed(1)}%</b>. The decoder never saw row ②; it inferred it from row ① plus the three tables. <b>log P(O|λ) = ${d.P.logLik.toFixed(2)}</b> over ${d.obs.length} steps (${(d.P.logLik/d.obs.length).toFixed(3)} nats per observation). ${d.w.blurb}. Raising <b>stickiness</b> lengthens the true runs and makes them far easier to detect — with stickiness near 0.5 the chain is nearly memoryless and no algorithm can do much better than chance, which is a property of the <em>data</em>, not a failure of Viterbi.${hov}`);
+}
+el("dTs").oninput=e=>{ D.T=+e.target.value; el("dTsV").textContent=D.T; decFit(); };
+el("dSs").oninput=e=>{ D.stick=+e.target.value/100; el("dSsV").textContent=D.stick.toFixed(2); decFit(); };
+el("dRoll").onclick=()=>{ D.seed=Math.floor(Math.random()*100000)+1; decFit(); };
+decC.addEventListener("mousemove",e=>{
+  const r=decC.getBoundingClientRect(), x=(e.clientX-r.left)*(decC.width/r.width);
+  const pad=12, cw=(decC.width-2*pad)/D.T;
+  D.hover=Math.max(0,Math.min(D.T-1,Math.floor((x-pad)/cw)));
+  decDraw(); decReport();
+});
+decC.addEventListener("mouseleave",()=>{ D.hover=-1; decDraw(); decReport(); });
+
+/* ================================================================
+   MODULE 2 — the forward trellis, checked against brute force
+   ================================================================ */
+const treC=el("treCanvas"), treX=treC.getContext("2d");
+let R={ key:"casino", T:9, seed:3, data:null };
+
+function treFit(){
+  const w=cloneWorld(R.key);
+  const {states,obs}=sample(w,R.T,mulberry32(R.seed*104729+R.T));
+  const P=posteriors(obs,w.pi,w.A,w.B);
+  const V=viterbi(obs,w.pi,w.A,w.B);
+  const t0=performance.now();
+  const BF=brute(obs,w.pi,w.A,w.B);
+  const ms=performance.now()-t0;
+  R.data={w,states,obs,P,V,BF,ms};
+  treDraw(); treReport();
+}
+function treDraw(){
+  const d=R.data; if(!d) return;
+  const W=treC.width,H=treC.height,X=treX;
+  X.clearRect(0,0,W,H); X.fillStyle="#fbfdff"; X.fillRect(0,0,W,H);
+  const N=d.w.pi.length, T=d.obs.length;
+  const padL=64, padR=18, padT=52, bandH=210;
+  const dx=(W-padL-padR)/Math.max(1,T-1);
+  const yOf=i=> padT + (i+0.5)*(bandH/N);
+  const xOf=t=> padL + t*dx;
+
+  X.fillStyle="#334155"; X.font="bold 11px ui-sans-serif,system-ui";
+  X.fillText("the forward lattice — one column per timestep, one row per hidden state",padL-46,22);
+  X.fillStyle="#64748b"; X.font="10px ui-sans-serif,system-ui";
+  X.fillText("every path through this lattice is one possible hidden history",padL-46,38);
+
+  // state row labels + guide lines
+  for(let i=0;i<N;i++){
+    X.strokeStyle="#eef2f7"; X.beginPath(); X.moveTo(padL,yOf(i)); X.lineTo(W-padR,yOf(i)); X.stroke();
+    X.fillStyle=SC[i%3]; X.font="bold 11px ui-sans-serif,system-ui";
+    X.fillText(d.w.states[i],6,yOf(i)+4);
+  }
+
+  // edges: mass flowing from column t-1 into column t
+  for(let t=1;t<T;t++){
+    // normaliser so widths are comparable within the column
+    let tot=0; const wgt=[];
+    for(let j=0;j<N;j++){ wgt.push([]); for(let i=0;i<N;i++){ const m=d.P.alpha[t-1][i]*d.w.A[i][j]*d.w.B[j][d.obs[t]]; wgt[j].push(m); tot+=m; } }
+    for(let j=0;j<N;j++) for(let i=0;i<N;i++){
+      const f=tot>0?wgt[j][i]/tot:0;
+      if(f<0.002) continue;
+      X.strokeStyle=`rgba(100,116,139,${0.10+0.75*f})`;
+      X.lineWidth=0.4+4.6*f;
+      X.beginPath(); X.moveTo(xOf(t-1),yOf(i)); X.lineTo(xOf(t),yOf(j)); X.stroke();
+    }
+  }
+  X.lineWidth=1;
+
+  // the Viterbi path on top
+  X.strokeStyle="#0ea5e9"; X.lineWidth=3.2; X.beginPath();
+  for(let t=0;t<T;t++){ const x=xOf(t),y=yOf(d.V.path[t]); t===0?X.moveTo(x,y):X.lineTo(x,y); }
+  X.stroke(); X.lineWidth=1;
+
+  // nodes
+  for(let t=0;t<T;t++) for(let i=0;i<N;i++){
+    const a=d.P.alpha[t][i], r=4+16*a;
+    X.fillStyle=SC[i%3]; X.globalAlpha=0.25+0.7*a;
+    X.beginPath(); X.arc(xOf(t),yOf(i),r,0,7); X.fill();
+    X.globalAlpha=1;
+    X.strokeStyle= d.V.path[t]===i ? "#0ea5e9" : "#cbd5e1";
+    X.lineWidth= d.V.path[t]===i ? 2.2 : 1;
+    X.beginPath(); X.arc(xOf(t),yOf(i),r,0,7); X.stroke(); X.lineWidth=1;
+    if(dx>=42){ X.fillStyle="#0f172a"; X.font="bold 9px ui-sans-serif,system-ui"; X.textAlign="center";
+      X.fillText(a.toFixed(2),xOf(t),yOf(i)-r-4); X.textAlign="left"; }
+  }
+
+  // observation row under the lattice
+  const oy=padT+bandH+16;
+  X.fillStyle="#475569"; X.font="bold 10px ui-sans-serif,system-ui"; X.fillText("observed oₜ",4,oy+14);
+  for(let t=0;t<T;t++){
+    X.fillStyle="#e0f2fe"; X.fillRect(xOf(t)-13,oy,26,24);
+    X.strokeStyle="#bae6fd"; X.strokeRect(xOf(t)-13,oy,26,24);
+    X.fillStyle="#0f172a"; X.font="13px ui-sans-serif,system-ui"; X.textAlign="center";
+    X.fillText(d.w.syms[d.obs[t]],xOf(t),oy+17); X.textAlign="left";
+  }
+  // scale factors
+  const cy=oy+42;
+  X.fillStyle="#475569"; X.font="bold 10px ui-sans-serif,system-ui"; X.fillText("scale cₜ",4,cy+12);
+  for(let t=0;t<T;t++){
+    X.fillStyle="#64748b"; X.font="9px ui-sans-serif,system-ui"; X.textAlign="center";
+    X.fillText(d.P.c[t].toFixed(3),xOf(t),cy+12); X.textAlign="left";
+  }
+  // running log-likelihood
+  const ly=cy+30; let run=0;
+  X.fillStyle="#475569"; X.font="bold 10px ui-sans-serif,system-ui"; X.fillText("Σ log cₜ",4,ly+12);
+  for(let t=0;t<T;t++){
+    run+=Math.log(d.P.c[t]);
+    X.fillStyle="#0ea5e9"; X.font="bold 9px ui-sans-serif,system-ui"; X.textAlign="center";
+    X.fillText(run.toFixed(2),xOf(t),ly+12); X.textAlign="left";
+  }
+}
+function treReport(){
+  const d=R.data; if(!d) return;
+  const N=d.w.pi.length, T=d.obs.length;
+  const ops=T*N*N, paths=Math.pow(N,T);
+  const diff=Math.abs(d.P.logLik-d.BF.logLik);
+  const vdiff=Math.abs(d.V.logProb-d.BF.bestLogProb);
+  const same=d.V.path.join("")===d.BF.bestPath.join("");
+  el("tPaths").textContent=paths.toLocaleString();
+  el("tOps").textContent=ops.toLocaleString();
+  el("tLL").textContent=d.P.logLik.toFixed(4);
+  el("tErr").textContent=diff.toExponential(1);
+  const ok = diff<1e-10 && vdiff<1e-10 && same;
+  setDiag(el("tDiag"), ok?"diag-good":"diag-bad",
+    ok?"✅ the dynamic program and the brute-force enumeration agree exactly":"❌ mismatch",
+    `Brute force just walked <b>all ${paths.toLocaleString()} hidden paths</b> in ${d.ms.toFixed(1)} ms and summed their probabilities:
+     <code>log P(O) = ${d.BF.logLik.toFixed(12)}</code>. The forward algorithm got
+     <code>${d.P.logLik.toFixed(12)}</code> using <b>${ops.toLocaleString()}</b> multiply-adds — a difference of
+     <b>${diff.toExponential(2)}</b>, which is floating-point noise, not disagreement.
+     Viterbi's best log-probability <code>${d.V.logProb.toFixed(12)}</code> matches the enumerated maximum
+     <code>${d.BF.bestLogProb.toFixed(12)}</code> and returns the <b>same path</b> (${same?"identical":"DIFFERENT"}):
+     <code>${d.V.path.map(i=>d.w.states[i][0]).join("")}</code>.
+     Push T to 12 and brute force is at ${Math.pow(N,12).toLocaleString()} paths while forward needs just ${(12*N*N).toLocaleString()} operations —
+     at T=100 the enumeration would need ${N===2?"1.3 × 10³⁰":"5 × 10⁴⁷"} paths and forward still needs ${(100*N*N).toLocaleString()}.`);
+}
+el("tTs").oninput=e=>{ R.T=+e.target.value; el("tTsV").textContent=R.T; treFit(); };
+el("tRoll").onclick=()=>{ R.seed=Math.floor(Math.random()*100000)+1; treFit(); };
+el("tBrute").onclick=()=>treFit();
+
+/* ================================================================
+   MODULE 3 — Baum-Welch learns the model
+   ================================================================ */
+const lrnC=el("lrnCanvas"), lrnX=lrnC.getContext("2d");
+let L={ key:"weather", T:1500, restart:1, obs:null, w:null, pi:null, A:null, B:null,
+        hist:[], trueLL:0, timer:null, it:0, perm:null };
+
+function lrnReset(){
+  if(L.timer){ clearInterval(L.timer); L.timer=null; el("lRun").textContent="▶ Run EM"; }
+  const w=cloneWorld(L.key);
+  L.w=w;
+  L.obs=sample(w,L.T,mulberry32(20260811)).obs;
+  L.trueLL=forward(L.obs,w.pi,w.A,w.B).logLik;
+  const N=w.pi.length, M=w.M, r=mulberry32(L.restart*7717);
+  const norm=v=>{ const s=v.reduce((a,b)=>a+b,0); return v.map(x=>x/s); };
+  L.pi=norm(Array.from({length:N},()=>r()+0.2));
+  L.A=Array.from({length:N},()=>norm(Array.from({length:N},()=>r()+0.2)));
+  L.B=Array.from({length:N},()=>norm(Array.from({length:M},()=>r()+0.1)));
+  L.hist=[forward(L.obs,L.pi,L.A,L.B).logLik];
+  L.it=0;
+  lrnDraw(); lrnReport(0);
+}
+function lrnStep(){
+  const st=bwStep(L.obs,L.pi,L.A,L.B,L.w.M);
+  L.pi=st.pi; L.A=st.A; L.B=st.B; L.it++;
+  const ll=forward(L.obs,L.pi,L.A,L.B).logLik;
+  const d=ll-L.hist[L.hist.length-1];
+  L.hist.push(ll);
+  lrnDraw(); lrnReport(d);
+  return d;
+}
+function bestPerm(){                     // align learned state labels to the true ones for display
+  const N=L.w.pi.length;
+  const perms = N===2 ? [[0,1],[1,0]] :
+    [[0,1,2],[0,2,1],[1,0,2],[1,2,0],[2,0,1],[2,1,0]];
+  let best=null;
+  for(const p of perms){
+    let e=0;
+    for(let i=0;i<N;i++) for(let k=0;k<L.w.M;k++) e+=Math.abs(L.B[p[i]][k]-L.w.B[i][k]);
+    for(let i=0;i<N;i++) for(let j=0;j<N;j++) e+=Math.abs(L.A[p[i]][p[j]]-L.w.A[i][j]);
+    if(!best||e<best.e) best={p,e};
+  }
+  return best;
+}
+function paramError(p){
+  const N=L.w.pi.length; let e=0;
+  for(let i=0;i<N;i++) for(let j=0;j<N;j++) e=Math.max(e,Math.abs(L.A[p[i]][p[j]]-L.w.A[i][j]));
+  for(let i=0;i<N;i++) for(let k=0;k<L.w.M;k++) e=Math.max(e,Math.abs(L.B[p[i]][k]-L.w.B[i][k]));
+  return e;
+}
+function lrnDraw(){
+  if(!L.obs) return;
+  const W=lrnC.width,H=lrnC.height,X=lrnX;
+  X.clearRect(0,0,W,H); X.fillStyle="#fbfdff"; X.fillRect(0,0,W,H);
+  const N=L.w.pi.length, M=L.w.M;
+
+  // ---------- log-likelihood curve ----------
+  const cx0=52,cx1=W-16,cy0=26,cy1=196;
+  X.fillStyle="#334155"; X.font="bold 11px ui-sans-serif,system-ui";
+  X.fillText("log P(O | λ) after each EM iteration — it can flatten, it never drops",cx0-42,16);
+  const vals=L.hist.concat([L.trueLL]);
+  let lo=Math.min(...vals), hi=Math.max(...vals);
+  const padv=(hi-lo)*0.12+1e-6; lo-=padv; hi+=padv;
+  const nIt=Math.max(1,L.hist.length-1);
+  const px=i=> cx0+(i/Math.max(1,nIt))*(cx1-cx0);
+  const py=v=> cy1-((v-lo)/(hi-lo))*(cy1-cy0);
+  X.strokeStyle="#e2e8f0"; X.strokeRect(cx0,cy0,cx1-cx0,cy1-cy0);
+  // true-model reference
+  X.strokeStyle="#94a3b8"; X.setLineDash([5,4]); X.beginPath();
+  X.moveTo(cx0,py(L.trueLL)); X.lineTo(cx1,py(L.trueLL)); X.stroke(); X.setLineDash([]);
+  X.fillStyle="#64748b"; X.font="9px ui-sans-serif,system-ui";
+  X.fillText("true model: "+L.trueLL.toFixed(1),cx1-118,Math.max(cy0+10,py(L.trueLL)-4));
+  // the curve
+  X.strokeStyle="#0ea5e9"; X.lineWidth=2.2; X.beginPath();
+  L.hist.forEach((v,i)=>{ i===0?X.moveTo(px(i),py(v)):X.lineTo(px(i),py(v)); });
+  X.stroke(); X.lineWidth=1;
+  L.hist.forEach((v,i)=>{ if(L.hist.length<=60){ X.fillStyle="#0ea5e9"; X.beginPath(); X.arc(px(i),py(v),2.2,0,7); X.fill(); } });
+  X.fillStyle="#64748b"; X.font="9px ui-sans-serif,system-ui";
+  X.fillText(hi.toFixed(0),8,cy0+8); X.fillText(lo.toFixed(0),8,cy1);
+  X.fillText("iteration 0",cx0,cy1+12); X.textAlign="right"; X.fillText(String(nIt),cx1,cy1+12); X.textAlign="left";
+
+  // ---------- matrices ----------
+  const perm=bestPerm().p;
+  const cell=(x,y,w,h,v,truth)=>{
+    X.fillStyle=`rgba(14,165,233,${0.08+0.82*v})`; X.fillRect(x,y,w,h);
+    X.strokeStyle="#e2e8f0"; X.strokeRect(x,y,w,h);
+    X.fillStyle= v>0.55 ? "#ffffff" : "#0f172a"; X.font="bold 11px ui-sans-serif,system-ui";
+    X.textAlign="center"; X.fillText(v.toFixed(2),x+w/2,y+h/2+1);
+    X.fillStyle= v>0.55 ? "rgba(255,255,255,.8)" : "#94a3b8"; X.font="9px ui-sans-serif,system-ui";
+    X.fillText(truth.toFixed(2),x+w/2,y+h/2+13); X.textAlign="left";
+  };
+  // A
+  const ax=64, ay=250, aw=Math.min(46,150/N), ah=34;
+  X.fillStyle="#334155"; X.font="bold 11px ui-sans-serif,system-ui";
+  X.fillText("learned A  (transition)",ax-2,ay-16);
+  for(let i=0;i<N;i++){
+    X.fillStyle=SC[i%3]; X.font="bold 9px ui-sans-serif,system-ui"; X.textAlign="right";
+    X.fillText(L.w.states[i],ax-5,ay+i*ah+ah/2+3); X.textAlign="left";
+    for(let j=0;j<N;j++) cell(ax+j*aw,ay+i*ah,aw,ah,L.A[perm[i]][perm[j]],L.w.A[i][j]);
+  }
+  for(let j=0;j<N;j++){ X.fillStyle="#64748b"; X.font="9px ui-sans-serif,system-ui"; X.textAlign="center";
+    X.fillText(L.w.states[j].slice(0,4),ax+j*aw+aw/2,ay+N*ah+11); X.textAlign="left"; }
+  // B
+  const bx=Math.max(ax+N*aw+56,250), bw=Math.min(52,(W-bx-24)/M), bh=34, by=250;
+  X.fillStyle="#334155"; X.font="bold 11px ui-sans-serif,system-ui";
+  X.fillText("learned B  (emission)   ·   small grey = the true value",bx-2,by-16);
+  for(let i=0;i<N;i++){
+    X.fillStyle=SC[i%3]; X.font="bold 9px ui-sans-serif,system-ui"; X.textAlign="right";
+    X.fillText(L.w.states[i],bx-5,by+i*bh+bh/2+3); X.textAlign="left";
+    for(let k=0;k<M;k++) cell(bx+k*bw,by+i*bh,bw,bh,L.B[perm[i]][k],L.w.B[i][k]);
+  }
+  for(let k=0;k<M;k++){ X.fillStyle="#0f172a"; X.font="12px ui-sans-serif,system-ui"; X.textAlign="center";
+    X.fillText(L.w.syms[k],bx+k*bw+bw/2,by+N*bh+14); X.textAlign="left"; }
+}
+function lrnReport(delta){
+  if(!L.obs) return;
+  const perm=bestPerm().p, err=paramError(perm);
+  const ll=L.hist[L.hist.length-1];
+  el("lIt").textContent=L.it;
+  el("lLL").textContent=ll.toFixed(1);
+  el("lD").textContent= L.it===0 ? "—" : (delta>=0?"+":"")+delta.toExponential(1);
+  el("lErr").textContent=err.toFixed(3);
+  let mono=true; for(let i=1;i<L.hist.length;i++) if(L.hist[i]<L.hist[i-1]-1e-8) mono=false;
+  const gain=ll-L.hist[0];
+  const beatsTrue = ll>=L.trueLL;
+  setDiag(el("lDiag"), L.it===0?"diag-info":(mono?"diag-good":"diag-bad"),
+    L.it===0 ? "🎲 random start — the model currently knows nothing"
+             : (mono ? `✅ ${L.it} EM iteration${L.it>1?"s":""}, log-likelihood monotonically up by ${gain.toFixed(2)} nats`
+                     : "❌ likelihood decreased — that would be a bug"),
+    `Starting from a random <code>π, A, B</code>, EM has moved the fit from <b>${L.hist[0].toFixed(2)}</b> to <b>${ll.toFixed(2)}</b>
+     on ${L.obs.length} observations, and the largest gap between any learned probability and the true one is now <b>${err.toFixed(3)}</b>.
+     The dashed line is the true model's score on this data, <b>${L.trueLL.toFixed(2)}</b> — EM ${beatsTrue?"has already passed it":"is still below it"}.
+     ${beatsTrue?"That is expected and correct: maximum likelihood fits <em>this sample</em>, and the best fit to a finite sample is never exactly the process that generated it.":"Keep iterating."}
+     Nothing here saw a single hidden state — the labels come purely from the structure in the observations, which is also why the
+     state <em>names</em> are arbitrary (the display picks whichever labelling matches the truth best). Change the <b>restart</b> seed to
+     start EM somewhere else: it usually reaches the same plateau, occasionally a worse local optimum — which is why real code runs several restarts and keeps the best.`);
+}
+el("lTs").oninput=e=>{ L.T=+e.target.value; el("lTsV").textContent=L.T; lrnReset(); };
+el("lRs").oninput=e=>{ L.restart=+e.target.value; el("lRsV").textContent=L.restart; lrnReset(); };
+el("lStep").onclick=()=>lrnStep();
+el("lReset").onclick=()=>lrnReset();
+el("lRun").onclick=()=>{
+  if(L.timer){ clearInterval(L.timer); L.timer=null; el("lRun").textContent="▶ Run EM"; return; }
+  el("lRun").textContent="⏸ Pause";
+  L.timer=setInterval(()=>{
+    const d=lrnStep();
+    if(L.it>=250 || (L.it>6 && Math.abs(d)<1e-7)){ clearInterval(L.timer); L.timer=null; el("lRun").textContent="▶ Run EM"; }
+  },70);
+};
+
+/* ================================================================
+   world pickers + module switching
+   ================================================================ */
+function decButtons(){ worldButtons(el("dKind"),D.key,k=>{ D.key=k; decButtons(); decFit(); }); }
+function treButtons(){ worldButtons(el("tKind"),R.key,k=>{ R.key=k; treButtons(); treFit(); }); }
+function lrnButtons(){ worldButtons(el("lKind"),L.key,k=>{ L.key=k; lrnButtons(); lrnReset(); }); }
+
+const subBtns=document.querySelectorAll("#subnav button");
+function showMod(m){
+  document.querySelectorAll(".mod").forEach(x=>x.classList.add("hidden"));
+  el("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m));
+  if(m==="dec") decDraw();
+  if(m==="tre") treDraw();
+  if(m==="lrn") lrnDraw();
+}
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+/* ---------------- init ---------------- */
+decButtons(); treButtons(); lrnButtons();
+decFit(); treFit(); lrnReset();
+document.querySelector('[data-mod="dec"]').classList.add("on");
+showMod("dec");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. A Markov chain — the memory you are allowed to keep",
+   why:"Start with the visible version. A Markov chain is a system that moves between states, where the probability of the next state depends ONLY on the current one — not on how you arrived, not on anything earlier. That is the Markov property, and it is a modelling assumption, not a fact about the world: you are declaring that the current state is a sufficient summary of the entire past. It buys an enormous amount, because it means the whole process is described by one small table A where A[i][j] is the probability of moving from state i to state j, plus a starting distribution π. Every row of A sums to 1 because from state i you must go somewhere. If you can actually observe which state you are in, fitting this is pure counting — no algorithm needed, just tally the transitions you saw and normalise.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">P(qₜ₊₁ | qₜ, qₜ₋₁, …, q₀) = P(qₜ₊₁ | qₜ)<br><br>π = where the chain starts<br>A[i][j] = P(next = j | now = i)<br><br>rows of A sum to 1 · the past beyond "now" is discarded</div>`,
+   code:`# a VISIBLE Markov chain: fitting it is just counting
+counts = zeros((N, N))
+for t in range(len(states) - 1):
+    counts[states[t]][states[t+1]] += 1
+A = counts / counts.sum(axis=1, keepdims=True)   # normalise each row
+# nothing hidden here — no forward, no Viterbi, no EM needed` },
+
+ { title:"2. Hiding the states — what makes it an HMM",
+   why:"Now remove your ability to see the states. The chain still runs underneath, hopping according to A, but at each step all you receive is an OBSERVATION emitted by whatever state you are currently in — governed by a second table B, where B[i][k] is the probability that state i emits symbol k. That single change turns easy counting into genuine inference, because the same observation can be produced by different states with different probabilities, and any observation sequence is consistent with every possible hidden path, just at wildly different likelihoods. The second assumption, output independence, says an observation depends only on the state that emitted it — not on previous observations or previous states. So the entire model is λ = (π, A, B): three tables, two assumptions, and a permanent uncertainty about where you are.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">hidden:   q₀ → q₁ → q₂ → q₃ → …   (chain, via A)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓<br>seen:&nbsp;&nbsp;&nbsp;&nbsp; o₀&nbsp;&nbsp;&nbsp; o₁&nbsp;&nbsp;&nbsp; o₂&nbsp;&nbsp;&nbsp; o₃&nbsp;&nbsp; (emissions, via B)<br><br>λ = (π, A, B)<br>B[i][k] = P(observe k | state i)</div>`,
+   code:`model = {
+  "pi": [0.85, 0.15],                       # start FAIR / LOADED
+  "A":  [[0.95, 0.05],                      # FAIR   -> FAIR / LOADED
+         [0.10, 0.90]],                     # LOADED -> FAIR / LOADED
+  "B":  [[1/6]*6,                           # FAIR die
+         [.1,.1,.1,.1,.1,.5]]               # LOADED die loves sixes
+}
+# you observe the ROLLS. you never observe FAIR vs LOADED.` },
+
+ { title:"3. The three questions — evaluation, decoding, learning",
+   why:"Every use of an HMM is one of exactly three questions, and it pays to name them before touching any maths. EVALUATION: given λ and an observation sequence O, how likely is O? This is the score you use to compare models, so it turns an HMM into a classifier — train one HMM per word or per gesture, then pick whichever gives the highest score. DECODING: given λ and O, which hidden state sequence most likely produced it? This is what you want when the states themselves are the answer — which words were spoken, where the genes are, when the market was in a bear regime. LEARNING: given only O, what are π, A and B? This is the remarkable one, because it fits a model of a hidden process using data that never once reveals that process. Forward answers the first, Viterbi the second, Baum-Welch the third — and all three are variations on the same dynamic-programming idea.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">1 EVALUATION  P(O | λ) = ?        → forward<br>2 DECODING    argmax_q P(q | O,λ) → Viterbi<br>3 LEARNING    argmax_λ P(O | λ)   → Baum-Welch (EM)<br><br>same lattice, three different sweeps across it</div>`,
+   code:`score = model.score(O)          # 1. evaluation  — the forward algorithm
+path  = model.predict(O)        # 2. decoding    — Viterbi
+model.fit(O)                    # 3. learning    — Baum-Welch / EM
+
+# classify by score: one HMM per class, pick the biggest number
+best = max(classes, key=lambda c: hmms[c].score(O))` },
+
+ { title:"4. The combinatorial wall — why the definition is unusable",
+   why:"P(O | λ) has a perfectly clear definition: sum the joint probability P(O, q | λ) over EVERY hidden path q. Each path's probability is a simple product — π for the first state, then alternating transition and emission factors. The problem is the number of paths: N choices at every one of T timesteps gives N^T of them. For a 2-state chain and 100 observations that is 1.3 × 10^30 paths; enumerated at a billion per second the sum finishes long after the sun burns out. This is the wall that makes HMMs look impossible on paper. What rescues them is not an approximation but an observation about structure: those paths are enormously redundant, because vast numbers of them share the same prefix, and a shared prefix contributes the same factor to every path that shares it. Compute each shared piece once and the exponential collapses.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">P(O|λ) = Σ_over_all_paths P(O, q | λ)<br><br>T=9,  N=2  →            512 paths<br>T=20, N=2  →      1,048,576 paths<br>T=100,N=2  →  1.3 × 10³⁰ paths ✗<br><br>but every path shares prefixes with billions of others</div>`,
+   code:`# the definition, coded literally — correct and hopeless
+def brute(o, pi, A, B):
+    total = 0.0
+    for path in itertools.product(range(N), repeat=len(o)):   # N^T of them
+        p = pi[path[0]] * B[path[0]][o[0]]
+        for t in range(1, len(o)):
+            p *= A[path[t-1]][path[t]] * B[path[t]][o[t]]
+        total += p
+    return total
+# use it ONLY as a test oracle for tiny T` },
+
+ { title:"5. The forward algorithm — one column at a time",
+   why:"Define αₜ(i) = P(o₀…oₜ, qₜ = i | λ): the total probability of everything seen up to time t AND being in state i right now. The magic is that this quantity is enough to move forward — you do not need the path that got you here, only the accumulated mass sitting in each state, which is exactly what the Markov property promised. So αₜ(j) = [Σᵢ αₜ₋₁(i)·A[i][j]] · B[j][oₜ]: gather the mass arriving from every previous state, then multiply by the probability of the emission you actually observed. Each column costs N² multiply-adds and there are T columns, giving O(T·N²) total — linear in sequence length. Sum the last column and you have the exact P(O|λ), not an approximation. The exponential did not get approximated away; it got factored away.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">αₜ(i) = P(o₀…oₜ , qₜ = i | λ)<br><br>αₜ(j) = [ Σᵢ αₜ₋₁(i) · A[i][j] ] · B[j][oₜ]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;hop&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;emit<br><br>P(O|λ) = Σᵢ α_{T−1}(i)<br>cost O(T·N²) — exact, not approximate</div>`,
+   code:`alpha = [[pi[i] * B[i][o[0]] for i in range(N)]]     # column 0
+for t in range(1, T):
+    col = []
+    for j in range(N):
+        hop = sum(alpha[t-1][i] * A[i][j] for i in range(N))
+        col.append(hop * B[j][o[t]])                    # then emit
+    alpha.append(col)
+P_O = sum(alpha[T-1])          # exact P(O | lambda)` },
+
+ { title:"6. Scaling — the bug that only appears on long sequences",
+   why:"Written exactly as above, the forward algorithm is mathematically right and practically broken. Every step multiplies by a transition probability and an emission probability, both below 1, so α shrinks geometrically; after a few hundred timesteps it underflows to exactly 0 in float64 and every downstream number becomes NaN. The fix is to normalise each column to sum to 1 and remember the normaliser cₜ. The normalised α̂ₜ(i) then has an interpretation worth having on its own — it is P(qₜ = i | o₀…oₜ), the FILTERED belief about the current state given everything so far, which is what a real-time tracker reports — and the discarded scale factors reassemble the answer: log P(O) = Σ log cₜ. This is the single most common source of silent HMM bugs, and it is three lines.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">unscaled α at t=400  →  1e-312  →  0.0  ✗<br><br>cₜ = Σᵢ αₜ(i)          α̂ₜ(i) = αₜ(i) / cₜ<br><br>log P(O|λ) = Σₜ log cₜ&nbsp;&nbsp;&nbsp;&nbsp;(never underflows)<br>α̂ₜ(i) = P(qₜ = i | o₀…oₜ) = the FILTERED belief</div>`,
+   code:`c = []
+for t in range(T):
+    ...                                  # build the raw column
+    ct = sum(col); c.append(ct)
+    col = [v / ct for v in col]          # normalise: col is now a belief
+    alpha.append(col)
+
+logP = sum(math.log(ct) for ct in c)     # exact, and safe for any T` },
+
+ { title:"7. Backward and the posteriors — using the future too",
+   why:"The filtered belief α̂ₜ only knows the past, but once the whole sequence is in hand you can do better: evidence AFTER time t also tells you about the state AT time t. βₜ(i) = P(oₜ₊₁…o_{T−1} | qₜ = i) captures exactly that, computed by the same recursion run right to left. Multiply the two and normalise and you get γₜ(i) = P(qₜ = i | the ENTIRE sequence) — the smoothed posterior, always at least as sharp as the filtered one. The contrast is the practical point: filtering is what you can do online, smoothing is what you can do afterwards, and smoothing is strictly better informed. The pairwise version ξₜ(i,j) = P(qₜ = i, qₜ₊₁ = j | O) counts expected transitions the same way, and those two quantities are precisely what learning will need.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">αₜ(i) knows o₀…oₜ&nbsp;&nbsp;&nbsp;&nbsp;(the past)<br>βₜ(i) knows oₜ₊₁…o_T&nbsp; (the future)<br><br>γₜ(i) ∝ αₜ(i) · βₜ(i)&nbsp;&nbsp;→ P(qₜ = i | ALL of O)<br>ξₜ(i,j) ∝ αₜ(i)·Aᵢⱼ·Bⱼ(oₜ₊₁)·βₜ₊₁(j)<br><br>Σᵢ γₜ(i) = 1&nbsp;&nbsp;·&nbsp;&nbsp;Σⱼ ξₜ(i,j) = γₜ(i)</div>`,
+   code:`beta = [[0]*N for _ in range(T)]
+beta[T-1] = [1/c[T-1]] * N                        # reuse forward's scales
+for t in range(T-2, -1, -1):
+    for i in range(N):
+        beta[t][i] = sum(A[i][j]*B[j][o[t+1]]*beta[t+1][j]
+                         for j in range(N)) / c[t]
+
+gamma = [[alpha[t][i]*beta[t][i]*c[t] for i in range(N)] for t in range(T)]
+xi    = [[[alpha[t][i]*A[i][j]*B[j][o[t+1]]*beta[t+1][j]
+           for j in range(N)] for i in range(N)] for t in range(T-1)]` },
+
+ { title:"8. Viterbi — swap the sum for a max, keep backpointers",
+   why:"Forward asks how much total probability reaches each cell. Viterbi asks a different question: what is the best SINGLE path that reaches it? The recursion is identical except Σ becomes max, and you record which predecessor won so you can walk the chain of winners backwards at the end. That backpointer array is what makes it a decoder rather than just a score. Crucially Viterbi returns a globally consistent path — every transition in it is one the model permits — which is not true of the obvious alternative of picking argmax γₜ(i) independently at each timestep; that per-step choice can stitch together a sequence containing a transition of probability zero, a path the model considers literally impossible. Do it all in log space: sums of logs never underflow, and since log is monotone increasing the argmax is unchanged.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">forward:  αₜ(j) = [ Σᵢ … ] · Bⱼ(oₜ)&nbsp;&nbsp;→ total mass<br>Viterbi:  δₜ(j) = [ maxᵢ … ] · Bⱼ(oₜ)&nbsp;→ best path<br><br>ψₜ(j) = argmaxᵢ …&nbsp;&nbsp;&nbsp;&nbsp;(the backpointer)<br>then walk ψ backwards from the best final state<br><br>Viterbi path is always LEGAL · per-step argmax γ may not be</div>`,
+   code:`d   = [[log(pi[i]) + log(B[i][o[0]]) for i in range(N)]]
+psi = [[0]*N for _ in range(T)]
+for t in range(1, T):
+    col = []
+    for j in range(N):
+        best, arg = max((d[t-1][i] + log(A[i][j]), i) for i in range(N))
+        col.append(best + log(B[j][o[t]])); psi[t][j] = arg
+    d.append(col)
+
+path = [max(range(N), key=lambda i: d[T-1][i])]
+for t in range(T-1, 0, -1): path.append(psi[t][path[-1]])
+path.reverse()` },
+
+ { title:"9. Baum-Welch — EM when you cannot see the states",
+   why:"If the hidden states were visible, fitting λ would be counting: how often did state i start a sequence, how often did i lead to j, how often did i emit symbol k. You cannot see them — so use EXPECTED counts under the current model instead. That is exactly Expectation-Maximisation, the same engine that fits a Gaussian mixture (D22), applied to sequences. The E-step is the forward-backward pass you already wrote: γₜ(i) is the expected number of times you were in state i at time t, and ξₜ(i,j) is the expected number of i→j transitions at that step. The M-step just normalises those totals into new tables: π ← γ₀, A[i][j] ← Σξ(i,j)/Σγ(i), B[i][k] ← the γ mass on timesteps where symbol k appeared, over all the γ mass for i. Iterate. Every parameter is learned from observations alone, with no labelled states anywhere.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">E-step:  run forward-backward → γ, ξ&nbsp;&nbsp;(expected counts)<br><br>M-step:&nbsp;&nbsp;πᵢ&nbsp;&nbsp;&nbsp;&nbsp; ← γ₀(i)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;A[i][j] ← Σₜ ξₜ(i,j) / Σₜ γₜ(i)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;B[i][k] ← Σ_{t: oₜ=k} γₜ(i) / Σₜ γₜ(i)<br><br>repeat — no labelled states are ever required</div>`,
+   code:`for iteration in range(200):
+    gamma, xi = forward_backward(o, pi, A, B)        # E-step
+    pi = gamma[0]                                    # M-step
+    for i in range(N):
+        denA = sum(gamma[t][i] for t in range(T-1))
+        for j in range(N):
+            A[i][j] = sum(xi[t][i][j] for t in range(T-1)) / denA
+        denB = sum(gamma[t][i] for t in range(T))
+        for k in range(M):
+            B[i][k] = sum(gamma[t][i] for t in range(T) if o[t]==k) / denB` },
+
+ { title:"10. The guarantee, and its limits — monotone but local",
+   why:"Baum-Welch comes with a real theorem: each iteration produces parameters whose likelihood is greater than or equal to the previous ones. Never worse. That is a wonderful property — no learning rate, no divergence, and a decreasing likelihood in your log is proof of a bug, which makes the algorithm unusually easy to debug. What the theorem does NOT promise is the global maximum, or the true parameters. EM climbs to whatever local optimum its starting point sits under, so different random initialisations reach different answers and real code runs several restarts and keeps the best likelihood. It also converges to the maximum-likelihood fit of the sample you gave it, which on finite data is deliberately not the process that generated it — you will routinely see EM finish slightly ABOVE the true model's score. And because it optimises fit rather than labels, the state numbering is arbitrary: a refit's state 0 may be your state 1.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">guaranteed:&nbsp; L(λ_{k+1}) ≥ L(λ_k)&nbsp;&nbsp;every iteration<br>NOT guaranteed:&nbsp; the global optimum<br>NOT guaranteed:&nbsp; the true parameters<br><br>→ many random restarts, keep the best likelihood<br>→ a likelihood that DROPS = a bug in your code<br>→ state labels are arbitrary (permutation-invariant)</div>`,
+   code:`best = None
+for seed in range(10):                 # EM is LOCAL — restart
+    lam = random_init(seed)
+    prev = -inf
+    for it in range(200):
+        lam, ll = bw_step(o, lam)
+        assert ll >= prev - 1e-9       # the theorem, as a test
+        if ll - prev < 1e-4: break     # converged
+        prev = ll
+    if best is None or ll > best[1]: best = (lam, ll)` },
+
+ { title:"11. Where the HMM belongs today",
+   why:"Reach for an HMM when your data is a sequence, the quantity you care about is latent, and you want the states to MEAN something: market regimes, gene annotation, sleep stages, machine health, activity recognition, tagging, alignment. It shines with little data because it has very few parameters, it trains with no labels at all, it gives calibrated probabilities rather than a point guess, and you can read its tables and argue with them. Its limits are equally clear: the Markov assumption means the current state must summarise all relevant history, so genuinely long-range structure needs something else; the number of states is a choice you must make (by BIC or held-out likelihood, never by 'it fit better'); and O(T·N²) becomes painful with many states. That is the trade against an RNN or Transformer (DL D10-13), which drop the assumption and win on scale, but need labels or a mountain of data and hand you an opaque vector instead of a table you can read.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">little data · latent states must be interpretable → HMM ✅<br>continuous smooth physical state → Kalman filter<br>you HAVE labels + rich features → CRF<br>huge data, long dependencies → RNN / Transformer<br><br>choose N by BIC / held-out likelihood · always restart EM</div>`,
+   code:`from hmmlearn.hmm import GaussianHMM
+# choose the number of hidden states honestly
+for n in range(2, 7):
+    m = GaussianHMM(n_components=n, n_iter=200, random_state=0).fit(X)
+    k = n*n + 2*n*d - 1                       # free parameters
+    print(n, -2*m.score(X) + k*np.log(len(X)))   # BIC — lower is better
+
+regimes = best.predict(X)     # now these states MEAN something` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
