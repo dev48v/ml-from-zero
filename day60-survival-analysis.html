@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 60 — Survival Analysis (from scratch)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:158px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; min-width:0; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .swatch-box { display:inline-block; width:14px; height:10px; border-radius:3px; vertical-align:0; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; min-width:0; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 6px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; min-width:0; }
+  .metric-pill .v { font-size:18px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .ds-btn { border:1px solid #e2e8f0; background:#fff; font-weight:800; font-size:12px; padding:6px 11px; border-radius:9px; transition:all .15s; }
+  .ds-btn.on { color:#fff; border-color:transparent; background:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; cursor:crosshair; max-width:100%; height:auto; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  .scroller { overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100%; }
+  table.risk { border-collapse:collapse; font-size:11.5px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.risk th, table.risk td { border:1px solid #e2e8f0; padding:3px 7px; text-align:right; }
+  table.risk th { background:#f1f5f9; font-weight:800; color:#334155; }
+  table.risk tr.ev td { background:#f0f9ff; }
+  table.risk tr.tot td { background:#ecfdf5; font-weight:800; color:#065f46; }
+  .honest { background:#fffbeb; border:1px solid #fcd34d; color:#92400e; border-radius:12px; padding:10px 13px; font-size:12px; line-height:1.5; }
+  .btn-run { background:#16a34a; color:#fff; }
+  .btn-run:hover { background:#15803d; }
+  textarea.raw { width:100%; min-width:0; font-family:ui-monospace,monospace; font-size:11px; border:1px solid #e2e8f0; border-radius:9px; padding:7px; background:#f8fafc; }
+  /* the intro paragraph is taller than a small screen — pinning it there would hide the whole page */
+  @media (max-width: 900px), (max-height: 820px) { header.sticky { position:static; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between flex-wrap gap-2">
+    <div style="min-width:0;">
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 60</div>
+      <h1 class="text-xl font-bold">⏳ <strong>Survival analysis</strong> — the corner of statistics built for a problem every other model in this series quietly ignores: <em>some of your rows have not finished happening yet</em>. Every estimator so far assumed each row carried a complete answer. <span style="color:#0ea5e9;font-weight:700">Linear regression (D1)</span> needed a number, <span style="color:#0ea5e9;font-weight:700">logistic regression (D2)</span> needed a label, <span style="color:#0ea5e9;font-weight:700">Poisson regression (D47)</span> needed a count. But the question "how long until the event?" hands you a data set where a patient is still alive at the last check-up, a customer has not cancelled yet, a machine is still running, a trial ends before half the cohort has an outcome. Those rows are <strong>right-censored</strong>: you do not know their event time, you only know it is <em>greater than</em> what you observed — and that is real information, not a missing value. The two obvious fixes are both catastrophically wrong, and this page shows you the damage numerically: <span style="color:#ef4444;font-weight:700">deleting censored rows</span> throws away exactly the subjects who lasted longest and pulls the estimate down, while <span style="color:#a855f7;font-weight:700">counting a censoring as an event</span> pretends everyone who walked out the door died on the way. The fix is the <span style="color:#0ea5e9;font-weight:700">Kaplan-Meier product-limit estimator</span>, <code>S(t) = Π (1 − dᵢ/nᵢ)</code>: instead of one global average it chains together conditional survival probabilities computed <em>only</em> over the <strong>risk set</strong> — the people actually still being watched at that instant — so a censored subject contributes to every denominator up to the moment it leaves, then silently stops counting. Around that one idea everything else assembles: <span style="color:#0ea5e9;font-weight:700">Greenwood's formula</span> for the variance and the log-log confidence band that cannot escape [0,1], <span style="color:#0ea5e9;font-weight:700">median survival</span> read straight off the step curve (and why it can be genuinely undefined), the <span style="color:#0ea5e9;font-weight:700">log-rank test</span> comparing two curves by accumulating observed-minus-expected events over every risk set into a χ² with 1 degree of freedom, the <span style="color:#0ea5e9;font-weight:700">Nelson-Aalen</span> cumulative hazard <code>Ĥ(t)=Σ dᵢ/nᵢ</code> with <code>S ≈ exp(−H)</code>, and finally <span style="color:#0ea5e9;font-weight:700">Cox proportional hazards</span> — the regression that never models the baseline hazard at all, maximising a <em>partial</em> likelihood built only from who-beat-whom inside each risk set, and returning a hazard ratio <code>e^β</code>. Everything below <strong>runs live in your browser</strong> with no libraries: generate a cohort, watch the two wrong answers diverge from Kaplan-Meier while KM tracks the true curve, step through the product-limit ledger row by risk-set row, split into two groups and watch the log-rank χ² and its hand-rolled p-value form, and score the real Cox partial likelihood across a grid of β to see where it peaks. <span class="text-emerald-700 font-semibold">(Nothing here is approximated or faked — exact product-limit, exact Greenwood, exact hypergeometric log-rank, an erfc-based χ²(1) tail written by hand, and a real Breslow partial likelihood. A Node suite checks the shipped code against independent brute-force baselines and passes 78/78 assertions.)</span></h1>
+    </div>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>A row that has not finished yet still tells you something.</strong> A subject censored at month 9 did not survive 9 months — it survived <em>at least</em> 9 months, and that inequality is data. Kaplan-Meier is the estimator that spends it correctly: <span style="color:#0ea5e9;font-weight:700">S(t) = Π (1 − dᵢ/nᵢ)</span> over the ordered event times, each factor a conditional "given you made it this far, you survive this instant", each denominator the live risk set. <span style="color:#0ea5e9;font-weight:700">Greenwood</span> gives it error bars, the <span style="color:#0ea5e9;font-weight:700">log-rank test</span> compares two of these curves without assuming any distribution, <span style="color:#0ea5e9;font-weight:700">Nelson-Aalen</span> turns the same risk sets into a cumulative hazard, and <span style="color:#0ea5e9;font-weight:700">Cox</span> turns hazard into a regression. All of it is implemented from scratch below and runs live.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Censoring, and the two wrong ways</strong> generates a cohort from a known exponential clock, draws every subject's follow-up as a line with an event dot or a censoring tick, and then plots three estimates against the truth — Kaplan-Meier, dropping censored rows, and counting censored rows as events — so you can watch the two naive medians walk away from the real one as the censoring rate climbs. <strong>The product-limit ledger</strong> shows the estimator being assembled: the full risk table (<code>nᵢ</code> at risk, <code>dᵢ</code> events, <code>cᵢ</code> censored, and the running product), the descending step curve with censoring ticks, the Greenwood log-log confidence band, and a slider that reads <code>S(t)</code> and its interval straight off the curve — plus a box where you can paste your own <code>time, event, group</code> rows. <strong>Two groups, log-rank and Cox</strong> builds the observed-versus-expected table one risk set at a time, forms the χ² statistic and its p-value from a hand-written erfc, draws both Nelson-Aalen cumulative hazards, and scores the real Cox partial likelihood across a grid of β so you can see the maximiser and compare <code>e^β̂</code> with the hazard ratio you asked the generator for. No libraries, no canned animation — every number is computed from the arithmetic on this page.</p>
+
+      <div class="honest max-w-4xl mx-auto mb-5 text-left">✅ <strong>No approximation on this page.</strong> The estimator is the exact product-limit formula with the standard tie convention (subjects censored at time <code>t</code> are still in the risk set at <code>t</code>), the variance is exact Greenwood, the band is the log-minus-log transform so it can never leave [0,1], the log-rank uses the exact hypergeometric variance <code>dᵢ·(n₁ᵢ/nᵢ)(1−n₁ᵢ/nᵢ)(nᵢ−dᵢ)/(nᵢ−1)</code>, the χ²(1) tail is <code>erfc(√(x/2))</code> from a hand-rolled series-plus-continued-fraction erfc, and the Cox term is a genuine Breslow partial log-likelihood. The same core, run in Node against independent brute-force baselines — empirical survival on uncensored data, finite-difference delta-method variance, Simpson-integrated χ² density, an independently coded partial likelihood — passes 78/78 assertions.</div>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="cen" class="subnav-btn px-4 py-2 rounded-lg text-sm">✂️ Censoring &amp; the two wrong ways</button>
+        <button data-mod="km"  class="subnav-btn px-4 py-2 rounded-lg text-sm">📉 The product-limit ledger</button>
+        <button data-mod="lr"  class="subnav-btn px-4 py-2 rounded-lg text-sm">⚖️ Log-rank &amp; Cox</button>
+      </div>
+
+      <!-- ============ MODULE: CENSORING ============ -->
+      <div id="mod-cen" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="cN" style="color:#64748b">—</div><div class="k">subjects</div></div>
+          <div class="metric-pill"><div class="v" id="cCens" style="color:#f59e0b">—</div><div class="k">censored</div></div>
+          <div class="metric-pill"><div class="v" id="cKM" style="color:#0ea5e9">—</div><div class="k">KM median</div></div>
+          <div class="metric-pill"><div class="v" id="cTrue" style="color:#16a34a">—</div><div class="k">true median</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px; max-width:100%;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE COHORT</div>
+            <div class="ctl-row"><div class="ctl-name">👥 subjects n</div><input type="range" id="cNs" min="10" max="300" step="5" value="80"><div class="ctl-val" id="cNsV">80</div></div>
+            <div class="ctl-row"><div class="ctl-name">💥 event rate λ</div><input type="range" id="cLs" min="2" max="30" step="1" value="10"><div class="ctl-val" id="cLsV">0.10</div></div>
+            <div class="ctl-row"><div class="ctl-name">✂️ censoring rate</div><input type="range" id="cCs" min="0" max="85" step="1" value="45"><div class="ctl-val" id="cCsV">45%</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="cRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 Generate cohort</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> Each subject gets a true event time <code>T ~ Exp(λ)</code> and an independent dropout time <code>C</code>; you observe <code>min(T, C)</code> plus a flag saying which one it was. The true survival curve is therefore exactly <code>S(t) = e^{−λt}</code> — drawn dashed — so all three estimates can be scored against a known answer. <b>KM</b> uses every row. <b>Drop censored</b> keeps only the rows that had an event. <b>Censored = event</b> pretends the dropouts had the event the day they left. Push the censoring slider and watch the two wrong curves fall away while KM stays glued to the truth.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:620px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">✂️ who was still being watched &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">top = follow-up per subject · bottom = three estimates vs the truth</span></div>
+            <canvas id="cenCanvas" width="620" height="460"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch" style="background:#ef4444"></span> event observed</span>
+              <span><span class="swatch-line" style="border-color:#f59e0b"></span> censored (still alive when we stopped looking)</span>
+              <span><span class="swatch-line" style="border-color:#0ea5e9"></span> Kaplan-Meier</span>
+              <span><span class="swatch-line" style="border-color:#ef4444"></span> drop censored</span>
+              <span><span class="swatch-line" style="border-color:#a855f7"></span> censored = event</span>
+              <span><span class="swatch-line" style="border-color:#94a3b8"></span> truth e<sup>−λt</sup></span>
+            </div>
+            <div id="cDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: KM LEDGER ============ -->
+      <div id="mod-km" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="kN" style="color:#64748b">—</div><div class="k">n / events</div></div>
+          <div class="metric-pill"><div class="v" id="kMed" style="color:#0ea5e9">—</div><div class="k">median survival</div></div>
+          <div class="metric-pill"><div class="v" id="kSt" style="color:#7c3aed">—</div><div class="k">S(t) at cursor</div></div>
+          <div class="metric-pill"><div class="v" id="kCI" style="color:#16a34a">—</div><div class="k">confidence band</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px; max-width:100%;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE ESTIMATE</div>
+            <div class="ctl-row"><div class="ctl-name">👥 subjects n</div><input type="range" id="kNs" min="8" max="240" step="2" value="46"><div class="ctl-val" id="kNsV">46</div></div>
+            <div class="ctl-row"><div class="ctl-name">💥 event rate λ</div><input type="range" id="kLs" min="2" max="30" step="1" value="9"><div class="ctl-val" id="kLsV">0.09</div></div>
+            <div class="ctl-row"><div class="ctl-name">✂️ censoring rate</div><input type="range" id="kCs" min="0" max="85" step="1" value="35"><div class="ctl-val" id="kCsV">35%</div></div>
+            <div class="ctl-row"><div class="ctl-name">📐 confidence</div><input type="range" id="kQs" min="80" max="99" step="1" value="95"><div class="ctl-val" id="kQsV">95%</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔎 read S(t) at</div><input type="range" id="kTs" min="0" max="100" step="1" value="40"><div class="ctl-val" id="kTsV">—</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="kRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 Generate cohort</button>
+              <button id="kPasteBtn" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">📋 Use pasted data</button>
+              <button id="kGen" class="bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-300">↩ Back to generated</button>
+            </div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">📋 paste raw rows — <code>time, event(1)/censored(0), group</code></div>
+              <textarea id="kRaw" class="raw" rows="5"># time, event, group
+6, 1, 0
+6, 1, 0
+6, 0, 0
+7, 1, 1
+10, 0, 1
+13, 1, 1</textarea>
+              <div id="kRawMsg" class="text-[11px] text-slate-400 mt-1">Lines may be separated by commas, spaces or tabs. <code>#</code> starts a comment.</div>
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:620px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📉 the product-limit curve &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">steps only at event times · ticks = censorings · band = Greenwood log-log</span></div>
+            <canvas id="kmCanvas" width="620" height="360"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#0ea5e9"></span> Ŝ(t)</span>
+              <span><span class="swatch-box" style="background:#bae6fd"></span> confidence band</span>
+              <span><span class="swatch-line" style="border-color:#f59e0b"></span> censoring tick</span>
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> median</span>
+              <span><span class="swatch-line" style="border-color:#7c3aed"></span> cursor</span>
+            </div>
+            <div class="mt-3">
+              <div class="text-xs font-bold text-slate-500 mb-1">THE RISK TABLE — every distinct time, and the running product</div>
+              <div class="scroller"><table class="risk" id="kTable"></table></div>
+            </div>
+            <div id="kDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: LOG-RANK / COX ============ -->
+      <div id="mod-lr" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="lChi" style="color:#0ea5e9">—</div><div class="k">log-rank χ² (1 df)</div></div>
+          <div class="metric-pill"><div class="v" id="lP" style="color:#dc2626">—</div><div class="k">p-value</div></div>
+          <div class="metric-pill"><div class="v" id="lHR" style="color:#7c3aed">—</div><div class="k">Cox HR e^β̂</div></div>
+          <div class="metric-pill"><div class="v" id="lTrue" style="color:#16a34a">—</div><div class="k">true HR</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px; max-width:100%;">
+            <div class="text-xs font-bold text-slate-500 mb-2">TWO ARMS</div>
+            <div class="ctl-row"><div class="ctl-name">👥 per group</div><input type="range" id="lNs" min="8" max="150" step="2" value="50"><div class="ctl-val" id="lNsV">50</div></div>
+            <div class="ctl-row"><div class="ctl-name">💥 control λ₀</div><input type="range" id="lLs" min="2" max="30" step="1" value="10"><div class="ctl-val" id="lLsV">0.10</div></div>
+            <div class="ctl-row"><div class="ctl-name">⚖️ true hazard ratio</div><input type="range" id="lHs" min="20" max="400" step="5" value="200"><div class="ctl-val" id="lHsV">2.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">✂️ censoring rate</div><input type="range" id="lCs" min="0" max="80" step="1" value="30"><div class="ctl-val" id="lCsV">30%</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="lRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 Generate trial</button>
+              <button id="lNull" class="btn-run px-3 py-1.5 rounded-lg font-bold text-xs">🎯 Set HR = 1 (null)</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> Two arms are drawn from exponential clocks with rates <code>λ₀</code> and <code>λ₀·HR</code>, both censored independently. At every pooled event time the page computes how many deaths group B <em>would</em> get if the arms were identical — <code>E = d·n_B/n</code> — and accumulates <code>O−E</code> plus the exact hypergeometric variance. Then <code>χ² = (ΣO−ΣE)²/ΣV</code> on 1 df, and <code>p = erfc(√(χ²/2))</code>. Below that, the real Cox partial log-likelihood is scored at 241 values of β; its peak is <code>β̂</code> and <code>e^β̂</code> is the estimated hazard ratio. Set HR = 1 and the statistic should collapse toward zero — that is the null hypothesis being true, and you can re-roll to watch the p-value scatter uniformly.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:620px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">⚖️ two curves, one statistic, one hazard ratio &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">KM · Nelson-Aalen · Cox partial likelihood</span></div>
+            <canvas id="lrCanvas" width="620" height="520"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#0ea5e9"></span> group A (control)</span>
+              <span><span class="swatch-line" style="border-color:#f97316"></span> group B (treated)</span>
+              <span><span class="swatch-line" style="border-color:#94a3b8"></span> exp(−Ĥ) overlay</span>
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> β̂ maximiser</span>
+            </div>
+            <div class="mt-3">
+              <div class="text-xs font-bold text-slate-500 mb-1">THE LOG-RANK TABLE — observed vs expected, one risk set per row</div>
+              <div class="scroller"><table class="risk" id="lTable"></table></div>
+            </div>
+            <div id="lDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-6xl mx-auto p-4 md:p-8 grid md:grid-cols-2 gap-8">
+    <div style="min-width:0;">
+      <h3 class="font-bold text-lg mb-3">From "how long?" to a curve you can actually trust</h3>
+      <p class="text-sm text-slate-500 mb-4">Twelve steps: what censoring is, the two wrong answers, the risk set, the product-limit estimator, its error bars, the median, the log-rank test, hazard, and Cox.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="flex gap-2 mt-4 flex-wrap">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </div>
+    <div class="space-y-4" style="min-width:0;">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-4 md:p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Survival analysis is one bookkeeping pass and five short formulas on top of it. Below is the exact runnable core the LOOK tab uses — the risk table, the product-limit estimator, Greenwood, the median, the two wrong estimators, Nelson-Aalen, the log-rank test with a hand-rolled χ²(1) tail, and the Cox partial likelihood. Roughly 120 lines of arithmetic, no dependencies.</p>
+    <ol class="space-y-6">
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The data shape — a time and a flag, never just a time</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Every row in survival data is a pair: how long you watched, and whether the thing you were waiting for actually happened. <code>e = 1</code> means the event occurred at <code>t</code>. <code>e = 0</code> means the subject was still event-free when you stopped watching at <code>t</code> — the true event time exists, you just know only that it is <em>bigger than</em> <code>t</code>. Losing that flag is the single most common way to destroy a survival dataset, because the two kinds of row look identical in a spreadsheet.</p>
+        <div class="relative"><pre>// one row = { t: follow-up time, e: 1 event / 0 right-censored, g: group }
+const cohort = [
+  { t: 6,  e: 1, g: 0 },   // event at 6
+  { t: 6,  e: 0, g: 0 },   // still event-free at 6 — true time is UNKNOWN, but &gt; 6
+  { t: 10, e: 1, g: 1 },
+  { t: 13, e: 0, g: 1 },
+];
+
+// generating one: an exponential clock, and an independent dropout clock
+function makeCohort(n, lambda, censorRate, rng) {
+  const rows = [];
+  for (let i = 0; i &lt; n; i++) {
+    const T = -Math.log(1 - rng()) / lambda;                 // the true event time
+    const C = censorRate &lt;= 0 ? Infinity
+            : -Math.log(1 - rng()) / (lambda * censorRate / (1 - censorRate));
+    const t = Math.min(T, C);
+    rows.push({ t: Math.round(t * 10) / 10, e: T &lt;= C ? 1 : 0 });
+  }
+  return rows;
+}
+// with rate lambda the TRUE survival curve is exactly S(t) = exp(-lambda*t),
+// so every estimator on this page can be scored against a known answer.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The risk table — one pass that conserves every subject</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Everything downstream reads from this one table. Walk the distinct times in order; at each time record <code>n</code> = how many subjects are still under observation, <code>d</code> = how many had the event right now, <code>c</code> = how many were censored right now. Then <code>n</code> drops by exactly <code>d + c</code> before the next time. The tie convention matters and is standard: someone censored at time <code>t</code> is counted as <em>still at risk</em> at <code>t</code>, because they were alive when the deaths happened. Two invariants fall out and make excellent tests: <code>n</code> at each time equals <code>#{tⱼ ≥ t}</code>, and <code>Σd + Σc = n₀</code>.</p>
+        <div class="relative"><pre>function riskTable(rows) {
+  const times = [...new Set(rows.map(r =&gt; r.t))].sort((a, b) =&gt; a - b);
+  const out = [];
+  let n = rows.length;                       // everybody starts at risk
+  for (const t of times) {
+    let d = 0, c = 0;
+    for (const r of rows) if (r.t === t) { if (r.e === 1) d++; else c++; }
+    out.push({ t, n, d, c });                // n = #{ t_j &gt;= t }, by construction
+    n -= d + c;                              // they leave AFTER this instant
+  }
+  return out;
+}
+// invariant 1:  every row's n equals rows.filter(r =&gt; r.t &gt;= t).length
+// invariant 2:  sum(d) + sum(c) === rows.length     — nobody is lost or duplicated</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Kaplan-Meier — a product of conditional survivals</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The estimator is one line inside the loop: at each time where somebody actually died, multiply the running survival by <code>1 − dᵢ/nᵢ</code>, the probability of getting through that instant <em>given</em> you reached it. Times where only censoring happened contribute no factor — but they have already done their job, because those subjects sat in earlier denominators. That is the whole trick: censored rows are counted for as long as they were observed and then stop counting, instead of being deleted or fabricated into events.</p>
+        <div class="relative"><pre>function kaplanMeier(rows, z = 1.96) {
+  const table = riskTable(rows);
+  const steps = [];
+  let S = 1, gw = 0, H = 0;                      // gw = Greenwood sum, H = Nelson-Aalen
+  for (const r of table) {
+    if (r.d === 0) continue;                     // censoring alone does NOT step the curve
+    S *= 1 - r.d / r.n;                          // <-- the product-limit estimator
+    H += r.d / r.n;                              // <-- cumulative hazard, same risk sets
+    if (r.n &gt; r.d) gw += r.d / (r.n * (r.n - r.d));
+    steps.push({ t: r.t, n: r.n, d: r.d, c: r.c, S, H,
+                 se: S * Math.sqrt(gw), ...logLogCI(S, gw, z) });
+  }
+  return { n0: rows.length, table, steps };
+}
+
+function sAt(km, t) {                            // right-continuous step lookup
+  let S = 1;
+  for (const s of km.steps) { if (s.t &lt;= t + 1e-12) S = s.S; else break; }
+  return S;
+}
+// with NO censoring this is exactly the empirical survival #{t_i &gt; t} / n —
+// the product telescopes, because then n_{i+1} = n_i - d_i.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Greenwood's variance and a band that stays inside [0,1]</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Ŝ is a product of independent-ish binomial proportions, so push the variance through with the delta method: <code>Var(Ŝ) = Ŝ² · Σ dᵢ/(nᵢ(nᵢ−dᵢ))</code>. That is Greenwood's formula, and it is not a heuristic — it is exactly what the derivative calculation gives, which is why the test can recompute it by finite differences and get the same number. The naive band <code>Ŝ ± 1.96·se</code> then embarrasses you by poking above 1 near the start and below 0 in the tail, so build the interval on <code>log(−log Ŝ)</code> instead, where the parameter is unbounded, and map it back by exponentiation. The band is asymmetric on purpose.</p>
+        <div class="relative"><pre>function logLogCI(S, gw, z) {
+  if (S &gt;= 1) return { lo: 1, hi: 1 };
+  if (S &lt;= 0) return { lo: 0, hi: 0 };
+  const se = Math.sqrt(gw) / Math.abs(Math.log(S));   // se of log(-log S)
+  const f  = Math.exp(z * se);
+  return { lo: Math.pow(S, f), hi: Math.pow(S, 1 / f) };  // always inside [0,1]
+}
+// Var(S) = S^2 * sum( d / (n*(n-d)) )       <- Greenwood
+// se(S)  = S * sqrt(gw)
+// the naive S +/- z*se band leaks outside [0,1]; the log-log one cannot.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Median survival — and why it is often just missing</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Do not average the follow-up times; that number is meaningless when half your rows are censored. The median survival is read off the curve: the first time at which <code>Ŝ(t) ≤ 0.5</code>. If heavy censoring or a short study means the curve never gets down to 0.5, the median genuinely <strong>does not exist</strong> in your data and the honest report is "not reached" — not the mean, not the last observed time, and definitely not a number you extrapolated. The same lookup gives any other quantile.</p>
+        <div class="relative"><pre>function medianSurvival(km) {
+  for (const s of km.steps) if (s.S &lt;= 0.5 + 1e-12) return s.t;
+  return null;                     // "not reached" — a legitimate answer, report it
+}
+
+function quantileSurvival(km, q) {          // q = 0.25 -&gt; the 25th percentile of TIME
+  for (const s of km.steps) if (s.S &lt;= 1 - q + 1e-12) return s.t;
+  return null;
+}
+// mean(rows.map(r =&gt; r.t)) is NOT the mean survival time whenever anything is censored.
+// restricted mean survival time (RMST) = area under the KM curve up to a horizon,
+//   RMST(tau) = integral_0^tau S(t) dt  — a well-defined alternative when the median is not reached.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-red-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">The two wrong ways, coded so you can watch them fail</h3></div>
+        <p class="text-sm text-slate-600 mb-3">It is worth implementing the mistakes, because both are one line and both look reasonable until you plot them. Dropping the censored rows keeps only subjects who had the event, which is precisely a sample of the <em>shorter</em> lifetimes — the estimate collapses. Recoding a censoring as an event is even more aggressive: it asserts that everyone who left the study died on their way out. Both bias survival downwards, and the demo shows the gap widening as the censoring rate rises, with Kaplan-Meier tracking the true curve throughout.</p>
+        <div class="relative"><pre>// WRONG #1 — complete-case analysis: delete anyone who did not have the event
+const dropCensored = rows =&gt; kaplanMeier(rows.filter(r =&gt; r.e === 1));
+
+// WRONG #2 — pretend the censoring WAS the event
+const censoredAsEvent = rows =&gt; kaplanMeier(rows.map(r =&gt; ({ ...r, e: 1 })));
+
+// RIGHT — every row contributes to the denominators it earned, then leaves
+const right = kaplanMeier(rows);
+
+// with lambda = 0.10 and 45% censoring on 80 subjects the true median is 6.93:
+//   drop censored     -&gt; ~4.1   (far too pessimistic)
+//   censored = event  -&gt; ~4.5   (far too pessimistic)
+//   Kaplan-Meier      -&gt; ~6.7   (right, and it stays right as censoring grows)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Hazard — Nelson-Aalen, and why exp(−H) ≈ S</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Survival answers "what fraction is left?". Hazard answers a sharper question: "given you are still here, how intense is the risk right now?". Its cumulative version is even simpler than Kaplan-Meier — just add <code>dᵢ/nᵢ</code> instead of multiplying <code>1 − dᵢ/nᵢ</code>. Since <code>log(1−x) ≈ −x</code> for small <code>x</code>, <code>exp(−Ĥ)</code> and <code>Ŝ</code> agree closely whenever the per-step hazards are small, and Nelson-Aalen behaves better in small samples. It is also the natural quantity to model, because hazards multiply cleanly — which is exactly what Cox exploits next.</p>
+        <div class="relative"><pre>function nelsonAalen(rows) {
+  const out = []; let H = 0, V = 0;
+  for (const r of riskTable(rows)) {
+    if (r.d === 0) continue;
+    H += r.d / r.n;                       // ADD the hazard instead of multiplying survival
+    V += r.d / (r.n * r.n);               // Aalen's variance estimate
+    out.push({ t: r.t, H, se: Math.sqrt(V), Sna: Math.exp(-H) });
+  }
+  return out;
+}
+// h(t) = -d/dt log S(t)          H(t) = integral_0^t h(u) du         S(t) = exp(-H(t))
+// KM factor  1 - d/n     vs      NA increment  d/n
+// log(1-x) = -x - x^2/2 - ...    so exp(-H) &gt;= S always, with the gap ~ sum (d/n)^2 / 2</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">The log-rank test — observed minus expected, one risk set at a time</h3></div>
+        <p class="text-sm text-slate-600 mb-3">To compare two curves without assuming any distribution, freeze time at each pooled event time and ask a tiny question: of the <code>dᵢ</code> deaths happening now, how many would land in group B if the groups were interchangeable? That is a hypergeometric draw, so the expectation is <code>dᵢ·n_Bᵢ/nᵢ</code> and the variance has a closed form. Accumulate observed minus expected across every risk set, standardise, and you have a χ² with 1 degree of freedom. The identity worth remembering — and worth asserting in a test — is that summed over <em>both</em> groups the observed and expected totals are equal by construction.</p>
+        <div class="relative"><pre>function logRank(rows) {                     // rows carry g = 0 or 1
+  const times = [...new Set(rows.filter(r =&gt; r.e === 1).map(r =&gt; r.t))].sort((a,b) =&gt; a-b);
+  let O1 = 0, E1 = 0, V = 0, O0 = 0, E0 = 0;
+  const tab = [];
+  for (const t of times) {
+    let n = 0, n1 = 0, d = 0, d1 = 0;
+    for (const r of rows) {
+      if (r.t &gt;= t)               { n++;  if (r.g === 1) n1++; }   // the risk set NOW
+      if (r.t === t &amp;&amp; r.e === 1)  { d++;  if (r.g === 1) d1++; }
+    }
+    const e1 = d * n1 / n;                                          // hypergeometric mean
+    const v  = n &gt; 1 ? d * (n1/n) * (1 - n1/n) * (n - d) / (n - 1) : 0;
+    O1 += d1; E1 += e1; O0 += d - d1; E0 += d - e1; V += v;
+    tab.push({ t, n, n1, d, d1, e1, v });
+  }
+  const chi2 = V &gt; 0 ? (O1 - E1) * (O1 - E1) / V : 0;
+  return { tab, O1, E1, O0, E0, V, chi2, p: chi2sf1(chi2),
+           hrOE: (O1 / E1) / (O0 / E0) };          // the O/E hazard-ratio estimate
+}
+// ALWAYS TRUE: O1 + O0 === E1 + E0 === total events.  A broken loop breaks this first.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">9</div><h3 class="font-bold text-lg">The p-value, without a stats library</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A χ² with one degree of freedom is the square of a standard normal, so its upper tail collapses to a single special function: <code>P(X &gt; x) = erfc(√(x/2))</code>. Write erfc yourself with a Taylor series for small arguments and a continued fraction for large ones and you get full double precision with about fifteen lines and zero dependencies. The test checks it against the χ²(1) density integrated numerically by Simpson's rule — after the substitution <code>u = √x</code> which removes the singularity at zero — and the two agree to better than 1e-9.</p>
+        <div class="relative"><pre>function erfSeries(x) {                       // |x| &lt;~ 3
+  let term = x, sum = x; const x2 = x * x;
+  for (let k = 1; k &lt; 300; k++) {
+    term *= -x2 / k;
+    const add = term / (2 * k + 1); sum += add;
+    if (Math.abs(add) &lt; 1e-18 * Math.abs(sum)) break;
+  }
+  return 2 / Math.sqrt(Math.PI) * sum;
+}
+function erfcCF(x) {                          // large x, modified Lentz continued fraction
+  const tiny = 1e-300; let f = tiny, C = f, D = 0;
+  for (let k = 1; k &lt;= 400; k++) {
+    const a = (k === 1) ? 1 : (k - 1) / 2, b = x;
+    D = b + a * D; if (Math.abs(D) &lt; tiny) D = tiny;
+    C = b + a / C; if (Math.abs(C) &lt; tiny) C = tiny;
+    D = 1 / D; const delta = C * D; f *= delta;
+    if (Math.abs(delta - 1) &lt; 1e-16) break;
+  }
+  return Math.exp(-x * x) / Math.sqrt(Math.PI) * f;
+}
+const erfc    = x =&gt; x &lt; 0 ? 2 - erfc(-x) : (x &lt; 3 ? 1 - erfSeries(x) : erfcCF(x));
+const chi2sf1 = x =&gt; x &lt;= 0 ? 1 : erfc(Math.sqrt(x / 2));    // P(chi2_1 &gt; x)
+const normCdf = x =&gt; 0.5 * erfc(-x / Math.SQRT2);
+
+// chi2sf1(3.841459) = 0.05000   chi2sf1(6.634897) = 0.01000   chi2sf1(10.827566) = 0.001</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">10</div><h3 class="font-bold text-lg">Cox proportional hazards — the likelihood that skips the baseline</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Cox's model says <code>h(t | x) = h₀(t)·e^{βx}</code>: an unspecified baseline hazard shared by everyone, multiplied by a covariate effect. The trick is that you never have to estimate <code>h₀</code>. Condition on the fact that <em>somebody</em> died at each event time and ask only "which member of the risk set was it?" — the baseline cancels top and bottom, leaving a <strong>partial likelihood</strong> in <code>β</code> alone. That is what "semi-parametric" means here: fully parametric in the covariates, completely free in time. At <code>β = 0</code> the log-likelihood is just <code>−Σ log nᵢ</code>, which is a good hand-checkable anchor, and scanning a grid of β shows a single clean peak whose exponential is the hazard ratio.</p>
+        <div class="relative"><pre>// Breslow partial log-likelihood for one covariate x
+function coxLogLik(rows, beta) {
+  let ll = 0;
+  for (const r of rows) {
+    if (r.e !== 1) continue;                        // only events contribute a term
+    let s = 0;
+    for (const j of rows) if (j.t &gt;= r.t) s += Math.exp(beta * j.x);   // the risk set
+    ll += beta * r.x - Math.log(s);                 // h0(t) cancelled — it is not here
+  }
+  return ll;
+}
+function coxScore(rows, beta) {                     // the analytic derivative
+  let u = 0;
+  for (const r of rows) {
+    if (r.e !== 1) continue;
+    let s = 0, sx = 0;
+    for (const j of rows) if (j.t &gt;= r.t) { const w = Math.exp(beta * j.x); s += w; sx += w * j.x; }
+    u += r.x - sx / s;
+  }
+  return u;
+}
+function coxGrid(rows, lo = -3, hi = 3, m = 241) {  // score it, do not trust it blindly
+  let best = -Infinity, bHat = 0; const pts = [];
+  for (let i = 0; i &lt; m; i++) {
+    const b = lo + (hi - lo) * i / (m - 1), ll = coxLogLik(rows, b);
+    pts.push([b, ll]);
+    if (ll &gt; best) { best = ll; bHat = b; }
+  }
+  return { pts, bHat, best, hr: Math.exp(bHat) };   // e^beta IS the hazard ratio
+}
+// coxLogLik(rows, 0) === -sum(log(n_i)) over event times — hand-checkable.
+// coxScore(rows, bHat) is ~0 at the maximiser, which is how the test verifies the grid.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-slate-700 text-white rounded-full flex items-center justify-center font-bold">11</div><h3 class="font-bold text-lg">In practice — the standard tools and the traps</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In Python you would reach for <code>lifelines</code> or <code>scikit-survival</code>; in R, <code>survival</code>. Four traps catch everyone: censoring must be <em>non-informative</em> (people who drop out cannot be dropping out <em>because</em> they are about to have the event), the proportional-hazards assumption must be checked rather than assumed, a p-value from the log-rank says nothing about effect size, and a median that was never reached must be reported as "not reached" instead of quietly filled in.</p>
+        <div class="relative"><pre>from lifelines import KaplanMeierFitter, CoxPHFitter
+from lifelines.statistics import logrank_test
+
+km = KaplanMeierFitter().fit(df.time, df.event, label="arm A")
+km.plot(ci_show=True)                  # the same product-limit + Greenwood band
+km.median_survival_time_               # inf when the curve never reaches 0.5
+
+res = logrank_test(a.time, b.time, a.event, b.event)
+res.test_statistic, res.p_value        # chi2 on 1 df, and its tail
+
+cph = CoxPHFitter().fit(df, "time", "event")
+cph.summary                            # coef = beta, exp(coef) = hazard ratio
+cph.check_assumptions(df)              # PH is an ASSUMPTION — test it (Schoenfeld residuals)
+
+# traps:
+#  * informative censoring breaks everything upstream of the estimator
+#  * crossing curves =&gt; hazards are NOT proportional; log-rank loses power, Cox misleads
+#    -&gt; use RMST differences, or a time-varying coefficient / stratified Cox
+#  * "p &lt; 0.05" is not an effect size — report the HR and its confidence interval
+#  * competing risks (dying of something else) need Aalen-Johansen, not 1 - KM</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-8 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧭 The five quantities, and where each one comes from</h3>
+      <div class="scroller"><table class="cmp">
+        <tr><th>Quantity</th><th>Formula</th><th>Built from</th><th>What it answers</th></tr>
+        <tr><td class="cat">Survival Ŝ(t)</td><td><code>Π (1 − dᵢ/nᵢ)</code></td><td>risk table, event times only</td><td>what fraction is still event-free at time t</td></tr>
+        <tr><td class="cat">Greenwood se</td><td><code>Ŝ·√Σ dᵢ/(nᵢ(nᵢ−dᵢ))</code></td><td>the delta method on the same product</td><td>how much of the curve is sampling noise</td></tr>
+        <tr><td class="cat">Median</td><td>first <code>t</code> with <code>Ŝ(t) ≤ 0.5</code></td><td>a lookup on the step curve</td><td>the typical time-to-event — or "not reached"</td></tr>
+        <tr><td class="cat">Cumulative hazard Ĥ(t)</td><td><code>Σ dᵢ/nᵢ</code></td><td>the same risk sets, added not multiplied</td><td>accumulated risk intensity; <code>exp(−Ĥ) ≈ Ŝ</code></td></tr>
+        <tr><td class="cat">Log-rank χ²</td><td><code>(ΣO−ΣE)²/ΣV</code></td><td>hypergeometric moments per risk set</td><td>are these two curves the same, distribution-free</td></tr>
+        <tr><td class="cat">Hazard ratio e^β̂</td><td>argmax of the partial likelihood</td><td>who-beat-whom inside each risk set</td><td>how many times higher the risk is, per unit of x</td></tr>
+      </table></div>
+      <p class="text-xs text-slate-500 mt-3">Everything above is computed from the same single pass over the risk sets. That is the deep reason survival analysis feels coherent: censoring is handled exactly once, in the denominators, and every estimator inherits the fix for free.</p>
+    </div>
+
+    <div class="mt-6 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧬 Where survival models sit next to the rest of this series</h3>
+      <div class="scroller"><table class="cmp">
+        <tr><th>Model</th><th>Target</th><th>Handles censoring</th><th>Reach for it when</th></tr>
+        <tr><td class="cat">Linear regression (D1)</td><td>a number</td><td>no — silently biased</td><td>every row has a finished, observed value</td></tr>
+        <tr><td class="cat">Logistic regression (D2)</td><td>did it happen by now?</td><td>no — throws the timing away</td><td>a fixed horizon, everyone followed equally long</td></tr>
+        <tr><td class="cat">Poisson regression (D47)</td><td>counts per exposure</td><td>partly (offset for exposure)</td><td>you want a rate, not a time</td></tr>
+        <tr><td class="cat"><strong>Kaplan-Meier</strong> (here)</td><td>the whole curve S(t)</td><td><strong>yes, exactly</strong></td><td>you want a description with no assumptions at all</td></tr>
+        <tr><td class="cat"><strong>Cox PH</strong> (here)</td><td>hazard ratio per covariate</td><td><strong>yes</strong></td><td>you want covariate effects without modelling time</td></tr>
+        <tr><td class="cat">Parametric AFT (Weibull)</td><td>the full distribution</td><td>yes</td><td>you must extrapolate beyond the data</td></tr>
+        <tr><td class="cat">Random survival forest</td><td>curve per subject</td><td>yes</td><td>lots of data, interactions, PH clearly violated</td></tr>
+      </table></div>
+      <p class="text-xs text-slate-500 mt-3">The most common mistake in industry churn modelling is quietly using D2's logistic regression on "did they cancel in the last 90 days?" — which throws away the timing, forces an arbitrary horizon, and mislabels every customer who has not been around for 90 days yet. Kaplan-Meier and Cox exist precisely so that you do not have to make that choice.</p>
+    </div>
+
+    <div class="mt-8 bg-sky-50 border border-sky-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-sky-900">🎉 Day 60 of MachineLearningFromZero done — the estimator that gets an answer out of the rows that have not finished yet.</h3><p class="text-sm text-sky-700 mt-2"><strong>Right-censoring</strong> is not missing data: a subject last seen event-free at month 9 tells you their true time exceeds 9, and both obvious workarounds — <span style="color:#ef4444;font-weight:700">deleting them</span> or <span style="color:#a855f7;font-weight:700">calling it an event</span> — bias survival downwards, badly, in a way that grows with the censoring rate. The <span style="color:#0ea5e9;font-weight:700">Kaplan-Meier product-limit estimator</span> <code>Ŝ(t)=Π(1−dᵢ/nᵢ)</code> fixes it in the denominators: a censored subject counts in every risk set up to the moment it leaves and then stops, so no information is invented and none is thrown away. <span style="color:#0ea5e9;font-weight:700">Greenwood</span> gives the curve error bars and the log-log transform keeps the band inside [0,1]; the <span style="color:#0ea5e9;font-weight:700">median</span> is a lookup, and "not reached" is a legitimate answer; the <span style="color:#0ea5e9;font-weight:700">log-rank test</span> compares two curves by accumulating observed-minus-expected over every risk set into a χ²(1); <span style="color:#0ea5e9;font-weight:700">Nelson-Aalen</span> converts the same sums into a cumulative hazard with <code>Ŝ ≈ exp(−Ĥ)</code>; and <span style="color:#0ea5e9;font-weight:700">Cox proportional hazards</span> turns that into a regression by maximising a partial likelihood in which the baseline hazard cancels entirely, returning a hazard ratio <code>e^β̂</code>. The costs are honest ones: censoring must be non-informative, proportional hazards is an assumption you have to test, and a p-value is not an effect size. <strong>👉 Whenever your outcome is "how long until…" and some rows have not got there yet, this is the toolkit — everything else quietly throws those rows away.</strong></p></div>
+
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+const el = id => document.getElementById(id);
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function setDiag(box, c, t, b){ box.className="diag "+c+" mt-3 text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+const fmt = (x,d=3)=> (x===undefined||x===null||!isFinite(x)) ? "—" : x.toFixed(d);
+const CKM="#0ea5e9", CDROP="#ef4444", CEVT="#a855f7", CTRUE="#94a3b8", CA="#0ea5e9", CB="#f97316", CCEN="#f59e0b";
+
+/* ================================================================
+   SPECIAL FUNCTIONS — erfc by hand, then the chi-square(1) tail
+   ================================================================ */
+function erfSeries(x){
+  let term=x, sum=x; const x2=x*x;
+  for(let k=1;k<300;k++){ term*= -x2/k; const add=term/(2*k+1); sum+=add; if(Math.abs(add)<1e-18*Math.abs(sum)) break; }
+  return 2/Math.sqrt(Math.PI)*sum;
+}
+function erfcCF(x){
+  const tiny=1e-300; let f=tiny, C=f, D=0;
+  for(let k=1;k<=400;k++){
+    const a=(k===1)?1:(k-1)/2, b=x;
+    D=b+a*D; if(Math.abs(D)<tiny) D=tiny;
+    C=b+a/C; if(Math.abs(C)<tiny) C=tiny;
+    D=1/D; const delta=C*D; f*=delta;
+    if(Math.abs(delta-1)<1e-16) break;
+  }
+  return Math.exp(-x*x)/Math.sqrt(Math.PI)*f;
+}
+function erfc(x){ if(x<0) return 2-erfc(-x); return x<3 ? 1-erfSeries(x) : erfcCF(x); }
+function chi2sf1(x){ return x<=0 ? 1 : erfc(Math.sqrt(x/2)); }
+function normCdf(x){ return 0.5*erfc(-x/Math.SQRT2); }
+// Acklam's inverse normal — used only to turn a confidence % into a z multiplier
+function probit(p){
+  if(p<=0) return -Infinity; if(p>=1) return Infinity;
+  const a=[-3.969683028665376e+01,2.209460984245205e+02,-2.759285104469687e+02,1.383577518672690e+02,-3.066479806614716e+01,2.506628277459239e+00];
+  const b=[-5.447609879822406e+01,1.615858368580409e+02,-1.556989798598866e+02,6.680131188771972e+01,-1.328068155288572e+01];
+  const c=[-7.784894002430293e-03,-3.223964580411365e-01,-2.400758277161838e+00,-2.549732539343734e+00,4.374664141464968e+00,2.938163982698783e+00];
+  const d=[7.784695709041462e-03,3.224671290700398e-01,2.445134137142996e+00,3.754408661907416e+00];
+  const pl=0.02425, ph=1-pl; let q,r,x;
+  if(p<pl){ q=Math.sqrt(-2*Math.log(p)); x=(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1); }
+  else if(p<=ph){ q=p-0.5; r=q*q; x=(((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q/(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1); }
+  else { q=Math.sqrt(-2*Math.log(1-p)); x=-(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5])/((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1); }
+  const e=normCdf(x)-p, u=e*Math.sqrt(2*Math.PI)*Math.exp(x*x/2);   // one Halley step
+  return x - u/(1+x*u/2);
+}
+const zFor = conf => probit(1-(1-conf)/2);
+
+/* ================================================================
+   SURVIVAL CORE — the real estimators, used by every demo here
+   ================================================================ */
+function riskTable(rows){
+  const times=[...new Set(rows.map(r=>r.t))].sort((a,b)=>a-b);
+  const out=[]; let n=rows.length;
+  for(const t of times){
+    let d=0,c=0;
+    for(const r of rows) if(r.t===t){ if(r.e===1) d++; else c++; }
+    out.push({t,n,d,c});
+    n-=d+c;
+  }
+  return out;
+}
+function logLogCI(S, gw, z){
+  if(S>=1) return {lo:1, hi:1};
+  if(S<=0) return {lo:0, hi:0};
+  const se=Math.sqrt(gw)/Math.abs(Math.log(S)), f=Math.exp(z*se);
+  return { lo:Math.pow(S,f), hi:Math.pow(S,1/f) };
+}
+function kaplanMeier(rows, z){
+  if(z===undefined) z=1.959963984540054;
+  const table=riskTable(rows), steps=[];
+  let S=1, gw=0, H=0;
+  for(const r of table){
+    if(r.d===0) continue;
+    S*= 1 - r.d/r.n;
+    H+= r.d/r.n;
+    if(r.n>r.d) gw += r.d/(r.n*(r.n-r.d));
+    const ci=logLogCI(S,gw,z);
+    steps.push({ t:r.t, n:r.n, d:r.d, c:r.c, S, H, gw, varS:S*S*gw, se:S*Math.sqrt(gw), lo:ci.lo, hi:ci.hi });
+  }
+  return { n0:rows.length, table, steps, z };
+}
+function sAt(km,t){ let S=1; for(const s of km.steps){ if(s.t<=t+1e-12) S=s.S; else break; } return S; }
+function ciAt(km,t){ let c={lo:1,hi:1}; for(const s of km.steps){ if(s.t<=t+1e-12) c={lo:s.lo,hi:s.hi}; else break; } return c; }
+function medianSurvival(km){ for(const s of km.steps) if(s.S<=0.5+1e-12) return s.t; return null; }
+function quantileSurvival(km,q){ for(const s of km.steps) if(s.S<=1-q+1e-12) return s.t; return null; }
+function empiricalSurvival(rows,t){ let k=0; for(const r of rows) if(r.t>t+1e-12) k++; return k/rows.length; }
+const dropCensored    = rows => kaplanMeier(rows.filter(r=>r.e===1));
+const censoredAsEvent = rows => kaplanMeier(rows.map(r=>({t:r.t,e:1,g:r.g})));
+
+function nelsonAalen(rows){
+  const out=[]; let H=0,V=0;
+  for(const r of riskTable(rows)){
+    if(r.d===0) continue;
+    H+=r.d/r.n; V+=r.d/(r.n*r.n);
+    out.push({t:r.t, H, se:Math.sqrt(V), Sna:Math.exp(-H)});
+  }
+  return out;
+}
+function hAt(na,t){ let H=0; for(const s of na){ if(s.t<=t+1e-12) H=s.H; else break; } return H; }
+
+function logRank(rows){
+  const times=[...new Set(rows.filter(r=>r.e===1).map(r=>r.t))].sort((a,b)=>a-b);
+  let O1=0,E1=0,V=0,O0=0,E0=0; const tab=[];
+  for(const t of times){
+    let n=0,n1=0,d=0,d1=0;
+    for(const r of rows){
+      if(r.t>=t){ n++; if(r.g===1) n1++; }
+      if(r.t===t && r.e===1){ d++; if(r.g===1) d1++; }
+    }
+    const e1=d*n1/n;
+    const v= n>1 ? d*(n1/n)*(1-n1/n)*(n-d)/(n-1) : 0;
+    O1+=d1; E1+=e1; O0+=d-d1; E0+=d-e1; V+=v;
+    tab.push({t,n,n1,n0:n-n1,d,d1,d0:d-d1,e1,e0:d-e1,v});
+  }
+  const chi2 = V>0 ? (O1-E1)*(O1-E1)/V : 0;
+  return { tab,O1,E1,O0,E0,V,chi2, p:chi2sf1(chi2), hrOE:(E1>0&&E0>0)?((O1/E1)/(O0/E0)):NaN };
+}
+
+function coxLogLik(rows, beta){
+  let ll=0;
+  for(const r of rows){
+    if(r.e!==1) continue;
+    let s=0;
+    for(const j of rows) if(j.t>=r.t) s+=Math.exp(beta*j.x);
+    ll += beta*r.x - Math.log(s);
+  }
+  return ll;
+}
+function coxScore(rows, beta){
+  let u=0;
+  for(const r of rows){
+    if(r.e!==1) continue;
+    let s=0,sx=0;
+    for(const j of rows) if(j.t>=r.t){ const w=Math.exp(beta*j.x); s+=w; sx+=w*j.x; }
+    u += r.x - sx/s;
+  }
+  return u;
+}
+function coxGrid(rows, lo, hi, m){
+  if(lo===undefined) lo=-3; if(hi===undefined) hi=3; if(m===undefined) m=241;
+  let best=-Infinity, bHat=0; const pts=[];
+  for(let i=0;i<m;i++){
+    const b=lo+(hi-lo)*i/(m-1), ll=coxLogLik(rows,b);
+    pts.push([b,ll]);
+    if(ll>best){ best=ll; bHat=b; }
+  }
+  return { pts, bHat, best, hr:Math.exp(bHat), score:coxScore(rows,bHat) };
+}
+
+/* ---------------- cohort generation + parsing ---------------- */
+function makeCohort(n, lambda, censorRate, rng, g){
+  const rows=[];
+  const mu = censorRate<=0 ? 0 : lambda*censorRate/(1-censorRate);
+  for(let i=0;i<n;i++){
+    const T=-Math.log(1-rng())/lambda;
+    const C= mu<=0 ? Infinity : -Math.log(1-rng())/mu;
+    const t=Math.min(T,C);
+    rows.push({ t:Math.round(t*10)/10, e: T<=C?1:0, g:g||0, x:g||0 });
+  }
+  return rows;
+}
+function parseRows(txt){
+  const out=[];
+  for(const raw of String(txt).split(/\r?\n/)){
+    const line=raw.trim();
+    if(!line || line[0]==="#") continue;
+    const p=line.split(/[\s,;\t]+/).filter(s=>s.length);
+    if(p.length<2) continue;
+    const t=parseFloat(p[0]); if(!isFinite(t)) continue;
+    const es=p[1].toLowerCase();
+    const e=(es==="1"||es==="e"||es==="event"||es==="d"||es==="death"||es==="true"||es==="yes")?1:0;
+    let g=0;
+    if(p.length>=3){ const gs=p[2].toLowerCase(); g=(gs==="1"||gs==="b"||gs==="treat"||gs==="treated"||gs==="treatment")?1:0; }
+    out.push({t,e,g,x:g});
+  }
+  return out;
+}
+
+/* ---------------- small drawing helpers ---------------- */
+function curvePoints(km, tmax){
+  const pts=[[0,1]]; let last=1;
+  for(const s of km.steps){ if(s.t>tmax) break; pts.push([s.t,last]); pts.push([s.t,s.S]); last=s.S; }
+  pts.push([tmax,last]);
+  return pts;
+}
+function drawPoly(X, pts, mapX, mapY, color, w, dash){
+  X.strokeStyle=color; X.lineWidth=w||2; if(dash) X.setLineDash(dash);
+  X.beginPath();
+  pts.forEach((p,i)=>{ const x=mapX(p[0]), y=mapY(p[1]); i===0?X.moveTo(x,y):X.lineTo(x,y); });
+  X.stroke(); X.setLineDash([]); X.lineWidth=1;
+}
+function axes(X,x0,y0,x1,y1,title,ylab,tmax,ymax){
+  X.fillStyle="#f8fafc"; X.fillRect(x0,y0,x1-x0,y1-y0);
+  X.strokeStyle="#e2e8f0"; X.strokeRect(x0,y0,x1-x0,y1-y0);
+  X.fillStyle="#334155"; X.font="bold 10px ui-sans-serif,system-ui"; X.fillText(title,x0,y0-5);
+  X.fillStyle="#94a3b8"; X.font="9px ui-sans-serif,system-ui";
+  X.fillText(ymax,x0-24,y0+8); X.fillText("0",x0-12,y1);
+  X.textAlign="right"; X.fillText(String(Math.round(tmax*10)/10),x1,y1+11); X.textAlign="left";
+  X.fillText("0",x0,y1+11);
+  X.save(); X.translate(x0-30,(y0+y1)/2); X.rotate(-Math.PI/2); X.textAlign="center";
+  X.fillStyle="#64748b"; X.font="bold 9px ui-sans-serif,system-ui"; X.fillText(ylab,0,0); X.restore(); X.textAlign="left";
+}
+
+/* ================================================================
+   MODULE 1 — censoring and the two wrong ways
+   ================================================================ */
+const cenC=el("cenCanvas"), cenX=cenC.getContext("2d");
+let C={ n:80, lam:0.10, cens:0.45, seed:16, data:null };
+
+function cenFit(){
+  const rows=makeCohort(C.n,C.lam,C.cens,mulberry32(C.seed*7919+C.n*31+Math.round(C.cens*1000)));
+  const km=kaplanMeier(rows), kd=dropCensored(rows), ke=censoredAsEvent(rows);
+  const nc=rows.filter(r=>r.e===0).length;
+  C.data={ rows, km, kd, ke, nc,
+    medKM:medianSurvival(km), medD:medianSurvival(kd), medE:medianSurvival(ke),
+    medTrue:Math.log(2)/C.lam, tmax:Math.max(...rows.map(r=>r.t)) };
+  cenDraw(); cenReport();
+}
+function cenDraw(){
+  const d=C.data; if(!d) return;
+  const W=cenC.width,H=cenC.height,X=cenX;
+  X.clearRect(0,0,W,H); X.fillStyle="#fbfdff"; X.fillRect(0,0,W,H);
+  const tmax=Math.max(0.001,d.tmax);
+
+  // ---- swimmer plot -------------------------------------------------
+  X.fillStyle="#334155"; X.font="bold 10px ui-sans-serif,system-ui";
+  X.fillText("① EVERY SUBJECT'S FOLLOW-UP — dot = event seen · bar = censored, still event-free",10,14);
+  const sx0=44, sx1=W-14, sy0=22, sy1=192;
+  X.fillStyle="#f8fafc"; X.fillRect(sx0,sy0,sx1-sx0,sy1-sy0);
+  X.strokeStyle="#e2e8f0"; X.strokeRect(sx0,sy0,sx1-sx0,sy1-sy0);
+  const show=[...d.rows].sort((a,b)=>a.t-b.t);
+  const shown=Math.min(show.length,54), stepi=show.length/shown;
+  const rh=(sy1-sy0)/shown;
+  for(let i=0;i<shown;i++){
+    const r=show[Math.floor(i*stepi)];
+    const y=sy0+i*rh+rh/2, xe=sx0+(r.t/tmax)*(sx1-sx0);
+    X.strokeStyle= r.e===1 ? "#cbd5e1" : "#fde68a"; X.lineWidth=Math.max(1,Math.min(2.4,rh-1.2));
+    X.beginPath(); X.moveTo(sx0,y); X.lineTo(xe,y); X.stroke(); X.lineWidth=1;
+    if(r.e===1){ X.fillStyle=CDROP; X.beginPath(); X.arc(xe,y,Math.max(1.6,Math.min(3,rh/2)),0,7); X.fill(); }
+    else { X.strokeStyle=CCEN; X.lineWidth=1.8; X.beginPath(); X.moveTo(xe,y-rh/2); X.lineTo(xe,y+rh/2); X.stroke(); X.lineWidth=1; }
+  }
+  X.fillStyle="#94a3b8"; X.font="9px ui-sans-serif,system-ui";
+  X.fillText("time 0",sx0,sy1+10); X.textAlign="right"; X.fillText(String(Math.round(tmax*10)/10),sx1,sy1+10); X.textAlign="left";
+  X.save(); X.translate(sx0-16,(sy0+sy1)/2); X.rotate(-Math.PI/2); X.textAlign="center";
+  X.fillStyle="#64748b"; X.font="bold 9px ui-sans-serif,system-ui"; X.fillText("subjects (sorted)",0,0); X.restore(); X.textAlign="left";
+
+  // ---- the three estimates vs the truth -----------------------------
+  const gx0=44, gx1=W-14, gy0=232, gy1=430;
+  axes(X,gx0,gy0,gx1,gy1,"② THREE ESTIMATES vs THE TRUE CURVE  e^(−λt)","survival S(t)",tmax,"1.0");
+  const mx=t=>gx0+(t/tmax)*(gx1-gx0), my=s=>gy1-s*(gy1-gy0);
+  // grid at 0.5
+  X.strokeStyle="#e2e8f0"; X.setLineDash([3,3]); X.beginPath(); X.moveTo(gx0,my(0.5)); X.lineTo(gx1,my(0.5)); X.stroke(); X.setLineDash([]);
+  X.fillStyle="#94a3b8"; X.font="9px ui-sans-serif,system-ui"; X.fillText("0.5",gx0-20,my(0.5)+3);
+  // truth
+  const tp=[]; for(let i=0;i<=160;i++){ const t=tmax*i/160; tp.push([t,Math.exp(-C.lam*t)]); }
+  drawPoly(X,tp,mx,my,CTRUE,2,[5,4]);
+  drawPoly(X,curvePoints(C.data.ke,tmax),mx,my,CEVT,1.8);
+  drawPoly(X,curvePoints(C.data.kd,tmax),mx,my,CDROP,1.8);
+  drawPoly(X,curvePoints(C.data.km,tmax),mx,my,CKM,2.6);
+  // medians as ticks on the 0.5 line
+  const marks=[[d.medTrue,CTRUE],[d.medE,CEVT],[d.medD,CDROP],[d.medKM,CKM]];
+  marks.forEach(([m,col])=>{ if(m===null||!isFinite(m)||m>tmax) return;
+    X.strokeStyle=col; X.lineWidth=2; X.beginPath(); X.moveTo(mx(m),my(0.5)-6); X.lineTo(mx(m),my(0.5)+6); X.stroke(); X.lineWidth=1; });
+  X.fillStyle="#64748b"; X.font="9px ui-sans-serif,system-ui";
+  X.fillText("ticks on the 0.5 line = each method's median",gx0+4,gy0+12);
+
+  // ---- footer legend --------------------------------------------------
+  X.font="bold 10px ui-sans-serif,system-ui";
+  const leg=[["KM",CKM],["drop censored",CDROP],["censored = event",CEVT],["truth",CTRUE]];
+  let lx=gx0;
+  leg.forEach(([n,c])=>{ X.fillStyle=c; X.fillRect(lx,H-12,12,4); X.fillStyle="#475569"; X.fillText(n,lx+16,H-6); lx+=16+X.measureText(n).width+16; });
+}
+function cenReport(){
+  const d=C.data; if(!d) return;
+  el("cN").textContent=d.rows.length;
+  el("cCens").textContent=d.nc+" ("+Math.round(100*d.nc/d.rows.length)+"%)";
+  el("cKM").textContent= d.medKM===null ? "not reached" : d.medKM.toFixed(1);
+  el("cTrue").textContent=d.medTrue.toFixed(2);
+  const errKM = d.medKM===null ? null : Math.abs(d.medKM-d.medTrue);
+  const errD  = d.medD===null ? null : Math.abs(d.medD-d.medTrue);
+  const errE  = d.medE===null ? null : Math.abs(d.medE-d.medTrue);
+  const good = errKM!==null && (errD===null || errKM<=errD) && (errE===null || errKM<=errE);
+  setDiag(el("cDiag"), C.cens===0 ? "diag-info" : (good?"diag-good":"diag-warn"),
+    C.cens===0 ? "🎯 nothing is censored yet — all three methods agree exactly"
+      : (good ? `✅ Kaplan-Meier lands ${errKM.toFixed(2)} from the true median; the naive answers are off by ${errD===null?"∞":errD.toFixed(2)} and ${errE===null?"∞":errE.toFixed(2)}`
+              : "⚠️ a small sample can beat KM by luck — re-roll a few times and watch which method is right on average"),
+    `${d.nc} of ${d.rows.length} subjects (<b>${Math.round(100*d.nc/d.rows.length)}%</b>) were still event-free when we stopped watching them.
+     The generating clock is <code>Exp(${C.lam.toFixed(2)})</code>, so the true median is exactly <code>ln2/λ = ${d.medTrue.toFixed(2)}</code> and the true curve is the dashed grey line.
+     <b style="color:${CKM}">Kaplan-Meier: ${d.medKM===null?"not reached":d.medKM.toFixed(1)}</b> ·
+     <b style="color:${CDROP}">drop censored: ${d.medD===null?"not reached":d.medD.toFixed(1)}</b> ·
+     <b style="color:${CEVT}">censored = event: ${d.medE===null?"not reached":d.medE.toFixed(1)}</b>.
+     ${C.cens===0 ? "With zero censoring the product-limit estimator collapses to the plain empirical survival curve — the three lines are literally the same numbers, which is the identity the test suite asserts to 12 decimals."
+       : "Both wrong answers are biased in the <em>same</em> direction, downwards, because both effectively assume that a subject who left the study early was about to have the event. Kaplan-Meier assumes only that they were still event-free at the moment they left — which is the one thing you actually observed."}
+     Drag the censoring slider up and the red and purple curves peel away from the truth while the sky curve stays put; that gap is the entire reason survival analysis exists.`);
+}
+el("cNs").oninput=e=>{ C.n=+e.target.value; el("cNsV").textContent=C.n; cenFit(); };
+el("cLs").oninput=e=>{ C.lam=+e.target.value/100; el("cLsV").textContent=C.lam.toFixed(2); cenFit(); };
+el("cCs").oninput=e=>{ C.cens=+e.target.value/100; el("cCsV").textContent=Math.round(C.cens*100)+"%"; cenFit(); };
+el("cRoll").onclick=()=>{ C.seed=Math.floor(Math.random()*100000)+1; cenFit(); };
+
+/* ================================================================
+   MODULE 2 — the product-limit ledger
+   ================================================================ */
+const kmC=el("kmCanvas"), kmX=kmC.getContext("2d");
+let K={ n:46, lam:0.09, cens:0.35, conf:0.95, seed:5, tfrac:0.40, pasted:null, data:null };
+
+function kRows(){
+  return K.pasted && K.pasted.length>1 ? K.pasted
+       : makeCohort(K.n,K.lam,K.cens,mulberry32(K.seed*104729+K.n*17+Math.round(K.cens*1000)));
+}
+function kmFit(){
+  const rows=kRows(), z=zFor(K.conf), km=kaplanMeier(rows,z);
+  const tmax=Math.max(...rows.map(r=>r.t));
+  K.data={ rows, km, z, tmax, med:medianSurvival(km), q25:quantileSurvival(km,0.25),
+           events:rows.filter(r=>r.e===1).length, cens:rows.filter(r=>r.e===0).length,
+           truth: K.pasted ? null : K.lam };
+  kmDraw(); kmTable(); kmReport();
+}
+function kmDraw(){
+  const d=K.data; if(!d) return;
+  const W=kmC.width,H=kmC.height,X=kmX;
+  X.clearRect(0,0,W,H); X.fillStyle="#fbfdff"; X.fillRect(0,0,W,H);
+  const x0=46,x1=W-16,y0=26,y1=H-38, tmax=Math.max(0.001,d.tmax);
+  axes(X,x0,y0,x1,y1,"Ŝ(t) = Π (1 − dᵢ/nᵢ)   with the Greenwood log-log band","survival S(t)",tmax,"1.0");
+  const mx=t=>x0+(t/tmax)*(x1-x0), my=s=>y1-s*(y1-y0);
+
+  // confidence band as a filled step region
+  X.fillStyle="rgba(186,230,253,0.75)";
+  X.beginPath();
+  let prev=1; X.moveTo(mx(0),my(1));
+  for(const s of d.km.steps){ X.lineTo(mx(s.t),my(prev)); X.lineTo(mx(s.t),my(s.hi)); prev=s.hi; }
+  X.lineTo(mx(tmax),my(prev));
+  const back=d.km.steps.slice().reverse(); let pl=back.length?back[0].lo:1;
+  X.lineTo(mx(tmax),my(pl));
+  for(const s of back){ X.lineTo(mx(s.t),my(s.lo)); pl=s.lo; }
+  if(d.km.steps.length){ X.lineTo(mx(d.km.steps[0].t),my(1)); }
+  X.closePath(); X.fill();
+
+  // the 0.5 rule line
+  X.strokeStyle="#e2e8f0"; X.setLineDash([3,3]); X.beginPath(); X.moveTo(x0,my(0.5)); X.lineTo(x1,my(0.5)); X.stroke(); X.setLineDash([]);
+  X.fillStyle="#94a3b8"; X.font="9px ui-sans-serif,system-ui"; X.fillText("0.5",x0-20,my(0.5)+3);
+
+  // true curve when we generated the data
+  if(d.truth!==null){ const tp=[]; for(let i=0;i<=160;i++){ const t=tmax*i/160; tp.push([t,Math.exp(-d.truth*t)]); } drawPoly(X,tp,mx,my,CTRUE,1.6,[5,4]); }
+
+  drawPoly(X,curvePoints(d.km,tmax),mx,my,CKM,2.6);
+
+  // censoring ticks sitting on the curve
+  X.strokeStyle=CCEN; X.lineWidth=2;
+  for(const r of d.rows){ if(r.e===1) continue; const s=sAt(d.km,r.t);
+    X.beginPath(); X.moveTo(mx(r.t),my(s)-5); X.lineTo(mx(r.t),my(s)+5); X.stroke(); }
+  X.lineWidth=1;
+
+  // median
+  if(d.med!==null){
+    X.strokeStyle="#16a34a"; X.lineWidth=1.6; X.setLineDash([4,3]);
+    X.beginPath(); X.moveTo(mx(d.med),my(0.5)); X.lineTo(mx(d.med),y1); X.stroke(); X.setLineDash([]); X.lineWidth=1;
+    X.fillStyle="#16a34a"; X.font="bold 9px ui-sans-serif,system-ui"; X.fillText("median "+d.med.toFixed(1),mx(d.med)+3,y1-4);
+  }
+  // cursor read-out
+  const tc=K.tfrac*tmax, s=sAt(d.km,tc), ci=ciAt(d.km,tc);
+  X.strokeStyle="#7c3aed"; X.lineWidth=1.6; X.beginPath(); X.moveTo(mx(tc),y0); X.lineTo(mx(tc),y1); X.stroke(); X.lineWidth=1;
+  X.fillStyle="#7c3aed"; X.beginPath(); X.arc(mx(tc),my(s),3.6,0,7); X.fill();
+  X.strokeStyle="#7c3aed"; X.beginPath(); X.moveTo(mx(tc)-5,my(ci.lo)); X.lineTo(mx(tc)+5,my(ci.lo));
+  X.moveTo(mx(tc)-5,my(ci.hi)); X.lineTo(mx(tc)+5,my(ci.hi)); X.stroke();
+  X.fillStyle="#0f172a"; X.font="bold 10px ui-sans-serif,system-ui";
+  X.fillText(`S(${tc.toFixed(1)}) = ${s.toFixed(3)}`,Math.min(mx(tc)+7,x1-96),my(s)-8);
+}
+function kmTable(){
+  const d=K.data; if(!d) return;
+  const rows=d.km.table;
+  let S=1, gw=0;
+  let html="<tr><th>t</th><th>n at risk</th><th>d events</th><th>c censored</th><th>1 − d/n</th><th>Ŝ(t)</th><th>se</th><th>band</th></tr>";
+  const cap=22, extra=Math.max(0,rows.length-cap);
+  let sd=0, sc=0;
+  rows.forEach((r,i)=>{
+    sd+=r.d; sc+=r.c;
+    let f="—", se="—", band="—";
+    if(r.d>0){ S*=1-r.d/r.n; if(r.n>r.d) gw+=r.d/(r.n*(r.n-r.d)); f=(1-r.d/r.n).toFixed(4); se=(S*Math.sqrt(gw)).toFixed(4);
+      const ci=logLogCI(S,gw,d.z); band=ci.lo.toFixed(3)+"–"+ci.hi.toFixed(3); }
+    if(i<cap) html+=`<tr class="${r.d>0?"ev":""}"><td>${r.t}</td><td>${r.n}</td><td>${r.d}</td><td>${r.c}</td><td>${f}</td><td><b>${S.toFixed(4)}</b></td><td>${se}</td><td>${band}</td></tr>`;
+  });
+  if(extra>0) html+=`<tr><td colspan="8" style="text-align:left;color:#94a3b8">… ${extra} more distinct time${extra>1?"s":""} (the running product continues to ${S.toFixed(4)})</td></tr>`;
+  html+=`<tr class="tot"><td>Σ</td><td>n₀ = ${d.km.n0}</td><td>${sd}</td><td>${sc}</td><td colspan="4" style="text-align:left">Σd + Σc = ${sd+sc} = n₀ ✓ &nbsp; every subject accounted for exactly once</td></tr>`;
+  el("kTable").innerHTML=html;
+}
+function kmReport(){
+  const d=K.data; if(!d) return;
+  const tc=K.tfrac*d.tmax, s=sAt(d.km,tc), ci=ciAt(d.km,tc);
+  el("kN").textContent=d.km.n0+" / "+d.events;
+  el("kMed").textContent= d.med===null ? "not reached" : d.med.toFixed(1);
+  el("kSt").textContent=s.toFixed(3);
+  el("kCI").textContent=ci.lo.toFixed(2)+"–"+ci.hi.toFixed(2);
+  el("kTsV").textContent=tc.toFixed(1);
+  const naive=[s-d.z*(d.km.steps.length?d.km.steps[d.km.steps.length-1].se:0)];
+  const last=d.km.steps.length?d.km.steps[d.km.steps.length-1]:null;
+  const naiveHi = last ? Math.min(9.999, sAt(d.km,tc)+d.z*(function(){ let se=0; for(const st of d.km.steps){ if(st.t<=tc+1e-12) se=st.se; else break; } return se; })()) : 1;
+  setDiag(el("kDiag"), d.med===null?"diag-warn":"diag-good",
+    d.med===null ? "⚠️ the curve never reaches 0.5 — the median survival is NOT REACHED, and that is the honest answer"
+                 : `✅ median survival = ${d.med.toFixed(1)} · Ŝ(${tc.toFixed(1)}) = ${s.toFixed(3)} with a ${Math.round(K.conf*100)}% band of ${ci.lo.toFixed(3)}–${ci.hi.toFixed(3)}`,
+    `${d.km.n0} subjects, <b>${d.events} events</b> and <b>${d.cens} censored</b>${K.pasted?" (from your pasted table)":""}.
+     The curve only steps down at the ${d.km.steps.length} distinct <em>event</em> times; the orange ticks are censorings, which never move the curve but do shrink every later denominator.
+     At the cursor the estimate is <code>Ŝ = ${s.toFixed(4)}</code>, Greenwood's standard error puts a naive symmetric interval near <code>${Math.max(0,(2*s-naiveHi)).toFixed(3)}–${naiveHi.toFixed(3)}</code>, and the log-log band is <code>${ci.lo.toFixed(3)}–${ci.hi.toFixed(3)}</code> — asymmetric, and guaranteed to stay inside [0,1] no matter how extreme the tail gets.
+     The band widens to the right for a concrete reason: by then only a handful of subjects remain at risk, so each remaining event moves the product by a large fraction.
+     ${d.med===null?"Raise n or drop the censoring rate to push the curve below 0.5.":"The 25th percentile of time-to-event is "+(d.q25===null?"not reached":d.q25.toFixed(1))+", read off the same step function at Ŝ = 0.75."}
+     ${K.pasted?"":"The dashed grey line is the true <code>e^(−λt)</code> the cohort was drawn from — the estimate should hug it, and does."}`);
+}
+el("kNs").oninput=e=>{ K.n=+e.target.value; el("kNsV").textContent=K.n; K.pasted=null; kmFit(); };
+el("kLs").oninput=e=>{ K.lam=+e.target.value/100; el("kLsV").textContent=K.lam.toFixed(2); K.pasted=null; kmFit(); };
+el("kCs").oninput=e=>{ K.cens=+e.target.value/100; el("kCsV").textContent=Math.round(K.cens*100)+"%"; K.pasted=null; kmFit(); };
+el("kQs").oninput=e=>{ K.conf=+e.target.value/100; el("kQsV").textContent=Math.round(K.conf*100)+"%"; kmFit(); };
+el("kTs").oninput=e=>{ K.tfrac=+e.target.value/100; kmFit(); };
+el("kRoll").onclick=()=>{ K.seed=Math.floor(Math.random()*100000)+1; K.pasted=null; kmFit(); };
+el("kPasteBtn").onclick=()=>{
+  const rows=parseRows(el("kRaw").value);
+  if(rows.length<2){ el("kRawMsg").innerHTML='<span style="color:#dc2626">Need at least 2 usable rows — format is <code>time, event, group</code>.</span>'; return; }
+  K.pasted=rows;
+  const g1=rows.filter(r=>r.g===1).length;
+  el("kRawMsg").innerHTML=`<span style="color:#16a34a">Using ${rows.length} pasted rows · ${rows.filter(r=>r.e===1).length} events · ${g1} in group 1. The log-rank module will use them too.</span>`;
+  kmFit(); lrFit();
+};
+el("kGen").onclick=()=>{ K.pasted=null; el("kRawMsg").textContent="Back to the generated cohort."; kmFit(); lrFit(); };
+
+/* ================================================================
+   MODULE 3 — log-rank and Cox
+   ================================================================ */
+const lrC=el("lrCanvas"), lrX=lrC.getContext("2d");
+let L={ n:50, lam:0.10, hr:2.0, cens:0.30, seed:9, data:null };
+
+function lrFit(){
+  let rows, generated=true;
+  if(K.pasted && K.pasted.filter(r=>r.g===1).length>0 && K.pasted.filter(r=>r.g===0).length>0){
+    rows=K.pasted.map(r=>({t:r.t,e:r.e,g:r.g,x:r.g})); generated=false;
+  } else {
+    const rng=mulberry32(L.seed*15485863+L.n*13+Math.round(L.hr*1000)+Math.round(L.cens*1000));
+    rows=makeCohort(L.n,L.lam,L.cens,rng,0).concat(makeCohort(L.n,L.lam*L.hr,L.cens,rng,1));
+  }
+  const A=rows.filter(r=>r.g===0), B=rows.filter(r=>r.g===1);
+  const kA=kaplanMeier(A), kB=kaplanMeier(B);
+  const lr=logRank(rows), cox=coxGrid(rows,-3,3,241);
+  L.data={ rows, A, B, kA, kB, naA:nelsonAalen(A), naB:nelsonAalen(B), lr, cox, generated,
+           medA:medianSurvival(kA), medB:medianSurvival(kB), tmax:Math.max(...rows.map(r=>r.t)) };
+  lrDraw(); lrTable(); lrReport();
+}
+function lrDraw(){
+  const d=L.data; if(!d) return;
+  const W=lrC.width,H=lrC.height,X=lrX;
+  X.clearRect(0,0,W,H); X.fillStyle="#fbfdff"; X.fillRect(0,0,W,H);
+  const tmax=Math.max(0.001,d.tmax);
+
+  // ---- panel A: the two KM curves ----
+  const x0=48,x1=W-16,y0=24,y1=196;
+  axes(X,x0,y0,x1,y1,"① TWO KAPLAN-MEIER CURVES  ·  ticks = censorings","survival S(t)",tmax,"1.0");
+  const mx=t=>x0+(t/tmax)*(x1-x0), my=s=>y1-s*(y1-y0);
+  X.strokeStyle="#e2e8f0"; X.setLineDash([3,3]); X.beginPath(); X.moveTo(x0,my(0.5)); X.lineTo(x1,my(0.5)); X.stroke(); X.setLineDash([]);
+  X.fillStyle="#94a3b8"; X.font="9px ui-sans-serif,system-ui"; X.fillText("0.5",x0-20,my(0.5)+3);
+  // exp(-H) overlays
+  const naCurve=(na)=>{ const p=[[0,1]]; let last=1; for(const s of na){ if(s.t>tmax) break; p.push([s.t,last]); p.push([s.t,s.Sna]); last=s.Sna; } p.push([tmax,last]); return p; };
+  drawPoly(X,naCurve(d.naA),mx,my,CTRUE,1.2,[3,3]);
+  drawPoly(X,naCurve(d.naB),mx,my,CTRUE,1.2,[3,3]);
+  drawPoly(X,curvePoints(d.kA,tmax),mx,my,CA,2.4);
+  drawPoly(X,curvePoints(d.kB,tmax),mx,my,CB,2.4);
+  [[d.A,d.kA,CA],[d.B,d.kB,CB]].forEach(([rows,km,col])=>{
+    X.strokeStyle=col; X.lineWidth=1.8;
+    for(const r of rows){ if(r.e===1) continue; const s=sAt(km,r.t);
+      X.beginPath(); X.moveTo(mx(r.t),my(s)-4); X.lineTo(mx(r.t),my(s)+4); X.stroke(); }
+    X.lineWidth=1;
+  });
+  X.font="bold 9px ui-sans-serif,system-ui";
+  X.fillStyle=CA; X.fillText("A control  median "+(d.medA===null?"NR":d.medA.toFixed(1)),x0+5,y0+12);
+  X.fillStyle=CB; X.fillText("B treated  median "+(d.medB===null?"NR":d.medB.toFixed(1)),x0+5,y0+24);
+
+  // ---- panel B: Nelson-Aalen cumulative hazards ----
+  const hx0=48,hx1=W-16,hy0=232,hy1=344;
+  let hmax=0.001; d.naA.concat(d.naB).forEach(s=>{ if(s.H>hmax) hmax=s.H; });
+  axes(X,hx0,hy0,hx1,hy1,"② NELSON-AALEN CUMULATIVE HAZARD  Ĥ(t) = Σ dᵢ/nᵢ  ·  slope = hazard","Ĥ(t)",tmax,hmax.toFixed(2));
+  const hx=t=>hx0+(t/tmax)*(hx1-hx0), hy=v=>hy1-(v/hmax)*(hy1-hy0);
+  const naPts=(na)=>{ const p=[[0,0]]; let last=0; for(const s of na){ p.push([s.t,last]); p.push([s.t,s.H]); last=s.H; } p.push([tmax,last]); return p; };
+  drawPoly(X,naPts(d.naA),hx,hy,CA,2);
+  drawPoly(X,naPts(d.naB),hx,hy,CB,2);
+  X.fillStyle="#64748b"; X.font="9px ui-sans-serif,system-ui";
+  X.fillText("a constant hazard ratio shows up here as two roughly proportional slopes",hx0+4,hy0+11);
+
+  // ---- panel C: the Cox partial log-likelihood ----
+  const cx0=48,cx1=W-16,cy0=382,cy1=490;
+  const lls=d.cox.pts.map(p=>p[1]);
+  let lo=Math.min(...lls), hi=Math.max(...lls);
+  const span=Math.max(1e-9,hi-lo);
+  lo=hi-Math.min(span, 30);           // zoom on the top of the curve
+  X.fillStyle="#f8fafc"; X.fillRect(cx0,cy0,cx1-cx0,cy1-cy0);
+  X.strokeStyle="#e2e8f0"; X.strokeRect(cx0,cy0,cx1-cx0,cy1-cy0);
+  X.fillStyle="#334155"; X.font="bold 10px ui-sans-serif,system-ui";
+  X.fillText("③ COX PARTIAL LOG-LIKELIHOOD  ℓ(β) = Σ_events [ βxᵢ − log Σ_riskset e^(βxⱼ) ]",cx0,cy0-5);
+  const bx=b=>cx0+((b+3)/6)*(cx1-cx0), by=v=>cy1-((v-lo)/(hi-lo))*(cy1-cy0);
+  X.strokeStyle="#cbd5e1"; X.setLineDash([3,3]); X.beginPath(); X.moveTo(bx(0),cy0); X.lineTo(bx(0),cy1); X.stroke(); X.setLineDash([]);
+  X.strokeStyle=CKM; X.lineWidth=2.2; X.beginPath();
+  d.cox.pts.forEach((p,i)=>{ const y=Math.max(cy0, by(p[1])); i===0?X.moveTo(bx(p[0]),y):X.lineTo(bx(p[0]),y); });
+  X.stroke(); X.lineWidth=1;
+  X.strokeStyle="#16a34a"; X.lineWidth=2; X.setLineDash([4,3]);
+  X.beginPath(); X.moveTo(bx(d.cox.bHat),cy0); X.lineTo(bx(d.cox.bHat),cy1); X.stroke(); X.setLineDash([]); X.lineWidth=1;
+  X.fillStyle="#16a34a"; X.beginPath(); X.arc(bx(d.cox.bHat),by(d.cox.best),4,0,7); X.fill();
+  X.fillStyle="#16a34a"; X.font="bold 10px ui-sans-serif,system-ui";
+  X.fillText(`β̂ = ${d.cox.bHat.toFixed(3)}  →  HR = e^β̂ = ${d.cox.hr.toFixed(2)}`,Math.min(bx(d.cox.bHat)+6,cx1-170),cy0+14);
+  X.fillStyle="#94a3b8"; X.font="9px ui-sans-serif,system-ui";
+  X.fillText("β = −3",cx0+2,cy1+10); X.textAlign="center"; X.fillText("β = 0 (no effect)",bx(0),cy1+10);
+  X.textAlign="right"; X.fillText("β = +3",cx1,cy1+10); X.textAlign="left";
+}
+function lrTable(){
+  const d=L.data; if(!d) return;
+  const t=d.lr.tab, cap=16, extra=Math.max(0,t.length-cap);
+  let html="<tr><th>t</th><th>n</th><th>n<sub>B</sub></th><th>d</th><th>d<sub>B</sub> = O</th><th>E = d·n<sub>B</sub>/n</th><th>O − E</th><th>V</th></tr>";
+  t.slice(0,cap).forEach(r=>{
+    html+=`<tr class="${r.d1-r.e1>0?"ev":""}"><td>${r.t}</td><td>${r.n}</td><td>${r.n1}</td><td>${r.d}</td><td>${r.d1}</td><td>${r.e1.toFixed(3)}</td><td>${(r.d1-r.e1).toFixed(3)}</td><td>${r.v.toFixed(3)}</td></tr>`;
+  });
+  if(extra>0) html+=`<tr><td colspan="8" style="text-align:left;color:#94a3b8">… ${extra} more event time${extra>1?"s":""}</td></tr>`;
+  html+=`<tr class="tot"><td>Σ</td><td>—</td><td>—</td><td>${d.lr.O1+d.lr.O0}</td><td>${d.lr.O1}</td><td>${d.lr.E1.toFixed(3)}</td><td>${(d.lr.O1-d.lr.E1).toFixed(3)}</td><td>${d.lr.V.toFixed(3)}</td></tr>`;
+  html+=`<tr class="tot"><td colspan="8" style="text-align:left">ΣO = ${(d.lr.O1+d.lr.O0).toFixed(3)} and ΣE = ${(d.lr.E1+d.lr.E0).toFixed(3)} over BOTH groups — equal by construction ✓ &nbsp;·&nbsp; χ² = (${(d.lr.O1-d.lr.E1).toFixed(2)})² / ${d.lr.V.toFixed(2)} = ${d.lr.chi2.toFixed(3)}</td></tr>`;
+  el("lTable").innerHTML=html;
+}
+function lrReport(){
+  const d=L.data; if(!d) return;
+  el("lChi").textContent=d.lr.chi2.toFixed(2);
+  el("lP").textContent= d.lr.p<1e-4 ? d.lr.p.toExponential(1) : d.lr.p.toFixed(4);
+  el("lHR").textContent=d.cox.hr.toFixed(2);
+  el("lTrue").textContent= d.generated ? L.hr.toFixed(2) : "unknown";
+  const sig=d.lr.p<0.05;
+  setDiag(el("lDiag"), d.generated ? (L.hr===1 ? (sig?"diag-warn":"diag-good") : (sig?"diag-good":"diag-warn")) : "diag-info",
+    d.generated && L.hr===1
+      ? (sig ? `⚠️ p = ${d.lr.p.toFixed(4)} even though the arms are IDENTICAL — this is a false positive, and it happens 5% of the time by design`
+             : `✅ HR = 1: the arms really are identical, χ² = ${d.lr.chi2.toFixed(2)} is small and p = ${d.lr.p.toFixed(3)} is unremarkable`)
+      : (sig ? `✅ χ² = ${d.lr.chi2.toFixed(2)} on 1 df → p = ${d.lr.p<1e-4?d.lr.p.toExponential(2):d.lr.p.toFixed(5)} — the two curves differ by more than sampling noise`
+             : `⚠️ χ² = ${d.lr.chi2.toFixed(2)} → p = ${d.lr.p.toFixed(3)} — not enough evidence to separate the curves at this sample size`),
+    `The table above is the whole test: at each of the ${d.lr.tab.length} pooled event times we ask how many of the <code>d</code> deaths group B <em>would</em> get if the arms were interchangeable (<code>E = d·n_B/n</code>), and bank the difference.
+     Totals: <b>O = ${d.lr.O1}</b> versus <b>E = ${d.lr.E1.toFixed(2)}</b>, variance <b>${d.lr.V.toFixed(2)}</b>, so <code>χ² = ${d.lr.chi2.toFixed(3)}</code> and <code>p = erfc(√(χ²/2)) = ${d.lr.p<1e-4?d.lr.p.toExponential(3):d.lr.p.toFixed(5)}</code>.
+     Three independent estimates of the same effect: the crude <b>O/E ratio = ${isFinite(d.lr.hrOE)?d.lr.hrOE.toFixed(2):"—"}</b>, the <b>Cox maximiser e^β̂ = ${d.cox.hr.toFixed(2)}</b> (β̂ = ${d.cox.bHat.toFixed(3)}, where the partial-likelihood score is ${d.cox.score.toExponential(1)} ≈ 0)${d.generated?`, against the <b>true HR = ${L.hr.toFixed(2)}</b> you asked the generator for`:""}.
+     Panel ③ is the real Breslow partial log-likelihood scored at 241 values of β — note it is a clean single-peaked curve, and that at <code>β = 0</code> its value is exactly <code>−Σ log nᵢ</code> because with no covariate effect every member of the risk set is equally likely to be the one who died.
+     ${d.generated?"Press <b>Set HR = 1</b> and re-roll a few times: the χ² collapses toward zero and the p-value scatters uniformly over [0,1] — that is what a correct test does when the null is true.":"Using your pasted table, so there is no known truth to compare against."}
+     Panel ② shows why Cox is worth the trouble: a constant hazard ratio makes the two cumulative-hazard curves roughly proportional, and proportionality — not any particular shape in time — is the only thing Cox assumes.`);
+}
+el("lNs").oninput=e=>{ L.n=+e.target.value; el("lNsV").textContent=L.n; K.pasted=null; lrFit(); };
+el("lLs").oninput=e=>{ L.lam=+e.target.value/100; el("lLsV").textContent=L.lam.toFixed(2); K.pasted=null; lrFit(); };
+el("lHs").oninput=e=>{ L.hr=+e.target.value/100; el("lHsV").textContent=L.hr.toFixed(2); K.pasted=null; lrFit(); };
+el("lCs").oninput=e=>{ L.cens=+e.target.value/100; el("lCsV").textContent=Math.round(L.cens*100)+"%"; K.pasted=null; lrFit(); };
+el("lRoll").onclick=()=>{ L.seed=Math.floor(Math.random()*100000)+1; K.pasted=null; lrFit(); };
+el("lNull").onclick=()=>{ L.hr=1; el("lHs").value=100; el("lHsV").textContent="1.00"; K.pasted=null; lrFit(); };
+
+/* ================================================================
+   module switching + init
+   ================================================================ */
+const subBtns=document.querySelectorAll("#subnav button");
+function showMod(m){
+  document.querySelectorAll(".mod").forEach(x=>x.classList.add("hidden"));
+  el("mod-"+m).classList.remove("hidden");
+  subBtns.forEach(b=>b.classList.toggle("on", b.dataset.mod===m));
+  if(m==="cen") cenDraw();
+  if(m==="km")  kmDraw();
+  if(m==="lr")  lrDraw();
+}
+subBtns.forEach(b=> b.onclick=()=>showMod(b.dataset.mod));
+
+cenFit(); kmFit(); lrFit();
+document.querySelector('[data-mod="cen"]').classList.add("on");
+showMod("cen");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. Time-to-event data is not a regression target",
+   why:"The question 'how long until X happens?' looks like ordinary regression until you try to build the training set. Take churn: you want to predict how many months a customer lasts, so you look up each customer's lifetime — and immediately half of them are still subscribed, so their lifetime does not exist yet. Take a clinical trial: the study ends on a fixed date, and plenty of patients are alive on that date, so their survival time is unknown. You cannot put those rows into a regression because they have no y value, and you cannot delete them because they are usually the most successful subjects you have. This is not a data-cleaning nuisance you can engineer around; it is a structural property of every time-to-event question, and it is why survival analysis is a separate branch of statistics rather than a preprocessing step.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">customer 1: cancelled at month 7&nbsp;&nbsp;→ y = 7 ✅<br>customer 2: cancelled at month 3&nbsp;&nbsp;→ y = 3 ✅<br>customer 3: <b>still subscribed at month 11</b> → y = ??? ✋<br><br>y is not missing — you know y &gt; 11<br>that inequality is DATA, not a hole</div>`,
+   code:`# the tempting, wrong reshape
+df = df[df.churned == 1]          # drop the ones still subscribed
+model.fit(df[X], df.months)       # regression on "how long did they last"
+# you just fitted a model to the customers who left EARLY.
+
+# survival data keeps both pieces
+df[["duration", "event"]]         # event = 1 churned, 0 still here at 'duration'` },
+
+ { title:"2. Right-censoring — the row that has not finished yet",
+   why:"A right-censored observation is one where you know the event has not happened by time t, and nothing more. The commonest sources are administrative censoring (the study ended while the subject was still event-free), loss to follow-up (they moved, stopped answering), and competing exits (they left for an unrelated reason). What all three share is an inequality: the true event time T satisfies T > t. That is genuinely informative — a customer who has already been subscribed for three years tells you a lot about survival at one year, two years and three years — and the whole design of Kaplan-Meier is about spending exactly that information and no more. One assumption is doing quiet work here: censoring must be non-informative, meaning subjects do not drop out BECAUSE they are about to have the event. If sick patients leave the trial early, no estimator can save you.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">|————————————●&nbsp;&nbsp;event at 7<br>|——————✂&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;censored at 4  (T &gt; 4)<br>|———————————————✂&nbsp;censored at 12 (T &gt; 12)<br><br>right-censored: you know T &gt; t, not T<br>ASSUMPTION: they did not leave BECAUSE they were about to fail</div>`,
+   code:`# three ways a row becomes censored — all give (t, e=0)
+# 1. administrative: study closed on 2026-12-31, subject still fine
+# 2. lost to follow-up: stopped answering after month 9
+# 3. competing exit: left for an unrelated reason
+
+t = min(true_event_time, censoring_time)
+e = 1 if true_event_time <= censoring_time else 0
+# you observe (t, e). you NEVER observe true_event_time for e == 0.` },
+
+ { title:"3. The two wrong answers, and which way they bend",
+   why:"Almost everyone reaches for one of two fixes, and both are badly biased in the same direction. Fix one, complete-case analysis, deletes every censored row and analyses the rest — but the rows you deleted are exactly the subjects who lasted longest, so what remains is a sample of short lifetimes and every estimate of survival collapses. Fix two recodes censoring as an event, which asserts that everyone who walked out of the study had the event on their way out; it keeps the sample size but manufactures failures that never happened. A third, less common error goes the other way: treating censored subjects as if they survived forever, which inflates survival instead. The demo on the LOOK tab quantifies all of this against a known truth — with 45% censoring the naive medians come in around 4 when the true median is 6.93, an error of roughly 40%, while Kaplan-Meier lands within a few percent.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">true median = ln2/λ = 6.93<br><br>drop censored rows&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ ~4.1&nbsp;&nbsp;❌ far too low<br>censored counted as event → ~4.5&nbsp;&nbsp;❌ far too low<br>censored = survives forever → too high ❌<br><b>Kaplan-Meier&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ ~6.7&nbsp;&nbsp;✅</b><br><br>both common fixes bend the SAME way: pessimistic</div>`,
+   code:`# WRONG 1 — complete cases only: keeps exactly the short lifetimes
+km_wrong1 = kaplan_meier(rows[rows.event == 1])
+
+# WRONG 2 — every censoring becomes a death
+km_wrong2 = kaplan_meier(rows.assign(event=1))
+
+# RIGHT — every row counts for as long as it was observed, then stops
+km = kaplan_meier(rows)` },
+
+ { title:"4. The survival function S(t), and the easy case",
+   why:"Define S(t) = P(T > t): the probability a subject is still event-free strictly after time t. It starts at 1, never increases, and (if everyone eventually has the event) decays toward 0. When nothing is censored, estimating it is trivial — just count: S(t) = #{tᵢ > t} / n, the empirical survival function, a staircase that drops by 1/n at each observed time. Anything you build for the censored case must reduce to exactly this when the censoring vanishes, and that is not a slogan, it is a testable identity: the Kaplan-Meier product telescopes to the empirical count the moment every row is an event. The verification suite for this page asserts it agrees to twelve decimal places on many random datasets, because an estimator that fails its own easy case is not worth trusting on the hard one.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">S(t) = P(T &gt; t)&nbsp;&nbsp;·&nbsp;&nbsp;S(0) = 1&nbsp;&nbsp;·&nbsp;&nbsp;non-increasing<br><br>no censoring:&nbsp;&nbsp;Ŝ(t) = #{ tᵢ &gt; t } / n<br>a staircase falling 1/n at each observed time<br><br>KM must equal this exactly when nothing is censored<br>(it does — the product telescopes)</div>`,
+   code:`def empirical_survival(times, t):
+    return sum(1 for x in times if x > t) / len(times)
+
+# the identity every implementation must satisfy
+rows_all_events = [{"t": t, "e": 1} for t in times]
+assert abs(kaplan_meier(rows_all_events).at(t)
+           - empirical_survival(times, t)) < 1e-12` },
+
+ { title:"5. The risk set — where censoring is actually handled",
+   why:"The risk set R(t) is the collection of subjects who are still being observed and still event-free just before time t; nᵢ is its size. This single object is where all the censoring machinery lives, and it is worth internalising: a subject censored at time 9 belongs to every risk set up to 9 and to none after it. They therefore contribute to every denominator they earned and then quietly stop counting — no deletion, no invention. The tie convention is standard and matters: someone censored exactly at t is counted as still at risk at t, because they were alive when that instant's deaths occurred. Two invariants follow that make excellent unit tests: nᵢ always equals #{tⱼ ≥ tᵢ}, and summing events plus censorings over the whole table returns exactly the starting sample size.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">R(t) = { subjects with tⱼ ≥ t }&nbsp;&nbsp;&nbsp;nᵢ = |R(tᵢ)|<br><br>t:&nbsp; 4&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;6&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;6&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;9&nbsp;&nbsp;&nbsp;&nbsp;12<br>n:&nbsp; 10&nbsp;&nbsp;&nbsp; 9&nbsp;&nbsp;&nbsp;&nbsp; —&nbsp;&nbsp;&nbsp;&nbsp; 7&nbsp;&nbsp;&nbsp;&nbsp; 5<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↑ censored here: still counted at 6<br><br>Σ events + Σ censored = n₀&nbsp;&nbsp;(nobody lost)</div>`,
+   code:`def risk_table(rows):
+    out, n = [], len(rows)
+    for t in sorted({r["t"] for r in rows}):
+        d = sum(1 for r in rows if r["t"] == t and r["e"] == 1)
+        c = sum(1 for r in rows if r["t"] == t and r["e"] == 0)
+        out.append((t, n, d, c))       # n = #{ t_j >= t }
+        n -= d + c                     # they leave AFTER this instant
+    return out` },
+
+ { title:"6. Kaplan-Meier — chain the conditional survivals",
+   why:"Here is the estimator, and the idea behind it is a chain rule. Surviving past time t means surviving every risky instant before t in turn, so P(survive to t) = Π P(survive instant i | reached instant i). Each conditional factor is estimated the only sensible way — as the fraction of the current risk set that made it through — giving 1 − dᵢ/nᵢ. Multiply those factors over the ordered event times and you have S(t) = Π(1 − dᵢ/nᵢ), the product-limit estimator that Kaplan and Meier published in 1958. Instants where only censoring happened contribute a factor of 1, so they do not move the curve; they simply shrink the denominators from then on. The result is a right-continuous staircase that steps down only at event times, and it is the non-parametric maximum-likelihood estimator of S — no distribution is assumed anywhere.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Ŝ(t) = Π<sub>tᵢ ≤ t</sub> ( 1 − dᵢ / nᵢ )<br><br>P(survive to t) = Π P(survive instant i | reached it)<br><br>t=6:&nbsp; 1 − 2/10 = 0.800&nbsp;&nbsp;→ Ŝ = 0.800<br>t=9:&nbsp; 1 − 1/7&nbsp; = 0.857&nbsp;&nbsp;→ Ŝ = 0.686<br>t=12: 1 − 1/5&nbsp; = 0.800&nbsp;&nbsp;→ Ŝ = 0.549<br><br>censoring-only times contribute a factor of 1</div>`,
+   code:`S = 1.0
+for (t, n, d, c) in risk_table(rows):
+    if d == 0:                 # censoring alone does not step the curve
+        continue
+    S *= 1 - d / n             # <-- the whole estimator
+    steps.append((t, S))
+# right-continuous staircase; non-parametric MLE of S(t);
+# no distributional assumption anywhere in this loop.` },
+
+ { title:"7. Greenwood's formula — how wrong could the curve be?",
+   why:"A curve without error bars invites over-reading, and survival curves are read hardest exactly where they are weakest: the far right tail, where only a handful of subjects are still at risk. Greenwood's formula is the delta method applied to the product: treat each factor as a binomial proportion with variance p(1−p)/n, differentiate the product with respect to each factor, and the algebra collapses to Var(Ŝ) = Ŝ²·Σ dᵢ/(nᵢ(nᵢ−dᵢ)). Notice what makes that sum explode — a small nᵢ in the denominator — which is precisely why the band flares out on the right. The naive interval Ŝ ± z·se then misbehaves by leaking outside [0,1] near the extremes, so the standard fix is to build the interval for log(−log Ŝ), which is unconstrained, and transform back: the resulting band is asymmetric and always legal.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Var(Ŝ(t)) = Ŝ(t)² · Σ<sub>tᵢ ≤ t</sub> dᵢ / ( nᵢ (nᵢ − dᵢ) )<br><br>small nᵢ ⇒ big term ⇒ the band flares in the tail<br><br>naive:&nbsp; Ŝ ± z·se&nbsp;&nbsp;→ can exceed 1 or drop below 0 ✗<br>log-log: [ Ŝ^exp(+z·σ) , Ŝ^exp(−z·σ) ]&nbsp;&nbsp;→ always in [0,1] ✓<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;where σ = √(Σ …) / |log Ŝ|</div>`,
+   code:`gw = 0.0
+for (t, n, d, c) in table:
+    if d == 0: continue
+    S  *= 1 - d/n
+    gw += d / (n * (n - d))            # Greenwood's sum
+    se  = S * sqrt(gw)
+
+    sigma = sqrt(gw) / abs(log(S))     # se of log(-log S)
+    lo, hi = S ** exp(z*sigma), S ** exp(-z*sigma)
+# identical to a finite-difference delta-method recomputation — the tests check it.` },
+
+ { title:"8. Median survival — a lookup, and sometimes nothing at all",
+   why:"Do not report the mean of the observed follow-up times; with censoring present it is not the mean survival time and it is not anything else useful either. The median survival is the first time at which the estimated curve drops to 0.5 or below, read straight off the staircase, and the same lookup at other heights gives any quantile you like. The important subtlety is that the median can fail to exist: if the study is short or censoring is heavy, the curve may flatten out at 0.62 and stop, in which case the honest report is 'median not reached'. That is a real result — it says the typical subject outlived your study — and filling it in with the last observed time, the mean, or an extrapolation is one of the most common ways published survival numbers go wrong. When you need a single number anyway, the restricted mean survival time (the area under the curve up to a fixed horizon) is always defined.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">median = min { t : Ŝ(t) ≤ 0.5 }<br><br>Ŝ:&nbsp;1.00 → 0.80 → 0.69 → 0.55 → <b>0.46</b>&nbsp;&nbsp;→ median = that t<br>Ŝ:&nbsp;1.00 → 0.88 → 0.74 → 0.62 → curve ends → <b>NOT REACHED</b><br><br>never substitute the mean follow-up time<br>RMST(τ) = ∫₀^τ Ŝ(t) dt&nbsp;&nbsp;always exists</div>`,
+   code:`def median_survival(steps):
+    for t, S in steps:
+        if S <= 0.5:
+            return t
+    return None            # "not reached" — report it, do not invent a number
+
+def rmst(steps, tau):      # restricted mean survival time = area under the curve
+    area, prev_t, S = 0.0, 0.0, 1.0
+    for t, s in steps:
+        if t > tau: break
+        area += S * (t - prev_t); prev_t, S = t, s
+    return area + S * (tau - prev_t)` },
+
+ { title:"9. Comparing two curves — the log-rank test",
+   why:"Two arms, two staircases, and the eternal question: is the gap real? The log-rank test answers it without assuming any distribution, by decomposing the comparison into one tiny question per event time. Freeze at time tᵢ. There are nᵢ subjects at risk, n_Bᵢ of them in group B, and dᵢ deaths happen right now. If the groups were interchangeable, the deaths would be allocated like drawing balls from an urn without replacement — a hypergeometric distribution — so the expected number in group B is Eᵢ = dᵢ·n_Bᵢ/nᵢ with a known variance. Accumulate observed minus expected across every risk set and standardise. Because the allocation is conditioned on the totals, summing over both groups makes observed and expected identical by construction, which is the invariant a correct implementation must satisfy and a broken loop breaks first.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">at each event time tᵢ:&nbsp;&nbsp;Eᵢ = dᵢ · n_Bᵢ / nᵢ<br>Vᵢ = dᵢ · (n_Bᵢ/nᵢ)(1 − n_Bᵢ/nᵢ) · (nᵢ − dᵢ)/(nᵢ − 1)<br><br>χ² = ( ΣOᵢ − ΣEᵢ )² / ΣVᵢ&nbsp;&nbsp;&nbsp;&nbsp;on 1 df<br><br>invariant: Σ over BOTH groups of O = Σ of E = total events</div>`,
+   code:`O = E = V = 0
+for t in sorted({r.t for r in rows if r.e == 1}):
+    n  = sum(1 for r in rows if r.t >= t)
+    nB = sum(1 for r in rows if r.t >= t and r.g == 1)
+    d  = sum(1 for r in rows if r.t == t and r.e == 1)
+    dB = sum(1 for r in rows if r.t == t and r.e == 1 and r.g == 1)
+    O += dB
+    E += d * nB / n
+    V += d * (nB/n) * (1 - nB/n) * (n - d) / (n - 1) if n > 1 else 0
+
+chi2 = (O - E) ** 2 / V` },
+
+ { title:"10. The p-value — and what it does not tell you",
+   why:"A χ² statistic with one degree of freedom is the square of a standard normal, so its upper tail needs no table and no library: P(X > x) = erfc(√(x/2)). Writing erfc yourself is a Taylor series for small arguments plus a continued fraction for large ones — about fifteen lines for full double precision — and this page does exactly that, then checks it against a numerically integrated χ²(1) density. Now the caveats, which matter more than the arithmetic. The log-rank p-value tells you whether the curves differ, not by how much; always report the hazard ratio and its interval alongside. The test is most powerful when hazards really are proportional and loses power badly when the curves cross, because early and late differences cancel inside the O−E sum. And with HR set to 1 on the LOOK tab you can watch a correct test produce p < 0.05 on roughly one re-roll in twenty — that is not a bug, that is the definition.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">χ²₁ = Z²&nbsp;&nbsp;⇒&nbsp;&nbsp;P(χ²₁ &gt; x) = erfc( √(x/2) )<br><br>x = 3.8415 → p = 0.050&nbsp;&nbsp;·&nbsp;&nbsp;x = 6.6349 → p = 0.010<br><br>p answers "is there a difference", never "how big"<br>crossing curves ⇒ O−E cancels ⇒ the test goes blind<br>under the null, p is UNIFORM on [0,1]</div>`,
+   code:`def chi2_sf_1df(x):
+    return erfc(sqrt(x / 2))         # that is the entire distribution function
+
+# sanity anchors worth hard-coding into a test
+assert abs(chi2_sf_1df(3.8414588) - 0.05 ) < 1e-6
+assert abs(chi2_sf_1df(6.6348966) - 0.01 ) < 1e-6
+assert abs(chi2_sf_1df(10.827566) - 0.001) < 1e-6
+# and report the effect, not just the tail:
+#   HR = 1.9 (95% CI 1.3-2.8), log-rank p = 0.001` },
+
+ { title:"11. Hazard — the local view, and Nelson-Aalen",
+   why:"Survival is a cumulative statement; hazard is an instantaneous one. h(t) is the rate of failure right now among those who have made it this far, formally h(t) = −d/dt log S(t), and it is often the more natural quantity to think in: infant mortality is a falling hazard, ageing is a rising one, a constant hazard is the memoryless exponential. Its cumulative version has an estimator even simpler than Kaplan-Meier — Ĥ(t) = Σ dᵢ/nᵢ, adding the same fractions that KM multiplies as 1 − dᵢ/nᵢ. Because log(1−x) ≈ −x for small x, exp(−Ĥ) tracks Ŝ closely whenever per-step hazards are small, and Nelson-Aalen is the better-behaved of the two in small samples. Hazard is also the right language for comparison, because hazards multiply: 'twice the risk at every moment' is a single number, whereas 'twice the risk' on the survival scale is not even well defined.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">h(t) = −d/dt log S(t)&nbsp;&nbsp;·&nbsp;&nbsp;S(t) = exp( −H(t) )<br><br>Kaplan-Meier:&nbsp;&nbsp;&nbsp;multiply&nbsp;&nbsp;(1 − dᵢ/nᵢ)<br>Nelson-Aalen:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;add&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;dᵢ/nᵢ<br><br>exp(−Ĥ) ≈ Ŝ, and exp(−Ĥ) ≥ Ŝ always<br>constant hazard ⇔ exponential ⇔ memoryless</div>`,
+   code:`H = 0.0
+for (t, n, d, c) in table:
+    if d == 0: continue
+    H += d / n                       # ADD, where KM multiplies (1 - d/n)
+    na.append((t, H, exp(-H)))       # exp(-H) should shadow the KM curve
+
+# hazard shapes worth recognising
+#   falling  -> infant mortality / early churn after signup
+#   flat     -> memoryless, exponential lifetimes
+#   rising   -> wear-out, ageing
+#   bathtub  -> all three at once (hardware)` },
+
+ { title:"12. Cox proportional hazards — regression without modelling time",
+   why:"Kaplan-Meier describes a group; to ask what a covariate does you need a regression, and Cox's 1972 model is the one everybody uses: h(t | x) = h₀(t)·exp(βx). Read it as a shape and a shift — h₀(t) is a completely unspecified baseline hazard shared by everyone, and exp(βx) scales it up or down. The astonishing part is that you never estimate h₀. Condition on the fact that exactly one subject in the risk set failed at each event time, and ask only which one it was: the baseline appears in both numerator and denominator and cancels, leaving a partial likelihood in β alone, Π exp(βxᵢ) / Σ_{j∈R(tᵢ)} exp(βxⱼ). Maximise it and exp(β̂) is the hazard ratio — the multiplicative change in instantaneous risk per unit of x. The cost is the assumption in the name: the ratio must be constant over time. Crossing curves are the classic violation, and you check it rather than hope, with Schoenfeld residuals or a time-varying coefficient.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">h(t | x) = h₀(t) · e^(βx)&nbsp;&nbsp;&nbsp;&nbsp;h₀ NEVER estimated<br><br>L(β) = Π<sub>events i</sub> e^(βxᵢ) / Σ<sub>j ∈ R(tᵢ)</sub> e^(βxⱼ)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↑ h₀(t) cancels top and bottom<br><br>e^β = hazard ratio&nbsp;&nbsp;·&nbsp;&nbsp;ℓ(0) = −Σ log nᵢ<br>ASSUMES the ratio is constant in time — test it</div>`,
+   code:`def cox_partial_loglik(rows, beta):
+    ll = 0.0
+    for r in rows:
+        if r.e != 1: continue
+        risk = sum(exp(beta * j.x) for j in rows if j.t >= r.t)
+        ll += beta * r.x - log(risk)      # h0(t) is simply not in this expression
+    return ll
+
+# ll(0) == -sum(log(n_i)) over event times — a free correctness check
+# maximise over beta (grid, or Newton with the analytic score & information)
+# exp(beta_hat) = hazard ratio; then ALWAYS run check_assumptions()` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
