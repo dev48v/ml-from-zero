@@ -1,0 +1,1612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 61 — ARIMA &amp; Time-Series Forecasting (from scratch)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:158px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; min-width:0; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .swatch-box { display:inline-block; width:14px; height:10px; border-radius:3px; vertical-align:0; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; min-width:0; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 6px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; min-width:0; }
+  .metric-pill .v { font-size:18px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .ds-btn { border:1px solid #e2e8f0; background:#fff; font-weight:800; font-size:12px; padding:6px 11px; border-radius:9px; transition:all .15s; }
+  .ds-btn.on { color:#fff; border-color:transparent; background:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; max-width:100%; height:auto; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  .scroller { overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100%; }
+  table.risk { border-collapse:collapse; font-size:11.5px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.risk th, table.risk td { border:1px solid #e2e8f0; padding:3px 7px; text-align:right; }
+  table.risk th { background:#f1f5f9; font-weight:800; color:#334155; }
+  table.risk tr.win td { background:#ecfdf5; font-weight:800; color:#065f46; }
+  table.risk td.hit { background:#f0f9ff; font-weight:800; color:#0369a1; }
+  .honest { background:#fffbeb; border:1px solid #fcd34d; color:#92400e; border-radius:12px; padding:10px 13px; font-size:12px; line-height:1.5; }
+  .btn-run { background:#16a34a; color:#fff; }
+  .btn-run:hover { background:#15803d; }
+  textarea.raw { width:100%; min-width:0; font-family:ui-monospace,monospace; font-size:11px; border:1px solid #e2e8f0; border-radius:9px; padding:7px; background:#f8fafc; }
+  /* the intro paragraph is taller than a small screen — pinning it there would hide the whole page */
+  @media (max-width: 900px), (max-height: 820px) { header.sticky { position:static; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between flex-wrap gap-2">
+    <div style="min-width:0;">
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 61</div>
+      <h1 class="text-xl font-bold">📈 <strong>ARIMA</strong> — the first model in this whole series where the rows are <em>not</em> interchangeable. Every estimator so far, from <span style="color:#0ea5e9;font-weight:700">linear regression (D1)</span> to <span style="color:#0ea5e9;font-weight:700">one-class SVM (D58)</span>, could have had its rows shuffled without changing a single number, because they all assumed the observations were independent draws. A time series destroys that assumption on purpose: the value today is <em>made of</em> the value yesterday, the order <strong>is</strong> the signal, and a random train/test split leaks the future into the past. <span style="color:#0ea5e9;font-weight:700">Day 59's HMM</span> had hidden states and <span style="color:#0ea5e9;font-weight:700">Day 60's survival analysis</span> had time-to-event, but neither one <em>forecasts</em> — this is the first page in the series that says what happens next. The whole edifice rests on one precondition, <span style="color:#0ea5e9;font-weight:700">stationarity</span>: the mean, the variance and the autocorrelations must not depend on <em>when</em> you look, because a model whose parameters are estimated from the past can only be carried into the future if the rules did not change. Real series are almost never stationary, which is what the <strong>I</strong> is for — <span style="color:#0ea5e9;font-weight:700">differencing</span> <code>∇y_t = y_t − y_{t−1}</code>, repeated <code>d</code> times, kills a deterministic trend and tames a random walk, and every forecast then has to be <em>integrated back up</em> to get to the scale anyone cares about. Once the series is flat, two exact diagnostics tell you the shape of what is left: the <span style="color:#0ea5e9;font-weight:700">ACF</span> <code>ρ_k = γ_k/γ_0</code> with <code>γ_k = (1/n)Σ(y_t−ȳ)(y_{t+k}−ȳ)</code>, and the <span style="color:#0ea5e9;font-weight:700">PACF</span> — the correlation at lag <em>k</em> with every shorter lag already removed — computed here by the <span style="color:#0ea5e9;font-weight:700">Durbin–Levinson recursion</span>, both drawn against the <code>±1.96/√n</code> band that says which spikes are real. Read them together and you get the classic table: <strong>AR(p) → PACF cuts off at p, MA(q) → ACF cuts off at q</strong>. Then the fitting, done two independent ways so they can be checked against each other: <span style="color:#0ea5e9;font-weight:700">Yule–Walker</span> solves a Toeplitz system of autocorrelations with a hand-written Gaussian elimination, and <span style="color:#0ea5e9;font-weight:700">ordinary least squares</span> stacks lagged design rows and solves its own normal equations — they agree closely and disagree in a way that is itself informative. The <strong>MA</strong> part is genuinely harder, because its regressors are the <em>errors</em> and you have never seen an error, so this page implements <span style="color:#0ea5e9;font-weight:700">Hannan–Rissanen</span> for real: fit a long AR to manufacture residuals, then regress on lagged <code>y</code> <em>and</em> those lagged residuals. Forecasting is a recursion that feeds its own output back in — which is why an AR(1) with <code>|φ|&lt;1</code> decays back to the mean and why the honest forecast of a random walk is a <strong>flat line</strong> — and the uncertainty comes from the <span style="color:#0ea5e9;font-weight:700">ψ-weights</span> of the MA(∞) form with <code>Var(e_h) = σ²Σψ_j²</code>, a band that must widen. Finally the two things that stop it being astrology: <span style="color:#0ea5e9;font-weight:700">AIC/BIC</span> over a live <code>(p,d,q)</code> grid, and a <span style="color:#0ea5e9;font-weight:700">rolling-origin backtest</span> against the naive and seasonal-naive baselines — because a forecast that cannot beat "tomorrow equals today" is worthless no matter how good the equations look. <span class="text-emerald-700 font-semibold">(Everything on this page is computed live in your browser from real numbers — no libraries, no canned results. A Node suite extracts the exact maths block shipped in this file and checks it against independent brute-force baselines and closed forms, passing NASSERT assertions.)</span></h1>
+    </div>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>The order of the rows is the entire dataset.</strong> ARIMA is three ideas bolted together: <span style="color:#0ea5e9;font-weight:700">AR</span> — today is a weighted sum of recent days; <span style="color:#0ea5e9;font-weight:700">I</span> — difference the series until it stops drifting, then integrate the forecast back up; <span style="color:#0ea5e9;font-weight:700">MA</span> — today also carries the echo of recent surprises. The ACF and PACF tell you which of those you need, Yule–Walker and OLS fit the AR part two independent ways, Hannan–Rissanen recovers the unobservable MA errors, the ψ-weights turn a point forecast into a widening interval, AIC/BIC picks the order, and a rolling-origin backtest against "tomorrow equals today" decides whether any of it was worth doing. All of it is implemented from scratch below and runs live.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Stationarity &amp; differencing</strong> generates a trended series, a random walk, a mean-reverting AR(1) or a seasonal series, draws it with its rolling mean and rolling standard deviation, and then shows what <code>d</code> rounds of differencing do to it — including a live augmented Dickey–Fuller statistic and the two ACF profiles side by side, so you can watch the slow linear decay of a non-stationary series collapse the moment you difference it. <strong>ACF, PACF &amp; fitting the AR part</strong> computes both correlograms exactly with the <code>±1.96/√n</code> band, marks where each one cuts off, and then fits AR(p) twice — Yule–Walker on the Toeplitz autocorrelation system and ordinary least squares on lagged design rows — against the coefficients you asked the generator for. <strong>Forecast, intervals, order selection &amp; backtest</strong> fits a real ARIMA(p,d,q) by Hannan–Rissanen, rolls the recursion forward, widens the interval with the ψ-weights, scores a whole (p,q) grid by AIC and BIC on a common effective sample, and then walks a rolling origin through a holdout to compare the model with the naive, drift and seasonal-naive baselines. Paste your own numbers into any of them.</p>
+
+      <div class="honest max-w-4xl mx-auto mb-5 text-left">✅ <strong>No approximation and no fakery on this page.</strong> The autocovariance is the exact <code>γ_k = (1/n)Σ(y_t−ȳ)(y_{t+k}−ȳ)</code>, the PACF is the genuine Durbin–Levinson recursion, the Toeplitz and normal-equation systems are solved by a hand-written Gaussian elimination with partial pivoting, the MA part is fitted by real two-stage Hannan–Rissanen, the ψ-weights come from the recursion <code>ψ_j = θ_j + Σφ_iψ_{j−i}</code> applied to the <em>integrated</em> operator <code>φ(B)(1−B)^d</code>, and the ADF statistic is a real lag-augmented regression with its own standard error. Where a number is tabulated rather than computed it is labelled as such — the ADF critical values are MacKinnon's. The same core, extracted verbatim from this file and run in Node against independent brute-force baselines (an O(n²) autocovariance loop, a fresh k×k Yule–Walker solve per lag, an impulse-response simulation for the ψ-weights, closed forms for AR(1), and hand-computed information criteria), passes NASSERT assertions.</div>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="st" class="subnav-btn px-4 py-2 rounded-lg text-sm">📉 Stationarity &amp; differencing</button>
+        <button data-mod="ac" class="subnav-btn px-4 py-2 rounded-lg text-sm">🔍 ACF, PACF &amp; fitting AR</button>
+        <button data-mod="fc" class="subnav-btn px-4 py-2 rounded-lg text-sm">🔮 Forecast, grid &amp; backtest</button>
+      </div>
+
+      <!-- ============ MODULE: STATIONARITY ============ -->
+      <div id="mod-st" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="sAdf0" style="color:#ef4444">—</div><div class="k">ADF on the level</div></div>
+          <div class="metric-pill"><div class="v" id="sAdfD" style="color:#16a34a">—</div><div class="k">ADF after d diffs</div></div>
+          <div class="metric-pill"><div class="v" id="sPick" style="color:#0ea5e9">—</div><div class="k">d the test picks</div></div>
+          <div class="metric-pill"><div class="v" id="sVar" style="color:#7c3aed">—</div><div class="k">var 2nd half / 1st</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px; max-width:100%;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE SERIES</div>
+            <div class="flex flex-wrap gap-1.5 mb-2" id="sPresets">
+              <button data-p="rw"    class="ds-btn on">🚶 random walk</button>
+              <button data-p="trend" class="ds-btn">📈 trend + noise</button>
+              <button data-p="ar1"   class="ds-btn">🧲 AR(1) φ=0.75</button>
+              <button data-p="seas"  class="ds-btn">🌊 seasonal</button>
+              <button data-p="wn"    class="ds-btn">⚪ white noise</button>
+            </div>
+            <div class="ctl-row"><div class="ctl-name">📏 length n</div><input type="range" id="sNs" min="40" max="400" step="10" value="200"><div class="ctl-val" id="sNsV">200</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔁 differences d</div><input type="range" id="sDs" min="0" max="3" step="1" value="1"><div class="ctl-val" id="sDsV">1</div></div>
+            <div class="ctl-row"><div class="ctl-name">🌪 noise σ</div><input type="range" id="sSs" min="1" max="40" step="1" value="10"><div class="ctl-val" id="sSsV">1.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">↗ drift / slope</div><input type="range" id="sMs" min="0" max="60" step="1" value="0"><div class="ctl-val" id="sMsV">0.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">🪟 rolling window</div><input type="range" id="sWs" min="5" max="60" step="1" value="20"><div class="ctl-val" id="sWsV">20</div></div>
+            <div class="ctl-row"><div class="ctl-name">🎲 seed</div><input type="range" id="sZs" min="1" max="99" step="1" value="7"><div class="ctl-val" id="sZsV">7</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="sRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New draw</button>
+              <button id="sPasteBtn" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">📋 Use pasted series</button>
+              <button id="sGen" class="bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-300">↩ Back to generated</button>
+            </div>
+            <div class="mt-2">
+              <div class="text-[11px] font-bold text-slate-500 mb-1">📋 paste your own series — one number per line, or comma separated</div>
+              <textarea id="sRaw" class="raw" rows="4"># any numbers, in time order
+112 118 132 129 121 135 148 148 136 119 104 118
+115 126 141 135 125 149 170 170 158 133 114 140</textarea>
+              <div id="sRawMsg" class="text-[11px] text-slate-400 mt-1"><code>#</code> starts a comment. Everything numeric is read in order.</div>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> The augmented Dickey–Fuller regression <code>Δy_t = α + ρ·y_{t−1} + Σγ_i·Δy_{t−i} + e_t</code> is fitted by ordinary least squares with a real standard error from <code>s²(XᵀX)⁻¹</code>, and the statistic is <code>ρ̂/se(ρ̂)</code>. A unit root means <code>ρ = 0</code> — the level carries no pull back toward anything — so a statistic <em>above</em> about <code>−2.88</code> fails to reject non-stationarity. The critical values are MacKinnon's tabulated ones, the only numbers on this page not computed here. Watch the level ACF decay in an almost straight line (the fingerprint of a unit root) and then collapse the instant you difference.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:620px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">📉 the series, its differences, and both correlograms &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">stationarity is the precondition, not a detail</span></div>
+            <canvas id="stCanvas" width="620" height="520"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#0ea5e9"></span> the series</span>
+              <span><span class="swatch-line" style="border-color:#f59e0b"></span> rolling mean</span>
+              <span><span class="swatch-line" style="border-color:#a855f7"></span> rolling sd</span>
+              <span><span class="swatch-box" style="background:#16a34a"></span> after d differences</span>
+              <span><span class="swatch-box" style="background:#cbd5e1"></span> ±1.96/√n band</span>
+            </div>
+            <div id="sDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: ACF / PACF ============ -->
+      <div id="mod-ac" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="aCutA" style="color:#0ea5e9">—</div><div class="k">ACF cuts off after</div></div>
+          <div class="metric-pill"><div class="v" id="aCutP" style="color:#7c3aed">—</div><div class="k">PACF cuts off after</div></div>
+          <div class="metric-pill"><div class="v" id="aRead" style="color:#16a34a">—</div><div class="k">plots suggest</div></div>
+          <div class="metric-pill"><div class="v" id="aErr" style="color:#f59e0b">—</div><div class="k">max |YW − OLS|</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px; max-width:100%;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE PROCESS</div>
+            <div class="flex flex-wrap gap-1.5 mb-2" id="aPresets">
+              <button data-p="ar1"  class="ds-btn on">AR(1)</button>
+              <button data-p="ar2"  class="ds-btn">AR(2)</button>
+              <button data-p="ma1"  class="ds-btn">MA(1)</button>
+              <button data-p="ma2"  class="ds-btn">MA(2)</button>
+              <button data-p="arma" class="ds-btn">ARMA(1,1)</button>
+              <button data-p="rw"   class="ds-btn">random walk</button>
+            </div>
+            <div class="ctl-row"><div class="ctl-name">φ₁ (AR lag 1)</div><input type="range" id="aP1" min="-95" max="95" step="1" value="70"><div class="ctl-val" id="aP1V">0.70</div></div>
+            <div class="ctl-row"><div class="ctl-name">φ₂ (AR lag 2)</div><input type="range" id="aP2" min="-90" max="90" step="1" value="0"><div class="ctl-val" id="aP2V">0.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">θ₁ (MA lag 1)</div><input type="range" id="aT1" min="-95" max="95" step="1" value="0"><div class="ctl-val" id="aT1V">0.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">θ₂ (MA lag 2)</div><input type="range" id="aT2" min="-90" max="90" step="1" value="0"><div class="ctl-val" id="aT2V">0.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">📏 length n</div><input type="range" id="aNs" min="40" max="600" step="10" value="300"><div class="ctl-val" id="aNsV">300</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔢 max lag K</div><input type="range" id="aKs" min="6" max="30" step="1" value="18"><div class="ctl-val" id="aKsV">18</div></div>
+            <div class="ctl-row"><div class="ctl-name">🎯 fit AR order p</div><input type="range" id="aPs" min="1" max="6" step="1" value="1"><div class="ctl-val" id="aPsV">1</div></div>
+            <div class="ctl-row"><div class="ctl-name">🎲 seed</div><input type="range" id="aZs" min="1" max="99" step="1" value="11"><div class="ctl-val" id="aZsV">11</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="aRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New draw</button>
+              <button id="aBig" class="btn-run px-3 py-1.5 rounded-lg font-bold text-xs">📈 n = 600 (watch it converge)</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> The series is simulated from the coefficients above with a 400-step burn-in so the process is genuinely at its stationary distribution. Then <code>γ_k</code> is accumulated exactly, <code>ρ_k = γ_k/γ_0</code>, and the PACF comes from the Durbin–Levinson recursion — which is the same answer you would get by solving a fresh <code>k×k</code> Yule–Walker system for every <code>k</code> and keeping the last coefficient, only in <code>O(K²)</code> instead of <code>O(K⁴)</code>. The band is <code>±1.96/√n</code>: under white noise each sample autocorrelation is roughly <code>N(0, 1/n)</code>, so about one lag in twenty pokes outside it <em>by chance</em>. Then the AR(p) part is fitted twice from the same data by two genuinely different routes, and the bars show both against the truth.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:620px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🔍 correlogram, partial correlogram, and two independent fits &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">AR cuts the PACF · MA cuts the ACF</span></div>
+            <canvas id="acCanvas" width="620" height="560"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-box" style="background:#0ea5e9"></span> ACF ρ_k</span>
+              <span><span class="swatch-box" style="background:#7c3aed"></span> PACF φ_kk</span>
+              <span><span class="swatch-box" style="background:#cbd5e1"></span> ±1.96/√n</span>
+              <span><span class="swatch-box" style="background:#16a34a"></span> Yule–Walker</span>
+              <span><span class="swatch-box" style="background:#f59e0b"></span> OLS</span>
+              <span><span class="swatch-line" style="border-color:#0f172a"></span> true φ</span>
+            </div>
+            <div class="mt-3">
+              <div class="text-xs font-bold text-slate-500 mb-1">TWO ROUTES TO THE SAME COEFFICIENTS — and where they part company</div>
+              <div class="scroller"><table class="risk" id="aTable"></table></div>
+            </div>
+            <div class="mt-3">
+              <div class="text-xs font-bold text-slate-500 mb-1">READING THE TWO PLOTS — the identification table</div>
+              <div class="scroller"><table class="cmp">
+                <tr><th>Process</th><th>ACF</th><th>PACF</th><th>Verdict</th></tr>
+                <tr><td class="cat">AR(p)</td><td>tails off (geometric or damped sine)</td><td><strong>cuts off after lag p</strong></td><td>count the PACF spikes</td></tr>
+                <tr><td class="cat">MA(q)</td><td><strong>cuts off after lag q</strong></td><td>tails off</td><td>count the ACF spikes</td></tr>
+                <tr><td class="cat">ARMA(p,q)</td><td>tails off</td><td>tails off</td><td>neither cuts — use AIC/BIC</td></tr>
+                <tr><td class="cat">White noise</td><td>everything inside the band</td><td>everything inside the band</td><td>nothing to model. Stop.</td></tr>
+                <tr><td class="cat">Unit root</td><td>decays almost linearly, stays high for many lags</td><td>one huge spike at lag 1, near 1.0</td><td>difference it first</td></tr>
+              </table></div>
+            </div>
+            <div id="aDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: FORECAST / GRID / BACKTEST ============ -->
+      <div id="mod-fc" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="fPick" style="color:#0ea5e9">—</div><div class="k">AIC picks</div></div>
+          <div class="metric-pill"><div class="v" id="fRms" style="color:#7c3aed">—</div><div class="k">backtest RMSE</div></div>
+          <div class="metric-pill"><div class="v" id="fNaive" style="color:#f59e0b">—</div><div class="k">naive RMSE</div></div>
+          <div class="metric-pill"><div class="v" id="fWin" style="color:#16a34a">—</div><div class="k">skill vs naive</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px; max-width:100%;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE FORECAST</div>
+            <div class="flex flex-wrap gap-1.5 mb-2" id="fPresets">
+              <button data-p="ar1"  class="ds-btn on">AR(1) mean-reverting</button>
+              <button data-p="rw"   class="ds-btn">random walk</button>
+              <button data-p="arma" class="ds-btn">ARIMA(1,1,1)</button>
+              <button data-p="seas" class="ds-btn">seasonal</button>
+            </div>
+            <div class="ctl-row"><div class="ctl-name">φ₁</div><input type="range" id="fP1" min="-95" max="95" step="1" value="80"><div class="ctl-val" id="fP1V">0.80</div></div>
+            <div class="ctl-row"><div class="ctl-name">θ₁</div><input type="range" id="fT1" min="-90" max="90" step="1" value="0"><div class="ctl-val" id="fT1V">0.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔁 true d</div><input type="range" id="fDt" min="0" max="2" step="1" value="0"><div class="ctl-val" id="fDtV">0</div></div>
+            <div class="ctl-row"><div class="ctl-name">📏 length n</div><input type="range" id="fNs" min="60" max="400" step="10" value="180"><div class="ctl-val" id="fNsV">180</div></div>
+            <div class="ctl-row"><div class="ctl-name">🌪 noise σ</div><input type="range" id="fSs" min="1" max="40" step="1" value="10"><div class="ctl-val" id="fSsV">1.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔮 horizon h</div><input type="range" id="fHs" min="4" max="60" step="1" value="24"><div class="ctl-val" id="fHsV">24</div></div>
+            <div class="ctl-row"><div class="ctl-name">🎯 fit p</div><input type="range" id="fFp" min="0" max="4" step="1" value="1"><div class="ctl-val" id="fFpV">1</div></div>
+            <div class="ctl-row"><div class="ctl-name">🎯 fit d</div><input type="range" id="fFd" min="0" max="2" step="1" value="0"><div class="ctl-val" id="fFdV">0</div></div>
+            <div class="ctl-row"><div class="ctl-name">🎯 fit q</div><input type="range" id="fFq" min="0" max="4" step="1" value="0"><div class="ctl-val" id="fFqV">0</div></div>
+            <div class="ctl-row"><div class="ctl-name">🎲 seed</div><input type="range" id="fZs" min="1" max="99" step="1" value="5"><div class="ctl-val" id="fZsV">5</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="fRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New draw</button>
+              <button id="fGrid" class="btn-run px-3 py-1.5 rounded-lg font-bold text-xs">🔎 Run the (p,q) grid</button>
+              <button id="fBack" class="bg-violet-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-violet-500">⏪ Rolling-origin backtest</button>
+              <button id="fUseGrid" class="bg-sky-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-sky-500">✅ Use the AIC pick</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> The last <code>h</code> points are held out and never touched by the fit. The model is fitted by Hannan–Rissanen on the <code>d</code>-times differenced training series, the forecast is rolled forward by feeding the recursion its own output (future shocks set to their expectation, zero), and then integrated back up <code>d</code> times. The band is <code>±1.96·√(σ̂²Σψ_j²)</code> from the ψ-weights of the <em>integrated</em> operator <code>φ(B)(1−B)^d</code>, which is why <code>d=1</code> gives a band that fans out like <code>√h</code> and never stops growing. The grid scores every <code>(p,q)</code> on a <strong>common effective sample</strong> so the likelihoods are actually comparable, and the backtest refits from scratch at every origin — no peeking.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:620px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🔮 the forecast, the widening band, and whether it beat doing nothing &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">history · holdout · ψ-weights</span></div>
+            <canvas id="fcCanvas" width="620" height="470"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#0f172a"></span> training history</span>
+              <span><span class="swatch-line" style="border-color:#16a34a"></span> held-out truth</span>
+              <span><span class="swatch-line" style="border-color:#0ea5e9"></span> forecast</span>
+              <span><span class="swatch-box" style="background:#bae6fd"></span> 95% interval</span>
+              <span><span class="swatch-line" style="border-color:#f59e0b"></span> naive (flat)</span>
+              <span><span class="swatch-box" style="background:#7c3aed"></span> ψ_j</span>
+            </div>
+            <div class="mt-3">
+              <div class="text-xs font-bold text-slate-500 mb-1">THE ORDER-SELECTION GRID — same data, same effective sample, one winner</div>
+              <div class="scroller"><table class="risk" id="fTable"></table></div>
+            </div>
+            <div class="mt-3">
+              <div class="text-xs font-bold text-slate-500 mb-1">THE ROLLING-ORIGIN BACKTEST — refit at every origin, compared with the baselines</div>
+              <div class="scroller"><table class="risk" id="bTable"></table></div>
+            </div>
+            <div id="fDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-6xl mx-auto p-4 md:p-8 grid md:grid-cols-2 gap-8">
+    <div style="min-width:0;">
+      <h3 class="font-bold text-lg mb-3">From "the rows are independent" to "the order is the data"</h3>
+      <p class="text-sm text-slate-500 mb-4">Twelve steps: why time series breaks everything before it, stationarity, differencing, ACF, PACF, reading the plots, Yule–Walker, OLS, Hannan–Rissanen, the forecast recursion, ψ-weight intervals, and picking an order honestly.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="flex gap-2 mt-4 flex-wrap">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </div>
+    <div class="space-y-4" style="min-width:0;">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-4 md:p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">ARIMA is a correlogram, a Toeplitz solve, a two-stage regression and one recursion — about 200 lines of arithmetic with no dependencies. Below is the exact runnable core the LOOK tab uses: the autocovariance, the Durbin–Levinson PACF, a Gaussian-elimination solver, Yule–Walker and OLS side by side, Hannan–Rissanen for the MA part, differencing and integration, the forecast recursion, the ψ-weights, AIC/BIC, and a rolling-origin backtest.</p>
+    <ol class="space-y-6">
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The precondition — stationarity, and a test for it</h3></div>
+        <p class="text-sm text-slate-600 mb-3">ARIMA estimates a fixed set of numbers from the past and then carries them into the future, which is only defensible if the rules did not change: constant mean, constant variance, and autocovariances that depend on the <em>gap</em> between two points and not on <em>when</em> they happened. That is weak stationarity, and it is the whole precondition. The augmented Dickey–Fuller test regresses <code>Δy_t</code> on <code>y_{t−1}</code> plus a few lagged differences and asks whether the level has any pull at all; <code>ρ = 0</code> means a unit root, so a statistic near zero is <em>bad news</em> and a strongly negative one is what you want. Note the direction carefully — the null hypothesis is non-stationarity, so failing to reject is the default, not a result.</p>
+        <div class="relative"><pre>// Delta y_t = alpha + rho*y_{t-1} + sum gamma_i * Delta y_{t-i} + e_t
+function adfTest(y, lags) {
+  const n = y.length;
+  if (lags === undefined) lags = Math.max(1, Math.floor(Math.pow(n - 1, 1/3)));
+  const dy = diff1(y), rows = [], targ = [];
+  for (let t = lags; t &lt; dy.length; t++) {
+    const row = [1, y[t]];                    // dy[t] = y[t+1]-y[t], so y[t] IS the lagged level
+    for (let i = 1; i &lt;= lags; i++) row.push(dy[t - i]);
+    rows.push(row); targ.push(dy[t]);
+  }
+  const f = olsFit(rows, targ);               // se from s^2 * (X'X)^-1, computed here
+  return { stat: f.beta[1] / f.se[1], rho: f.beta[1], se: f.se[1], lags };
+}
+// MacKinnon critical values (constant, no trend): 1% -3.46  5% -2.88  10% -2.57
+// stat &gt; -2.88  =&gt;  cannot reject a unit root  =&gt;  DIFFERENCE IT FIRST.
+// The null is NON-stationarity. "Not rejected" is not evidence of stationarity.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The "I" — differencing, and integrating the forecast back up</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Differencing is the entire integrated part, and it is one subtraction: <code>∇y_t = y_t − y_{t−1}</code>. Doing it once removes a linear trend and turns a random walk into white noise; twice removes a quadratic trend. Every difference costs you one observation and, far more importantly, changes the units of everything downstream — so the model is fitted on differences but nobody wants a forecast of differences, which means you must be able to walk it back up by cumulative summation from the last observed levels. That round trip is exactly invertible, which makes it one of the best unit tests in the whole pipeline: difference a series <code>d</code> times, integrate it back, and you must recover the original to machine precision.</p>
+        <div class="relative"><pre>const diff1 = y =&gt; { const o = []; for (let t = 1; t &lt; y.length; t++) o.push(y[t] - y[t-1]); return o; };
+
+function differenceKeep(y, d) {              // keep what you need to undo it
+  const inits = []; let z = y.slice();
+  for (let i = 0; i &lt; d; i++) { inits.push(z[0]); z = diff1(z); }
+  return { z, inits };                       // z.length === y.length - d
+}
+function integrate(z, inits) {               // the exact inverse
+  let cur = z.slice();
+  for (let i = inits.length - 1; i &gt;= 0; i--) {
+    let acc = inits[i]; const out = [acc];
+    for (const v of cur) { acc += v; out.push(acc); }
+    cur = out;
+  }
+  return cur;
+}
+// to push a FORECAST back up you cumulate from the LAST level, not the first:
+function lastLevels(y, d) { const L = []; let z = y.slice();
+  for (let i = 0; i &lt; d; i++) { L.push(z[z.length-1]); z = diff1(z); } return L; }
+function integrateForecast(L, zf) {
+  let cur = zf.slice();
+  for (let i = L.length - 1; i &gt;= 0; i--) {
+    let acc = L[i]; const out = [];
+    for (const v of cur) { acc += v; out.push(acc); }
+    cur = out;
+  }
+  return cur;
+}
+// TEST: integrate(differenceKeep(y,d).z, inits) === y, to 1e-9, for d = 1,2,3.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The ACF — autocovariance, and which spikes are real</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The autocorrelation function is the correlation of a series with itself shifted by <code>k</code>. Compute the sample autocovariance <code>γ_k = (1/n)Σ(y_t−ȳ)(y_{t+k}−ȳ)</code> — note the divisor is <code>n</code>, not <code>n−k</code>, even though only <code>n−k</code> products are summed, because that choice guarantees the resulting covariance matrix is positive semi-definite and every downstream solve stays sane. Then <code>ρ_k = γ_k/γ_0</code>, so <code>ρ_0 = 1</code> by construction. Under white noise each <code>ρ̂_k</code> is approximately <code>N(0, 1/n)</code>, which gives the <code>±1.96/√n</code> band — and about one lag in twenty will poke outside it by pure chance, so a single stray spike at lag 13 is not a discovery.</p>
+        <div class="relative"><pre>function acovf(y, K) {
+  const n = y.length, m = mean(y), g = new Array(K + 1).fill(0);
+  for (let k = 0; k &lt;= K; k++) {
+    let s = 0;
+    for (let t = 0; t + k &lt; n; t++) s += (y[t] - m) * (y[t + k] - m);
+    g[k] = s / n;                     // divide by n, NOT by (n-k): keeps the matrix PSD
+  }
+  return g;
+}
+const acf      = (y, K) =&gt; { const g = acovf(y, K); return g.map(v =&gt; v / g[0]); };
+const acfBand  = n =&gt; 1.959963984540054 / Math.sqrt(n);
+
+// rho_0 === 1 always. |rho_k| &lt;= 1 always. Both are free assertions.
+// A slowly, almost LINEARLY decaying ACF that stays high for 20+ lags is the
+// fingerprint of a unit root -- difference the series and look again.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The PACF — Durbin–Levinson, the direct effect only</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In an AR(1) with <code>φ = 0.8</code>, lag 2 has an autocorrelation of <code>0.64</code> — but none of it is direct, it is entirely the lag-1 effect applied twice. The partial autocorrelation at lag <code>k</code> strips that out: it is the correlation between <code>y_t</code> and <code>y_{t−k}</code> with lags <code>1…k−1</code> already regressed away, which is exactly the last coefficient <code>φ_{kk}</code> of a fitted AR(k). You could get it by solving a fresh <code>k×k</code> Yule–Walker system for every <code>k</code>, at cost <code>O(K⁴)</code>; the Durbin–Levinson recursion gets the identical answer in <code>O(K²)</code> by updating the previous solution. The verification suite runs both and asserts they agree to twelve decimals, which is the cheapest way to be sure the recursion's index arithmetic is right.</p>
+        <div class="relative"><pre>function pacfDL(y, K) {
+  const r = acf(y, K), pac = new Array(K + 1).fill(0); pac[0] = 1;
+  let prev = [];                                   // phi_{k-1, 1..k-1}
+  for (let k = 1; k &lt;= K; k++) {
+    let num = r[k], den = 1;
+    for (let j = 1; j &lt; k; j++) { num -= prev[j-1] * r[k-j]; den -= prev[j-1] * r[j]; }
+    const pkk = num / den;                         // &lt;-- the partial autocorrelation
+    const cur = new Array(k); cur[k-1] = pkk;
+    for (let j = 1; j &lt; k; j++) cur[j-1] = prev[j-1] - pkk * prev[k-j-1];
+    pac[k] = pkk; prev = cur;
+  }
+  return pac;
+}
+// pacf[1] === acf[1] exactly.
+// pacf[k] === (last coefficient of the k x k Yule-Walker solve) to 1e-12.
+// Same band as the ACF: +/- 1.96/sqrt(n).</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Fitting AR(p) twice — Yule–Walker and OLS</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Multiply the AR equation by <code>y_{t−k}</code> and take expectations and the Yule–Walker equations fall out: <code>ρ_k = Σφ_iρ_{k−i}</code> for <code>k = 1…p</code>, a <code>p×p</code> Toeplitz system in the sample autocorrelations. Solve it with your own Gaussian elimination and you have the coefficients without ever building a design matrix. The completely different route is to treat it as a regression — stack rows <code>[1, y_{t−1}, …, y_{t−p}]</code> and solve the normal equations <code>XᵀXβ = Xᵀy</code>. The two answers converge as <code>n</code> grows but differ in finite samples for an honest reason: Yule–Walker uses all <code>n</code> observations through the autocovariance and is guaranteed to return a stationary model, while OLS conditions on the first <code>p</code> points, throws them away, and can happily hand you an explosive root.</p>
+        <div class="relative"><pre>function solveLin(Ain, bin) {                  // Gaussian elimination, partial pivoting
+  const n = bin.length, A = Ain.map(r =&gt; r.slice()), b = bin.slice();
+  for (let i = 0; i &lt; n; i++) {
+    let piv = i;
+    for (let r = i+1; r &lt; n; r++) if (Math.abs(A[r][i]) &gt; Math.abs(A[piv][i])) piv = r;
+    if (Math.abs(A[piv][i]) &lt; 1e-13) return null;          // singular
+    if (piv !== i) { [A[i],A[piv]] = [A[piv],A[i]]; [b[i],b[piv]] = [b[piv],b[i]]; }
+    for (let r = i+1; r &lt; n; r++) {
+      const f = A[r][i] / A[i][i];
+      for (let c = i; c &lt; n; c++) A[r][c] -= f * A[i][c];
+      b[r] -= f * b[i];
+    }
+  }
+  const x = new Array(n).fill(0);
+  for (let i = n-1; i &gt;= 0; i--) { let s = b[i];
+    for (let c = i+1; c &lt; n; c++) s -= A[i][c] * x[c]; x[i] = s / A[i][i]; }
+  return x;                                     // TEST: max|A*x - b| &lt; 1e-10
+}
+
+function yuleWalker(y, p) {                     // route 1: the Toeplitz system
+  const g = acovf(y, p), r = g.map(v =&gt; v / g[0]), A = [], b = [];
+  for (let i = 1; i &lt;= p; i++) {
+    const row = []; for (let j = 1; j &lt;= p; j++) row.push(r[Math.abs(i - j)]);
+    A.push(row); b.push(r[i]);
+  }
+  const phi = solveLin(A, b);
+  let s = 0; for (let i = 1; i &lt;= p; i++) s += phi[i-1] * r[i];
+  return { phi, sigma2: g[0] * (1 - s), mu: mean(y) };
+}
+
+function arOLS(y, p) {                          // route 2: lagged design rows
+  const rows = [], targ = [];
+  for (let t = p; t &lt; y.length; t++) {
+    const row = [1]; for (let i = 1; i &lt;= p; i++) row.push(y[t - i]);
+    rows.push(row); targ.push(y[t]);
+  }
+  const f = olsFit(rows, targ);                 // solves X'X beta = X'y
+  return { c: f.beta[0], phi: f.beta.slice(1), sigma2: f.sse / f.nObs, fit: f };
+}
+// p = 1 has a closed form both routes must match: phi_hat = gamma_1 / gamma_0.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-red-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">MA(q) — regressors you have never seen, and Hannan–Rissanen</h3></div>
+        <p class="text-sm text-slate-600 mb-3">An MA(q) says <code>y_t = c + e_t + θ₁e_{t−1} + … + θ_qe_{t−q}</code>, and there the pleasant regression story ends, because the regressors are the innovations and innovations are not observed — you cannot build a design matrix out of a column you do not have. Full maximum likelihood solves it with a Kalman filter and a nonlinear optimiser; Hannan–Rissanen solves it with two ordinary regressions, which is why it fits on this page. Stage one fits a deliberately over-long AR and keeps its residuals as a stand-in for the innovations; stage two regresses <code>y_t</code> on lagged <code>y</code> <em>and</em> those manufactured residuals. It is consistent, it needs no optimiser and no starting values, and it is what you use to seed a proper likelihood fit.</p>
+        <div class="relative"><pre>function hannanRissanen(z, p, q, mLong) {
+  const n = z.length;
+  if (q === 0) { const a = arOLS(z, p); return { c: a.c, phi: a.phi, theta: [] }; }
+  if (!mLong) mLong = Math.max(p + q + 2,
+                     Math.min(Math.round(Math.sqrt(n)) + 2, Math.floor(n / 4)));
+
+  // STAGE 1 — a long AR whose residuals stand in for the unobservable shocks
+  const st1 = arOLS(z, mLong), eh = new Array(n).fill(0);
+  for (let t = mLong; t &lt; n; t++) eh[t] = st1.fit.resid[t - mLong];
+
+  // STAGE 2 — now the MA columns EXIST, so it is just another regression
+  const start = mLong + Math.max(p, q), rows = [], targ = [];
+  for (let t = start; t &lt; n; t++) {
+    const row = [1];
+    for (let i = 1; i &lt;= p; i++) row.push(z[t - i]);       // AR columns
+    for (let j = 1; j &lt;= q; j++) row.push(eh[t - j]);      // MA columns (estimated!)
+    rows.push(row); targ.push(z[t]);
+  }
+  const f = olsFit(rows, targ);
+  return { c: f.beta[0], phi: f.beta.slice(1, 1+p), theta: f.beta.slice(1+p), mLong };
+}
+// The cost of stage 1 is real: you burn mLong observations before fitting anything.
+// Recover the model's own residuals afterwards by running the recursion forward:
+//   e_t = z_t - c - sum phi_i z_{t-i} - sum theta_j e_{t-j},  e = 0 before the start.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Forecasting — a recursion that eats its own output</h3></div>
+        <p class="text-sm text-slate-600 mb-3">One step ahead is just the fitted equation evaluated at the end of the data. Two steps ahead you do not have <code>y_{n+1}</code>, so you substitute the forecast you just made — and future shocks are replaced by their expectation, which is zero. That single substitution explains the two most-quoted facts in forecasting. An AR(1) with <code>|φ| &lt; 1</code> gives <code>ŷ_{n+h} = μ + φ^h(y_n − μ)</code>, so the forecast decays geometrically back to the mean and long horizons are just the mean. A random walk has <code>φ = 1</code>, nothing decays, and the optimal forecast is a perfectly <strong>flat line</strong> at the last observed value — which is not a failure of the method, it is the correct answer, and it is exactly why the naive baseline is so hard to beat on financial data.</p>
+        <div class="relative"><pre>function forecastARMA(z, m, h) {
+  const p = m.phi.length, q = m.theta.length, n = z.length;
+  const e = armaResiduals(z, m).e.slice();     // in-sample shocks; future ones are 0
+  const zz = z.slice(), out = [];
+  for (let s = 0; s &lt; h; s++) {
+    let v = m.c;
+    for (let i = 1; i &lt;= p; i++) v += m.phi[i-1] * zz[n + s - i];   // may be a FORECAST
+    for (let j = 1; j &lt;= q; j++) { const idx = n + s - j;
+      v += m.theta[j-1] * (idx &lt; n ? e[idx] : 0); }                 // E[future shock] = 0
+    zz.push(v); e.push(0); out.push(v);
+  }
+  return out;
+}
+// then push it back to the original scale:
+//   yf = d &gt; 0 ? integrateForecast(lastLevels(y, d), zf) : zf
+//
+// AR(1) closed form the test checks against:  mu + phi^h * (y_n - mu),  mu = c/(1-phi)
+// ARIMA(0,1,0):  every differenced forecast is 0  =&gt;  the level forecast is FLAT.
+// The MA(q) part is dead after q steps -- beyond that only the AR part is talking.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">ψ-weights — why the interval has to widen</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Every stationary ARMA can be rewritten as an infinite moving average, <code>y_t = μ + Σψ_je_{t−j}</code>, and the ψ-weights are just the impulse response: how much of a shock today is still visible <code>j</code> steps later. Get them from the recursion <code>ψ_j = θ_j + Σφ_iψ_{j−i}</code> with <code>ψ_0 = 1</code>. The <code>h</code>-step forecast error is then the sum of the shocks you have not seen yet, so <code>Var(e_h) = σ²Σ_{j&lt;h}ψ_j²</code> — a strictly increasing quantity, which is why any honest forecast band widens. For a stationary AR(1) the ψ-weights are <code>φ^j</code> and the sum converges to <code>σ²/(1−φ²)</code>: the band flattens out at the unconditional variance. For a random walk every <code>ψ_j = 1</code> and the variance is <code>σ²h</code>, so the band grows like <code>√h</code> forever. To get that right for a differenced model you must expand the operator <code>φ(B)(1−B)^d</code> first, or your intervals will be far too narrow.</p>
+        <div class="relative"><pre>function psiWeights(phi, theta, H) {
+  const psi = new Array(H + 1).fill(0); psi[0] = 1;
+  for (let j = 1; j &lt;= H; j++) {
+    let v = j &lt;= theta.length ? theta[j-1] : 0;
+    for (let i = 1; i &lt;= Math.min(j, phi.length); i++) v += phi[i-1] * psi[j - i];
+    psi[j] = v;
+  }
+  return psi;
+}
+// fold the differencing INTO the AR operator: phi(B) * (1-B)^d
+function polyMulARd(phi, d) {
+  let a = [1]; for (const f of phi) a.push(-f);          // a(B) = 1 - phi_1 B - ...
+  for (let k = 0; k &lt; d; k++) {                          // multiply by (1 - B)
+    const out = new Array(a.length + 1).fill(0);
+    for (let i = 0; i &lt; a.length; i++) { out[i] += a[i]; out[i+1] -= a[i]; }
+    a = out;
+  }
+  return a.slice(1).map(v =&gt; -v);
+}
+// se(h) = sqrt( sigma2 * sum_{j&lt;h} psi_j^2 )      95% band = forecast +/- 1.96*se(h)
+//
+// three checks the suite runs on this:
+//   psi_j from the recursion === the impulse response of the raw ARMA loop (e_0 = 1)
+//   sum_i phi_i psi_{j-i} + theta_j - psi_j === 0    (that IS phi(B)psi(B) = theta(B))
+//   AR(1): psi_j === phi^j        ARIMA(0,1,0): psi_j === 1, so Var = sigma2 * h</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-red-600 text-white rounded-full flex items-center justify-center font-bold">9</div><h3 class="font-bold text-lg">AIC and BIC over a grid — and the two traps</h3></div>
+        <p class="text-sm text-slate-600 mb-3">More parameters always fit the training data better, so residual variance cannot choose an order. AIC and BIC add a penalty: <code>AIC = −2ℓ + 2k</code>, <code>BIC = −2ℓ + k·log n</code>, with BIC punishing complexity harder as the sample grows and therefore picking sparser models. Two traps ruin this in practice and both are easy to hit. First, likelihoods are only comparable on the <em>same</em> data — so you may not compare AIC across different <code>d</code>, because differencing changes the dataset; pick <code>d</code> from a stationarity test, then grid <code>p</code> and <code>q</code> at that <code>d</code>. Second, a conditional fit burns startup observations, and a bigger model burns more, so unless you force every candidate onto a <strong>common effective sample</strong> you are comparing likelihoods computed from different numbers of points, and the grid will reward whichever model happened to get the easier subset.</p>
+        <div class="relative"><pre>function infoCriteria(sse, n, k) {
+  const s2 = sse / n;
+  const ll = -0.5 * n * (Math.log(2 * Math.PI * s2) + 1);   // Gaussian, sigma2 profiled out
+  return { s2, ll, aic: -2*ll + 2*k, bic: -2*ll + k*Math.log(n) };
+}
+
+function gridARIMA(y, d, pmax, qmax) {
+  const z = differenceKeep(y, d).z;
+  let burn = 0;                              // the SAME startup for every candidate
+  for (let p = 0; p &lt;= pmax; p++) for (let q = 0; q &lt;= qmax; q++)
+    burn = Math.max(burn, startupFor(z, p, q));
+  const rows = [];
+  for (let p = 0; p &lt;= pmax; p++) for (let q = 0; q &lt;= qmax; q++) {
+    const m  = hannanRissanen(z, p, q);
+    const cs = css(z, m, burn);              // conditional SSE over the COMMON window
+    rows.push({ p, d, q, ...infoCriteria(cs.sse, cs.n, p + q + 2) });
+  }
+  return { rows, bestAIC: minBy(rows, r =&gt; r.aic), bestBIC: minBy(rows, r =&gt; r.bic) };
+}
+// TRAP 1: AIC across different d is meaningless -- different data, different likelihood.
+// TRAP 2: unequal effective samples make the whole table a lie. Force a common burn.
+// TRAP 3: the grid minimum is an IN-SAMPLE choice. It is a shortlist, not a verdict.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-slate-700 text-white rounded-full flex items-center justify-center font-bold">10</div><h3 class="font-bold text-lg">Backtesting — beat the naive baseline or go home</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Never shuffle a time series into a random split; that trains on the future to predict the past and produces gorgeous, meaningless scores. The honest evaluation is rolling origin: fit on everything up to time <code>t</code>, forecast <code>h</code> ahead, score, advance <code>t</code>, refit, repeat. Then compare against baselines that cost nothing — <strong>naive</strong> (tomorrow equals today), <strong>drift</strong> (extend the straight line from first to last point), and <strong>seasonal naive</strong> (this month equals the same month last year). If your ARIMA cannot beat all three, it is not a model, it is decoration. On genuinely random-walk data the naive forecast is optimal and nothing can beat it, and knowing that is worth more than any grid search.</p>
+        <div class="relative"><pre>function rollingOrigin(y, p, d, q, minTrain, h, season) {
+  const em = [], en = [], es = [], ed = [];
+  for (let t0 = minTrain; t0 + h &lt;= y.length; t0++) {
+    const train = y.slice(0, t0);                       // NOTHING after t0 is visible
+    const fit = fitARIMA(train, p, d, q);               // REFIT from scratch every origin
+    const fm = forecastARIMA(train, fit, h).mean;
+    const fn = naiveForecast(train, h);                 // flat at the last value
+    const fd = driftForecast(train, h);                 // straight line through the ends
+    const fs = seasonalNaive(train, h, season);         // last season, repeated
+    for (let i = 0; i &lt; h; i++) {
+      const a = y[t0 + i];
+      em.push(a - fm[i]); en.push(a - fn[i]); ed.push(a - fd[i]); es.push(a - fs[i]);
+    }
+  }
+  const R = e =&gt; Math.sqrt(e.reduce((s,v) =&gt; s + v*v, 0) / e.length);
+  return { model: R(em), naive: R(en), drift: R(ed), snaive: R(es) };
+}
+// skill = 1 - rmse_model / rmse_naive.   &lt;= 0 means the model added nothing.
+//
+// in practice:
+//   from statsmodels.tsa.arima.model import ARIMA
+//   ARIMA(y, order=(1,1,1)).fit().get_forecast(24).summary_frame()
+//   import pmdarima as pm;  pm.auto_arima(y, seasonal=True, m=12)   # grids it for you
+//
+// SARIMA(p,d,q)(P,D,Q)_s adds SEASONAL lags: a second difference at lag s and AR/MA
+// terms at s, 2s, 3s. Everything above generalises -- the operators just multiply.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-8 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧭 The six quantities, and where each one comes from</h3>
+      <div class="scroller"><table class="cmp">
+        <tr><th>Quantity</th><th>Formula</th><th>Built from</th><th>What it answers</th></tr>
+        <tr><td class="cat">ACF ρ_k</td><td><code>γ_k / γ_0</code></td><td>one O(nK) pass over the centred series</td><td>how far back the memory reaches, and MA order</td></tr>
+        <tr><td class="cat">PACF φ_kk</td><td>Durbin–Levinson recursion</td><td>the ACF alone, updated lag by lag</td><td>the <em>direct</em> effect at lag k, and AR order</td></tr>
+        <tr><td class="cat">AR coefficients</td><td><code>Rφ = r</code> or <code>XᵀXβ = Xᵀy</code></td><td>a Toeplitz solve, or lagged design rows</td><td>how today is built from recent days</td></tr>
+        <tr><td class="cat">MA coefficients</td><td>stage-2 regression on <code>ê_{t−j}</code></td><td>residuals of a long AR (Hannan–Rissanen)</td><td>how long a single surprise echoes</td></tr>
+        <tr><td class="cat">ψ-weights</td><td><code>ψ_j = θ_j + Σφ_iψ_{j−i}</code></td><td>the operator <code>φ(B)(1−B)^d</code></td><td>the impulse response, and the interval width</td></tr>
+        <tr><td class="cat">AIC / BIC</td><td><code>−2ℓ + 2k</code> / <code>−2ℓ + k·log n</code></td><td>the conditional Gaussian likelihood</td><td>which (p,q) to shortlist — never the final word</td></tr>
+      </table></div>
+      <p class="text-xs text-slate-500 mt-3">Everything above is downstream of one object: the sample autocovariance. That is the deep reason ARIMA feels so tightly wound — identification, estimation and forecasting all read from the same set of numbers, so an error in <code>γ_k</code> poisons the entire pipeline silently.</p>
+    </div>
+
+    <div class="mt-6 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧬 Where ARIMA sits next to the rest of this series, and what replaced it</h3>
+      <div class="scroller"><table class="cmp">
+        <tr><th>Model</th><th>What it assumes</th><th>Handles the ordering</th><th>Reach for it when</th></tr>
+        <tr><td class="cat">Linear regression (D1)</td><td>rows are i.i.d.</td><td>no — shuffling is harmless</td><td>features explain y with no memory</td></tr>
+        <tr><td class="cat">Hidden Markov Model (D59)</td><td>a latent discrete state</td><td>yes, but for <em>decoding</em></td><td>you want the hidden regime, not the next value</td></tr>
+        <tr><td class="cat">Survival analysis (D60)</td><td>time-to-one-event, censoring</td><td>yes, as duration</td><td>"how long until", not "what next"</td></tr>
+        <tr><td class="cat"><strong>ARIMA</strong> (here)</td><td>linear, stationary after d differences</td><td><strong>yes — the ordering is the model</strong></td><td>one series, short horizon, you need intervals</td></tr>
+        <tr><td class="cat">SARIMA</td><td>the above plus a fixed period s</td><td>yes, at lags s, 2s, 3s</td><td>clean, stable seasonality</td></tr>
+        <tr><td class="cat">ETS / Holt-Winters</td><td>exponentially decaying weights</td><td>yes</td><td>trend + seasonality, few points, fast</td></tr>
+        <tr><td class="cat">Prophet</td><td>trend + Fourier seasonality + holidays</td><td>yes, as regressors on t</td><td>business series, holidays, missing chunks</td></tr>
+        <tr><td class="cat">Gradient boosting on lags</td><td>nothing linear</td><td>only if you build the lag features</td><td>many related series, exogenous drivers</td></tr>
+      </table></div>
+      <p class="text-xs text-slate-500 mt-3">ARIMA is no longer the state of the art for large forecasting problems — gradient boosting on lag features and global deep models win most competitions on many-series data. It remains the thing worth learning first, because stationarity, differencing, the correlograms, the ψ-weights and rolling-origin evaluation are the vocabulary every one of those newer methods still assumes you have.</p>
+    </div>
+
+    <div class="mt-8 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 61 of MachineLearningFromZero done — the first model in this series where shuffling the rows destroys the data.</h3><p class="text-sm text-violet-700 mt-2">ARIMA is three letters and one precondition. <span style="color:#4f46e5;font-weight:700">Stationarity</span> is the precondition — parameters learned from the past only transfer to the future if the mean, variance and autocorrelations do not depend on when you looked, and the ADF regression <code>Δy_t = α + ρy_{t−1} + …</code> is how you check rather than hope. <span style="color:#4f46e5;font-weight:700">I</span> is the repair: <code>∇y_t = y_t − y_{t−1}</code> applied <code>d</code> times kills trends and unit roots, and every forecast must be integrated back up by cumulative summation — an exactly invertible round trip and therefore the best test in the pipeline. <span style="color:#4f46e5;font-weight:700">ACF</span> <code>ρ_k = γ_k/γ_0</code> and the Durbin–Levinson <span style="color:#4f46e5;font-weight:700">PACF</span> identify what is left against the <code>±1.96/√n</code> band — AR(p) cuts the PACF at p, MA(q) cuts the ACF at q, ARMA cuts neither. <span style="color:#4f46e5;font-weight:700">AR</span> is fitted two independent ways, a Toeplitz Yule–Walker solve and ordinary least squares on lagged rows, which agree in the limit and disagree in finite samples for a reason worth knowing. <span style="color:#4f46e5;font-weight:700">MA</span> is harder because its regressors are unobserved shocks, so <span style="color:#4f46e5;font-weight:700">Hannan–Rissanen</span> manufactures them from a long AR and then runs one more regression. Forecasting is a recursion fed its own output, which is why an AR(1) mean-reverts as <code>φ^h</code> and why the right forecast of a random walk is a flat line; the <span style="color:#4f46e5;font-weight:700">ψ-weights</span> of <code>φ(B)(1−B)^d</code> give <code>Var(e_h) = σ²Σψ_j²</code> and a band that must widen. And nothing is real until a <span style="color:#4f46e5;font-weight:700">rolling-origin backtest</span> beats naive, drift and seasonal-naive — AIC picks a shortlist, the backtest picks the model. <strong>👉 Tomorrow — Day 62: continuing MachineLearningFromZero.</strong></p></div>
+
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+const el = id => document.getElementById(id);
+function setDiag(box, c, t, b){ box.className="diag "+c+" mt-3 text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+const fmt = (x,d=3)=> (x===undefined||x===null||!isFinite(x)) ? "—" : x.toFixed(d);
+const CSER="#0ea5e9", CDIF="#16a34a", CMEAN="#f59e0b", CSD="#a855f7", CBAND="#cbd5e1", CTRUE="#0f172a", COLS="#f59e0b", CYW="#16a34a";
+
+/* ARIMA-ENGINE-START */
+/* ================================================================
+   Everything between these markers is pure arithmetic — no DOM, no
+   libraries. The Node verification suite extracts this exact block
+   from this file and checks it against independent baselines.
+   ================================================================ */
+
+/* ---------------- random numbers ---------------- */
+function mulberry32(seed){ let t=seed>>>0; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function gauss(rng){ let u=0,v=0; while(u===0) u=rng(); while(v===0) v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+/* ---------------- moments ---------------- */
+function mean(y){ let s=0; for(let i=0;i<y.length;i++) s+=y[i]; return s/y.length; }
+function variance(y){ const m=mean(y); let s=0; for(let i=0;i<y.length;i++) s+=(y[i]-m)*(y[i]-m); return s/y.length; }
+function sd(y){ return Math.sqrt(variance(y)); }
+
+/* ---------------- autocovariance, ACF, band ----------------
+   gamma_k = (1/n) * sum (y_t - ybar)(y_{t+k} - ybar).  Divisor n (not n-k)
+   keeps the sample covariance matrix positive semi-definite.            */
+function acovf(y,K){
+  const n=y.length, m=mean(y), g=new Array(K+1).fill(0);
+  for(let k=0;k<=K;k++){ let s=0; for(let t=0;t+k<n;t++) s+=(y[t]-m)*(y[t+k]-m); g[k]=s/n; }
+  return g;
+}
+function acf(y,K){ const g=acovf(y,K); if(!(g[0]>0)) return g.map((v,i)=> i===0?1:0); return g.map(v=>v/g[0]); }
+function acfBand(n){ return 1.959963984540054/Math.sqrt(n); }
+
+/* ---------------- PACF by the Durbin-Levinson recursion ---------------- */
+function pacfDL(y,K){
+  const r=acf(y,K), pac=new Array(K+1).fill(0); pac[0]=1;
+  let prev=[];
+  for(let k=1;k<=K;k++){
+    let num=r[k], den=1;
+    for(let j=1;j<k;j++){ num-=prev[j-1]*r[k-j]; den-=prev[j-1]*r[j]; }
+    const pkk = Math.abs(den)<1e-15 ? 0 : num/den;
+    const cur=new Array(k); cur[k-1]=pkk;
+    for(let j=1;j<k;j++) cur[j-1]=prev[j-1]-pkk*prev[k-j-1];
+    pac[k]=pkk; prev=cur;
+  }
+  return pac;
+}
+
+/* ---------------- linear algebra: Gaussian elimination ---------------- */
+function solveLin(Ain,bin){
+  const n=bin.length, A=Ain.map(r=>r.slice()), b=bin.slice();
+  for(let i=0;i<n;i++){
+    let piv=i;
+    for(let r=i+1;r<n;r++) if(Math.abs(A[r][i])>Math.abs(A[piv][i])) piv=r;
+    if(!(Math.abs(A[piv][i])>1e-13)) return null;
+    if(piv!==i){ const ta=A[i]; A[i]=A[piv]; A[piv]=ta; const tb=b[i]; b[i]=b[piv]; b[piv]=tb; }
+    for(let r=i+1;r<n;r++){
+      const f=A[r][i]/A[i][i]; if(f===0) continue;
+      for(let c=i;c<n;c++) A[r][c]-=f*A[i][c];
+      b[r]-=f*b[i];
+    }
+  }
+  const x=new Array(n).fill(0);
+  for(let i=n-1;i>=0;i--){ let s=b[i]; for(let c=i+1;c<n;c++) s-=A[i][c]*x[c]; x[i]=s/A[i][i]; }
+  return x;
+}
+function matVec(A,x){ return A.map(row=>{ let s=0; for(let j=0;j<x.length;j++) s+=row[j]*x[j]; return s; }); }
+function matInv(A){
+  const n=A.length, cols=[];
+  for(let j=0;j<n;j++){ const e=new Array(n).fill(0); e[j]=1; const c=solveLin(A,e); if(!c) return null; cols.push(c); }
+  const M=[]; for(let i=0;i<n;i++){ const row=[]; for(let j=0;j<n;j++) row.push(cols[j][i]); M.push(row); }
+  return M;
+}
+
+/* ---------------- generic OLS through the normal equations ---------------- */
+function olsFit(rows,targ){
+  if(!rows.length) return null;
+  const nObs=rows.length, k=rows[0].length, XtX=[], Xty=new Array(k).fill(0);
+  for(let i=0;i<k;i++) XtX.push(new Array(k).fill(0));
+  for(let t=0;t<nObs;t++){
+    const r=rows[t];
+    for(let i=0;i<k;i++){ Xty[i]+=r[i]*targ[t]; for(let j=0;j<k;j++) XtX[i][j]+=r[i]*r[j]; }
+  }
+  const beta=solveLin(XtX,Xty);
+  if(!beta) return null;
+  const resid=[]; let sse=0;
+  for(let t=0;t<nObs;t++){
+    let p=0; const r=rows[t];
+    for(let i=0;i<k;i++) p+=r[i]*beta[i];
+    const e=targ[t]-p; resid.push(e); sse+=e*e;
+  }
+  const dof=Math.max(1,nObs-k), s2=sse/dof, XtXinv=matInv(XtX);
+  const se = XtXinv ? beta.map((_,i)=>Math.sqrt(Math.max(0,s2*XtXinv[i][i]))) : beta.map(()=>NaN);
+  return { beta, resid, sse, nObs, k, s2, se, XtX, XtXinv };
+}
+
+/* ---------------- differencing and integration ---------------- */
+function diff1(y){ const o=[]; for(let t=1;t<y.length;t++) o.push(y[t]-y[t-1]); return o; }
+function difference(y,d){ let z=y.slice(); for(let i=0;i<d;i++) z=diff1(z); return z; }
+function seasonalDiff(y,s){ const o=[]; for(let t=s;t<y.length;t++) o.push(y[t]-y[t-s]); return o; }
+function differenceKeep(y,d){ const inits=[]; let z=y.slice(); for(let i=0;i<d;i++){ inits.push(z[0]); z=diff1(z); } return {z,inits}; }
+function integrate(z,inits){
+  let cur=z.slice();
+  for(let i=inits.length-1;i>=0;i--){
+    let acc=inits[i]; const out=[acc];
+    for(let t=0;t<cur.length;t++){ acc+=cur[t]; out.push(acc); }
+    cur=out;
+  }
+  return cur;
+}
+function lastLevels(y,d){ const L=[]; let z=y.slice(); for(let i=0;i<d;i++){ L.push(z[z.length-1]); z=diff1(z); } return L; }
+function integrateForecast(L,zf){
+  let cur=zf.slice();
+  for(let i=L.length-1;i>=0;i--){
+    let acc=L[i]; const out=[];
+    for(let t=0;t<cur.length;t++){ acc+=cur[t]; out.push(acc); }
+    cur=out;
+  }
+  return cur;
+}
+
+/* ---------------- simulation ---------------- */
+function simARMA(n,phi,theta,sigma,rng,c,burn){
+  const p=phi.length, q=theta.length; if(burn===undefined) burn=400;
+  const N=n+burn, y=new Array(N).fill(0), e=new Array(N).fill(0);
+  for(let t=0;t<N;t++){
+    e[t]=gauss(rng)*sigma;
+    let v=(c||0)+e[t];
+    for(let i=1;i<=p;i++) if(t-i>=0) v+=phi[i-1]*y[t-i];
+    for(let j=1;j<=q;j++) if(t-j>=0) v+=theta[j-1]*e[t-j];
+    y[t]=v;
+  }
+  return y.slice(burn);
+}
+function simRandomWalk(n,sigma,rng,drift){ const y=[]; let v=0; for(let t=0;t<n;t++){ v+=(drift||0)+gauss(rng)*sigma; y.push(v); } return y; }
+function simTrend(n,slope,sigma,rng){ const y=[]; for(let t=0;t<n;t++) y.push(slope*t+gauss(rng)*sigma); return y; }
+function simSeasonal(n,s,amp,sigma,rng,slope){ const y=[]; for(let t=0;t<n;t++) y.push((slope||0)*t+amp*Math.sin(2*Math.PI*t/s)+gauss(rng)*sigma); return y; }
+
+/* ---------------- AR(p): route 1, Yule-Walker on the Toeplitz system ---------------- */
+function yuleWalker(y,p){
+  const mu=mean(y);
+  if(p===0) return { phi:[], sigma2:variance(y), mu, c:mu, A:[], b:[] };
+  const g=acovf(y,p);
+  if(!(g[0]>0)) return { phi:new Array(p).fill(0), sigma2:0, mu, c:mu, A:[], b:[] };
+  const r=g.map(v=>v/g[0]), A=[], b=[];
+  for(let i=1;i<=p;i++){
+    const row=[]; for(let j=1;j<=p;j++) row.push(r[Math.abs(i-j)]);
+    A.push(row); b.push(r[i]);
+  }
+  const phi=solveLin(A,b)||new Array(p).fill(0);
+  let s=0; for(let i=1;i<=p;i++) s+=phi[i-1]*r[i];
+  let sp=0; for(let i=0;i<p;i++) sp+=phi[i];
+  return { phi, sigma2:g[0]*(1-s), mu, c:mu*(1-sp), A, b };
+}
+
+/* ---------------- AR(p): route 2, OLS on lagged design rows ---------------- */
+function arOLS(y,p){
+  if(p===0){ const m=mean(y); return { phi:[], c:m, sigma2:variance(y), fit:null, start:0 }; }
+  if(y.length<=p+2) return { phi:new Array(p).fill(0), c:mean(y), sigma2:variance(y), fit:null, start:p };
+  const rows=[], targ=[];
+  for(let t=p;t<y.length;t++){
+    const row=[1]; for(let i=1;i<=p;i++) row.push(y[t-i]);
+    rows.push(row); targ.push(y[t]);
+  }
+  const f=olsFit(rows,targ);
+  if(!f) return { phi:new Array(p).fill(0), c:mean(y), sigma2:variance(y), fit:null, start:p };
+  return { phi:f.beta.slice(1), c:f.beta[0], sigma2:f.sse/f.nObs, fit:f, start:p };
+}
+
+/* ---------------- ARMA(p,q) by Hannan-Rissanen ---------------- */
+function hannanRissanen(z,p,q,mLong){
+  const n=z.length;
+  if(q===0){ const a=arOLS(z,p); return { c:a.c, phi:a.phi, theta:[], mLong:0, fit:a.fit }; }
+  if(!mLong) mLong=Math.max(p+q+2, Math.min(Math.round(Math.sqrt(n))+2, Math.max(1,Math.floor(n/4))));
+  const bad={ c:mean(z), phi:new Array(p).fill(0), theta:new Array(q).fill(0), mLong, fit:null };
+  const st1=arOLS(z,mLong);
+  if(!st1.fit) return bad;
+  const eh=new Array(n).fill(0);
+  for(let t=mLong;t<n;t++) eh[t]=st1.fit.resid[t-mLong];
+  const start=mLong+Math.max(p,q), rows=[], targ=[];
+  for(let t=start;t<n;t++){
+    const row=[1];
+    for(let i=1;i<=p;i++) row.push(z[t-i]);
+    for(let j=1;j<=q;j++) row.push(eh[t-j]);
+    rows.push(row); targ.push(z[t]);
+  }
+  if(rows.length<=p+q+2) return bad;
+  const f=olsFit(rows,targ);
+  if(!f) return bad;
+  return { c:f.beta[0], phi:f.beta.slice(1,1+p), theta:f.beta.slice(1+p,1+p+q), mLong, fit:f, ehat:eh };
+}
+function startupFor(z,p,q){
+  if(q===0) return p;
+  const n=z.length;
+  const mLong=Math.max(p+q+2, Math.min(Math.round(Math.sqrt(n))+2, Math.max(1,Math.floor(n/4))));
+  return mLong+Math.max(p,q);
+}
+
+/* ---------------- model residuals (conditional recursion) and CSS ---------------- */
+function armaResiduals(z,m,startAt){
+  const p=m.phi.length, q=m.theta.length, n=z.length, e=new Array(n).fill(0);
+  const s0=(startAt===undefined)?p:startAt;
+  for(let t=s0;t<n;t++){
+    let pred=m.c;
+    for(let i=1;i<=p;i++) pred+=m.phi[i-1]*z[t-i];
+    for(let j=1;j<=q;j++) if(t-j>=s0) pred+=m.theta[j-1]*e[t-j];
+    e[t]=z[t]-pred;
+  }
+  return { e, start:s0 };
+}
+function css(z,m,burn){
+  const R=armaResiduals(z,m);
+  const b=Math.max(R.start,Math.min(burn,Math.max(1,z.length-4)));
+  let sse=0, cnt=0;
+  for(let t=b;t<z.length;t++){ sse+=R.e[t]*R.e[t]; cnt++; }
+  return { sse, n:cnt, s2:cnt>0?sse/cnt:NaN, e:R.e, burn:b };
+}
+
+/* ---------------- psi-weights (the MA-infinity representation) ---------------- */
+function psiWeights(phi,theta,H){
+  const psi=new Array(H+1).fill(0); psi[0]=1;
+  for(let j=1;j<=H;j++){
+    let v = j<=theta.length ? theta[j-1] : 0;
+    const top=Math.min(j,phi.length);
+    for(let i=1;i<=top;i++) v+=phi[i-1]*psi[j-i];
+    psi[j]=v;
+  }
+  return psi;
+}
+/* multiply the AR operator by (1-B)^d so intervals know about the differencing */
+function polyMulARd(phi,d){
+  let a=[1]; for(let i=0;i<phi.length;i++) a.push(-phi[i]);
+  for(let k=0;k<d;k++){
+    const out=new Array(a.length+1).fill(0);
+    for(let i=0;i<a.length;i++){ out[i]+=a[i]; out[i+1]-=a[i]; }
+    a=out;
+  }
+  const ph=[]; for(let i=1;i<a.length;i++) ph.push(-a[i]);
+  return ph;
+}
+
+/* ---------------- information criteria ---------------- */
+function infoCriteria(sse,n,k){
+  const s2=sse/n, ll=-0.5*n*(Math.log(2*Math.PI*s2)+1);
+  return { s2, ll, aic:-2*ll+2*k, bic:-2*ll+k*Math.log(n) };
+}
+
+/* ---------------- fit + forecast ---------------- */
+function fitARIMA(y,p,d,q,opts){
+  const D=differenceKeep(y,d), z=D.z;
+  const m=hannanRissanen(z,p,q,opts&&opts.mLong);
+  const burn=(opts&&opts.burn!==undefined)?opts.burn:startupFor(z,p,q);
+  const cs=css(z,m,burn);
+  const k=p+q+2, ic=infoCriteria(cs.sse,cs.n,k);
+  return { p,d,q, c:m.c, phi:m.phi, theta:m.theta, mLong:m.mLong, z, inits:D.inits,
+           resid:cs.e, residStart:cs.burn, sigma2:ic.s2, nEff:cs.n, k,
+           logLik:ic.ll, aic:ic.aic, bic:ic.bic };
+}
+function forecastARMA(z,m,h){
+  const p=m.phi.length, q=m.theta.length, n=z.length;
+  const e=armaResiduals(z,m).e.slice(), zz=z.slice(), out=[];
+  for(let s=0;s<h;s++){
+    let v=m.c;
+    for(let i=1;i<=p;i++) v+=m.phi[i-1]*zz[n+s-i];
+    for(let j=1;j<=q;j++){ const idx=n+s-j; v+=m.theta[j-1]*(idx<n?e[idx]:0); }
+    zz.push(v); e.push(0); out.push(v);
+  }
+  return out;
+}
+function forecastARIMA(y,fit,h){
+  const zf=forecastARMA(fit.z,{c:fit.c,phi:fit.phi,theta:fit.theta},h);
+  const yf=fit.d>0 ? integrateForecast(lastLevels(y,fit.d),zf) : zf.slice();
+  const psi=psiWeights(polyMulARd(fit.phi,fit.d),fit.theta,h);
+  const se=[]; let acc=0;
+  for(let s=0;s<h;s++){ acc+=psi[s]*psi[s]; se.push(Math.sqrt(Math.max(0,fit.sigma2)*acc)); }
+  return { mean:yf, se, psi, zf };
+}
+
+/* ---------------- augmented Dickey-Fuller ---------------- */
+function adfTest(y,lags){
+  const n=y.length;
+  if(lags===undefined) lags=Math.max(1,Math.min(8,Math.floor(Math.pow(Math.max(2,n-1),1/3))));
+  const dy=diff1(y), rows=[], targ=[];
+  for(let t=lags;t<dy.length;t++){
+    const row=[1,y[t]];
+    for(let i=1;i<=lags;i++) row.push(dy[t-i]);
+    rows.push(row); targ.push(dy[t]);
+  }
+  const crit={p1:-3.46,p5:-2.88,p10:-2.57};
+  if(rows.length<lags+5) return { stat:NaN, rho:NaN, se:NaN, lags, n:rows.length, crit };
+  const f=olsFit(rows,targ);
+  if(!f||!isFinite(f.se[1])||f.se[1]===0) return { stat:NaN, rho:NaN, se:NaN, lags, n:rows.length, crit };
+  return { stat:f.beta[1]/f.se[1], rho:f.beta[1], se:f.se[1], lags, n:rows.length, crit };
+}
+function chooseD(y,dmax){
+  let z=y.slice();
+  for(let d=0;d<=dmax;d++){
+    const a=adfTest(z);
+    if(isFinite(a.stat)&&a.stat<a.crit.p5) return { d, adf:a.stat };
+    if(d===dmax||z.length<12) return { d:Math.min(d,dmax), adf:a.stat };
+    z=diff1(z);
+  }
+  return { d:0, adf:NaN };
+}
+
+/* ---------------- accuracy and the baselines that must be beaten ---------------- */
+function rmse(a,b){ let s=0; for(let i=0;i<a.length;i++){ const e=a[i]-b[i]; s+=e*e; } return Math.sqrt(s/a.length); }
+function mae(a,b){ let s=0; for(let i=0;i<a.length;i++) s+=Math.abs(a[i]-b[i]); return s/a.length; }
+function naiveForecast(train,h){ const v=train[train.length-1]; return new Array(h).fill(v); }
+function driftForecast(train,h){ const n=train.length, sl=n>1?(train[n-1]-train[0])/(n-1):0, o=[]; for(let i=1;i<=h;i++) o.push(train[n-1]+sl*i); return o; }
+function seasonalNaive(train,h,s){
+  const n=train.length, o=[];
+  for(let i=0;i<h;i++){ const idx=n-s+(i%s); o.push(idx>=0?train[idx]:train[n-1]); }
+  return o;
+}
+
+/* ---------------- (p,q) grid at fixed d, on a COMMON effective sample ---------------- */
+function gridARIMA(y,d,pmax,qmax){
+  const z=differenceKeep(y,d).z;
+  let burn=0;
+  for(let p=0;p<=pmax;p++) for(let q=0;q<=qmax;q++) burn=Math.max(burn,startupFor(z,p,q));
+  burn=Math.min(burn,Math.max(1,z.length-8));
+  const rows=[]; let bestA=null, bestB=null;
+  for(let p=0;p<=pmax;p++) for(let q=0;q<=qmax;q++){
+    const m=hannanRissanen(z,p,q);
+    const cs=css(z,m,burn);
+    const k=p+q+2, ic=infoCriteria(cs.sse,cs.n,k);
+    const rec={ p,d,q,k, nEff:cs.n, sigma2:ic.s2, logLik:ic.ll, aic:ic.aic, bic:ic.bic, phi:m.phi, theta:m.theta, c:m.c };
+    rows.push(rec);
+    if(!bestA||rec.aic<bestA.aic) bestA=rec;
+    if(!bestB||rec.bic<bestB.bic) bestB=rec;
+  }
+  return { rows, bestAIC:bestA, bestBIC:bestB, burn };
+}
+
+/* ---------------- rolling-origin backtest: refit at every origin ---------------- */
+function rollingOrigin(y,p,d,q,minTrain,h,season){
+  const em=[], en=[], es=[], ed=[]; let origins=0;
+  for(let t0=minTrain;t0+h<=y.length;t0++){
+    const train=y.slice(0,t0);
+    let fm;
+    const fit=fitARIMA(train,p,d,q);
+    fm=forecastARIMA(train,fit,h).mean;
+    const fn=naiveForecast(train,h), fs=seasonalNaive(train,h,season||4), fd=driftForecast(train,h);
+    const last=train[train.length-1];
+    for(let i=0;i<h;i++){
+      const a=y[t0+i];
+      em.push(a-(isFinite(fm[i])?fm[i]:last));
+      en.push(a-fn[i]); es.push(a-fs[i]); ed.push(a-fd[i]);
+    }
+    origins++;
+  }
+  const R=arr=>{ if(!arr.length) return NaN; let s=0; for(const e of arr) s+=e*e; return Math.sqrt(s/arr.length); };
+  const M=arr=>{ if(!arr.length) return NaN; let s=0; for(const e of arr) s+=Math.abs(e); return s/arr.length; };
+  return { origins, n:em.length,
+    model:{rmse:R(em),mae:M(em)}, naive:{rmse:R(en),mae:M(en)},
+    snaive:{rmse:R(es),mae:M(es)}, drift:{rmse:R(ed),mae:M(ed)} };
+}
+
+/* ---------------- misc helpers ---------------- */
+function parseSeries(txt){
+  const out=[];
+  for(const raw of String(txt).split(/\r?\n/)){
+    const line=raw.trim(); if(!line||line[0]==="#") continue;
+    for(const p of line.split(/[\s,;\t]+/)){ if(!p) continue; const v=parseFloat(p); if(isFinite(v)) out.push(v); }
+  }
+  return out;
+}
+function rollingStats(y,w){
+  const mu=[], sg=[];
+  for(let t=0;t<y.length;t++){
+    const a=Math.max(0,t-w+1), seg=y.slice(a,t+1);
+    mu.push(mean(seg)); sg.push(Math.sqrt(variance(seg)));
+  }
+  return { mu, sg };
+}
+function firstCutoff(vals,band){
+  let last=0;
+  for(let k=1;k<vals.length;k++) if(Math.abs(vals[k])>band) last=k;
+  return last;
+}
+/* ARIMA-ENGINE-END */
+
+/* ---------------- tiny drawing helpers (DOM side) ---------------- */
+function frame(X,x0,y0,x1,y1,title){
+  X.fillStyle="#f8fafc"; X.fillRect(x0,y0,x1-x0,y1-y0);
+  X.strokeStyle="#e2e8f0"; X.strokeRect(x0,y0,x1-x0,y1-y0);
+  X.fillStyle="#334155"; X.font="bold 10px ui-sans-serif,system-ui"; X.fillText(title,x0,y0-4);
+}
+function lineOf(X,pts,color,w,dash){
+  if(!pts.length) return;
+  X.strokeStyle=color; X.lineWidth=w||1.6; if(dash) X.setLineDash(dash);
+  X.beginPath(); pts.forEach((p,i)=> i===0?X.moveTo(p[0],p[1]):X.lineTo(p[0],p[1]));
+  X.stroke(); X.setLineDash([]); X.lineWidth=1;
+}
+function extent(arr){
+  let lo=Infinity, hi=-Infinity;
+  for(const v of arr){ if(!isFinite(v)) continue; if(v<lo) lo=v; if(v>hi) hi=v; }
+  if(!isFinite(lo)){ lo=0; hi=1; }
+  if(hi-lo<1e-9){ hi=lo+1; lo=lo-1; }
+  const pad=(hi-lo)*0.08; return [lo-pad,hi+pad];
+}
+function stemPlot(X,x0,y0,x1,y1,vals,band,color,title,startLag){
+  frame(X,x0,y0,x1,y1,title);
+  const K=vals.length-1, s0=(startLag===undefined)?1:startLag;
+  const midY=(y0+y1)/2, halfH=(y1-y0)/2-8;
+  if(band>0){
+    const bh=Math.min(halfH,halfH*band);
+    X.fillStyle="rgba(203,213,225,.55)"; X.fillRect(x0+1,midY-bh,x1-x0-2,2*bh);
+  }
+  X.strokeStyle="#94a3b8"; X.beginPath(); X.moveTo(x0,midY); X.lineTo(x1,midY); X.stroke();
+  const bw=(x1-x0-10)/Math.max(1,K-s0+1);
+  for(let k=s0;k<=K;k++){
+    const v=Math.max(-1,Math.min(1,vals[k]));
+    const cx=x0+5+(k-s0+0.5)*bw, hgt=v*halfH;
+    X.strokeStyle=color; X.lineWidth=Math.max(1.5,Math.min(6,bw*0.45));
+    X.beginPath(); X.moveTo(cx,midY); X.lineTo(cx,midY-hgt); X.stroke();
+    X.fillStyle=color; X.beginPath(); X.arc(cx,midY-hgt,Math.max(1.5,Math.min(3,bw*0.22)),0,7); X.fill();
+  }
+  X.lineWidth=1;
+  X.fillStyle="#94a3b8"; X.font="9px ui-sans-serif,system-ui";
+  X.fillText("lag "+s0,x0+3,y1-3); X.textAlign="right"; X.fillText("lag "+K,x1-3,y1-3); X.textAlign="left";
+  X.fillText("+1",x0+3,y0+10); X.fillText("-1",x0+3,y1-12);
+}
+
+/* ================================================================
+   MODULE 1 — stationarity and differencing
+   ================================================================ */
+const stC=el("stCanvas"), stX=stC.getContext("2d");
+let S={ preset:"rw", n:200, d:1, sig:1.0, drift:0, win:20, seed:7, pasted:null, data:null };
+
+function stGen(){
+  if(S.pasted && S.pasted.length>=12) return S.pasted.slice();
+  const rng=mulberry32(S.seed*7919+S.n*31+Math.round(S.sig*1000)+Math.round(S.drift*100));
+  if(S.preset==="rw")    return simRandomWalk(S.n,S.sig,rng,S.drift);
+  if(S.preset==="trend") return simTrend(S.n,S.drift+0.08,S.sig,rng);
+  if(S.preset==="ar1")   return simARMA(S.n,[0.75],[],S.sig,rng,0).map((v,t)=>v+S.drift*t);
+  if(S.preset==="seas")  return simSeasonal(S.n,12,3*S.sig,S.sig,rng,S.drift);
+  return simARMA(S.n,[],[],S.sig,rng,0).map((v,t)=>v+S.drift*t);
+}
+function stFit(){
+  const y=stGen(), d=S.d, z=difference(y,d);
+  const K=Math.min(28,Math.max(6,Math.floor(y.length/5)));
+  S.data={ y, z, d,
+    adf0:adfTest(y), adfD:z.length>14?adfTest(z):{stat:NaN,crit:{p5:-2.88}},
+    pick:chooseD(y,3),
+    acfY:acf(y,K), acfZ:z.length>K+2?acf(z,K):acf(z,Math.max(2,z.length-3)),
+    roll:rollingStats(y,S.win), K,
+    v1:variance(y.slice(0,Math.floor(y.length/2))), v2:variance(y.slice(Math.floor(y.length/2))) };
+  stDraw(); stReport();
+}
+function stDraw(){
+  const D=S.data; if(!D) return;
+  const X=stX, W=stC.width, H=stC.height;
+  X.clearRect(0,0,W,H); X.fillStyle="#fbfdff"; X.fillRect(0,0,W,H);
+  const x0=44, x1=W-14;
+
+  // ---- A: the level series with rolling mean and rolling sd ----
+  frame(X,x0,20,x1,165,"① THE SERIES — with its rolling mean and rolling standard deviation");
+  const ex=extent(D.y), mx=t=> x0+(t/(D.y.length-1))*(x1-x0), my=v=> 165-(v-ex[0])/(ex[1]-ex[0])*145;
+  lineOf(X,D.y.map((v,t)=>[mx(t),my(v)]),CSER,1.6);
+  lineOf(X,D.roll.mu.map((v,t)=>[mx(t),my(v)]),CMEAN,1.8);
+  const sdBase=ex[0]+(ex[1]-ex[0])*0.06, sdScale=(ex[1]-ex[0])*0.30/Math.max(1e-9,Math.max(...D.roll.sg));
+  lineOf(X,D.roll.sg.map((v,t)=>[mx(t),my(sdBase+v*sdScale)]),CSD,1.4,[4,3]);
+  X.fillStyle="#94a3b8"; X.font="9px ui-sans-serif,system-ui";
+  X.fillText(ex[1].toFixed(1),x0-40,28); X.fillText(ex[0].toFixed(1),x0-40,163);
+
+  // ---- B: after d differences ----
+  frame(X,x0,195,x1,310,"② AFTER "+D.d+" DIFFERENCE"+(D.d===1?"":"S")+" — flat mean and flat spread is what ARIMA needs");
+  if(D.z.length>1){
+    const ez=extent(D.z), zx=t=> x0+(t/(D.z.length-1))*(x1-x0), zy=v=> 310-(v-ez[0])/(ez[1]-ez[0])*115;
+    const zm=mean(D.z);
+    X.strokeStyle="#94a3b8"; X.setLineDash([3,3]); X.beginPath(); X.moveTo(x0,zy(zm)); X.lineTo(x1,zy(zm)); X.stroke(); X.setLineDash([]);
+    lineOf(X,D.z.map((v,t)=>[zx(t),zy(v)]),D.d===0?CSER:CDIF,1.4);
+    X.fillStyle="#94a3b8"; X.fillText(ez[1].toFixed(1),x0-40,203); X.fillText(ez[0].toFixed(1),x0-40,308);
+  }
+
+  // ---- C & D: the two correlograms ----
+  const bandY=acfBand(D.y.length), bandZ=acfBand(Math.max(2,D.z.length));
+  stemPlot(X,x0,340,x1,420,D.acfY,bandY,CSER,"③ ACF OF THE LEVEL — a slow, near-linear decay is a unit root");
+  stemPlot(X,x0,450,x1,515,D.acfZ,bandZ,CDIF,"④ ACF AFTER DIFFERENCING — should collapse into the band");
+}
+function stReport(){
+  const D=S.data; if(!D) return;
+  const a0=D.adf0.stat, aD=D.adfD.stat, crit=D.adf0.crit.p5;
+  el("sAdf0").textContent=isFinite(a0)?a0.toFixed(2):"—";
+  el("sAdfD").textContent=isFinite(aD)?aD.toFixed(2):"—";
+  el("sPick").textContent="d = "+D.pick.d;
+  el("sVar").textContent=(D.v1>0)?(D.v2/D.v1).toFixed(2)+"×":"—";
+  const stat0=isFinite(a0)&&a0<crit, statD=isFinite(aD)&&aD<crit;
+  const ratio=D.v1>0?D.v2/D.v1:1;
+  if(!stat0 && statD)
+    setDiag(el("sDiag"),"diag-good","✅ Non-stationary as a level, stationary after differencing — this is exactly the case ARIMA was built for.",
+      `The ADF statistic on the raw series is <b>${a0.toFixed(2)}</b>, above the 5% critical value <b>${crit}</b>, so the unit-root null cannot be rejected: the level wanders with no pull back to anything. After <b>${D.d}</b> difference${D.d===1?"":"s"} the statistic is <b>${aD.toFixed(2)}</b>, comfortably below it. Notice panel ③ — the level ACF decays in almost a straight line and is still far outside the band at lag ${D.K}, which is the visual fingerprint of a unit root — while panel ④ collapses. The variance of the second half is <b>${ratio.toFixed(2)}×</b> the first half. The test's own recommendation is <b>d = ${D.pick.d}</b>.`);
+  else if(stat0)
+    setDiag(el("sDiag"),"diag-info","🧲 Already stationary — do not difference it.",
+      `The ADF statistic is <b>${a0.toFixed(2)}</b>, below <b>${crit}</b>, so the level itself mean-reverts and <code>d = 0</code> is right. Over-differencing is a real mistake and it leaves a visible signature: it injects a spurious negative autocorrelation at lag 1 (the ACF of ∇y for white noise y is exactly −0.5), inflates the residual variance, and makes the model harder to fit. Slide <b>d</b> up and watch panel ④ develop that negative lag-1 spike out of nothing. Currently d = ${D.d}${D.d>0?" — that is one difference too many for this series":""}.`);
+  else
+    setDiag(el("sDiag"),"diag-warn","⚠️ Still not stationary after "+D.d+" difference"+(D.d===1?"":"s")+".",
+      `Level ADF <b>${isFinite(a0)?a0.toFixed(2):"—"}</b>, differenced ADF <b>${isFinite(aD)?aD.toFixed(2):"—"}</b>, both above <b>${crit}</b>. Either <code>d</code> is too low (try the test's pick, <b>d = ${D.pick.d}</b>), or the non-stationarity is not the kind differencing fixes: a variance that grows with the level needs a log or Box–Cox transform first, and a hard structural break needs to be modelled, not differenced away. The second-half variance is <b>${ratio.toFixed(2)}×</b> the first half — if that number is far from 1, the problem is the variance, not the mean.`);
+}
+function stWire(){
+  const bind=(id,vid,f,g)=>{ const e=el(id); e.oninput=()=>{ f(parseFloat(e.value)); el(vid).textContent=g(parseFloat(e.value)); stFit(); }; };
+  bind("sNs","sNsV",v=>S.n=v,v=>v);
+  bind("sDs","sDsV",v=>S.d=v,v=>v);
+  bind("sSs","sSsV",v=>S.sig=v/10,v=>(v/10).toFixed(2));
+  bind("sMs","sMsV",v=>S.drift=v/500,v=>(v/500).toFixed(3));
+  bind("sWs","sWsV",v=>S.win=v,v=>v);
+  bind("sZs","sZsV",v=>S.seed=v,v=>v);
+  el("sRoll").onclick=()=>{ S.seed=1+Math.floor(Math.random()*99); el("sZs").value=S.seed; el("sZsV").textContent=S.seed; stFit(); };
+  document.querySelectorAll("#sPresets .ds-btn").forEach(b=>b.onclick=()=>{
+    document.querySelectorAll("#sPresets .ds-btn").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on"); S.preset=b.dataset.p; S.pasted=null; stFit(); });
+  el("sPasteBtn").onclick=()=>{
+    const v=parseSeries(el("sRaw").value);
+    if(v.length<12){ el("sRawMsg").innerHTML='<span style="color:#dc2626">Need at least 12 numbers.</span>'; return; }
+    S.pasted=v; el("sRawMsg").textContent="Using your "+v.length+" pasted values."; stFit(); };
+  el("sGen").onclick=()=>{ S.pasted=null; el("sRawMsg").textContent="Back to the generated series."; stFit(); };
+}
+
+/* ================================================================
+   MODULE 2 — ACF, PACF, and fitting AR two ways
+   ================================================================ */
+const acC=el("acCanvas"), acX=acC.getContext("2d");
+let A={ p1:0.70, p2:0, t1:0, t2:0, n:300, K:18, fitP:1, seed:11, data:null };
+
+function acTruePhi(){ const o=[A.p1]; if(Math.abs(A.p2)>1e-9) o.push(A.p2); return o; }
+function acTrueTheta(){ const o=[]; if(Math.abs(A.t1)>1e-9||Math.abs(A.t2)>1e-9){ o.push(A.t1); if(Math.abs(A.t2)>1e-9) o.push(A.t2); } return o; }
+function acFit(){
+  const rng=mulberry32(A.seed*104729+A.n*17+Math.round(A.p1*1000)+Math.round(A.t1*777));
+  const phi=acTruePhi(), th=acTrueTheta();
+  const y=simARMA(A.n,phi,th,1,rng,0);
+  const K=Math.min(A.K,Math.max(4,Math.floor(A.n/4)));
+  const rho=acf(y,K), pac=pacfDL(y,K), band=acfBand(A.n);
+  const yw=yuleWalker(y,A.fitP), ols=arOLS(y,A.fitP);
+  let maxd=0; for(let i=0;i<A.fitP;i++) maxd=Math.max(maxd,Math.abs(yw.phi[i]-ols.phi[i]));
+  A.data={ y, rho, pac, band, K, yw, ols, maxd, phi, th,
+           cutA:firstCutoff(rho,band), cutP:firstCutoff(pac,band) };
+  acDraw(); acTable(); acReport();
+}
+function acDraw(){
+  const D=A.data; if(!D) return;
+  const X=acX, W=acC.width; X.clearRect(0,0,W,acC.height); X.fillStyle="#fbfdff"; X.fillRect(0,0,W,acC.height);
+  const x0=44, x1=W-14;
+  frame(X,x0,20,x1,130,"① THE SIMULATED SERIES — "+A.n+" points, 400-step burn-in so it starts stationary");
+  const ex=extent(D.y), mx=t=> x0+(t/(D.y.length-1))*(x1-x0), my=v=> 130-(v-ex[0])/(ex[1]-ex[0])*110;
+  lineOf(X,D.y.map((v,t)=>[mx(t),my(v)]),CSER,1.3);
+  stemPlot(X,x0,160,x1,290,D.rho,D.band,CSER,"② ACF ρ_k — MA(q) cuts off after lag q");
+  stemPlot(X,x0,320,x1,450,D.pac,D.band,CSD,"③ PACF φ_kk (Durbin–Levinson) — AR(p) cuts off after lag p");
+
+  // ---- D: coefficient bars, YW vs OLS vs truth ----
+  frame(X,x0,480,x1,555,"④ THE SAME AR("+A.fitP+") FIT TWO INDEPENDENT WAYS — Yule–Walker vs OLS, against the truth");
+  const p=A.fitP, cw=(x1-x0-12)/Math.max(1,p), mid=520, sc=32;
+  X.strokeStyle="#94a3b8"; X.beginPath(); X.moveTo(x0,mid); X.lineTo(x1,mid); X.stroke();
+  for(let i=0;i<p;i++){
+    const cx=x0+6+i*cw, bw=cw*0.26;
+    const vals=[[D.yw.phi[i],CYW],[D.ols.phi[i],COLS]];
+    vals.forEach((vv,j)=>{
+      const v=Math.max(-1.3,Math.min(1.3,vv[0]||0));
+      X.fillStyle=vv[1]; X.fillRect(cx+j*bw*1.15+cw*0.10, v>=0?mid-v*sc:mid, bw, Math.abs(v)*sc);
+    });
+    const tv=(i<D.phi.length&&D.th.length===0)?D.phi[i]:(i<D.phi.length?D.phi[i]:0);
+    const ty=mid-Math.max(-1.3,Math.min(1.3,tv))*sc;
+    X.strokeStyle=CTRUE; X.lineWidth=2; X.beginPath(); X.moveTo(cx+cw*0.05,ty); X.lineTo(cx+cw*0.72,ty); X.stroke(); X.lineWidth=1;
+    X.fillStyle="#64748b"; X.font="bold 9px ui-sans-serif,system-ui"; X.fillText("φ"+(i+1),cx+cw*0.28,552);
+  }
+  X.fillStyle="#94a3b8"; X.font="9px ui-sans-serif,system-ui"; X.fillText("0",x0+2,mid-2);
+}
+function acTable(){
+  const D=A.data; if(!D) return;
+  let h="<tr><th>coefficient</th><th>Yule–Walker</th><th>OLS</th><th>|difference|</th><th>true</th></tr>";
+  for(let i=0;i<A.fitP;i++){
+    const t=(i<D.phi.length&&D.th.length===0)?D.phi[i].toFixed(3):(i<D.phi.length?D.phi[i].toFixed(3)+"*":"0.000*");
+    h+=`<tr><td>φ${i+1}</td><td>${(D.yw.phi[i]||0).toFixed(4)}</td><td>${(D.ols.phi[i]||0).toFixed(4)}</td><td>${Math.abs((D.yw.phi[i]||0)-(D.ols.phi[i]||0)).toFixed(4)}</td><td>${t}</td></tr>`;
+  }
+  h+=`<tr class="win"><td>σ̂²</td><td>${D.yw.sigma2.toFixed(4)}</td><td>${D.ols.sigma2.toFixed(4)}</td><td>${Math.abs(D.yw.sigma2-D.ols.sigma2).toFixed(4)}</td><td>1.0000</td></tr>`;
+  h+=`<tr><td>rows used</td><td>${A.n} (via γ_k)</td><td>${A.n-A.fitP} (first ${A.fitP} dropped)</td><td>${A.fitP}</td><td>—</td></tr>`;
+  el("aTable").innerHTML=h;
+}
+function acReport(){
+  const D=A.data; if(!D) return;
+  el("aCutA").textContent="lag "+D.cutA;
+  el("aCutP").textContent="lag "+D.cutP;
+  el("aErr").textContent=D.maxd.toFixed(4);
+  const isMA=D.th.length>0, isAR=D.phi.length>0&&Math.abs(D.phi[0])>1e-9;
+  let read="—";
+  if(D.cutA===0&&D.cutP===0) read="white noise";
+  else if(D.cutP<=3&&D.cutA>D.cutP+2) read="AR("+D.cutP+")";
+  else if(D.cutA<=3&&D.cutP>D.cutA+2) read="MA("+D.cutA+")";
+  else read="ARMA — use AIC";
+  el("aRead").textContent=read;
+  const truth=(isAR&&isMA)?`ARMA(${D.phi.length},${D.th.length})`:(isMA?`MA(${D.th.length})`:(isAR?`AR(${D.phi.length})`:"white noise"));
+  setDiag(el("aDiag"),"diag-info",`🔍 The plots read <b>${read}</b>; you generated <b>${truth}</b>.`,
+    `The band is <code>±1.96/√n = ±${D.band.toFixed(3)}</code>, so with ${A.n} points a spike must clear ${D.band.toFixed(3)} to count — and roughly one lag in twenty will clear it by pure chance, which is why "the ACF cuts off at lag 1" should mean "everything after lag 1 is inside the band, apart from the odd stray". Yule–Walker and OLS differ here by at most <b>${D.maxd.toFixed(4)}</b>. They are solving genuinely different problems: Yule–Walker builds a Toeplitz system out of the sample autocorrelations, uses all ${A.n} observations, and always returns a stationary model; OLS conditions on the first ${A.fitP} value${A.fitP===1?"":"s"}, throws ${A.fitP} row${A.fitP===1?"":"s"} away, and can return an explosive root. Both are consistent, so push <b>n</b> up and watch the gap shrink roughly like <code>1/n</code>. ${isMA?"Note that fitting an AR to MA data is not wrong so much as inefficient — an invertible MA(1) is an AR(∞), so you need many AR lags to imitate one MA lag.":""}`);
+}
+function acWire(){
+  const bind=(id,vid,f,g)=>{ const e=el(id); e.oninput=()=>{ f(parseFloat(e.value)); el(vid).textContent=g(parseFloat(e.value)); acFit(); }; };
+  bind("aP1","aP1V",v=>A.p1=v/100,v=>(v/100).toFixed(2));
+  bind("aP2","aP2V",v=>A.p2=v/100,v=>(v/100).toFixed(2));
+  bind("aT1","aT1V",v=>A.t1=v/100,v=>(v/100).toFixed(2));
+  bind("aT2","aT2V",v=>A.t2=v/100,v=>(v/100).toFixed(2));
+  bind("aNs","aNsV",v=>A.n=v,v=>v);
+  bind("aKs","aKsV",v=>A.K=v,v=>v);
+  bind("aPs","aPsV",v=>A.fitP=v,v=>v);
+  bind("aZs","aZsV",v=>A.seed=v,v=>v);
+  el("aRoll").onclick=()=>{ A.seed=1+Math.floor(Math.random()*99); el("aZs").value=A.seed; el("aZsV").textContent=A.seed; acFit(); };
+  el("aBig").onclick=()=>{ A.n=600; el("aNs").value=600; el("aNsV").textContent=600; acFit(); };
+  const set=(p1,p2,t1,t2,fp)=>{
+    A.p1=p1; A.p2=p2; A.t1=t1; A.t2=t2; A.fitP=fp;
+    el("aP1").value=p1*100; el("aP1V").textContent=p1.toFixed(2);
+    el("aP2").value=p2*100; el("aP2V").textContent=p2.toFixed(2);
+    el("aT1").value=t1*100; el("aT1V").textContent=t1.toFixed(2);
+    el("aT2").value=t2*100; el("aT2V").textContent=t2.toFixed(2);
+    el("aPs").value=fp; el("aPsV").textContent=fp; acFit();
+  };
+  document.querySelectorAll("#aPresets .ds-btn").forEach(b=>b.onclick=()=>{
+    document.querySelectorAll("#aPresets .ds-btn").forEach(x=>x.classList.remove("on")); b.classList.add("on");
+    const p=b.dataset.p;
+    if(p==="ar1")  set(0.70,0,0,0,1);
+    if(p==="ar2")  set(0.60,-0.35,0,0,2);
+    if(p==="ma1")  set(0,0,0.70,0,1);
+    if(p==="ma2")  set(0,0,0.60,0.40,2);
+    if(p==="arma") set(0.60,0,0.50,0,1);
+    if(p==="rw")   set(0.99,0,0,0,1);
+  });
+}
+
+/* ================================================================
+   MODULE 3 — forecast, intervals, order grid, backtest
+   ================================================================ */
+const fcC=el("fcCanvas"), fcX=fcC.getContext("2d");
+let F={ preset:"ar1", p1:0.80, t1:0, dTrue:0, n:180, sig:1.0, h:24, fp:1, fd:0, fq:0, seed:5,
+        data:null, grid:null, back:null, season:12 };
+
+function fcGen(){
+  const rng=mulberry32(F.seed*15485863+F.n*13+Math.round(F.p1*1000)+Math.round(F.t1*331));
+  let y;
+  if(F.preset==="seas") y=simSeasonal(F.n,F.season,3*F.sig,F.sig,rng,0.02);
+  else {
+    const phi=Math.abs(F.p1)>1e-9?[F.p1]:[], th=Math.abs(F.t1)>1e-9?[F.t1]:[];
+    y=simARMA(F.n,phi,th,F.sig,rng,0);
+    for(let k=0;k<F.dTrue;k++){ const o=[]; let acc=0; for(const v of y){ acc+=v; o.push(acc); } y=o; }
+  }
+  return y;
+}
+function fcFit(){
+  const y=fcGen(), h=Math.min(F.h,Math.floor(y.length/3));
+  const train=y.slice(0,y.length-h), test=y.slice(y.length-h);
+  const fit=fitARIMA(train,F.fp,F.fd,F.fq);
+  const fc=forecastARIMA(train,fit,h);
+  const nv=naiveForecast(train,h), dr=driftForecast(train,h);
+  F.data={ y, train, test, h, fit, fc, nv, dr,
+    rmM:rmse(test,fc.mean), rmN:rmse(test,nv), rmD:rmse(test,dr),
+    cover: test.reduce((s,a,i)=> s + ((Math.abs(a-fc.mean[i])<=1.959963984540054*fc.se[i])?1:0),0)/h };
+  fcDraw(); fcReport();
+}
+function fcDraw(){
+  const D=F.data; if(!D) return;
+  const X=fcX, W=fcC.width; X.clearRect(0,0,W,fcC.height); X.fillStyle="#fbfdff"; X.fillRect(0,0,W,fcC.height);
+  const x0=44, x1=W-14;
+  frame(X,x0,20,x1,280,"① HISTORY, HOLDOUT AND FORECAST — the last "+D.h+" points were never seen by the fit");
+  const all=D.y.concat(D.fc.mean.map((m,i)=>m+1.96*D.fc.se[i]),D.fc.mean.map((m,i)=>m-1.96*D.fc.se[i]));
+  const ex=extent(all), N=D.y.length;
+  const mx=t=> x0+(t/(N-1))*(x1-x0), my=v=> 280-(v-ex[0])/(ex[1]-ex[0])*260;
+  const cut=D.train.length-1;
+  // interval ribbon
+  X.fillStyle="rgba(186,230,253,.75)"; X.beginPath();
+  X.moveTo(mx(cut),my(D.train[cut]));
+  D.fc.mean.forEach((m,i)=> X.lineTo(mx(cut+1+i),my(m+1.959963984540054*D.fc.se[i])));
+  for(let i=D.fc.mean.length-1;i>=0;i--) X.lineTo(mx(cut+1+i),my(D.fc.mean[i]-1.959963984540054*D.fc.se[i]));
+  X.closePath(); X.fill();
+  X.strokeStyle="#cbd5e1"; X.setLineDash([3,3]); X.beginPath(); X.moveTo(mx(cut),20); X.lineTo(mx(cut),280); X.stroke(); X.setLineDash([]);
+  lineOf(X,D.train.map((v,t)=>[mx(t),my(v)]),CTRUE,1.5);
+  lineOf(X,[[mx(cut),my(D.train[cut])]].concat(D.test.map((v,i)=>[mx(cut+1+i),my(v)])),"#16a34a",2);
+  lineOf(X,[[mx(cut),my(D.train[cut])]].concat(D.nv.map((v,i)=>[mx(cut+1+i),my(v)])),CMEAN,1.4,[5,4]);
+  lineOf(X,[[mx(cut),my(D.train[cut])]].concat(D.fc.mean.map((v,i)=>[mx(cut+1+i),my(v)])),CSER,2.4);
+  X.fillStyle="#94a3b8"; X.font="9px ui-sans-serif,system-ui";
+  X.fillText(ex[1].toFixed(1),x0-40,28); X.fillText(ex[0].toFixed(1),x0-40,278);
+  X.fillStyle="#0369a1"; X.font="bold 9px ui-sans-serif,system-ui"; X.fillText("forecast origin",mx(cut)+3,34);
+
+  // ---- B: psi-weights and the growing standard error ----
+  frame(X,x0,315,x1,465,"② ψ-WEIGHTS (bars) AND THE FORECAST STANDARD ERROR √(σ²Σψ_j²) (line) — the band cannot shrink");
+  const psi=D.fc.psi.slice(0,D.h), se=D.fc.se;
+  const pm=Math.max(1e-9,Math.max(...psi.map(Math.abs)));
+  const bw=(x1-x0-10)/Math.max(1,psi.length), base=440;
+  for(let j=0;j<psi.length;j++){
+    const hgt=(psi[j]/pm)*70, cx=x0+5+j*bw;
+    X.fillStyle=psi[j]>=0?"#a855f7":"#f472b6";
+    X.fillRect(cx+bw*0.15,hgt>=0?base-hgt:base,Math.max(1.5,bw*0.7),Math.abs(hgt));
+  }
+  X.strokeStyle="#94a3b8"; X.beginPath(); X.moveTo(x0,base); X.lineTo(x1,base); X.stroke();
+  const sm=Math.max(1e-9,Math.max(...se));
+  lineOf(X,se.map((v,i)=>[x0+5+(i+0.5)*bw,base-(v/sm)*112]),CSER,2);
+  X.fillStyle="#64748b"; X.font="9px ui-sans-serif,system-ui";
+  X.fillText("ψ_0="+psi[0].toFixed(2),x0+4,base+12);
+  X.fillText("se(1)="+se[0].toFixed(2),x0+4,332);
+  X.textAlign="right"; X.fillText("se("+D.h+")="+se[se.length-1].toFixed(2),x1-4,332); X.textAlign="left";
+}
+function fcReport(){
+  const D=F.data; if(!D) return;
+  el("fRms").textContent=D.rmM.toFixed(3);
+  el("fNaive").textContent=D.rmN.toFixed(3);
+  const skill=1-D.rmM/D.rmN;
+  el("fWin").textContent=(skill*100).toFixed(0)+"%";
+  el("fWin").style.color=skill>0?"#16a34a":"#dc2626";
+  const f=D.fit, ph=f.phi.map(v=>v.toFixed(3)).join(", ")||"—", th=f.theta.map(v=>v.toFixed(3)).join(", ")||"—";
+  const flat=f.phi.length===0&&f.theta.length===0&&f.d>0;
+  setDiag(el("fDiag"), skill>0.02?"diag-good":(skill>-0.02?"diag-info":"diag-bad"),
+    `${skill>0.02?"✅":(skill>-0.02?"➖":"❌")} ARIMA(${f.p},${f.d},${f.q}) — holdout RMSE <b>${D.rmM.toFixed(3)}</b> vs naive <b>${D.rmN.toFixed(3)}</b> vs drift <b>${D.rmD.toFixed(3)}</b>.`,
+    `Fitted φ = [${ph}], θ = [${th}], intercept ${f.c.toFixed(3)}, σ̂² = ${f.sigma2.toFixed(3)} on ${f.nEff} effective points; AIC ${f.aic.toFixed(1)}, BIC ${f.bic.toFixed(1)}. The 95% band covered <b>${(D.cover*100).toFixed(0)}%</b> of the held-out points. ${flat?"With no AR or MA terms and d &gt; 0 the forecast is a <b>flat line</b> at the last observed value — that is the correct answer for a random walk, not a bug, and it is why the naive baseline is unbeatable on genuinely random-walk data. ":""}${f.d>0?"Because d &gt; 0 the ψ-weights of the integrated operator do not decay, so <code>Var(e_h)</code> grows without limit and the band fans out like <code>√h</code> forever. ":"Because the model is stationary the ψ-weights decay geometrically, so the band flattens out at the unconditional standard deviation instead of growing forever. "}A negative skill number means the arithmetic was decoration: the honest move is to ship the naive forecast and say so.`);
+}
+function fcGridRun(){
+  const D=F.data; if(!D) return;
+  const g=gridARIMA(D.train,F.fd,3,2);
+  F.grid=g;
+  let h=`<tr><th>p</th><th>d</th><th>q</th><th>k</th><th>n_eff</th><th>σ̂²</th><th>logLik</th><th>AIC</th><th>BIC</th></tr>`;
+  for(const r of g.rows){
+    const win=(r===g.bestAIC), winB=(r===g.bestBIC);
+    h+=`<tr class="${win?"win":""}"><td>${r.p}</td><td>${r.d}</td><td>${r.q}</td><td>${r.k}</td><td>${r.nEff}</td><td>${r.sigma2.toFixed(4)}</td><td>${r.logLik.toFixed(2)}</td><td class="${win?"hit":""}">${r.aic.toFixed(2)}</td><td class="${winB?"hit":""}">${r.bic.toFixed(2)}</td></tr>`;
+  }
+  el("fTable").innerHTML=h;
+  el("fPick").textContent=`(${g.bestAIC.p},${g.bestAIC.d},${g.bestAIC.q})`;
+  const same=g.bestAIC.p===g.bestBIC.p&&g.bestAIC.q===g.bestBIC.q;
+  setDiag(el("fDiag"),"diag-info",
+    `🔎 AIC picks ARIMA(${g.bestAIC.p},${g.bestAIC.d},${g.bestAIC.q}); BIC picks ARIMA(${g.bestBIC.p},${g.bestBIC.d},${g.bestBIC.q}).`,
+    `Every row was scored on the <b>same ${g.rows[0].nEff} effective points</b> — that is not a detail, it is the whole reason the column is comparable. A conditional fit burns startup observations and a bigger model burns more, so a grid that lets each candidate use whatever sample it likes will happily crown the model that got the easiest subset. ${same?"AIC and BIC agree here.":"They disagree, which is normal: BIC's penalty is <code>k·log n</code> against AIC's <code>2k</code>, so with n = "+g.rows[0].nEff+" BIC charges "+(Math.log(g.rows[0].nEff)/2).toFixed(1)+"× more per parameter and picks the sparser model. AIC targets predictive accuracy, BIC targets finding the true model if it is in the list."} And note what is <em>not</em> in this table: rows at a different <code>d</code>. Differencing changes the data, so likelihoods across different <code>d</code> are not on the same scale and comparing their AICs is meaningless. Pick <code>d</code> from the ADF test, then grid <code>p</code> and <code>q</code>.`);
+}
+function fcBackRun(){
+  const D=F.data; if(!D) return;
+  const y=D.y, minTrain=Math.max(30,Math.floor(y.length*0.55)), hh=Math.min(6,D.h);
+  const r=rollingOrigin(y,F.fp,F.fd,F.fq,minTrain,hh,F.season);
+  F.back=r;
+  const rows=[["ARIMA("+F.fp+","+F.fd+","+F.fq+")",r.model,true],["naive (flat)",r.naive,false],["drift",r.drift,false],["seasonal naive (s="+F.season+")",r.snaive,false]];
+  let best=Infinity; for(const x of rows) if(x[1].rmse<best) best=x[1].rmse;
+  let h=`<tr><th>forecaster</th><th>RMSE</th><th>MAE</th><th>skill vs naive</th></tr>`;
+  for(const x of rows){
+    const sk=1-x[1].rmse/r.naive.rmse;
+    h+=`<tr class="${x[1].rmse===best?"win":""}"><td style="text-align:left">${x[0]}</td><td>${x[1].rmse.toFixed(4)}</td><td>${x[1].mae.toFixed(4)}</td><td>${(sk*100).toFixed(1)}%</td></tr>`;
+  }
+  h+=`<tr><td style="text-align:left">origins × horizon</td><td>${r.origins}</td><td>${hh}</td><td>${r.n} forecasts</td></tr>`;
+  el("bTable").innerHTML=h;
+  const sk=1-r.model.rmse/r.naive.rmse;
+  setDiag(el("fDiag"), sk>0.02?"diag-good":"diag-bad",
+    `${sk>0.02?"✅":"❌"} Rolling origin: ${r.origins} refits, ${hh}-step horizon, ${r.n} forecasts — skill vs naive <b>${(sk*100).toFixed(1)}%</b>.`,
+    `The model was refitted from scratch at every one of the ${r.origins} origins, and nothing after the origin was ever visible. That is the only evaluation that means anything for a time series: a random train/test split trains on the future to predict the past and produces beautiful, worthless numbers. ${sk>0.02?`Here ARIMA genuinely beats "tomorrow equals today" by ${(sk*100).toFixed(1)}%, which is what a mean-reverting process should allow.`:`Here it does <b>not</b> beat the naive forecast. On a random walk that is the correct outcome — the naive forecast is provably optimal, and no amount of order searching will change it. Reporting that honestly is worth more than a grid search.`} Compare all three baselines, not just one: drift catches a trend the naive forecast misses, and seasonal naive is brutally hard to beat on anything with a real period.`);
+}
+function fcWire(){
+  const bind=(id,vid,f,g,re)=>{ const e=el(id); e.oninput=()=>{ f(parseFloat(e.value)); el(vid).textContent=g(parseFloat(e.value)); if(re!==false) fcFit(); }; };
+  bind("fP1","fP1V",v=>F.p1=v/100,v=>(v/100).toFixed(2));
+  bind("fT1","fT1V",v=>F.t1=v/100,v=>(v/100).toFixed(2));
+  bind("fDt","fDtV",v=>F.dTrue=v,v=>v);
+  bind("fNs","fNsV",v=>F.n=v,v=>v);
+  bind("fSs","fSsV",v=>F.sig=v/10,v=>(v/10).toFixed(2));
+  bind("fHs","fHsV",v=>F.h=v,v=>v);
+  bind("fFp","fFpV",v=>F.fp=v,v=>v);
+  bind("fFd","fFdV",v=>F.fd=v,v=>v);
+  bind("fFq","fFqV",v=>F.fq=v,v=>v);
+  bind("fZs","fZsV",v=>F.seed=v,v=>v);
+  el("fRoll").onclick=()=>{ F.seed=1+Math.floor(Math.random()*99); el("fZs").value=F.seed; el("fZsV").textContent=F.seed; fcFit(); };
+  el("fGrid").onclick=fcGridRun;
+  el("fBack").onclick=fcBackRun;
+  el("fUseGrid").onclick=()=>{
+    if(!F.grid){ fcGridRun(); }
+    const b=F.grid.bestAIC;
+    F.fp=b.p; F.fq=b.q;
+    el("fFp").value=b.p; el("fFpV").textContent=b.p;
+    el("fFq").value=b.q; el("fFqV").textContent=b.q;
+    fcFit();
+  };
+  const setF=(p1,t1,dt,fp,fd,fq)=>{
+    F.p1=p1; F.t1=t1; F.dTrue=dt; F.fp=fp; F.fd=fd; F.fq=fq;
+    el("fP1").value=p1*100; el("fP1V").textContent=p1.toFixed(2);
+    el("fT1").value=t1*100; el("fT1V").textContent=t1.toFixed(2);
+    el("fDt").value=dt; el("fDtV").textContent=dt;
+    el("fFp").value=fp; el("fFpV").textContent=fp;
+    el("fFd").value=fd; el("fFdV").textContent=fd;
+    el("fFq").value=fq; el("fFqV").textContent=fq;
+    F.grid=null; el("fTable").innerHTML=""; el("bTable").innerHTML=""; fcFit();
+  };
+  document.querySelectorAll("#fPresets .ds-btn").forEach(b=>b.onclick=()=>{
+    document.querySelectorAll("#fPresets .ds-btn").forEach(x=>x.classList.remove("on")); b.classList.add("on");
+    F.preset=b.dataset.p;
+    if(F.preset==="ar1")  setF(0.80,0,0,1,0,0);
+    if(F.preset==="rw")   setF(0,0,1,0,1,0);
+    if(F.preset==="arma") setF(0.60,0.40,1,1,1,1);
+    if(F.preset==="seas") setF(0,0,0,2,0,0);
+  });
+}
+
+/* ================================================================
+   subnav + boot
+   ================================================================ */
+function showMod(m){
+  document.querySelectorAll("#subnav .subnav-btn").forEach(b=>b.classList.toggle("on",b.dataset.mod===m));
+  document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden"));
+  el("mod-"+m).classList.remove("hidden");
+}
+document.querySelectorAll("#subnav .subnav-btn").forEach(b=>b.onclick=()=>showMod(b.dataset.mod));
+
+stWire(); acWire(); fcWire();
+stFit(); acFit(); fcFit();
+showMod("st");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. Why a time series breaks every model before this one",
+   why:"Every estimator in this series so far — linear regression, trees, SVMs, clustering, even the anomaly detectors — assumed the rows were independent draws from one fixed distribution. That assumption is doing enormous quiet work: it is what lets you shuffle the data, split it randomly into train and test, and treat each observation as a fresh piece of evidence. A time series violates it deliberately. Today's value is literally constructed out of yesterday's, the ordering carries information that no column contains, and a random train/test split leaks the future into the training set and produces validation scores that are pure fiction. The replacement idea is that the dependence is not noise to be scrubbed out but the signal itself: model how the past propagates into the present, and forecasting is what falls out.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">i.i.d. world:&nbsp;&nbsp;shuffle(rows) → same model ✅<br>time series:&nbsp;&nbsp;shuffle(rows) → the data is GONE ❌<br><br>random split:&nbsp;&nbsp;train on Friday → predict Wednesday 🚨<br>correct split:&nbsp;&nbsp;train on 1..t → predict t+1..t+h ✅<br><br>the ORDER is the dataset</div>`,
+   code:`# the mistake that makes every time-series project look brilliant
+X_tr, X_te = train_test_split(X, y, shuffle=True)   # NO. leaks the future.
+
+# the only honest split
+X_tr, y_tr = X[:t], y[:t]
+X_te, y_te = X[t:t+h], y[t:t+h]      # and refit as t advances (rolling origin)
+
+# and the baseline you must beat before anything else counts
+yhat_naive = y[t-1]                  # "tomorrow equals today"` },
+
+ { title:"2. Stationarity — the precondition the whole method rests on",
+   why:"A series is weakly stationary if its mean is constant, its variance is constant, and the covariance between two points depends only on the gap between them rather than on when they occurred. That sounds like a technicality; it is actually the licence to forecast at all. You estimate a fixed set of coefficients from history and then carry them forward — which is only defensible if the rules generating the data did not change while you were not looking. The classic failure is the unit root: a random walk has no fixed mean to be pulled back to, so its variance grows without bound and any regression involving two independent random walks will report a beautiful, entirely spurious relationship. The augmented Dickey-Fuller test checks for it by asking whether the level has any restoring force, and its null hypothesis is non-stationarity, so 'not rejected' is the default rather than a finding.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">weakly stationary:<br>&nbsp;&nbsp;E[y_t] = μ&nbsp;&nbsp;·&nbsp;&nbsp;Var(y_t) = σ²&nbsp;&nbsp;·&nbsp;&nbsp;Cov(y_t, y_{t+k}) = γ_k<br>&nbsp;&nbsp;(depends on the GAP k, never on t)<br><br>ADF:&nbsp;&nbsp;Δy_t = α + ρ·y_{t−1} + Σγ_i Δy_{t−i} + e_t<br>&nbsp;&nbsp;ρ = 0 → unit root → NOT stationary<br>&nbsp;&nbsp;stat > −2.88 → cannot reject → difference it</div>`,
+   code:`# the null hypothesis is NON-stationarity. failing to reject proves nothing.
+stat = rho_hat / se(rho_hat)          # from an OLS regression you can write yourself
+# MacKinnon critical values (constant, no trend):
+#   1% -3.46   5% -2.88   10% -2.57
+
+# two random walks are "significantly related" about 75% of the time.
+# that is the spurious regression trap, and stationarity is the fix.` },
+
+ { title:"3. The I in ARIMA — differencing, and undoing it",
+   why:"Differencing is the repair kit for non-stationarity and it is a single subtraction: replace the series by its change, ∇y_t = y_t − y_{t−1}. One difference annihilates a linear trend and turns a random walk into white noise; two differences handle a quadratic trend. The parameter d in ARIMA(p,d,q) is simply how many times you did it. Two consequences follow immediately. Each difference costs one observation, and more importantly it changes the units — the model now describes changes, not levels, so a forecast has to be integrated back up by cumulative summation from the last observed values before anybody can use it. That round trip is exactly invertible, which makes it the single best correctness test in the pipeline. The opposite error is real too: over-differencing an already-stationary series injects a spurious negative lag-1 autocorrelation of exactly −0.5 and inflates the variance for nothing.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">y:&nbsp;&nbsp; 10&nbsp;&nbsp; 13&nbsp;&nbsp; 12&nbsp;&nbsp; 18&nbsp;&nbsp; 17<br>∇y:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3&nbsp;&nbsp; −1&nbsp;&nbsp;&nbsp;&nbsp;6&nbsp;&nbsp; −1&nbsp;&nbsp;&nbsp;(length n−1)<br><br>integrate back:&nbsp;&nbsp;y_t = y_0 + Σ ∇y<br>forecast back:&nbsp;&nbsp;&nbsp;ŷ_{n+h} = y_n + Σ_{j≤h} ẑ_{n+j}<br><br>d = 1 kills a line&nbsp;·&nbsp;d = 2 kills a parabola<br>OVER-differencing: ACF(∇ white noise) = −0.5 at lag 1</div>`,
+   code:`def diff1(y):  return [y[t] - y[t-1] for t in range(1, len(y))]
+
+# invertible, and that is a free test
+z = diff1(y)
+assert integrate(z, [y[0]]) == y            # to 1e-12, for d = 1, 2, 3
+
+# forecasts come back up from the LAST level, not the first
+yhat = last_value + cumsum(zhat)` },
+
+ { title:"4. The ACF — how far back the memory reaches",
+   why:"The autocorrelation function is the correlation of the series with a shifted copy of itself. Compute the sample autocovariance γ_k = (1/n)Σ(y_t−ȳ)(y_{t+k}−ȳ) and normalise by γ_0. The divisor deserves a moment: only n−k products are summed, yet you divide by n, which biases the estimate slightly toward zero at long lags — and that is on purpose, because it guarantees the resulting covariance matrix is positive semi-definite and every downstream linear solve stays well behaved. Under white noise each ρ̂_k is roughly N(0, 1/n), which gives the ±1.96/√n band drawn on every correlogram. That band is a per-lag test, not a family-wise one, so with twenty lags plotted you should expect about one spike outside it purely by chance — a single stray at lag 13 is not a seasonal discovery, and if you want a joint test the Ljung-Box statistic is the right tool.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">γ_k = (1/n) Σ (y_t − ȳ)(y_{t+k} − ȳ)&nbsp;&nbsp;&nbsp;ρ_k = γ_k / γ_0<br><br>ρ_0 = 1 always&nbsp;&nbsp;·&nbsp;&nbsp;|ρ_k| ≤ 1 always<br>band = ±1.96/√n&nbsp;&nbsp;(each ρ̂_k ≈ N(0, 1/n) under noise)<br><br>slow near-LINEAR decay, still high at lag 20 → unit root<br>1 in 20 lags escapes the band by luck alone</div>`,
+   code:`def acovf(y, K):
+    n, m = len(y), sum(y)/len(y)
+    return [sum((y[t]-m)*(y[t+k]-m) for t in range(n-k)) / n   # /n, NOT /(n-k)
+            for k in range(K+1)]
+
+rho  = [g/gamma[0] for g in gamma]
+band = 1.96 / sqrt(n)` },
+
+ { title:"5. The PACF — the direct effect, with the middlemen removed",
+   why:"In an AR(1) with φ = 0.8, the lag-2 autocorrelation is 0.64 — but none of that is a direct link between y_t and y_{t−2}; it is entirely the lag-1 effect applied twice. The partial autocorrelation at lag k removes exactly that: it is the correlation between y_t and y_{t−k} after regressing both on the intervening lags, which turns out to equal the last coefficient φ_kk of a fitted AR(k). The brute-force way to get it is to solve a fresh k×k Yule-Walker system for every k and keep the final coefficient, at cost O(K⁴). The Durbin-Levinson recursion produces the identical answer in O(K²) by updating the previous solution in place, and the verification suite for this page runs both and asserts they agree to twelve decimal places — which is the cheapest possible way to be certain the recursion's index arithmetic is right.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">AR(1), φ = 0.8&nbsp;&nbsp;→&nbsp;&nbsp;ACF: 0.8, 0.64, 0.51, 0.41 …<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;PACF: 0.8, 0, 0, 0 …<br><br>φ_kk = corr(y_t, y_{t−k} | y_{t−1} … y_{t−k+1})<br><br>Durbin–Levinson:<br>φ_kk = (ρ_k − Σ φ_{k−1,j} ρ_{k−j}) / (1 − Σ φ_{k−1,j} ρ_j)<br>φ_kj = φ_{k−1,j} − φ_kk · φ_{k−1,k−j}</div>`,
+   code:`pac, prev = [1.0], []
+for k in range(1, K+1):
+    num = r[k] - sum(prev[j-1]*r[k-j] for j in range(1, k))
+    den = 1.0  - sum(prev[j-1]*r[j]   for j in range(1, k))
+    pkk = num / den
+    cur = [prev[j-1] - pkk*prev[k-j-1] for j in range(1, k)] + [pkk]
+    pac.append(pkk); prev = cur
+
+# pacf[1] == acf[1] exactly
+# pacf[k] == last coefficient of the k x k Yule-Walker solve, to 1e-12` },
+
+ { title:"6. Reading the two plots — the identification table",
+   why:"This is the part Box and Jenkins are famous for, and it is genuinely two rules. An AR(p) process has a PACF that cuts off after lag p — because once you have conditioned on p lags there is nothing direct left — while its ACF tails off geometrically or as a damped sine. An MA(q) is the mirror image: it is built from exactly q+1 shocks, so anything more than q apart shares no shocks at all and the ACF is mathematically zero beyond lag q, while the PACF tails off. If neither plot cuts off, you have a mixed ARMA and identification by eye stops working, which is precisely where AIC and BIC over a grid take over. Two more patterns are worth memorising: everything inside the band means white noise and there is nothing to model, and an ACF that decays almost linearly while staying high for many lags means you forgot to difference.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono"><b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ACF&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;PACF</b><br>AR(p)&nbsp;&nbsp;&nbsp; tails off&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <b>cuts at p</b><br>MA(q)&nbsp;&nbsp;&nbsp; <b>cuts at q</b>&nbsp;&nbsp;&nbsp; tails off<br>ARMA&nbsp;&nbsp;&nbsp;&nbsp;tails off&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; tails off<br>noise&nbsp;&nbsp;&nbsp; in band&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; in band<br>unit root slow linear&nbsp;&nbsp;spike ≈ 1 at lag 1<br><br>an MA(q) shares NO shocks beyond lag q ⇒ ρ_k = 0 exactly</div>`,
+   code:`# MA(1): y_t = e_t + theta*e_{t-1}
+#   rho_1 = theta / (1 + theta^2)      |rho_1| <= 0.5 ALWAYS
+#   rho_k = 0 for k >= 2               <- the cut-off, exactly zero
+#
+# AR(1): y_t = phi*y_{t-1} + e_t
+#   rho_k = phi^k                      <- tails off, never exactly zero
+#   pacf_1 = phi, pacf_k = 0 for k >= 2
+#
+# neither cuts off?  it is ARMA. stop squinting, run the grid.` },
+
+ { title:"7. Fitting AR(p) route one — Yule-Walker",
+   why:"Take the AR equation y_t = φ₁y_{t−1} + … + φ_py_{t−p} + e_t, multiply both sides by y_{t−k}, take expectations, and because e_t is uncorrelated with the past the noise term vanishes. What is left is ρ_k = Σφ_iρ_{k−i} for k = 1…p: p equations in p unknowns, whose coefficient matrix is Toeplitz because entry (i,j) is just ρ_{|i−j|}. Plug in the sample autocorrelations, solve with a Gaussian elimination you wrote yourself, and you have the coefficients without ever constructing a design matrix. The innovation variance falls out of the same numbers as σ² = γ_0(1 − Σφ_iρ_i). Two properties make this route attractive: it uses all n observations through the autocovariance, and because the sample covariance matrix is positive semi-definite it is guaranteed to return a stationary model.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">multiply by y_{t−k}, take E[·], noise drops out:<br><br>&nbsp;&nbsp;ρ_1 = φ₁ + φ₂ρ_1 + … <br>&nbsp;&nbsp;ρ_2 = φ₁ρ_1 + φ₂ + …<br><br>[ 1&nbsp;&nbsp;&nbsp;ρ_1&nbsp;&nbsp;ρ_2 ] [φ₁]&nbsp;&nbsp;&nbsp;[ρ_1]<br>[ ρ_1&nbsp;&nbsp;1&nbsp;&nbsp;&nbsp;ρ_1 ] [φ₂] = [ρ_2]&nbsp;&nbsp;← TOEPLITZ<br>[ ρ_2&nbsp;ρ_1&nbsp;&nbsp;1&nbsp;&nbsp;&nbsp;] [φ₃]&nbsp;&nbsp;&nbsp;[ρ_3]<br><br>σ² = γ_0 (1 − Σ φ_i ρ_i)&nbsp;&nbsp;·&nbsp;&nbsp;p = 1 ⇒ φ̂ = ρ_1</div>`,
+   code:`def yule_walker(y, p):
+    g = acovf(y, p); r = [v/g[0] for v in g]
+    A = [[r[abs(i-j)] for j in range(1, p+1)] for i in range(1, p+1)]
+    b = [r[i] for i in range(1, p+1)]
+    phi = solve(A, b)                       # your own Gaussian elimination
+    s2  = g[0] * (1 - sum(phi[i-1]*r[i] for i in range(1, p+1)))
+    return phi, s2
+
+# TEST: max|A @ phi - b| < 1e-10, and for p = 1, phi == gamma_1/gamma_0 exactly.` },
+
+ { title:"8. Fitting AR(p) route two — OLS, and why the two disagree",
+   why:"An AR(p) is also, quite literally, a linear regression of the series on its own lags. Build rows [1, y_{t−1}, …, y_{t−p}] for t = p…n−1, stack them into X, and solve the normal equations XᵀXβ = Xᵀy with the same elimination routine. Fitting the same model two genuinely different ways is one of the most useful habits in numerical work, because agreement is real evidence and disagreement is a bug report. Here they agree closely and both are consistent, but they differ in finite samples for an honest structural reason: Yule-Walker uses every observation through the autocovariance and always returns a stationary model, while OLS conditions on the first p points and discards them, which loses a little information and permits an explosive root. As n grows the gap shrinks roughly like 1/n. When they disagree a lot, that is a signal — usually that the series is near a unit root or that p is too large for the sample.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">rows:&nbsp;[1, y_{t−1}, y_{t−2}, …, y_{t−p}] → y_t<br>solve:&nbsp;XᵀX β = Xᵀy<br><br><b>Yule–Walker</b>&nbsp;&nbsp;uses all n via γ_k&nbsp;·&nbsp;always stationary<br><b>OLS</b>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;drops the first p&nbsp;·&nbsp;can explode<br><br>gap shrinks like ~1/n&nbsp;·&nbsp;big gap ⇒ near unit root</div>`,
+   code:`rows = [[1] + [y[t-i] for i in range(1, p+1)] for t in range(p, len(y))]
+targ = y[p:]
+beta = solve(X_T_X(rows), X_T_y(rows, targ))
+c, phi = beta[0], beta[1:]
+
+# the same numbers, two routes. agreement is evidence; disagreement is a bug report.
+# mu = c / (1 - sum(phi))     <- the implied unconditional mean` },
+
+ { title:"9. MA(q) — regressors nobody has ever seen, and Hannan-Rissanen",
+   why:"A moving-average term says y_t = c + e_t + θ₁e_{t−1} + … + θ_qe_{t−q}, and the comfortable regression story collapses immediately, because the regressors are the innovations and innovations are not in your data — you cannot stack a column you have never observed. Why bother at all? Because MA terms model a shock that decays after exactly q periods and then stops dead, which an AR would need many lags to imitate. Full maximum likelihood handles it with a Kalman filter and a nonlinear optimiser; Hannan-Rissanen handles it with two ordinary least-squares fits, which is why it can run live in a browser. Stage one fits a deliberately over-long AR and keeps the residuals as a proxy for the shocks; stage two regresses y_t on lagged y and those manufactured residuals. It is consistent, needs no starting values, and in practice is used to initialise the proper likelihood fit.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">y_t = c + e_t + θ₁e_{t−1} + … + θ_q e_{t−q}<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↑ never observed<br><br><b>Hannan–Rissanen</b><br>1&nbsp;&nbsp;fit a LONG AR(m) → residuals ê_t&nbsp;&nbsp;(the stand-ins)<br>2&nbsp;&nbsp;regress y_t on y_{t−1..p} AND ê_{t−1..q}<br><br>cost: you burn m observations before fitting anything<br>an invertible MA(1) = AR(∞), so AR can imitate it — slowly</div>`,
+   code:`# stage 1 — manufacture the missing column
+m   = max(p+q+2, round(sqrt(n)) + 2)
+ehat = ar_ols(z, m).residuals            # a proxy for the unobservable shocks
+
+# stage 2 — now it is just a regression again
+rows = [[1] + [z[t-i] for i in range(1,p+1)]
+             + [ehat[t-j] for j in range(1,q+1)] for t in range(start, n)]
+beta = ols(rows, z[start:])
+c, phi, theta = beta[0], beta[1:1+p], beta[1+p:]` },
+
+ { title:"10. Forecasting — a recursion that eats its own output",
+   why:"One step ahead is just the fitted equation evaluated at the end of the data. Two steps ahead you no longer have y_{n+1}, so you feed in the forecast you just produced, and any future shock is replaced by its expectation, which is zero. That single substitution explains almost everything people find surprising about ARIMA forecasts. An AR(1) gives ŷ_{n+h} = μ + φ^h(y_n − μ), so the path decays geometrically back to the mean and a long-horizon forecast is simply the mean — the model has no long-run opinion at all. The MA(q) part goes silent after exactly q steps, because beyond that every shock in the expression is a future one. And a random walk has φ = 1, so nothing decays and the optimal forecast is a perfectly flat line at the last observed value: not a failure, the correct answer, and the reason the naive baseline is unbeatable on genuinely random-walk data.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ŷ_{n+h} = c + Σ φ_i ŷ_{n+h−i} + Σ θ_j ê_{n+h−j}<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↑ a forecast&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↑ 0 once in the future<br><br>AR(1):&nbsp;&nbsp;ŷ_{n+h} = μ + φ^h (y_n − μ)&nbsp;&nbsp;→ μ<br>MA(q):&nbsp;&nbsp;silent after q steps<br>random walk (φ=1):&nbsp;&nbsp;<b>flat line at y_n</b> ✅ correct</div>`,
+   code:`zz, e = list(z), list(residuals)
+for s in range(h):
+    v = c
+    for i in range(1, p+1): v += phi[i-1] * zz[n+s-i]        # may be a FORECAST
+    for j in range(1, q+1):
+        idx = n+s-j
+        v += theta[j-1] * (e[idx] if idx < n else 0.0)       # E[future shock] = 0
+    zz.append(v); e.append(0.0)
+
+yhat = integrate_forecast(last_levels(y, d), zz[n:])   # back to the original scale` },
+
+ { title:"11. Uncertainty — ψ-weights and a band that must widen",
+   why:"A point forecast without an interval is a guess with good posture. Every stationary ARMA can be rewritten as an infinite moving average, y_t = μ + Σψ_je_{t−j}, where the ψ-weights are the impulse response: how much of one shock is still visible j steps later. They come from the recursion ψ_j = θ_j + Σφ_iψ_{j−i} with ψ_0 = 1. The h-step forecast error is exactly the sum of the shocks that have not happened yet, so Var(e_h) = σ²Σ_{j<h}ψ_j² — a strictly increasing quantity, which is why any honest band widens. For a stationary AR(1) the weights are φ^j and the sum converges to σ²/(1−φ²), so the band flattens at the unconditional variance. For a random walk every ψ_j = 1 and the variance is σ²h, so the band grows like √h forever. Getting this right for d > 0 means expanding φ(B)(1−B)^d first; skip that and your intervals will be badly, confidently too narrow. And all of it still ignores parameter uncertainty, so treat published ARIMA intervals as a floor.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">y_t = μ + Σ ψ_j e_{t−j}&nbsp;&nbsp;&nbsp;ψ_0 = 1<br>ψ_j = θ_j + Σ_{i≤min(j,p)} φ_i ψ_{j−i}<br><br>Var(e_h) = σ² Σ_{j&lt;h} ψ_j²&nbsp;&nbsp;&nbsp;(strictly increasing)<br><br>AR(1):&nbsp;&nbsp;ψ_j = φ^j&nbsp;&nbsp;→ band flattens at σ²/(1−φ²)<br>ARIMA(0,1,0):&nbsp;&nbsp;ψ_j = 1&nbsp;&nbsp;→ Var = σ²h → band ~ √h forever<br><br>d &gt; 0? expand φ(B)(1−B)^d FIRST or the band is a lie</div>`,
+   code:`psi = [1.0]
+for j in range(1, H+1):
+    v = theta[j-1] if j <= len(theta) else 0.0
+    v += sum(phi[i-1]*psi[j-i] for i in range(1, min(j, len(phi))+1))
+    psi.append(v)
+
+se_h = sqrt(sigma2 * sum(p*p for p in psi[:h]))
+lo, hi = fc[h-1] - 1.96*se_h, fc[h-1] + 1.96*se_h
+
+# checks: psi == impulse response of the raw recursion with e_0 = 1
+#         phi(B)*psi(B) - theta(B) == 0 coefficient by coefficient` },
+
+ { title:"12. Choosing an order honestly — AIC, BIC, and the backtest that decides",
+   why:"Adding parameters always improves the in-sample fit, so residual variance cannot choose p and q. AIC = −2ℓ + 2k and BIC = −2ℓ + k·log n add a penalty, with BIC charging more per parameter as the sample grows and therefore choosing sparser models; AIC aims at predictive accuracy while BIC aims at recovering the true model if it is on the list. Two traps ruin the table in practice. You cannot compare AIC across different d, because differencing changes the dataset and the likelihoods are no longer on the same scale — pick d from a stationarity test, then grid p and q at that d. And a conditional fit burns startup observations, with bigger models burning more, so unless every candidate is scored on a common effective sample the grid rewards whichever model happened to get the easier subset. Even done perfectly it is an in-sample criterion, which is why the last word belongs to a rolling-origin backtest against naive, drift and seasonal-naive baselines. If the model cannot beat 'tomorrow equals today', ship that instead and say so.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">AIC = −2ℓ + 2k&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;BIC = −2ℓ + k·log n<br><br>❌ comparing AIC across different d — different data<br>❌ unequal effective samples — different likelihoods<br>❌ treating the grid minimum as a verdict — it is a shortlist<br><br>rolling origin: fit 1..t → forecast t+1..t+h → advance → REFIT<br>skill = 1 − RMSE_model / RMSE_naive&nbsp;&nbsp;·&nbsp;&nbsp;≤ 0 ⇒ ship the baseline<br><br>SARIMA(p,d,q)(P,D,Q)_s — the same operators, at lag s</div>`,
+   code:`for p in range(pmax+1):
+    for q in range(qmax+1):
+        m  = hannan_rissanen(z, p, q)
+        cs = css(z, m, burn=COMMON_BURN)      # identical window for EVERY candidate
+        aic = -2*loglik(cs.sse, cs.n) + 2*(p+q+2)
+
+# then the only thing that actually decides:
+for t0 in range(min_train, len(y)-h):
+    fit  = fit_arima(y[:t0], p, d, q)         # REFIT. no peeking past t0.
+    err.append(y[t0:t0+h] - forecast(fit, h))
+# compare with naive / drift / seasonal-naive before believing any of it.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>

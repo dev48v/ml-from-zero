@@ -63,5 +63,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 59 — Hidden Markov Models](https://dev48v.infy.uk/ml/day59-hidden-markov-models.html) — `day59-hidden-markov-models.html`
 - [MachineLearningFromZero · Day 60 — Survival Analysis](https://dev48v.infy.uk/ml/day60-survival-analysis.html) — `day60-survival-analysis.html`
 
+- [MachineLearningFromZero · Day 61 — ARIMA (Time Series)](https://dev48v.infy.uk/ml/day61-arima-time-series.html) — `day61-arima-time-series.html`
+
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
