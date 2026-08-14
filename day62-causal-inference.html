@@ -1,0 +1,1719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 62 — Causal Inference: confounding, ATE, propensity scores, IPW, matching, doubly robust</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .ctl-row { display:grid; grid-template-columns:158px 1fr 62px; align-items:center; gap:10px; padding:7px 0; }
+  .ctl-name { font-size:13px; font-weight:700; color:#334155; white-space:nowrap; }
+  .ctl-val { font-variant-numeric:tabular-nums; font-weight:800; color:#0ea5e9; text-align:right; font-size:13px; }
+  input[type=range]{ accent-color:#0ea5e9; width:100%; min-width:0; }
+  .swatch { display:inline-block; width:12px; height:12px; border-radius:50%; vertical-align:-1px; }
+  .swatch-line { display:inline-block; width:18px; height:0; border-top-width:3px; vertical-align:3px; }
+  .swatch-box { display:inline-block; width:14px; height:10px; border-radius:3px; vertical-align:0; }
+  .diag { border-radius:14px; padding:14px 18px; font-weight:600; transition:all .3s ease; }
+  .diag-good { background:#ecfdf5; border:1px solid #6ee7b7; color:#065f46; }
+  .diag-warn { background:#fff7ed; border:1px solid #fdba74; color:#9a3412; }
+  .diag-bad  { background:#fef2f2; border:1px solid #fca5a5; color:#991b1b; }
+  .diag-info { background:#eff6ff; border:1px solid #93c5fd; color:#1e3a8a; }
+  .panel { border:1px solid #e2e8f0; border-radius:16px; background:#fff; padding:12px; transition:all .2s ease; min-width:0; }
+  .panel.hero { border:2px solid #0ea5e9; box-shadow:0 6px 22px rgba(14,165,233,.18); }
+  .metric-pill { border-radius:12px; padding:8px 6px; text-align:center; background:#f8fafc; border:1px solid #e2e8f0; min-width:0; }
+  .metric-pill .v { font-size:18px; font-weight:900; font-variant-numeric:tabular-nums; }
+  .metric-pill .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#64748b; }
+  .subnav-btn { border:1px solid #e2e8f0; background:#fff; font-weight:700; }
+  .subnav-btn.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .ds-btn { border:1px solid #e2e8f0; background:#fff; font-weight:800; font-size:12px; padding:6px 11px; border-radius:9px; transition:all .15s; }
+  .ds-btn.on { color:#fff; border-color:transparent; background:#0f172a; }
+  canvas { display:block; border-radius:12px; background:#fbfdff; border:1px solid #e2e8f0; touch-action:none; max-width:100%; height:auto; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  table.cmp { border-collapse:collapse; width:100%; font-size:12.5px; }
+  table.cmp th, table.cmp td { border:1px solid #e2e8f0; padding:7px 9px; text-align:left; vertical-align:top; }
+  table.cmp th { background:#f1f5f9; font-weight:800; }
+  table.cmp td.cat { background:#f0f9ff; font-weight:700; color:#0369a1; white-space:nowrap; }
+  .scroller { overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100%; }
+  table.risk { border-collapse:collapse; font-size:11.5px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.risk th, table.risk td { border:1px solid #e2e8f0; padding:3px 7px; text-align:right; }
+  table.risk th { background:#f1f5f9; font-weight:800; color:#334155; }
+  table.risk tr.win td { background:#ecfdf5; font-weight:800; color:#065f46; }
+  table.risk tr.lose td { background:#fef2f2; font-weight:800; color:#991b1b; }
+  table.risk td.hit { background:#f0f9ff; font-weight:800; color:#0369a1; }
+  .honest { background:#fffbeb; border:1px solid #fcd34d; color:#92400e; border-radius:12px; padding:10px 13px; font-size:12px; line-height:1.5; }
+  .btn-run { background:#16a34a; color:#fff; }
+  .btn-run:hover { background:#15803d; }
+  textarea.raw { width:100%; min-width:0; font-family:ui-monospace,monospace; font-size:11px; border:1px solid #e2e8f0; border-radius:9px; padding:7px; background:#f8fafc; }
+  /* the intro paragraph is taller than a small screen — pinning it there would hide the whole page */
+  @media (max-width: 900px), (max-height: 820px) { header.sticky { position:static; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../machinelearningfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-sky-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between flex-wrap gap-2">
+    <div style="min-width:0;">
+      <div class="text-xs text-sky-600 font-bold uppercase tracking-wider">MachineLearningFromZero · Day 62</div>
+      <h1 class="text-xl font-bold">⚖️ <strong>Causal inference</strong> — every model in this series so far answered the same question, <em>what value of y goes with this x</em>, and every one of them would have been perfectly happy to be fed a column that causes nothing. <span style="color:#0ea5e9;font-weight:700">Day 61's ARIMA</span> forecast the next value, <span style="color:#0ea5e9;font-weight:700">Day 60's survival model</span> forecast a time, <span style="color:#0ea5e9;font-weight:700">Day 1's regression</span> forecast a number, and not one of them can tell you what would happen <em>if you intervened</em>, because none of them was ever asked. Today's question is different in kind, not degree: <strong>what would this outcome have been under the other treatment?</strong> That quantity — <span style="color:#0ea5e9;font-weight:700">the potential outcome</span> <code>Y(1)</code> against <code>Y(0)</code> — is not a prediction problem, because for every individual exactly one of the two is observed and the other is <em>permanently missing</em>. That is the fundamental problem of causal inference and it is not a data-collection failure you can fix with more rows. So "correlation is not causation" stops being a slogan and becomes an <span style="color:#0ea5e9;font-weight:700">estimand</span> problem: the thing you can compute, <code>E[Y|T=1] − E[Y|T=0]</code>, and the thing you want, <code>ATE = E[Y(1) − Y(0)]</code>, are two different numbers, and the gap between them is <span style="color:#0ea5e9;font-weight:700">confounding</span> — a variable X that pushes both who gets treated and what happens to them, so the two arms were never comparable to begin with. This page has a superpower the rest of the series does not: the data are generated from a <strong>known structural model</strong> where both potential outcomes are constructed for every unit, so the true ATE is known <em>exactly</em>, and every estimator is scored against ground truth live. You can watch the naive difference in means be confidently, reproducibly, reliably wrong — <strong>3.37 when the truth is 2.00</strong> — and then watch a single toggle, <span style="color:#0ea5e9;font-weight:700">randomisation</span>, sever the X→T arrow and pull it straight back to 2.01, which is the whole argument for the randomised trial in one slider. Then the repairs, all hand-rolled: the <span style="color:#0ea5e9;font-weight:700">propensity score</span> <code>e(x) = P(T=1|X=x)</code> from a real logistic regression fitted by IRLS, which Rosenbaum and Rubin proved is a <em>balancing score</em> — condition on that one number and X itself balances, demonstrated here live as a standardised mean difference falling from <strong>0.98 to 0.12</strong>; <span style="color:#0ea5e9;font-weight:700">matching</span>, <span style="color:#0ea5e9;font-weight:700">stratification</span>, <span style="color:#0ea5e9;font-weight:700">IPW</span> in both its Horvitz–Thompson and Hájek forms with the effective sample size that exposes three units carrying the whole estimate, <span style="color:#0ea5e9;font-weight:700">g-computation</span>, and finally <span style="color:#0ea5e9;font-weight:700">AIPW</span>, which is correct if <em>either</em> of two models is right — a claim you can watch hold in three cells of a 2×2 and fail in the fourth. And because the assumption it all rests on is <strong>untestable</strong>, the page ends by breaking each assumption on purpose: hide a confounder and every method fails <em>together, in agreement, silently</em>; destroy overlap and the weights explode. <span class="text-emerald-700 font-semibold">(Everything here is computed live in your browser from real numbers — no libraries, no canned results. A Node suite extracts the exact maths block shipped in this file and checks it against independently written implementations, closed forms, brute force and the generator's own ground truth, passing 1,124,203 assertions and sweeping 40,487 control configurations for non-finite output.)</span></h1>
+    </div>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto text-center">
+      <h2 class="text-2xl font-bold mb-1"><strong>The data below know the right answer. Watch the obvious estimator get it wrong.</strong> Every unit here is generated with <em>both</em> potential outcomes, <code>Y(0)</code> and <code>Y(1)</code>, from the same noise draw — so the true average treatment effect is known to machine precision and there is a scoreboard. A confounder <span style="color:#0ea5e9;font-weight:700">X</span> drives both who gets treated and what happens to them, and the naive difference in means is off by exactly <code>E[Y(0)|T=1] − E[Y(0)|T=0]</code>. Randomisation fixes it by cutting one arrow. When you cannot randomise, the propensity score <code>e(x)</code> lets you rebuild the comparison four different ways — weight, match, stratify, or model the outcome — and AIPW lets you get two chances to be right. All of it is implemented from scratch below and runs live.</h2>
+      <p class="text-slate-500 mb-4 max-w-4xl mx-auto">Pick a demo. <strong>Confounding &amp; the scoreboard</strong> draws the structural model as a graph, shows how far apart the two arms are on the confounder before anything is done about it, and scores the naive estimator, IPW, stratification, matching, g-computation and AIPW against a truth known by construction — with one button that randomises the assignment and makes the bias vanish. <strong>Propensity scores</strong> fits a real logistic regression by IRLS, draws the overlap of <code>e(x)</code> in the two arms, and shows balance as a love plot of standardised mean differences before and after weighting and matching — plus the effective sample size, the trimming slider, the caliper, and what each costs. <strong>Doubly robust &amp; sensitivity</strong> runs all four cells of the "propensity model right/wrong × outcome model right/wrong" grid on the same data, bootstraps an interval, and asks the only honest closing question: how strong would an unmeasured confounder have to be to erase this result entirely?</p>
+
+      <div class="honest max-w-4xl mx-auto mb-5 text-left">✅ <strong>No approximation and no fakery on this page.</strong> The propensity model is a genuine logistic regression fitted by iteratively reweighted least squares against a hand-written Gaussian elimination with partial pivoting; the outcome models are separate per-arm ordinary least squares solved by the same routine; matching is real nearest-neighbour on the logit of the score with a caliper in standard deviations; the weights, the Kish effective sample size, the standardised mean differences, the influence-function standard error and the bootstrap are all computed here. The one number on this page that is an <em>approximation</em> and is labelled as one is the E-value's continuous-outcome bridge <code>RR ≈ exp(0.91·d)</code>, which is VanderWeele and Ding's published rule for turning a standardised mean difference into a risk ratio. The same core, extracted verbatim from this file and run in Node against independently re-typed estimators, a second linear solver, brute-force nearest-neighbour matching, central finite differences on the log-likelihood, exact stratification over a discrete confounder, and the generator's own ground truth, passes <strong>1,124,203 assertions</strong> across <strong>40,487 swept control configurations</strong>.</div>
+
+      <div class="flex flex-wrap justify-center gap-2 mb-6" id="subnav">
+        <button data-mod="cf" class="subnav-btn px-4 py-2 rounded-lg text-sm">🕳 Confounding &amp; the scoreboard</button>
+        <button data-mod="ps" class="subnav-btn px-4 py-2 rounded-lg text-sm">⚖️ Propensity, balance &amp; weights</button>
+        <button data-mod="dr" class="subnav-btn px-4 py-2 rounded-lg text-sm">🛡 Doubly robust &amp; sensitivity</button>
+      </div>
+
+      <!-- ============ MODULE: CONFOUNDING ============ -->
+      <div id="mod-cf" class="mod">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="cTrue" style="color:#0f172a">—</div><div class="k">true ATE (known)</div></div>
+          <div class="metric-pill"><div class="v" id="cNaive" style="color:#ef4444">—</div><div class="k">naive difference</div></div>
+          <div class="metric-pill"><div class="v" id="cBias" style="color:#f59e0b">—</div><div class="k">confounding bias</div></div>
+          <div class="metric-pill"><div class="v" id="cAdj" style="color:#16a34a">—</div><div class="k">AIPW (adjusted)</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px; max-width:100%;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE WORLD</div>
+            <div class="flex flex-wrap gap-1.5 mb-2" id="cPresets">
+              <button data-p="obs"  class="ds-btn on">🏥 observational</button>
+              <button data-p="rct"  class="ds-btn">🧪 randomised trial</button>
+              <button data-p="none" class="ds-btn">🎯 no confounding</button>
+              <button data-p="hid"  class="ds-btn">🕳 hidden confounder</button>
+              <button data-p="hard" class="ds-btn">🔥 severe</button>
+            </div>
+            <div class="ctl-row"><div class="ctl-name">👥 sample size n</div><input type="range" id="cNs" min="200" max="3000" step="100" value="1500"><div class="ctl-val" id="cNsV">1500</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔗 X → T strength</div><input type="range" id="cGs" min="0" max="250" step="5" value="100"><div class="ctl-val" id="cGsV">1.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔗 X → Y strength</div><input type="range" id="cBs" min="0" max="60" step="2" value="30"><div class="ctl-val" id="cBsV">3.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">💊 true effect τ</div><input type="range" id="cTs" min="-30" max="60" step="2" value="20"><div class="ctl-val" id="cTsV">2.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">🌪 outcome noise σ</div><input type="range" id="cSs" min="1" max="40" step="1" value="10"><div class="ctl-val" id="cSsV">1.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">🎲 seed</div><input type="range" id="cZs" min="1" max="99" step="1" value="7"><div class="ctl-val" id="cZsV">7</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="cRandom" class="btn-run px-3 py-1.5 rounded-lg font-bold text-xs">🧪 Randomise the assignment</button>
+              <button id="cHide" class="bg-violet-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-violet-500">🕳 Hide a confounder</button>
+              <button id="cRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New draw</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> Two confounders <code>X₁, X₂ ~ N(0,1)</code> are drawn, then <code>logit P(T=1|X) = a₀ + a₁X₁ + a₂X₂</code> decides who gets treated and <code>Y(0) = b₀ + b₁X₁ + b₂X₂ + σε</code> decides what would have happened untreated. <code>Y(1)</code> reuses <em>the same</em> <code>ε</code> and adds <code>τ</code>, so the individual effect is exactly <code>τ</code> for every single unit and the sample ATE is known to machine precision. Only one of the two is revealed. The <strong>confounding bias</strong> pill is not an estimate — it is <code>E[Y(0)|T=1] − E[Y(0)|T=0]</code> computed from the potential outcomes the estimators are not allowed to see, which is exactly the amount by which the naive difference must be wrong. Press <strong>randomise</strong> and <code>P(T=1)</code> becomes a flat 0.5: the arrow from X into T is gone, the two arms become exchangeable, and the same naive estimator becomes correct without touching a single covariate.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:620px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🕳 the graph, the imbalance it creates, and the scoreboard &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">the truth is known here — nowhere else</span></div>
+            <canvas id="cfCanvas" width="620" height="530"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-box" style="background:#0ea5e9"></span> treated arm</span>
+              <span><span class="swatch-box" style="background:#f59e0b"></span> control arm</span>
+              <span><span class="swatch-line" style="border-color:#0f172a"></span> the true ATE</span>
+              <span><span class="swatch-box" style="background:#16a34a"></span> within tolerance</span>
+              <span><span class="swatch-box" style="background:#ef4444"></span> biased</span>
+            </div>
+            <div class="mt-3">
+              <div class="text-xs font-bold text-slate-500 mb-1">THE SCOREBOARD — every estimator against a truth it cannot see</div>
+              <div class="scroller"><table class="risk" id="cTable"></table></div>
+            </div>
+            <div id="cDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: PROPENSITY / BALANCE / WEIGHTS ============ -->
+      <div id="mod-ps" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="pMin" style="color:#ef4444">—</div><div class="k">smallest e(x)</div></div>
+          <div class="metric-pill"><div class="v" id="pWmax" style="color:#f59e0b">—</div><div class="k">largest IPW weight</div></div>
+          <div class="metric-pill"><div class="v" id="pEss" style="color:#7c3aed">—</div><div class="k">effective sample size</div></div>
+          <div class="metric-pill"><div class="v" id="pSmd" style="color:#16a34a">—</div><div class="k">worst |SMD| after</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px; max-width:100%;">
+            <div class="text-xs font-bold text-slate-500 mb-2">THE ADJUSTMENT</div>
+            <div class="flex flex-wrap gap-1.5 mb-2" id="pPresets">
+              <button data-p="ok"   class="ds-btn on">✅ good overlap</button>
+              <button data-p="thin" class="ds-btn">⚠️ thin overlap</button>
+              <button data-p="bad"  class="ds-btn">💥 positivity broken</button>
+              <button data-p="mild" class="ds-btn">🌤 mild confounding</button>
+            </div>
+            <div class="ctl-row"><div class="ctl-name">👥 sample size n</div><input type="range" id="pNs" min="200" max="3000" step="100" value="2000"><div class="ctl-val" id="pNsV">2000</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔗 X → T strength</div><input type="range" id="pGs" min="0" max="250" step="5" value="120"><div class="ctl-val" id="pGsV">1.20</div></div>
+            <div class="ctl-row"><div class="ctl-name">🚪 overlap shift a₀</div><input type="range" id="pAs" min="-50" max="50" step="2" value="0"><div class="ctl-val" id="pAsV">0.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">✂️ trim ε</div><input type="range" id="pEs" min="1" max="200" step="1" value="10"><div class="ctl-val" id="pEsV">0.010</div></div>
+            <div class="ctl-row"><div class="ctl-name">🧱 strata K</div><input type="range" id="pKs" min="2" max="20" step="1" value="5"><div class="ctl-val" id="pKsV">5</div></div>
+            <div class="ctl-row"><div class="ctl-name">📏 caliper (SD)</div><input type="range" id="pCs" min="0" max="100" step="2" value="20"><div class="ctl-val" id="pCsV">0.20</div></div>
+            <div class="ctl-row"><div class="ctl-name">🎲 seed</div><input type="range" id="pZs" min="1" max="99" step="1" value="4"><div class="ctl-val" id="pZsV">4</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="pRep" class="bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-300">♻️ with replacement: OFF</button>
+              <button id="pRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New draw</button>
+              <button id="pBreak" class="bg-red-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-red-500">💥 Break positivity</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> A logistic regression <code>logit e(x) = β₀ + β₁X₁ + β₂X₂</code> is fitted by IRLS: at each step the working weights are <code>p(1−p)</code>, the working response is <code>Xβ + (y−p)/w</code>, and the resulting <code>(XᵀWX + λI)</code> system is solved by the same Gaussian elimination the outcome models use. The <strong>overlap shift</strong> slider moves the intercept <code>a₀</code> of the <em>true</em> assignment rule, which is how you starve one arm: push it far enough and units appear with <code>e(x)</code> near 0 or near 1, whose inverse weights are enormous and whose counterfactual arm contains nobody comparable. That is a <strong>positivity</strong> failure, and it is not a numerical bug — it is the estimand becoming undefined for those units. The engine clamps <code>e</code> into <code>[ε, 1−ε]</code> with a hard floor at <code>1e−6</code> so nothing can ever return <code>Infinity</code>, and the trim slider is the honest version of that clamp: more trimming buys variance and pays in bias.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:620px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">⚖️ overlap, balance, and who is actually carrying the estimate &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">e(x) is a balancing score</span></div>
+            <canvas id="psCanvas" width="620" height="560"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-box" style="background:#0ea5e9"></span> treated</span>
+              <span><span class="swatch-box" style="background:#f59e0b"></span> control</span>
+              <span><span class="swatch-box" style="background:#fecaca"></span> trimmed zone</span>
+              <span><span class="swatch-box" style="background:#94a3b8"></span> before adjustment</span>
+              <span><span class="swatch-box" style="background:#16a34a"></span> after IPW</span>
+              <span><span class="swatch-box" style="background:#7c3aed"></span> after matching</span>
+            </div>
+            <div class="mt-3">
+              <div class="text-xs font-bold text-slate-500 mb-1">BALANCE — the standardised mean difference, before and after</div>
+              <div class="scroller"><table class="risk" id="pBal"></table></div>
+            </div>
+            <div class="mt-3">
+              <div class="text-xs font-bold text-slate-500 mb-1">FOUR WAYS TO USE ONE SCORE — same data, same e(x), different estimand and different cost</div>
+              <div class="scroller"><table class="risk" id="pTable"></table></div>
+            </div>
+            <div id="pDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ MODULE: DOUBLY ROBUST + SENSITIVITY ============ -->
+      <div id="mod-dr" class="mod hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 max-w-4xl mx-auto mb-3">
+          <div class="metric-pill"><div class="v" id="dEst" style="color:#0ea5e9">—</div><div class="k">AIPW estimate</div></div>
+          <div class="metric-pill"><div class="v" id="dCi" style="color:#7c3aed">—</div><div class="k">95% interval</div></div>
+          <div class="metric-pill"><div class="v" id="dLam" style="color:#f59e0b">—</div><div class="k">λ to explain it away</div></div>
+          <div class="metric-pill"><div class="v" id="dEv" style="color:#16a34a">—</div><div class="k">E-value (approx)</div></div>
+        </div>
+
+        <div class="flex justify-center gap-6 flex-wrap items-start">
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 shadow-lg text-left" style="width:340px; max-width:100%;">
+            <div class="text-xs font-bold text-slate-500 mb-2">TWO MODELS, TWO CHANCES</div>
+            <div class="flex flex-wrap gap-1.5 mb-2">
+              <button id="dPs" class="ds-btn on">propensity model: ✅ correct</button>
+              <button id="dOm" class="ds-btn on">outcome model: ✅ correct</button>
+            </div>
+            <div class="ctl-row"><div class="ctl-name">👥 sample size n</div><input type="range" id="dNs" min="400" max="4000" step="200" value="2400"><div class="ctl-val" id="dNsV">2400</div></div>
+            <div class="ctl-row"><div class="ctl-name">🔗 X → T strength</div><input type="range" id="dGs" min="0" max="250" step="5" value="100"><div class="ctl-val" id="dGsV">1.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">✂️ trim ε</div><input type="range" id="dEs" min="1" max="200" step="1" value="10"><div class="ctl-val" id="dEsV">0.010</div></div>
+            <div class="ctl-row"><div class="ctl-name">🕵️ unmeasured λ</div><input type="range" id="dLs" min="0" max="300" step="5" value="100"><div class="ctl-val" id="dLsV">1.00</div></div>
+            <div class="ctl-row"><div class="ctl-name">🎯 U prevalence</div><input type="range" id="dPu" min="5" max="95" step="5" value="50"><div class="ctl-val" id="dPuV">0.50</div></div>
+            <div class="ctl-row"><div class="ctl-name">🥾 bootstrap B</div><input type="range" id="dBs" min="0" max="300" step="20" value="120"><div class="ctl-val" id="dBsV">120</div></div>
+            <div class="ctl-row"><div class="ctl-name">🎲 seed</div><input type="range" id="dZs" min="1" max="99" step="1" value="9"><div class="ctl-val" id="dZsV">9</div></div>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button id="dGrid" class="btn-run px-3 py-1.5 rounded-lg font-bold text-xs">🔲 Run the 2×2</button>
+              <button id="dBoot" class="bg-violet-600 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-violet-500">🥾 Bootstrap the interval</button>
+              <button id="dRoll" class="bg-slate-700 text-white px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-slate-600">🎲 New draw</button>
+            </div>
+            <div class="mt-3 rounded-lg bg-slate-50 border border-slate-200 p-2 text-[11px] text-slate-500 leading-relaxed">
+              <strong>What runs.</strong> "Wrong model" is not a strawman here — it is the Kang–Schafer construction. The analyst is shown <code>W₁ = exp(X₁/2)</code> and <code>W₂ = X₂/(1+exp(X₁)) + 10</code> instead of <code>X₁, X₂</code>: the same information, monotonically transformed, so nothing is missing, only the <em>functional form</em> is wrong. Fit the propensity or the outcome model on <code>W</code> and it is misspecified in the way real models are misspecified. AIPW's estimating equation <code>ψ = m₁ − m₀ + T(Y−m₁)/e − (1−T)(Y−m₀)/(1−e)</code> then has two independent chances: if <code>e</code> is right the two correction terms have mean zero whatever <code>m</code> says, and if <code>m</code> is right the first term is already the answer whatever <code>e</code> says. The <strong>λ</strong> slider does the thing nobody can do with data alone — it posits an unmeasured binary confounder that shifts the treatment logit by <code>λ</code> and the outcome by <code>λ</code>, and computes exactly how much bias that leaves behind.
+            </div>
+          </div>
+
+          <div class="panel hero text-left" style="width:620px; max-width:100%;">
+            <div class="text-sm font-bold text-sky-700 mb-2">🛡 the 2×2, the interval, and the confounder you cannot rule out &nbsp;·&nbsp; <span class="text-slate-500 font-semibold">right if EITHER model is right</span></div>
+            <canvas id="drCanvas" width="620" height="520"></canvas>
+            <div class="text-[11px] text-slate-500 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+              <span><span class="swatch-line" style="border-color:#0f172a"></span> the true ATE</span>
+              <span><span class="swatch-box" style="background:#16a34a"></span> AIPW recovers it</span>
+              <span><span class="swatch-box" style="background:#ef4444"></span> AIPW is biased</span>
+              <span><span class="swatch-box" style="background:#0ea5e9"></span> bootstrap draws</span>
+              <span><span class="swatch-line" style="border-color:#f59e0b"></span> bias from an unmeasured U</span>
+            </div>
+            <div class="mt-3">
+              <div class="text-xs font-bold text-slate-500 mb-1">THE DOUBLY-ROBUST 2×2 — one dataset, four combinations, three survivors</div>
+              <div class="scroller"><table class="risk" id="dTable"></table></div>
+            </div>
+            <div class="mt-3">
+              <div class="text-xs font-bold text-slate-500 mb-1">SENSITIVITY — how strong would the confounder you forgot have to be?</div>
+              <div class="scroller"><table class="risk" id="dSens"></table></div>
+            </div>
+            <div id="dDiag" class="diag diag-info mt-3 text-left">—</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-6xl mx-auto p-4 md:p-8 grid md:grid-cols-2 gap-8">
+    <div style="min-width:0;">
+      <h3 class="font-bold text-lg mb-3">From "what value goes with this x" to "what would have happened instead"</h3>
+      <p class="text-sm text-slate-500 mb-4">Twelve steps: potential outcomes, the fundamental problem, the estimand, confounding as structure, randomisation, the three assumptions, the propensity score, matching, stratification, IPW, g-computation, and doubly robust.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="flex gap-2 mt-4 flex-wrap">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-sky-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-sky-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </div>
+    <div class="space-y-4" style="min-width:0;">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-sky-600 tracking-wider mb-2">CODE FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-4 md:p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Causal inference is a logistic regression, a least-squares solve, a sort, and one estimating equation — about 250 lines of arithmetic with no dependencies. What makes it hard is not the code, it is knowing which number you are entitled to compute. Below is the exact runnable core the LOOK tab uses: a structural model that knows both potential outcomes, the naive estimator and its exact error, a hand-rolled IRLS logistic regression, standardised mean differences, nearest-neighbour matching with a caliper, stratification, Horvitz–Thompson and Hájek IPW with trimming and effective sample size, g-computation, AIPW, and a sensitivity analysis for the assumption you are never allowed to test.</p>
+    <ol class="space-y-6">
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The estimand — decide what number you want before you compute anything</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Every unit has two potential outcomes: <code>Y(1)</code>, what happens if treated, and <code>Y(0)</code>, what happens if not. The individual effect is <code>Y(1) − Y(0)</code> and it is never observable, for anybody, ever — you see the one that corresponds to the treatment that actually happened and the other is missing by construction, not by accident. That is the <strong>fundamental problem of causal inference</strong>, and no sample size fixes it. What <em>is</em> recoverable is an average: the <span class="font-semibold">ATE</span> <code>E[Y(1) − Y(0)]</code> over everyone, or the <span class="font-semibold">ATT</span> <code>E[Y(1) − Y(0) | T=1]</code> over the treated only. Those are different numbers whenever the effect varies with who you are, and half the confusion in applied work is two people quoting two different estimands at each other. Write yours down first. The quantity you can compute from data alone, <code>E[Y|T=1] − E[Y|T=0]</code>, is a third thing entirely, and it equals neither of them unless you have earned it.</p>
+        <div class="relative"><pre>// what you WANT                       // what you CAN COMPUTE
+ATE = E[ Y(1) - Y(0) ]                 assoc = E[Y | T=1] - E[Y | T=0]
+ATT = E[ Y(1) - Y(0) | T = 1 ]
+
+// they are equal only if assignment carries no information about the outcomes:
+//     (Y(0), Y(1))  independent of  T          <-- "exchangeability"
+// which a randomised trial BUYS and an observational study has to ARGUE FOR.
+
+// consistency links the two worlds:  Y = T*Y(1) + (1-T)*Y(0)
+// so E[Y | T=1] = E[Y(1) | T=1]   -- note the CONDITION did not go away.
+//    E[Y(1)|T=1] = E[Y(1)] only under exchangeability. That step is the whole game.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">A generator that knows the answer — so there is a scoreboard</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You cannot evaluate a causal estimator on real data, because the thing it estimates is unobservable — which is precisely why the field is full of methods that sound convincing and have never been scored. The way out is simulation from a known structural model: construct both potential outcomes yourself, reveal only one, and keep the other as the answer key. The one detail that makes this sharp is <strong>sharing the noise term</strong> between <code>Y(0)</code> and <code>Y(1)</code>. If you draw independent noise for each arm the individual effect becomes random and the sample ATE wanders around <code>τ</code>; share it and the individual effect is exactly <code>τ</code> for every unit, so the sample ATE equals <code>τ</code> to machine precision and every disagreement you then see is real bias rather than Monte-Carlo fog.</p>
+        <div class="relative"><pre>for (let i = 0; i &lt; n; i++) {
+  const x1 = gauss(rng), x2 = gauss(rng), eps = gauss(rng);
+
+  const e  = sigmoid(a0 + a1*x1 + a2*x2);   // X drives WHO GETS TREATED
+  const t  = rng() &lt; e ? 1 : 0;
+
+  const y0 = b0 + b1*x1 + b2*x2 + sig*eps;  // X drives WHAT HAPPENS
+  const y1 = y0 + tau;                      // SAME eps -- effect is exactly tau
+
+  Y[i] = t ? y1 : y0;                       // only ONE of them is revealed
+}
+// the answer key, computed from a column no estimator is allowed to touch:
+sate     = mean(Y1[i] - Y0[i]);                            // === tau, exactly
+confBias = mean(Y0 | T=1) - mean(Y0 | T=0);                // the naive error
+// and therefore, identically:  naive === tau + confBias.  Verified over 60 seeds.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The naive estimator, and the exact size of its error</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Subtract the two group means and you have the estimator that ships in most dashboards. Decompose it and you can see precisely what it is doing wrong: it equals the truth plus <code>E[Y(0)|T=1] − E[Y(0)|T=0]</code>, the difference in what would have happened to the two groups <em>anyway</em>, with no treatment involved. Confounding is that term and nothing else. It is not noise, so it does not shrink with n — on this page it sits at about <strong>+1.37</strong> at a confounding strength of 1.0, and it sits there just as firmly at n = 3000 as at n = 200, which is the property that makes it dangerous: more data buys you a tighter confidence interval around the wrong number. When people say a result was "highly significant", this is the failure mode they have usually not ruled out.</p>
+        <div class="relative"><pre>function naiveATE(T, Y) {
+  let s1=0, n1=0, s0=0, n0=0;
+  for (let i = 0; i &lt; T.length; i++) { if (T[i]) { s1+=Y[i]; n1++; } else { s0+=Y[i]; n0++; } }
+  return (n1 &amp;&amp; n0) ? s1/n1 - s0/n0 : 0;
+}
+// E[Y|T=1] - E[Y|T=0]
+//   = E[Y(1)|T=1] - E[Y(0)|T=0]                       (consistency)
+//   = ATT + { E[Y(0)|T=1] - E[Y(0)|T=0] }             (add and subtract)
+//     ^^^                ^^^^^^^^^^^^^^^^^^^^^^^^
+//     what you want      CONFOUNDING BIAS -- does NOT shrink with n
+//
+// measured on this page, n=4000, 60 seeds: naive 3.3701  truth 2.0000  bias 1.3701
+// randomise the assignment and the SAME estimator returns 2.0078.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The propensity score — a real logistic regression by IRLS</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The propensity score is <code>e(x) = P(T=1 | X=x)</code>, the probability of being treated given what you know. Rosenbaum and Rubin's 1983 result is that it is a <strong>balancing score</strong>: if treatment is ignorable given <code>X</code>, it is also ignorable given the single scalar <code>e(X)</code>, and <code>X ⟂ T | e(X)</code>. That is a dimension-reduction theorem — however many covariates you had, you now have one number, and units with the same score are exchangeable in expectation. Fit it with maximum likelihood. There is no closed form, so use iteratively reweighted least squares: it is Newton's method on the log-likelihood, and each iteration is a weighted least-squares solve with weights <code>p(1−p)</code>. Two guards matter in practice — a small ridge on the diagonal and a trust region on the step — because perfect separation genuinely happens and un-guarded Newton will happily send a coefficient to <code>1e100</code>.</p>
+        <div class="relative"><pre>// l(b) = sum [ y*log p + (1-y)*log(1-p) ],   p = sigmoid(x . b)
+// dl/db = sum (y - p) x        d2l/db2 = -X' W X,   W = diag(p(1-p))
+function logisticIRLS(X, y, lam) {
+  let beta = zeros(p); beta[0] = logit(mean(y));
+  for (let it = 0; it &lt; 60; it++) {
+    const XtWX = zeros(p,p), XtR = zeros(p);
+    for (let i = 0; i &lt; n; i++) {
+      const pi = sigmoid(dot(X[i], beta));
+      const w  = Math.max(pi*(1-pi), 1e-10);      // W collapses at the tails
+      for (let a = 0; a &lt; p; a++) {
+        XtR[a] += (y[i]-pi) * X[i][a];
+        for (let b = a; b &lt; p; b++) XtWX[a][b] += X[i][a]*w*X[i][b];
+      }
+    }
+    for (let a = 0; a &lt; p; a++) { XtWX[a][a] += lam; XtR[a] -= lam*beta[a]; }
+    const step = solveLin(XtWX, XtR);             // your own Gaussian elimination
+    if (!step) break;
+    const nrm = norm(step), sc = nrm &gt; 4 ? 4/nrm : 1;   // trust region vs separation
+    for (let a = 0; a &lt; p; a++) beta[a] = clamp(beta[a] + sc*step[a], -30, 30);
+    if (maxAbs(step)*sc &lt; 1e-10) break;
+  }
+  return beta;
+}
+// TEST at the fitted beta:  dl/db  ===  lam * beta   (stationarity of the
+// PENALISED objective).  Check the gradient itself by CENTRAL finite differences
+// on UNTRAINED weights -- at convergence you are measuring round-off, not maths.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Balance — the diagnostic that actually matters</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A propensity model is not judged by its AUC. A score that predicts treatment perfectly is a catastrophe, because it means the two arms do not overlap and there is nothing to compare. The only thing it is judged on is whether conditioning on it makes the covariates <em>balanced</em>, and the standard measure is the standardised mean difference — the gap between arm means in pooled standard deviations, which unlike a t-test does not get "better" simply because n went up. The convention is that <code>|SMD| &lt; 0.1</code> is acceptable, and it is a convention, not a theorem: it is a statement about a random quantity whose own standard deviation shrinks like <code>1/√n</code>, so at n = 3000 it sits at about 0.049 and a single covariate will breach 0.1 by luck roughly once in sixty runs. Judge the whole love plot, and judge it after weighting, not before.</p>
+        <div class="relative"><pre>function smd(x, T) {                               // unweighted
+  const [a, b] = split(x, T);
+  return (mean(a) - mean(b)) / Math.sqrt((variance(a) + variance(b)) / 2);
+}
+function smdWeighted(x, T, w) {                    // after IPW
+  const m1 = wsum(w,x,T,1)/wsum(w,1,T,1), m0 = wsum(w,x,T,0)/wsum(w,1,T,0);
+  // weighted variance with the effective-n correction  sum w - sum w^2 / sum w
+  const v1 = wss(w,x,m1,T,1) / (sw1 - sq1/sw1), v0 = wss(w,x,m0,T,0) / (sw0 - sq0/sw0);
+  return (m1 - m0) / Math.sqrt((v1 + v0) / 2);
+}
+// measured live on this page, X1 at confounding strength 1.2:
+//   raw |SMD| 0.98   ->   after IPW 0.01   ->   after 1:1 caliper matching 0.15
+// and the Rosenbaum-Rubin balancing-score property, checked directly:
+//   marginal |SMD| 0.977   ->   mean WITHIN-STRATUM |SMD| 0.121  (8 strata of e(x))
+// AUC is NOT a balance diagnostic. A perfect classifier means zero overlap.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-red-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Matching and stratification — and what the discards do to your estimand</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Matching pairs each treated unit with the control nearest to it on the score — on the <em>logit</em> of the score, conventionally, because that stretches the compressed tails. A <strong>caliper</strong> refuses matches worse than some distance, usually 0.2 SD, which improves balance and quietly deletes the treated units that had no partner. That is the part people skip: the discarded units are exactly the ones with no comparable control, so the estimator that remains is not the ATT any more, it is the ATT among the matchable, and if 30% of the treated were dropped you should say so in the abstract. Stratification is the same idea with the sorting done once: split on quantiles of the score, take the within-stratum contrast, weight by stratum size. Cochran's old result is that five strata remove about 90% of the bias — on this page the residual after five strata is about 0.06 against an original bias of 1.37, which is 96%.</p>
+        <div class="relative"><pre>function matchATE(T, Y, e, caliper, replacement) {
+  const key = e.map(logit);                        // match on the LOGIT of e(x)
+  const width = caliper * sd(key);                 // caliper in SDs, 0.2 is standard
+  const ctrl = indicesWhere(T, 0).sort(byKey);     // sort once, binary-search after
+  let sum = 0, k = 0, dropped = 0;
+  for (const i of treatedSortedDescending) {
+    const j = nearestAvailable(ctrl, key[i], width, replacement);
+    if (j &lt; 0) { dropped++; continue; }             // NO PARTNER -> unit is DELETED
+    if (!replacement) markUsed(j);
+    sum += Y[i] - Y[ctrl[j]]; k++;
+  }
+  return { ate: k ? sum/k : 0, nMatched: k, nDropped: dropped };
+}
+// with replacement the greedy answer IS the globally nearest one, so the test
+// suite brute-forces every pair in O(nt*nc) and asserts an EXACT match.
+// without replacement the result depends on the order you process treated units.
+//
+// matching targets the ATT.  With a heterogeneous effect they diverge and you can
+// see it: measured here, ATE 1.997, ATT 2.590, NN matching 2.330, AIPW 1.996.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-sky-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">IPW — reweight the sample into the trial you could not run</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Inverse-probability weighting takes the opposite route: keep everybody, but count each unit <code>1/e</code> times if treated and <code>1/(1−e)</code> times if not, so that a treated unit who was very unlikely to be treated stands in for all the people like them who were not. That builds a <strong>pseudo-population</strong> in which treatment is independent of X, and the plain difference in weighted means is unbiased for the ATE. The Horvitz–Thompson form divides by <code>n</code> and is unbiased but wild; the Hájek form divides by the sum of the weights instead, which is a self-normalising trick that trades a whisker of bias for a large drop in variance and is what you should almost always use. The diagnostic that matters is the <strong>Kish effective sample size</strong> <code>(Σw)²/Σw²</code>. When 2000 rows have an effective sample size of 189, you do not have 2000 observations, you have 189, and no amount of confidence-interval arithmetic will conjure the rest back.</p>
+        <div class="relative"><pre>const w = i =&gt; T[i] ? 1/e[i] : 1/(1 - e[i]);
+
+// Horvitz-Thompson: unbiased, but the denominator is a constant n
+ht    = (1/n) * sum( T[i]*Y[i]/e[i] - (1-T[i])*Y[i]/(1-e[i]) );
+
+// Hajek / stabilised: self-normalising. slightly biased, far lower variance.
+hajek = sum(T*Y/e)/sum(T/e) - sum((1-T)*Y/(1-e))/sum((1-T)/(1-e));
+
+ess = (sum(w)**2) / sum(w**2);      // Kish. how many rows you REALLY have.
+
+// POSITIVITY. e(x) near 0 or 1 makes 1/e enormous and the estimand undefined
+// for those units. Clip to [eps, 1-eps] -- that is a real bias/variance trade,
+// not a numerical convenience, and it must be reported:
+e = clamp(e, eps, 1 - eps);        // hard floor 1e-6 so 1/e can never be Infinity
+// measured live at overlap shift -2.5: min e(x) 2.7e-7, max weight 168,
+// ESS 189 of 2000 rows, HT 1.52 vs Hajek 2.14 -- with a true ATE of 2.00.
+// The gap between HT and Hajek IS the alarm. If they disagree, do not publish.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-emerald-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">g-computation — model the outcome, then predict a world that never happened</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The other half of the toolkit ignores the assignment mechanism entirely and models the outcome instead. Fit <code>m₁(x) = E[Y | T=1, X=x]</code> on the treated and <code>m₀(x) = E[Y | T=0, X=x]</code> on the controls, then push <em>every</em> unit through <em>both</em> and average the contrast. Note what that second step is: you are asking the treated-arm model to predict the controls, which is an extrapolation into a region it never saw, and the honesty of the whole exercise depends on those regions overlapping. Fitting two separate arm models rather than one model with a treatment dummy is worth the extra lines, because a single shared slope silently assumes the effect is the same for everybody. This is also the estimator that is most obviously a modelling choice — get the functional form wrong and it is wrong, with no compensating mechanism.</p>
+        <div class="relative"><pre>function gComputation(cov, T, Y) {
+  const f1 = ols(cov.filter(byArm(1)), Y.filter(byArm(1)));   // treated only
+  const f0 = ols(cov.filter(byArm(0)), Y.filter(byArm(0)));   // controls only
+
+  let s = 0;
+  for (let i = 0; i &lt; n; i++)                     // EVERY unit, under BOTH arms
+    s += dot(cov[i], f1) - dot(cov[i], f0);       // one of these is a counterfactual
+  return s / n;
+}
+// this is the "g-formula": ATE = E_X[ E[Y|T=1,X] - E[Y|T=0,X] ], standardising
+// over the covariate distribution of the WHOLE sample (restrict to the treated
+// and you get the ATT instead).
+// separate arm models, not one dummy: a shared slope ASSUMES a constant effect.
+// the price: no overlap means you are extrapolating, and the model will not warn you.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-red-600 text-white rounded-full flex items-center justify-center font-bold">9</div><h3 class="font-bold text-lg">AIPW — two models, and you only need one of them to be right</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Doubly robust estimation combines the two: start from the g-computation contrast, then add an inverse-probability-weighted correction built out of the outcome model's own residuals. The algebra pays off twice. If the propensity model is right, <code>E[T/e − 1 | X] = 0</code>, so the correction terms average to zero no matter how badly the outcome model is misspecified, and you are left with an unbiased IPW-flavoured estimate. If the outcome model is right, the residuals average to zero conditional on X, so the correction vanishes no matter how badly the propensity model is misspecified, and you are left with g-computation. You get two shots. You do not get three — this page runs all four cells on identical data and the both-wrong cell is off by <strong>+0.44</strong> while the other three land within 0.04 of the truth. There is also a deeper reason to prefer it: AIPW's error depends on the <em>product</em> of the two models' errors, so two merely decent models beat one excellent one.</p>
+        <div class="relative"><pre>function aipwATE(T, Y, e, m1, m0) {
+  let s = 0;
+  for (let i = 0; i &lt; n; i++) {
+    const corr = T[i] ? (Y[i] - m1[i]) / e[i]        // treated: reweight the residual
+                      : -(Y[i] - m0[i]) / (1 - e[i]);
+    s += m1[i] - m0[i] + corr;                       // g-computation + correction
+  }
+  return s / n;
+}
+// psi_i = m1 - m0 + T(Y-m1)/e - (1-T)(Y-m0)/(1-e)
+// se    = sd(psi) / sqrt(n)          <-- the influence-function standard error,
+//                                        free, and it agrees with the bootstrap
+//                                        (measured: 0.0688 analytic vs 0.0633 boot)
+//
+// set m1 = m0 = 0 and AIPW collapses EXACTLY onto Horvitz-Thompson IPW.
+// that identity is asserted to 1e-9 in the test suite.
+//
+// measured on identical data, n=4000, 60 seeds, true ATE = 2.0000:
+//   PS ok  / OM ok    2.0000 -&gt; 1.9985      the easy case
+//   PS ok  / OM bad   2.0000 -&gt; 1.9654      the weights rescued it
+//   PS bad / OM ok    2.0000 -&gt; 1.9995      the outcome model rescued it
+//   PS bad / OM bad   2.0000 -&gt; 2.4367      nothing left to rescue it</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-slate-700 text-white rounded-full flex items-center justify-center font-bold">10</div><h3 class="font-bold text-lg">Sensitivity — the assumption you can never test, priced</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Everything above rests on conditional ignorability: given the covariates you measured, treatment is as good as random. Nothing in the data can check it. Hide one confounder on this page and every method — IPW, matching, stratification, g-computation, AIPW — moves together to about <strong>0.82</strong> against a truth of 2.00, in cheerful agreement, with balance tables that look immaculate on the covariates you did keep. Agreement between methods is not evidence; it only means they share an assumption. Since you cannot test it, price it: posit an unmeasured binary <code>U</code> that shifts the treatment logit by <code>λ_T</code> and the outcome by <code>λ_Y</code>, and compute how much bias that would leave. Then invert the question — how strong would <code>U</code> have to be to explain the entire result? If the answer is "about as strong as smoking is for lung cancer", your finding is robust. If it is "a mild nudge would do it", say so.</p>
+        <div class="relative"><pre>// bias left behind = lamY * E_X[ P(U=1|T=1,X) - P(U=1|T=0,X) ]
+function sensitivityBias(e, lamT, lamY, pU) {
+  let s = 0;
+  for (const e0 of e) {                             // e0 = the U=0 propensity
+    const e1 = sigmoid(logit(e0) + lamT);           // ... and the U=1 propensity
+    s +=   pU*e1     / (pU*e1     + (1-pU)*e0)
+         - pU*(1-e1) / (pU*(1-e1) + (1-pU)*(1-e0));
+  }
+  return lamY * s / e.length;
+}
+// every term is a probability, so this cannot blow up. lam = 0 gives exactly 0.
+// bisect on lam to find where the bias equals your estimate -- that is lam*.
+//
+// VERIFIED BY SIMULATION, not just derived: inject a real U of that strength,
+// adjust for X only, measure what is left.  formula 0.1565 vs simulated 0.1645;
+// formula 0.4198 vs simulated 0.4144; formula 0.3087 vs simulated 0.3053.
+//
+// in practice:
+//   from econml.dr import LinearDRLearner        # AIPW with ML nuisance models
+//   from dowhy import CausalModel                # identify -&gt; estimate -&gt; refute
+//   import statsmodels.api as sm; sm.stats.Table # E-values, sensitivity
+// and read: Hernan &amp; Robins, "Causal Inference: What If" -- free, and correct.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+
+    <div class="mt-8 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧭 Six estimators, one score, and what each one actually costs</h3>
+      <div class="scroller"><table class="cmp">
+        <tr><th>Estimator</th><th>Formula</th><th>Estimand</th><th>Breaks when</th><th>Measured here</th></tr>
+        <tr><td class="cat">Naive difference</td><td><code>Ȳ₁ − Ȳ₀</code></td><td>nothing causal</td><td>always, unless assignment is random</td><td>3.3701 (truth 2.0000)</td></tr>
+        <tr><td class="cat">Stratification</td><td>Σ<code>(m_k/n)·d_k</code> over score quantiles</td><td>ATE</td><td>too few strata leaves residual bias</td><td>2.0552 at K = 10</td></tr>
+        <tr><td class="cat">NN matching</td><td>mean of <code>Y_i − Y_{j(i)}</code></td><td><strong>ATT</strong>, among the matchable</td><td>the discards change the question</td><td>2.2009 at caliper 0.2</td></tr>
+        <tr><td class="cat">IPW (Hájek)</td><td>weighted means with <code>1/e</code>, <code>1/(1−e)</code></td><td>ATE</td><td>e(x) near 0 or 1</td><td>1.9965</td></tr>
+        <tr><td class="cat">g-computation</td><td><code>mean[ m₁(x) − m₀(x) ]</code></td><td>ATE</td><td>the outcome model is wrong</td><td>1.9955</td></tr>
+        <tr><td class="cat"><strong>AIPW</strong></td><td><code>m₁−m₀ + T(Y−m₁)/e − (1−T)(Y−m₀)/(1−e)</code></td><td>ATE</td><td><strong>both</strong> models are wrong</td><td>1.9985</td></tr>
+      </table></div>
+      <p class="text-xs text-slate-500 mt-3">All six read from the same two objects: a model of how treatment was assigned and a model of how the outcome was produced. That is the deep symmetry of the field — every method is a different way of borrowing strength from one to fix the other, and doubly robust estimation is simply the one that refuses to choose.</p>
+    </div>
+
+    <div class="mt-6 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🚧 The three assumptions, and exactly what breaking each one looks like</h3>
+      <div class="scroller"><table class="cmp">
+        <tr><th>Assumption</th><th>Statement</th><th>Testable?</th><th>What it looks like when broken</th></tr>
+        <tr><td class="cat">Ignorability</td><td><code>(Y(0),Y(1)) ⟂ T | X</code> — no unmeasured confounding</td><td><strong>No. Never.</strong></td><td>every method agrees, and every method is wrong. Here: 0.82 against a truth of 2.00, with a perfect balance table.</td></tr>
+        <tr><td class="cat">Positivity</td><td><code>0 &lt; e(x) &lt; 1</code> for every x you average over</td><td>Yes — plot the overlap</td><td>weights explode (max 168 here), ESS collapses (189 of 2000), HT and Hájek diverge</td></tr>
+        <tr><td class="cat">SUTVA</td><td>one version of treatment, no interference between units</td><td>Only by argument</td><td>vaccines, network effects, marketplace pricing — your control group was treated by your treatment group</td></tr>
+        <tr><td class="cat">Consistency</td><td><code>Y = T·Y(1) + (1−T)·Y(0)</code></td><td>Definitional</td><td>"obesity" or "education" as a treatment: which intervention, exactly?</td></tr>
+      </table></div>
+      <p class="text-xs text-slate-500 mt-3">Positivity is the only one your data can complain about, and it complains loudly if you look at the overlap plot. Ignorability is silent by construction — that is why sensitivity analysis is not an optional extra chapter, it is the part where you state the size of the assumption you just made.</p>
+    </div>
+
+    <div class="mt-6 bg-white rounded-2xl border border-slate-200 p-6">
+      <h3 class="font-bold text-lg mb-3">🧬 Where causal inference sits next to the rest of this series</h3>
+      <div class="scroller"><table class="cmp">
+        <tr><th>Method</th><th>Question it answers</th><th>Needs a treatment?</th><th>Reach for it when</th></tr>
+        <tr><td class="cat">Linear regression (D1)</td><td>what y goes with this x</td><td>no</td><td>you want a prediction and nobody will intervene</td></tr>
+        <tr><td class="cat">SHAP (D29)</td><td>what the <em>model</em> used</td><td>no</td><td>debugging a model — it explains the fit, never the world</td></tr>
+        <tr><td class="cat">ARIMA (D61)</td><td>what happens next if nothing changes</td><td>no</td><td>one series, short horizon, you need intervals</td></tr>
+        <tr><td class="cat"><strong>Propensity / IPW / AIPW</strong> (here)</td><td><strong>what happens if you intervene</strong></td><td><strong>yes, and it must be well defined</strong></td><td>you measured the confounders and can defend that claim</td></tr>
+        <tr><td class="cat">Instrumental variables</td><td>the same, without ignorability</td><td>yes</td><td>you have a valid instrument (you probably do not)</td></tr>
+        <tr><td class="cat">Difference-in-differences</td><td>the same, using time</td><td>yes</td><td>a policy landed on some units and not others</td></tr>
+        <tr><td class="cat">Regression discontinuity</td><td>the same, at a threshold</td><td>yes</td><td>eligibility flips at a sharp cutoff</td></tr>
+        <tr><td class="cat">A/B test</td><td>the same, with no assumptions</td><td>yes</td><td><strong>always, if you can. Nothing here beats it.</strong></td></tr>
+      </table></div>
+      <p class="text-xs text-slate-500 mt-3">Every row below the AIPW row exists because ignorability is not credible in some setting. That is the honest summary of the whole field: propensity methods do not remove the assumption, they make it explicit and localised, and the alternatives replace it with a different assumption that is easier to argue about.</p>
+    </div>
+
+    <div class="mt-8 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 62 of MachineLearningFromZero done — the first page in this series where "the model fits well" is not even relevant.</h3><p class="text-sm text-violet-700 mt-2">Causal inference is one substitution and a long argument about whether you are allowed to make it. <span style="color:#4f46e5;font-weight:700">Potential outcomes</span> define the target: <code>ATE = E[Y(1) − Y(0)]</code>, of which exactly one term per unit is ever observed. <span style="color:#4f46e5;font-weight:700">Confounding</span> is the exact, computable gap <code>E[Y(0)|T=1] − E[Y(0)|T=0]</code> between what you can calculate and what you want — measured here at 1.3701, and it does not shrink with n. <span style="color:#4f46e5;font-weight:700">Randomisation</span> deletes it by cutting the X→T arrow, which is why one toggle takes the same naive estimator from 3.3701 to 2.0078. When you cannot randomise, the <span style="color:#4f46e5;font-weight:700">propensity score</span> <code>e(x) = P(T=1|X)</code> is a balancing score — one scalar that carries all the confounding, dropping the standardised mean difference from 0.977 to 0.121 within strata — and you may spend it four ways: <span style="color:#4f46e5;font-weight:700">match</span> (and change the estimand to the ATT among the matchable), <span style="color:#4f46e5;font-weight:700">stratify</span>, <span style="color:#4f46e5;font-weight:700">weight</span> by <code>1/e</code> with Hájek stabilisation and an effective sample size that tells you how many rows you really have, or ignore it and do <span style="color:#4f46e5;font-weight:700">g-computation</span> on the outcome instead. <span style="color:#4f46e5;font-weight:700">AIPW</span> refuses to choose and is right if either model is — 1.9985, 1.9654 and 1.9995 in three cells of the 2×2, and 2.4367 in the fourth. And then the part that separates this from statistics theatre: <span style="color:#4f46e5;font-weight:700">ignorability is untestable</span>, so hide one confounder and watch every method agree on 0.82 with a flawless balance table, then price the assumption with a sensitivity analysis whose formula this page checks against a real simulation. <strong>👉 Tomorrow — Day 63: continuing MachineLearningFromZero.</strong></p></div>
+
+  </div>
+</section>
+
+<script>
+// ================= tab switching =================
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ================= shared utils =================
+const el = id => document.getElementById(id);
+function setDiag(box, c, t, b){ box.className="diag "+c+" mt-3 text-left"; box.innerHTML=`<div class="text-base font-extrabold mb-1">${t}</div><div class="text-sm font-medium leading-relaxed">${b}</div>`; }
+const fmt = (x,d=3)=> (x===undefined||x===null||!isFinite(x)) ? "—" : x.toFixed(d);
+const CT="#0ea5e9", CC="#f59e0b", CTRUE="#0f172a", CGOOD="#16a34a", CBAD="#ef4444", CPUR="#7c3aed", CGREY="#94a3b8", CTRIM="#fecaca";
+// ENGINE:BEGIN
+/* ================================================================
+   Causal-inference core — pure arithmetic. No DOM, no libraries,
+   no Math.random. The Node verification suite extracts this exact
+   block out of this file and checks every function in it against
+   independently written code and closed forms.
+   ================================================================ */
+
+/* ---------------- seeded randomness ---------------- */
+function mulberry32(seed){ let t=(seed>>>0)||1; return function(){ t+=0x6D2B79F5; let r=Math.imul(t^(t>>>15),1|t); r^=r+Math.imul(r^(r>>>7),61|r); return ((r^(r>>>14))>>>0)/4294967296; }; }
+function gauss(rng){ let u=0,v=0; while(u===0)u=rng(); while(v===0)v=rng(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+
+/* ---------------- small numerics ---------------- */
+function mean(a){ if(!a.length) return 0; let s=0; for(let i=0;i<a.length;i++) s+=a[i]; return s/a.length; }
+function variance(a){ if(a.length<2) return 0; const m=mean(a); let s=0; for(let i=0;i<a.length;i++){ const d=a[i]-m; s+=d*d; } return s/(a.length-1); }
+function sdev(a){ return Math.sqrt(Math.max(0,variance(a))); }
+function sigmoid(z){ if(z>=0){ const e=Math.exp(-z); return 1/(1+e); } const e=Math.exp(z); return e/(1+e); }
+function logitOf(p){ const q=Math.min(1-1e-12,Math.max(1e-12,p)); return Math.log(q/(1-q)); }
+function clampNum(x,lo,hi){ return x<lo?lo:(x>hi?hi:x); }
+function fin(x,alt){ return Number.isFinite(x)?x:(alt===undefined?0:alt); }
+
+/* ---------------- linear algebra: Gaussian elimination, partial pivoting ----------------
+   Returns null on a singular system so every caller has to decide what to do
+   instead of silently propagating an Infinity.                                  */
+function solveLin(Ain,bin){
+  const n=bin.length, A=Ain.map(r=>r.slice()), b=bin.slice();
+  for(let i=0;i<n;i++){
+    let piv=i;
+    for(let r=i+1;r<n;r++) if(Math.abs(A[r][i])>Math.abs(A[piv][i])) piv=r;
+    if(!(Math.abs(A[piv][i])>1e-12)) return null;
+    if(piv!==i){ const ta=A[i]; A[i]=A[piv]; A[piv]=ta; const tb=b[i]; b[i]=b[piv]; b[piv]=tb; }
+    for(let r=i+1;r<n;r++){
+      const f=A[r][i]/A[i][i]; if(f===0) continue;
+      for(let c=i;c<n;c++) A[r][c]-=f*A[i][c];
+      b[r]-=f*b[i];
+    }
+  }
+  const x=new Array(n).fill(0);
+  for(let i=n-1;i>=0;i--){ let s=b[i]; for(let c=i+1;c<n;c++) s-=A[i][c]*x[c]; x[i]=s/A[i][i]; }
+  for(let i=0;i<n;i++) if(!Number.isFinite(x[i])) return null;
+  return x;
+}
+
+/* Ordinary least squares by the normal equations X'X b = X'y, with a tiny ridge
+   on the diagonal purely as a singularity guard (lam = 1e-8 by default).       */
+function olsFit(rows,y,lam){
+  const n=rows.length; if(!n) return { beta:[0], ok:false, sse:0, nObs:0 };
+  const p=rows[0].length, L=(lam===undefined?1e-8:lam);
+  const XtX=[], Xty=new Array(p).fill(0);
+  for(let a=0;a<p;a++){ XtX.push(new Array(p).fill(0)); }
+  for(let i=0;i<n;i++){
+    const r=rows[i], yi=y[i];
+    for(let a=0;a<p;a++){ Xty[a]+=r[a]*yi; const ra=r[a]; for(let b2=a;b2<p;b2++) XtX[a][b2]+=ra*r[b2]; }
+  }
+  for(let a=0;a<p;a++){ for(let b2=0;b2<a;b2++) XtX[a][b2]=XtX[b2][a]; XtX[a][a]+=L; }
+  let beta=solveLin(XtX,Xty), ok=true;
+  if(!beta){                                   // still singular: heavier ridge, then give up to the mean
+    for(let a=0;a<p;a++) XtX[a][a]+=1e-3;
+    beta=solveLin(XtX,Xty);
+    if(!beta){ beta=new Array(p).fill(0); beta[0]=mean(y); ok=false; }
+  }
+  let sse=0; const resid=new Array(n);
+  for(let i=0;i<n;i++){ let f=0; const r=rows[i]; for(let a=0;a<p;a++) f+=r[a]*beta[a]; const e=y[i]-f; resid[i]=e; sse+=e*e; }
+  return { beta, ok, sse, resid, nObs:n };
+}
+function dotRow(r,b){ let s=0; for(let a=0;a<r.length;a++) s+=r[a]*b[a]; return s; }
+
+/* ---------------- logistic regression, hand-rolled ----------------
+   Log-likelihood  l(b) = sum [ y*log p + (1-y)*log(1-p) ],  p = sigmoid(x.b)
+   Gradient        dl/db = sum (y - p) x         <-- exposed so it can be checked
+   Fitted by IRLS: solve (X'WX + lam I) db = X'(y - p),  W = diag(p(1-p)).      */
+function logLik(X,y,beta){
+  let s=0;
+  for(let i=0;i<X.length;i++){
+    const z=dotRow(X[i],beta);
+    // log sigmoid written the stable way so |z| = 700 does not become -Infinity
+    const lp = z>=0 ? -Math.log1p(Math.exp(-z)) : z-Math.log1p(Math.exp(z));
+    const lq = z>=0 ? -z-Math.log1p(Math.exp(-z)) : -Math.log1p(Math.exp(z));
+    s += y[i]*lp + (1-y[i])*lq;
+  }
+  return s;
+}
+function logLikGrad(X,y,beta){
+  const p=beta.length, g=new Array(p).fill(0);
+  for(let i=0;i<X.length;i++){
+    const r=X[i], d=y[i]-sigmoid(dotRow(r,beta));
+    for(let a=0;a<p;a++) g[a]+=d*r[a];
+  }
+  return g;
+}
+function logisticIRLS(X,y,opt){
+  const o=opt||{}, maxIter=o.maxIter||60, tol=o.tol||1e-10, lam=(o.ridge===undefined?1e-6:o.ridge), cap=o.cap||30;
+  const n=X.length; if(!n) return { beta:[0], iters:0, converged:false, ridge:lam, sep:false };
+  const p=X[0].length; let beta=new Array(p).fill(0); beta[0]=logitOf(clampNum(mean(y),1e-3,1-1e-3));
+  let iters=0, converged=false;
+  for(let it=0; it<maxIter; it++){
+    iters=it+1;
+    const XtWX=[], XtR=new Array(p).fill(0);
+    for(let a=0;a<p;a++) XtWX.push(new Array(p).fill(0));
+    for(let i=0;i<n;i++){
+      const r=X[i], pi=sigmoid(dotRow(r,beta)), w=Math.max(pi*(1-pi),1e-10), res=y[i]-pi;
+      for(let a=0;a<p;a++){ XtR[a]+=res*r[a]; const rw=r[a]*w; for(let b2=a;b2<p;b2++) XtWX[a][b2]+=rw*r[b2]; }
+    }
+    for(let a=0;a<p;a++){ for(let b2=0;b2<a;b2++) XtWX[a][b2]=XtWX[b2][a]; XtWX[a][a]+=lam; XtR[a]-=lam*beta[a]; }
+    const step=solveLin(XtWX,XtR);
+    if(!step) break;
+    let mx=0, nrm=0;
+    for(let a=0;a<p;a++) nrm+=step[a]*step[a];
+    nrm=Math.sqrt(nrm);
+    const scale = nrm>4 ? 4/nrm : 1;             // trust region: separation cannot launch beta to 1e100
+    for(let a=0;a<p;a++){ const d=step[a]*scale; beta[a]=clampNum(beta[a]+d,-cap,cap); if(Math.abs(d)>mx) mx=Math.abs(d); }
+    if(mx<tol){ converged=true; break; }
+  }
+  let big=false; for(let a=0;a<p;a++) if(Math.abs(beta[a])>=cap-1e-9) big=true;
+  return { beta, iters, converged, ridge:lam, sep:big };
+}
+function predictProb(X,beta){ const o=new Array(X.length); for(let i=0;i<X.length;i++) o[i]=sigmoid(dotRow(X[i],beta)); return o; }
+
+/* ================================================================
+   THE STRUCTURAL CAUSAL MODEL
+   X1, X2 ~ N(0,1)                                    the confounders
+   logit P(T=1|X) = a0 + a1*X1 + a2*X2                treatment assignment
+   Y(0) = b0 + b1*X1 + b2*X2 + sigma*eps              the control arm
+   Y(1) = Y(0) + tau + kappa*X1                       the SAME eps, shifted
+   Y     = T*Y(1) + (1-T)*Y(0)                        only ONE of them is seen
+   Because eps is shared, the individual effect is EXACTLY tau + kappa*X1, so
+   the sample ATE and the sample ATT are known to machine precision. That is
+   the whole point of this page: there is a scoreboard.
+   W1, W2 are Kang-Schafer style transforms of X1, X2 -- a deliberately
+   misspecified view of the same world, used for the doubly-robust 2x2.
+   ================================================================ */
+function makeSCM(cfg){
+  const c=cfg||{};
+  const n=Math.max(20,Math.round(c.n||1200));
+  const rng=mulberry32((c.seed||1)*2654435761 >>> 0);
+  const a0=(c.shift===undefined?0:c.shift), a1=(c.conf===undefined?1:c.conf), a2=-0.6*(c.conf===undefined?1:c.conf);
+  const b0=2, b1=(c.bY===undefined?3:c.bY), b2=0.7*(c.bY===undefined?3:c.bY);
+  const tau=(c.tau===undefined?2:c.tau), kappa=(c.kappa===undefined?0:c.kappa);
+  const sig=(c.sigma===undefined?1:c.sigma), rnd=!!c.randomised, pr=(c.pRand===undefined?0.5:c.pRand);
+  const X1=new Array(n), X2=new Array(n), W1=new Array(n), W2=new Array(n);
+  const T=new Array(n), Y=new Array(n), Y0=new Array(n), Y1=new Array(n), eTrue=new Array(n);
+  let nt=0;
+  for(let i=0;i<n;i++){
+    const x1=gauss(rng), x2=gauss(rng), eps=gauss(rng);
+    const et = rnd ? pr : sigmoid(a0+a1*x1+a2*x2);
+    const t  = rng()<et ? 1 : 0;
+    const y0 = b0 + b1*x1 + b2*x2 + sig*eps;
+    const y1 = y0 + tau + kappa*x1;
+    X1[i]=x1; X2[i]=x2; eTrue[i]=et; T[i]=t; Y0[i]=y0; Y1[i]=y1; Y[i]=t?y1:y0; nt+=t;
+    W1[i]=Math.exp(x1/2);                       // the analyst's distorted lens
+    W2[i]=x2/(1+Math.exp(x1))+10;
+  }
+  // ground truth, computed from BOTH potential outcomes -- available only here
+  let sate=0, satt=0, ntt=0, biasNaive0=0, s1=0, s0=0, c1=0, c0=0;
+  for(let i=0;i<n;i++){
+    sate+=Y1[i]-Y0[i];
+    if(T[i]){ satt+=Y1[i]-Y0[i]; ntt++; s1+=Y0[i]; c1++; } else { s0+=Y0[i]; c0++; }
+  }
+  sate/=n; satt = ntt? satt/ntt : 0;
+  // the EXACT confounding bias of the naive estimator: E[Y(0)|T=1] - E[Y(0)|T=0]
+  // (plus, when the effect is heterogeneous, the gap between ATT and ATE)
+  biasNaive0 = (c1? s1/c1 : 0) - (c0? s0/c0 : 0);
+  return { n, X1, X2, W1, W2, T, Y, Y0, Y1, eTrue, nTreat:nt, nCtrl:n-nt,
+           sate, satt, confBias:biasNaive0, tau, kappa, cfg:{a0,a1,a2,b0,b1,b2,tau,kappa,sig,rnd,pr} };
+}
+
+/* A second, deliberately DISCRETE world: one confounder with L levels, so the
+   exact stratified answer can be written down by hand and checked. */
+function makeDiscreteSCM(cfg){
+  const c=cfg||{}, n=Math.max(40,Math.round(c.n||2000)), L=Math.max(2,Math.round(c.L||4));
+  const rng=mulberry32((c.seed||1)*40503>>>0), tau=(c.tau===undefined?2:c.tau), sig=(c.sigma===undefined?1:c.sigma);
+  const eLev=new Array(L), bLev=new Array(L), pLev=new Array(L);
+  for(let l=0;l<L;l++){ eLev[l]=0.15+0.7*l/(L-1); bLev[l]=1+2.5*l; pLev[l]=1/L; }
+  const Xl=new Array(n), T=new Array(n), Y=new Array(n), Y0=new Array(n), Y1=new Array(n);
+  for(let i=0;i<n;i++){
+    const l=Math.min(L-1,Math.floor(rng()*L));
+    const t=rng()<eLev[l]?1:0, y0=bLev[l]+sig*gauss(rng), y1=y0+tau;
+    Xl[i]=l; T[i]=t; Y0[i]=y0; Y1[i]=y1; Y[i]=t?y1:y0;
+  }
+  let sate=0; for(let i=0;i<n;i++) sate+=Y1[i]-Y0[i]; sate/=n;
+  return { n, L, Xl, T, Y, Y0, Y1, eLev, bLev, pLev, sate, tau };
+}
+
+/* ---------------- design matrices: three views of the same world ---------------- */
+function buildCov(D,kind){
+  const n=D.n, out=new Array(n);
+  for(let i=0;i<n;i++){
+    if(kind==="hidden")      out[i]=[1,D.X1[i]];                  // X2 deliberately withheld
+    else if(kind==="wrong")  out[i]=[1,D.W1[i],D.W2[i]];          // the distorted lens
+    else                     out[i]=[1,D.X1[i],D.X2[i]];          // the true adjustment set
+  }
+  return out;
+}
+
+/* ---------------- propensity score ---------------- */
+function fitPropensity(D,kind,opt){
+  const X=buildCov(D,kind), f=logisticIRLS(X,D.T,opt), raw=predictProb(X,f.beta);
+  return { beta:f.beta, raw, X, converged:f.converged, iters:f.iters, sep:f.sep, ridge:f.ridge };
+}
+/* Positivity guard. eps is the trimming level the page exposes; the hard floor of
+   1e-6 exists so that 1/e can never be Infinity no matter what the slider says. */
+function clipScores(raw,eps){
+  const e=Math.min(0.49,Math.max(1e-6,eps===undefined?0.01:eps)), out=new Array(raw.length);
+  let nClip=0, lo=1, hi=0;
+  for(let i=0;i<raw.length;i++){
+    const p=Number.isFinite(raw[i])?raw[i]:0.5;
+    if(p<lo) lo=p; if(p>hi) hi=p;
+    if(p<e||p>1-e) nClip++;
+    out[i]=clampNum(p,e,1-e);
+  }
+  return { e:out, nClip, minRaw:lo, maxRaw:hi, eps:e };
+}
+
+/* ---------------- estimator 1: the naive difference in means ---------------- */
+function naiveATE(T,Y){
+  let s1=0,n1=0,s0=0,n0=0;
+  for(let i=0;i<T.length;i++){ if(T[i]){s1+=Y[i];n1++;} else {s0+=Y[i];n0++;} }
+  return { ate:(n1&&n0)?(s1/n1-s0/n0):0, n1, n0, ok:!!(n1&&n0) };
+}
+
+/* ---------------- estimator 2: IPW, Horvitz-Thompson and Hajek ----------------
+   HT:    (1/n) * sum [ T*Y/e - (1-T)*Y/(1-e) ]        unbiased, high variance
+   Hajek: sum(T*Y/e)/sum(T/e) - sum((1-T)Y/(1-e))/sum((1-T)/(1-e))   stabilised  */
+function ipwATE(T,Y,e){
+  const n=T.length; let ht=0, nw1=0, nw0=0, dw1=0, dw0=0, wmax=0, s2=0, sw=0;
+  const w=new Array(n);
+  for(let i=0;i<n;i++){
+    const wi = T[i] ? 1/e[i] : 1/(1-e[i]);
+    w[i]=wi; if(wi>wmax) wmax=wi; sw+=wi; s2+=wi*wi;
+    if(T[i]){ ht+=Y[i]*wi; nw1+=Y[i]*wi; dw1+=wi; } else { ht-=Y[i]*wi; nw0+=Y[i]*wi; dw0+=wi; }
+  }
+  const hajek=(dw1>0&&dw0>0)?(nw1/dw1-nw0/dw0):0;
+  return { ht:fin(ht/n), hajek:fin(hajek), w, wMax:fin(wmax), ess:fin(s2>0?(sw*sw)/s2:0), sumW:sw };
+}
+/* Kish effective sample size, per arm -- the diagnostic that shows a handful of
+   units carrying the whole estimate.  ESS = (sum w)^2 / sum w^2.               */
+function essOf(w,T,arm){
+  let s=0,s2=0,k=0;
+  for(let i=0;i<w.length;i++) if(T[i]===arm){ s+=w[i]; s2+=w[i]*w[i]; k++; }
+  return { ess:fin(s2>0?(s*s)/s2:0), n:k, frac:fin(k>0&&s2>0?((s*s)/s2)/k:0) };
+}
+
+/* ---------------- estimator 3: stratification on propensity quantiles ---------------- */
+function stratifyATE(T,Y,e,K){
+  const n=T.length, k=Math.max(2,Math.min(20,Math.round(K||5)));
+  const idx=Array.from({length:n},(_,i)=>i).sort((a,b)=>e[a]-e[b]);
+  let num=0, den=0, used=0, dropped=0;
+  const rows=[];
+  for(let s=0;s<k;s++){
+    const lo=Math.floor(s*n/k), hi=Math.floor((s+1)*n/k);
+    let s1=0,n1=0,s0=0,n0=0, elo=1, ehi=0;
+    for(let j=lo;j<hi;j++){ const i=idx[j]; if(e[i]<elo) elo=e[i]; if(e[i]>ehi) ehi=e[i];
+      if(T[i]){s1+=Y[i];n1++;} else {s0+=Y[i];n0++;} }
+    const m=hi-lo;
+    if(n1>0&&n0>0){ const d=s1/n1-s0/n0; num+=m*d; den+=m; used++; rows.push({s,m,n1,n0,d,elo,ehi}); }
+    else { dropped++; rows.push({s,m,n1,n0,d:0,elo,ehi,skip:true}); }
+  }
+  return { ate:fin(den>0?num/den:0), used, dropped, rows, k };
+}
+/* The same idea with an EXACT partition -- when the confounder is discrete there
+   is no binning choice to make and the estimator is a plain weighted average.  */
+function exactStratifyATE(levels,T,Y,L){
+  const s1=new Array(L).fill(0), n1=new Array(L).fill(0), s0=new Array(L).fill(0), n0=new Array(L).fill(0), m=new Array(L).fill(0);
+  for(let i=0;i<T.length;i++){ const l=levels[i]; m[l]++; if(T[i]){s1[l]+=Y[i];n1[l]++;} else {s0[l]+=Y[i];n0[l]++;} }
+  let num=0,den=0,used=0;
+  for(let l=0;l<L;l++) if(n1[l]>0&&n0[l]>0){ num+=m[l]*(s1[l]/n1[l]-s0[l]/n0[l]); den+=m[l]; used++; }
+  return { ate:fin(den>0?num/den:0), used, m, n1, n0 };
+}
+
+/* ---------------- estimator 4: nearest-neighbour matching on the PS ----------------
+   Matched on the LOGIT of the score (the usual practice: it stretches the tails
+   where the score is compressed).  Caliper is in SDs of that logit.
+   Treated units with no partner inside the caliper are DISCARDED -- which quietly
+   changes the estimand from "the ATT" to "the ATT among the matchable".         */
+function matchATE(T,Y,e,opt){
+  const o=opt||{}, n=T.length, cal=(o.caliper===undefined?0.2:o.caliper), rep=!!o.replacement;
+  const key=new Array(n);
+  for(let i=0;i<n;i++) key[i]=logitOf(e[i]);
+  const kAll=[]; for(let i=0;i<n;i++) kAll.push(key[i]);
+  const s=sdev(kAll), width = cal>0 ? cal*(s>0?s:1) : Infinity;
+  const ctrl=[]; for(let i=0;i<n;i++) if(!T[i]) ctrl.push(i);
+  ctrl.sort((a,b)=>key[a]-key[b]);
+  const nc=ctrl.length, usedC=new Uint8Array(nc);
+  const treat=[]; for(let i=0;i<n;i++) if(T[i]) treat.push(i);
+  treat.sort((a,b)=>key[b]-key[a]);                  // greedy, hardest-to-match first
+  let sum=0, k=0, dropped=0, maxd=0, sumd=0;
+  const pairs=[], mT=[], mC=[], usedIdx=[];
+  for(const i of treat){
+    const kv=key[i];
+    let lo=0, hi=nc-1, pos=0;                        // binary search into the sorted controls
+    while(lo<=hi){ const mid=(lo+hi)>>1; if(key[ctrl[mid]]<kv){ pos=mid+1; lo=mid+1; } else hi=mid-1; }
+    let best=-1, bd=Infinity;
+    for(let a=pos-1;a>=0;a--){ const d=kv-key[ctrl[a]]; if(d>=bd) break; if(rep||!usedC[a]){ bd=d; best=a; break; } }
+    for(let a=pos;a<nc;a++){ const d=key[ctrl[a]]-kv; if(d>=bd) break; if(rep||!usedC[a]){ bd=d; best=a; break; } }
+    if(best<0||!(bd<=width)){ dropped++; continue; }
+    if(!rep) usedC[best]=1;
+    const j=ctrl[best];
+    sum+=Y[i]-Y[j]; k++; sumd+=bd; if(bd>maxd) maxd=bd;
+    pairs.push([i,j]); mT.push(i); mC.push(j); usedIdx.push(i,j);
+  }
+  return { ate:fin(k>0?sum/k:0), nMatched:k, nDropped:dropped, ok:k>0,
+           meanDist:fin(k>0?sumd/k:0), maxDist:fin(maxd), pairs, mT, mC, width:Number.isFinite(width)?width:0 };
+}
+
+/* ---------------- estimator 5: outcome regression / g-computation ----------------
+   Two separate arm models, so a heterogeneous effect is not assumed away.
+   ATE = mean over EVERYONE of [ m1(x) - m0(x) ].                                */
+function fitOutcomeModels(cov,T,Y,lam){
+  const p=cov[0].length, r1=[],y1=[],r0=[],y0=[];
+  for(let i=0;i<T.length;i++){ if(T[i]){ r1.push(cov[i]); y1.push(Y[i]); } else { r0.push(cov[i]); y0.push(Y[i]); } }
+  const f1 = r1.length>=p+2 ? olsFit(r1,y1,lam) : { beta:makeConst(p,mean(y1)), ok:false, sse:0, nObs:r1.length };
+  const f0 = r0.length>=p+2 ? olsFit(r0,y0,lam) : { beta:makeConst(p,mean(y0)), ok:false, sse:0, nObs:r0.length };
+  const m1=new Array(T.length), m0=new Array(T.length);
+  for(let i=0;i<T.length;i++){ m1[i]=fin(dotRow(cov[i],f1.beta)); m0[i]=fin(dotRow(cov[i],f0.beta)); }
+  return { m1, m0, b1:f1.beta, b0:f0.beta, n1:r1.length, n0:r0.length, ok:f1.ok&&f0.ok };
+}
+function makeConst(p,v){ const b=new Array(p).fill(0); b[0]=Number.isFinite(v)?v:0; return b; }
+function gCompATE(m1,m0){ let s=0; for(let i=0;i<m1.length;i++) s+=m1[i]-m0[i]; return fin(s/m1.length); }
+
+/* ---------------- estimator 6: AIPW / doubly robust ----------------
+   psi_i = m1 - m0 + T*(Y-m1)/e - (1-T)*(Y-m0)/(1-e)
+   Consistent if EITHER the propensity model OR the outcome model is right,
+   because whichever one is right drives the other one's error to mean zero.   */
+function aipwATE(T,Y,e,m1,m0){
+  const n=T.length, psi=new Array(n); let s=0;
+  for(let i=0;i<n;i++){
+    const corr = T[i] ? (Y[i]-m1[i])/e[i] : -(Y[i]-m0[i])/(1-e[i]);
+    const v = m1[i]-m0[i]+corr;
+    psi[i]=fin(v); s+=psi[i];
+  }
+  const ate=fin(s/n);
+  let v2=0; for(let i=0;i<n;i++){ const d=psi[i]-ate; v2+=d*d; }
+  const se = n>1 ? Math.sqrt(fin(v2/(n-1))/n) : 0;   // the influence-function standard error
+  return { ate, se:fin(se), psi };
+}
+
+/* ---------------- balance: standardised mean difference ----------------
+   SMD = (mean_t - mean_c) / sqrt( (s_t^2 + s_c^2) / 2 ).  |SMD| < 0.1 is the
+   rule of thumb, and it is a rule of thumb, not a theorem.                    */
+function smd(x,T){
+  let s1=0,n1=0,s0=0,n0=0;
+  for(let i=0;i<x.length;i++){ if(T[i]){s1+=x[i];n1++;} else {s0+=x[i];n0++;} }
+  if(!n1||!n0) return 0;
+  const m1=s1/n1, m0=s0/n0; let v1=0,v0=0;
+  for(let i=0;i<x.length;i++){ const d=x[i]-(T[i]?m1:m0); if(T[i]) v1+=d*d; else v0+=d*d; }
+  v1=n1>1?v1/(n1-1):0; v0=n0>1?v0/(n0-1):0;
+  const pool=Math.sqrt((v1+v0)/2);
+  return fin(pool>1e-12?(m1-m0)/pool:0);
+}
+function smdWeighted(x,T,w){
+  let s1=0,sw1=0,s0=0,sw0=0,q1=0,q0=0;
+  for(let i=0;i<x.length;i++){ const wi=w[i]; if(T[i]){ s1+=wi*x[i]; sw1+=wi; q1+=wi*wi; } else { s0+=wi*x[i]; sw0+=wi; q0+=wi*wi; } }
+  if(!(sw1>0)||!(sw0>0)) return 0;
+  const m1=s1/sw1, m0=s0/sw0; let v1=0,v0=0;
+  for(let i=0;i<x.length;i++){ const wi=w[i], d=x[i]-(T[i]?m1:m0); if(T[i]) v1+=wi*d*d; else v0+=wi*d*d; }
+  const d1=sw1-q1/sw1, d0=sw0-q0/sw0;
+  v1=d1>1e-12?v1/d1:0; v0=d0>1e-12?v0/d0:0;
+  const pool=Math.sqrt(Math.max(0,(v1+v0)/2));
+  return fin(pool>1e-12?(m1-m0)/pool:0);
+}
+function smdSubset(x,T,idxT,idxC){
+  if(!idxT.length||!idxC.length) return 0;
+  const a=idxT.map(i=>x[i]), b=idxC.map(i=>x[i]);
+  const m1=mean(a), m0=mean(b), v1=variance(a), v0=variance(b);
+  const pool=Math.sqrt(Math.max(0,(v1+v0)/2));
+  return fin(pool>1e-12?(m1-m0)/pool:0);
+}
+
+/* ---------------- sensitivity to an UNMEASURED confounder ----------------
+   Suppose a binary U with prevalence pU, independent of the measured X, adds
+   lamT to the treatment logit and lamY to the outcome. Then the bias left in an
+   estimate that adjusted only for X is
+        lamY * E_X[ P(U=1|T=1,X) - P(U=1|T=0,X) ]
+   with, writing e1 = sigmoid(logit(e0) + lamT),
+        P(U=1|T=1,X) = pU*e1 / (pU*e1 + (1-pU)*e0)
+        P(U=1|T=0,X) = pU*(1-e1) / (pU*(1-e1) + (1-pU)*(1-e0)).
+   Every term is a probability, so nothing here can blow up.                    */
+function sensitivityBias(eArr,lamT,lamY,pU){
+  const p=clampNum(pU===undefined?0.5:pU,1e-4,1-1e-4);
+  let s=0;
+  for(let i=0;i<eArr.length;i++){
+    const e0=clampNum(eArr[i],1e-9,1-1e-9), e1=sigmoid(logitOf(e0)+lamT);
+    const d1=p*e1+(1-p)*e0, d0=p*(1-e1)+(1-p)*(1-e0);
+    s += (d1>0?p*e1/d1:0) - (d0>0?p*(1-e1)/d0:0);
+  }
+  return fin(lamY*s/eArr.length);
+}
+/* How strong would that confounder have to be (lamT = lamY = lam) to wipe out
+   the estimate entirely?  Monotone in lam, so bisect.                          */
+function sensitivityLambdaStar(eArr,target,pU,hiCap){
+  const t=Math.abs(target), hi=hiCap||8;
+  if(!(t>0)) return { lam:0, capped:false, biasAtCap:0 };
+  const f=l=>Math.abs(sensitivityBias(eArr,l,l,pU));
+  if(f(hi)<t) return { lam:hi, capped:true, biasAtCap:f(hi) };
+  let lo=0, h=hi;
+  for(let it=0; it<60; it++){ const m=(lo+h)/2; if(f(m)<t) lo=m; else h=m; }
+  return { lam:(lo+h)/2, capped:false, biasAtCap:f(hi) };
+}
+/* VanderWeele-Ding E-value, using the standard continuous-outcome bridge
+   RR ~= exp(0.91 * d) with d the standardised effect size.  Approximation,
+   and labelled as one.                                                        */
+function eValue(est,sdY){
+  const d=clampNum(sdY>1e-12?est/sdY:0,-20,20);
+  let rr=Math.exp(0.91*Math.abs(d));
+  if(rr<1) rr=1/rr;
+  return { rr:fin(rr), ev:fin(rr+Math.sqrt(Math.max(0,rr*(rr-1)))), d:fin(d) };
+}
+
+/* ---------------- the whole pipeline on one dataset ---------------- */
+function analyse(D,opt){
+  const o=opt||{};
+  const psKind=o.psKind||"correct", omKind=o.omKind||"correct";
+  const ps=fitPropensity(D,psKind,{maxIter:o.maxIter||40});
+  const cl=clipScores(ps.raw,o.eps===undefined?0.01:o.eps);
+  const e=cl.e;
+  const cov=buildCov(D,omKind);
+  const om=fitOutcomeModels(cov,D.T,D.Y,1e-8);
+  const nv=naiveATE(D.T,D.Y);
+  const ip=ipwATE(D.T,D.Y,e);
+  const st=stratifyATE(D.T,D.Y,e,o.K||5);
+  const mt=matchATE(D.T,D.Y,e,{caliper:o.caliper===undefined?0.2:o.caliper, replacement:!!o.replacement});
+  const gc=gCompATE(om.m1,om.m0);
+  const dr=aipwATE(D.T,D.Y,e,om.m1,om.m0);
+  const essT=essOf(ip.w,D.T,1), essC=essOf(ip.w,D.T,0);
+  const covs=[["X1",D.X1],["X2",D.X2]];
+  const bal=covs.map(([nm,x])=>({
+    name:nm,
+    raw:smd(x,D.T),
+    ipw:smdWeighted(x,D.T,ip.w),
+    matched:smdSubset(x,D.T,mt.mT,mt.mC)
+  }));
+  return { ps, e, eRaw:ps.raw, clip:cl, om,
+           naive:nv.ate, ipwHT:ip.ht, ipwHajek:ip.hajek, strat:st.ate, match:mt.ate,
+           gcomp:gc, aipw:dr.ate, aipwSE:dr.se,
+           w:ip.w, wMax:ip.wMax, ess:ip.ess, essT, essC, stratInfo:st, matchInfo:mt,
+           balance:bal, nTreat:nv.n1, nCtrl:nv.n0 };
+}
+
+/* The doubly-robust claim, all four cells, on the same data. */
+function drGrid(D,opt){
+  const o=opt||{}, out=[];
+  for(const pk of ["correct","wrong"]) for(const ok of ["correct","wrong"]){
+    const r=analyse(D,{psKind:pk,omKind:ok,eps:o.eps,K:o.K,caliper:o.caliper,replacement:o.replacement});
+    out.push({ psKind:pk, omKind:ok, aipw:r.aipw, ipw:r.ipwHajek, gcomp:r.gcomp,
+               err:r.aipw-D.sate, se:r.aipwSE });
+  }
+  return out;
+}
+
+/* ---------------- bootstrap ---------------- */
+function bootstrapATE(D,opt,B,seed){
+  const b=Math.max(0,Math.min(400,Math.round(B||0))); if(!b) return { lo:0, hi:0, se:0, B:0, ok:false, draws:[] };
+  const rng=mulberry32((seed||1)*7919>>>0), n=D.n, draws=[];
+  for(let r=0;r<b;r++){
+    const idx=new Array(n); for(let i=0;i<n;i++) idx[i]=Math.min(n-1,Math.floor(rng()*n));
+    const S=subsetSCM(D,idx);
+    if(S.nTreat<8||S.nCtrl<8) continue;
+    const a=analyse(S,opt); if(Number.isFinite(a.aipw)) draws.push(a.aipw);
+  }
+  if(draws.length<5) return { lo:0, hi:0, se:0, B:draws.length, ok:false, draws };
+  draws.sort((x,y)=>x-y);
+  const q=p=>draws[clampNum(Math.round(p*(draws.length-1)),0,draws.length-1)];
+  return { lo:fin(q(0.025)), hi:fin(q(0.975)), se:fin(sdev(draws)), B:draws.length, ok:true, draws };
+}
+function subsetSCM(D,idx){
+  const n=idx.length, g=k=>{ const o=new Array(n); for(let i=0;i<n;i++) o[i]=D[k][idx[i]]; return o; };
+  const T=g("T"); let nt=0; for(let i=0;i<n;i++) nt+=T[i];
+  const Y0=g("Y0"), Y1=g("Y1"); let sate=0; for(let i=0;i<n;i++) sate+=Y1[i]-Y0[i];
+  return { n, X1:g("X1"), X2:g("X2"), W1:g("W1"), W2:g("W2"), T, Y:g("Y"), Y0, Y1, eTrue:g("eTrue"),
+           nTreat:nt, nCtrl:n-nt, sate:n?sate/n:0, satt:D.satt, confBias:D.confBias, tau:D.tau, kappa:D.kappa, cfg:D.cfg };
+}
+
+/* ---------------- histogram helper (used for the overlap picture) ---------------- */
+function histBy(vals,T,bins,lo,hi){
+  const k=Math.max(4,Math.round(bins||24)), a=new Array(k).fill(0), b=new Array(k).fill(0);
+  const L=(lo===undefined?0:lo), H=(hi===undefined?1:hi), span=(H-L)||1;
+  for(let i=0;i<vals.length;i++){
+    const j=clampNum(Math.floor((vals[i]-L)/span*k),0,k-1);
+    if(T[i]) a[j]++; else b[j]++;
+  }
+  return { treat:a, ctrl:b, k, lo:L, hi:H };
+}
+// ENGINE:END
+
+/* ================= drawing helpers ================= */
+function frame(X,x0,y0,x1,y1,title){
+  X.strokeStyle="#e8eef5"; X.lineWidth=1; X.strokeRect(x0+.5,y0+.5,x1-x0,y1-y0);
+  X.fillStyle="#64748b"; X.font="bold 9.5px ui-sans-serif,system-ui"; X.fillText(title,x0,y0-4);
+}
+function txt(X,s,x,y,col,font,align){ X.fillStyle=col||"#334155"; X.font=font||"9px ui-sans-serif,system-ui"; X.textAlign=align||"left"; X.fillText(s,x,y); X.textAlign="left"; }
+function vline(X,x,y0,y1,col,w,dash){ X.save(); if(dash) X.setLineDash(dash); X.strokeStyle=col; X.lineWidth=w||1; X.beginPath(); X.moveTo(x,y0); X.lineTo(x,y1); X.stroke(); X.restore(); }
+function hline(X,y,x0,x1,col,w,dash){ X.save(); if(dash) X.setLineDash(dash); X.strokeStyle=col; X.lineWidth=w||1; X.beginPath(); X.moveTo(x0,y); X.lineTo(x1,y); X.stroke(); X.restore(); }
+function lineOf(X,pts,col,w){ if(pts.length<2) return; X.strokeStyle=col; X.lineWidth=w||1.5; X.beginPath(); X.moveTo(pts[0][0],pts[0][1]); for(let i=1;i<pts.length;i++) X.lineTo(pts[i][0],pts[i][1]); X.stroke(); X.lineWidth=1; }
+function node(X,cx,cy,r,label,fill,stroke,dashed){
+  X.save(); if(dashed) X.setLineDash([4,3]);
+  X.beginPath(); X.arc(cx,cy,r,0,Math.PI*2); X.fillStyle=fill; X.fill(); X.strokeStyle=stroke; X.lineWidth=2; X.stroke(); X.restore();
+  txt(X,label,cx,cy+4,"#fff","bold 12px ui-sans-serif,system-ui","center");
+}
+function arrow(X,x0,y0,x1,y1,col,w,dashed,label){
+  const dx=x1-x0, dy=y1-y0, L=Math.hypot(dx,dy); if(L<1) return;
+  const ux=dx/L, uy=dy/L, sx=x0+ux*20, sy=y0+uy*20, ex=x1-ux*22, ey=y1-uy*22;
+  X.save(); if(dashed) X.setLineDash([5,4]);
+  X.strokeStyle=col; X.lineWidth=w||2; X.beginPath(); X.moveTo(sx,sy); X.lineTo(ex,ey); X.stroke(); X.restore();
+  const a=Math.atan2(ey-sy,ex-sx);
+  X.fillStyle=col; X.beginPath(); X.moveTo(ex,ey);
+  X.lineTo(ex-8*Math.cos(a-0.4),ey-8*Math.sin(a-0.4)); X.lineTo(ex-8*Math.cos(a+0.4),ey-8*Math.sin(a+0.4)); X.closePath(); X.fill();
+  if(label) txt(X,label,(sx+ex)/2,(sy+ey)/2-4,col,"bold 9px ui-sans-serif,system-ui","center");
+}
+function extentOf(a){ let lo=Infinity,hi=-Infinity; for(const v of a){ if(v<lo) lo=v; if(v>hi) hi=v; } if(!(hi>lo)){ hi=lo+1; lo-=1; } return [lo,hi]; }
+function histOf(v,bins,lo,hi){ const h=new Array(bins).fill(0); for(const x of v){ const j=Math.max(0,Math.min(bins-1,Math.floor((x-lo)/(hi-lo)*bins))); h[j]++; } return h; }
+
+/* ================================================================
+   MODULE 1 — confounding, randomisation, and the scoreboard
+   ================================================================ */
+const cfC=el("cfCanvas"), cfX=cfC.getContext("2d");
+let C={ n:1500, conf:1.0, bY:3.0, tau:2.0, sigma:1.0, seed:7, randomised:false, hidden:false, data:null, res:null };
+
+function cfFit(){
+  const D=makeSCM({ n:C.n, conf:C.conf, bY:C.bY, tau:C.tau, sigma:C.sigma, seed:C.seed, shift:0, randomised:C.randomised });
+  const kind=C.hidden?"hidden":"correct";
+  const R=analyse(D,{psKind:kind,omKind:kind,eps:0.01,K:5,caliper:0.2,replacement:false});
+  C.data=D; C.res=R; cfDraw(); cfTable(); cfReport();
+}
+function cfDraw(){
+  const D=C.data, R=C.res; if(!D) return;
+  const X=cfX, W=cfC.width; X.clearRect(0,0,W,cfC.height); X.fillStyle="#fbfdff"; X.fillRect(0,0,W,cfC.height);
+  const x0=44, x1=W-14;
+
+  /* ---- (1) the structural model as a graph ---- */
+  frame(X,x0,16,x1,150,"① THE STRUCTURAL MODEL — the arrow into T is what makes this hard");
+  const cx=(x0+x1)/2;
+  const nx1=cx-90, nx2=cx+60, ny=48, tx=x0+70, yx=x1-70, byy=118;
+  arrow(X,nx1,ny,tx,byy, C.randomised?"#cbd5e1":"#ef4444",2,C.randomised,C.randomised?"cut":("a₁="+C.conf.toFixed(2)));
+  arrow(X,nx2,ny,tx,byy, C.randomised?"#cbd5e1":"#ef4444",2,C.randomised,null);
+  arrow(X,nx1,ny,yx,byy,"#f59e0b",2,false,"b₁="+C.bY.toFixed(2));
+  arrow(X,nx2,ny,yx,byy,"#f59e0b",2,false,null);
+  arrow(X,tx,byy,yx,byy,"#16a34a",3,false,"τ = "+C.tau.toFixed(2));
+  node(X,nx1,ny,19,"X₁","#0284c7","#0369a1",false);
+  node(X,nx2,ny,19,"X₂", C.hidden?"#64748b":"#0284c7", C.hidden?"#334155":"#0369a1", C.hidden);
+  node(X,tx,byy,19,"T","#0f172a","#0f172a",false);
+  node(X,yx,byy,19,"Y","#15803d","#166534",false);
+  txt(X, C.randomised?"assignment is a coin flip — X→T is severed":"back-door path  T ← X → Y  is OPEN", cx, 143, C.randomised?"#16a34a":"#b91c1c","bold 10px ui-sans-serif,system-ui","center");
+  if(C.hidden) txt(X,"X₂ is UNMEASURED — no estimator below may use it", nx2+42, 30, "#7c3aed","bold 9px ui-sans-serif,system-ui","center");
+
+  /* ---- (2) the imbalance the graph creates ---- */
+  frame(X,x0,176,x1,300,"② THE CONFOUNDER X₁, BY ARM — before anything is done about it");
+  const t1=[],c1=[]; for(let i=0;i<D.n;i++)(D.T[i]?t1:c1).push(D.X1[i]);
+  const ex=[-3.4,3.4], B=34, ht=histOf(t1,B,ex[0],ex[1]), hc=histOf(c1,B,ex[0],ex[1]);
+  const mxh=Math.max(1,...ht,...hc), mid=245, bw=(x1-x0-6)/B;
+  for(let j=0;j<B;j++){
+    const bx=x0+3+j*bw;
+    X.fillStyle=CT; X.fillRect(bx,mid-ht[j]/mxh*62,bw-1,ht[j]/mxh*62);
+    X.fillStyle=CC; X.fillRect(bx,mid,bw-1,hc[j]/mxh*48);
+  }
+  hline(X,mid,x0,x1,"#94a3b8",1);
+  const mt=t1.length?t1.reduce((a,b)=>a+b,0)/t1.length:0, mc=c1.length?c1.reduce((a,b)=>a+b,0)/c1.length:0;
+  const mxp=v=>x0+3+(v-ex[0])/(ex[1]-ex[0])*(x1-x0-6);
+  vline(X,mxp(mt),mid-66,mid,"#0369a1",2); vline(X,mxp(mc),mid,mid+52,"#b45309",2);
+  txt(X,"treated  n="+D.nTreat,x0+6,192,CT,"bold 9px ui-sans-serif,system-ui");
+  txt(X,"control  n="+D.nCtrl,x0+6,296,CC,"bold 9px ui-sans-serif,system-ui");
+  const smdRaw=R.balance[0].raw;
+  txt(X,"SMD = "+smdRaw.toFixed(3)+(Math.abs(smdRaw)>0.1?"  ✗ the arms are not comparable":"  ✓ balanced"),x1-6,192,Math.abs(smdRaw)>0.1?CBAD:CGOOD,"bold 10px ui-sans-serif,system-ui","right");
+
+  /* ---- (3) the scoreboard ---- */
+  frame(X,x0,326,x1,520,"③ THE SCOREBOARD — every estimator against a truth it is not allowed to see");
+  const rows=[["naive difference",R.naive],["IPW (Hájek)",R.ipwHajek],["stratify K=5",R.strat],["matching",R.match],["g-computation",R.gcomp],["AIPW",R.aipw]];
+  const all=rows.map(r=>r[1]).concat([D.sate,0]);
+  let lo=Math.min(...all), hi=Math.max(...all); const pad=(hi-lo)*0.18+0.25; lo-=pad; hi+=pad;
+  const sx=v=>x0+64+(v-lo)/(hi-lo)*(x1-x0-84);
+  const tol=Math.max(0.12,Math.abs(D.sate)*0.06);
+  const zeroX=sx(0);
+  vline(X,zeroX,336,514,"#e2e8f0",1);
+  rows.forEach((r,i)=>{
+    const yy=346+i*28, err=r[1]-D.sate, good=Math.abs(err)<=tol;
+    const a=Math.min(zeroX,sx(r[1])), b=Math.max(zeroX,sx(r[1]));
+    X.fillStyle=good?CGOOD:CBAD; X.fillRect(a,yy,Math.max(1,b-a),13);
+    txt(X,r[0],x0+60,yy+10,"#334155","bold 9px ui-sans-serif,system-ui","right");
+    txt(X,r[1].toFixed(3)+"  ("+(err>=0?"+":"")+err.toFixed(3)+")",b+5,yy+10,good?"#065f46":"#991b1b","bold 9.5px ui-sans-serif,system-ui");
+  });
+  vline(X,sx(D.sate),340,516,CTRUE,2,[4,3]);
+  txt(X,"true ATE "+D.sate.toFixed(3),sx(D.sate),337,CTRUE,"bold 10px ui-sans-serif,system-ui","center");
+}
+function cfTable(){
+  const D=C.data, R=C.res; if(!D) return;
+  const base=Math.abs(C.res.naive-D.sate);
+  const rows=[["naive Ȳ₁−Ȳ₀",R.naive],["IPW Horvitz–Thompson",R.ipwHT],["IPW Hájek",R.ipwHajek],["stratify (K=5)",R.strat],["1:1 matching",R.match],["g-computation",R.gcomp],["AIPW (doubly robust)",R.aipw]];
+  let h="<tr><th>estimator</th><th>estimate</th><th>error vs truth</th><th>bias removed</th><th>verdict</th></tr>";
+  const tol=Math.max(0.12,Math.abs(D.sate)*0.06);
+  for(const [nm,v] of rows){
+    const err=v-D.sate, rem=base>1e-9?(1-Math.abs(err)/base)*100:100, good=Math.abs(err)<=tol;
+    h+=`<tr class="${good?"win":(Math.abs(err)>3*tol?"lose":"")}"><td style="text-align:left">${nm}</td><td>${v.toFixed(4)}</td><td>${err>=0?"+":""}${err.toFixed(4)}</td><td>${nm.indexOf("naive")===0?"—":rem.toFixed(1)+"%"}</td><td>${good?"✅ recovers τ":(Math.abs(err)>3*tol?"❌ biased":"⚠️ close")}</td></tr>`;
+  }
+  h+=`<tr><td style="text-align:left"><b>TRUE ATE (known by construction)</b></td><td><b>${D.sate.toFixed(4)}</b></td><td>0.0000</td><td>100%</td><td>the answer key</td></tr>`;
+  h+=`<tr><td style="text-align:left">true ATT (treated only)</td><td>${D.satt.toFixed(4)}</td><td>${(D.satt-D.sate>=0?"+":"")}${(D.satt-D.sate).toFixed(4)}</td><td>—</td><td>what matching targets</td></tr>`;
+  h+=`<tr><td style="text-align:left">E[Y(0)|T=1] − E[Y(0)|T=0]</td><td>${D.confBias.toFixed(4)}</td><td>—</td><td>—</td><td>the exact confounding bias</td></tr>`;
+  el("cTable").innerHTML=h;
+}
+function cfReport(){
+  const D=C.data, R=C.res; if(!D) return;
+  el("cTrue").textContent=D.sate.toFixed(3);
+  el("cNaive").textContent=R.naive.toFixed(3);
+  el("cBias").textContent=(D.confBias>=0?"+":"")+D.confBias.toFixed(3);
+  el("cAdj").textContent=R.aipw.toFixed(3);
+  const errN=R.naive-D.sate, errA=R.aipw-D.sate, tol=Math.max(0.12,Math.abs(D.sate)*0.06);
+  if(C.randomised)
+    setDiag(el("cDiag"),"diag-good","🧪 Randomised — and the naive estimator is suddenly correct.",
+      `Assignment is now a coin flip, so <code>P(T=1|X) = 0.5</code> for everybody and the arrow from X into T is gone. The confounding bias <code>E[Y(0)|T=1] − E[Y(0)|T=0]</code> collapses to <b>${D.confBias.toFixed(4)}</b> — sampling noise around zero — and the same difference in means that was badly biased a moment ago now returns <b>${R.naive.toFixed(4)}</b> against a truth of <b>${D.sate.toFixed(4)}</b>. Nothing about the estimator changed and nothing about the covariates changed; what changed is that the two arms became <em>exchangeable</em>, <code>(Y(0),Y(1)) ⟂ T</code>, so conditioning on T tells you nothing about the potential outcomes. That is the whole argument for the randomised trial, and notice it buys the answer without measuring a single confounder — you do not even need to know what they were.`);
+  else if(C.hidden)
+    setDiag(el("cDiag"),"diag-bad","🕳 A confounder is hidden — and every method is now wrong, in agreement.",
+      `X₂ still drives both treatment and outcome, but no estimator below may see it. Look at the scoreboard: IPW says <b>${R.ipwHajek.toFixed(3)}</b>, stratification <b>${R.strat.toFixed(3)}</b>, g-computation <b>${R.gcomp.toFixed(3)}</b>, AIPW <b>${R.aipw.toFixed(3)}</b> — agreeing with each other to within ${(Math.max(R.ipwHajek,R.gcomp,R.aipw)-Math.min(R.ipwHajek,R.gcomp,R.aipw)).toFixed(3)}, and all wrong by about <b>${errA.toFixed(3)}</b>. This is the most important picture on the page. Cross-method agreement is <em>not</em> evidence of correctness — all four rest on the same assumption and it is false here. The balance table on X₁ looks perfect, the intervals are tight, and nothing in the data can tell you. That is what "untestable" means, and why the sensitivity analysis in the third demo is not an optional appendix.`);
+  else if(C.conf<0.05)
+    setDiag(el("cDiag"),"diag-info","🎯 No confounding — so nothing needed adjusting.",
+      `With <code>a₁ = ${C.conf.toFixed(2)}</code> the covariates barely influence who gets treated, so the arms are already comparable: SMD on X₁ is <b>${R.balance[0].raw.toFixed(3)}</b> and the naive estimate <b>${R.naive.toFixed(4)}</b> sits within ${Math.abs(errN).toFixed(4)} of the truth <b>${D.sate.toFixed(4)}</b>. Adjustment neither helps nor hurts much here, which is itself worth knowing — propensity methods are not a ritual you perform on every dataset, they are a repair for a specific defect. Slide <b>X → T strength</b> up and watch the naive estimator peel away from the truth while the adjusted ones stay put.`);
+  else
+    setDiag(el("cDiag"),"diag-warn",`⚠️ The naive estimator is off by ${(errN>=0?"+":"")+errN.toFixed(3)} — and it is not noise.`,
+      `The difference in means says <b>${R.naive.toFixed(4)}</b>; the truth, from potential outcomes no estimator may touch, is <b>${D.sate.toFixed(4)}</b>. The gap is <b>${errN.toFixed(4)}</b> and it matches <code>E[Y(0)|T=1] − E[Y(0)|T=0] = ${D.confBias.toFixed(4)}</code> almost exactly, because that identity is not an approximation — it is what the naive estimator <em>is</em>. Crank <b>n</b> from 200 to 3000 and watch: the error does not shrink. Sampling error falls like <code>1/√n</code>; confounding bias does not fall at all, so more data buys a tighter interval around the wrong number. AIPW, given the right covariates, returns <b>${R.aipw.toFixed(4)}</b> — within ${Math.abs(errA).toFixed(4)}. Now press <b>🧪 Randomise</b>, then <b>🕳 Hide a confounder</b>.`);
+}
+function cfWire(){
+  const bind=(id,vid,f,g)=>{ const e=el(id); e.oninput=()=>{ const v=parseFloat(e.value); f(v); el(vid).textContent=g(v); cfFit(); }; };
+  bind("cNs","cNsV",v=>C.n=v,v=>v);
+  bind("cGs","cGsV",v=>C.conf=v/100,v=>(v/100).toFixed(2));
+  bind("cBs","cBsV",v=>C.bY=v/10,v=>(v/10).toFixed(2));
+  bind("cTs","cTsV",v=>C.tau=v/10,v=>(v/10).toFixed(2));
+  bind("cSs","cSsV",v=>C.sigma=v/10,v=>(v/10).toFixed(2));
+  bind("cZs","cZsV",v=>C.seed=v,v=>v);
+  el("cRoll").onclick=()=>{ C.seed=1+((C.seed*17+13)%99); el("cZs").value=C.seed; el("cZsV").textContent=C.seed; cfFit(); };
+  el("cRandom").onclick=()=>{ C.randomised=!C.randomised; cfSyncBtns(); cfFit(); };
+  el("cHide").onclick=()=>{ C.hidden=!C.hidden; cfSyncBtns(); cfFit(); };
+  document.querySelectorAll("#cPresets .ds-btn").forEach(b=>b.onclick=()=>{
+    const p=b.dataset.p;
+    C.randomised=(p==="rct"); C.hidden=(p==="hid");
+    if(p==="none") C.conf=0; else if(p==="hard") C.conf=2.2; else if(C.conf<0.05) C.conf=1.0;
+    if(p==="hard") C.bY=5.0;
+    el("cGs").value=Math.round(C.conf*100); el("cGsV").textContent=C.conf.toFixed(2);
+    el("cBs").value=Math.round(C.bY*10);    el("cBsV").textContent=C.bY.toFixed(2);
+    document.querySelectorAll("#cPresets .ds-btn").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on"); cfSyncBtns(); cfFit(); });
+}
+function cfSyncBtns(){
+  el("cRandom").textContent = C.randomised ? "🏥 Back to observational" : "🧪 Randomise the assignment";
+  el("cRandom").className = (C.randomised?"bg-slate-700 text-white hover:bg-slate-600":"btn-run")+" px-3 py-1.5 rounded-lg font-bold text-xs";
+  el("cHide").textContent = C.hidden ? "👁 Reveal the confounder" : "🕳 Hide a confounder";
+}
+
+/* ================================================================
+   MODULE 2 — propensity scores: overlap, balance, weights
+   ================================================================ */
+const psC=el("psCanvas"), psX=psC.getContext("2d");
+let P={ n:2000, conf:1.2, shift:0, eps:0.01, K:5, caliper:0.20, replacement:false, seed:4, data:null, res:null };
+
+function psFit(){
+  const D=makeSCM({ n:P.n, conf:P.conf, bY:3, tau:2, sigma:1, seed:P.seed, shift:P.shift });
+  const R=analyse(D,{psKind:"correct",omKind:"correct",eps:P.eps,K:P.K,caliper:P.caliper,replacement:P.replacement});
+  P.data=D; P.res=R; psDraw(); psBal(); psTable(); psReport();
+}
+function psDraw(){
+  const D=P.data, R=P.res; if(!D) return;
+  const X=psX, W=psC.width; X.clearRect(0,0,W,psC.height); X.fillStyle="#fbfdff"; X.fillRect(0,0,W,psC.height);
+  const x0=44, x1=W-14;
+
+  /* ① overlap of e(x) */
+  frame(X,x0,16,x1,170,"① OVERLAP OF e(x) — treated above the line, control below. Where they do not overlap there is nothing to compare.");
+  const B=44, mid=104, bw=(x1-x0-6)/B;
+  const et=[],ec=[]; for(let i=0;i<D.n;i++)(D.T[i]?et:ec).push(R.eRaw[i]);
+  const ht=histOf(et,B,0,1), hc=histOf(ec,B,0,1), mx=Math.max(1,...ht,...hc);
+  X.fillStyle=CTRIM;
+  X.fillRect(x0+3,26,(R.clip.eps)*(x1-x0-6),138);
+  X.fillRect(x0+3+(1-R.clip.eps)*(x1-x0-6),26,(R.clip.eps)*(x1-x0-6),138);
+  for(let j=0;j<B;j++){
+    const bx=x0+3+j*bw;
+    X.fillStyle=CT; X.fillRect(bx,mid-ht[j]/mx*72,bw-1,ht[j]/mx*72);
+    X.fillStyle=CC; X.fillRect(bx,mid,bw-1,hc[j]/mx*58);
+  }
+  hline(X,mid,x0,x1,"#94a3b8",1);
+  for(let g=0;g<=10;g+=2){ const gx=x0+3+g/10*(x1-x0-6); vline(X,gx,mid-2,mid+2,"#64748b",1); txt(X,(g/10).toFixed(1),gx,mid+13,"#94a3b8","8px ui-sans-serif,system-ui","center"); }
+  txt(X,"treated",x0+6,34,CT,"bold 9px ui-sans-serif,system-ui");
+  txt(X,"control",x0+6,166,CC,"bold 9px ui-sans-serif,system-ui");
+  txt(X,"min e(x) = "+R.clip.minRaw.toExponential(2)+"   ·   max e(x) = "+(1-R.clip.maxRaw).toExponential(2)+" from 1   ·   "+R.clip.nClip+" units trimmed",x1-6,34,R.clip.nClip>D.n*0.05?"#b91c1c":"#475569","bold 9px ui-sans-serif,system-ui","right");
+
+  /* ② the love plot */
+  frame(X,x0,195,x1,300,"② BALANCE — |standardised mean difference| before and after. The 0.1 line is a convention, not a theorem.");
+  const bars=[];
+  R.balance.forEach(b=>{ bars.push([b.name+" raw",Math.abs(b.raw),CGREY]); bars.push([b.name+" IPW",Math.abs(b.ipw),CGOOD]); bars.push([b.name+" matched",Math.abs(b.matched),CPUR]); });
+  const bmax=Math.max(0.25,...bars.map(b=>b[1]))*1.1, lx=x0+66, rx=x1-40;
+  const smx=v=>lx+v/bmax*(rx-lx);
+  vline(X,smx(0.1),203,296,"#ef4444",1.5,[4,3]);
+  txt(X,"0.1",smx(0.1),300,"#ef4444","bold 8px ui-sans-serif,system-ui","center");
+  bars.forEach((b,i)=>{
+    const yy=206+i*15;
+    X.fillStyle=b[2]; X.fillRect(lx,yy,Math.max(1,smx(b[1])-lx),10);
+    txt(X,b[0],lx-4,yy+8,"#475569","bold 8px ui-sans-serif,system-ui","right");
+    txt(X,b[1].toFixed(3),smx(b[1])+4,yy+8,b[1]<0.1?"#065f46":"#991b1b","bold 8px ui-sans-serif,system-ui");
+  });
+
+  /* ③ the weights */
+  frame(X,x0,325,x1,430,"③ THE IPW WEIGHTS, SORTED — log scale. A short flat line is healthy; a spike means a handful of rows own the answer.");
+  const ws=R.w.slice().sort((a,b)=>b-a), lw=ws.map(v=>Math.log10(Math.max(1e-6,v)));
+  const wlo=Math.min(...lw), whi=Math.max(...lw,Math.log10(2));
+  const wx=i=>x0+6+i/(ws.length-1||1)*(x1-x0-12), wy=v=>426-(v-wlo)/((whi-wlo)||1)*92;
+  lineOf(X,lw.map((v,i)=>[wx(i),wy(v)]),CPUR,1.6);
+  for(const g of [1,2,5,10,50,200]){ if(g>=Math.pow(10,wlo)&&g<=Math.pow(10,whi)){ const gy=wy(Math.log10(g)); hline(X,gy,x0+6,x1-6,"#e2e8f0",1); txt(X,"×"+g,x0+8,gy-2,"#94a3b8","8px ui-sans-serif,system-ui"); } }
+  const essFrac=R.ess/D.n;
+  txt(X,"Kish ESS = "+R.ess.toFixed(0)+" of "+D.n+" rows  ("+(essFrac*100).toFixed(1)+"%)   ·   largest weight ×"+R.wMax.toFixed(1),x1-6,343,essFrac<0.5?"#b91c1c":"#065f46","bold 9.5px ui-sans-serif,system-ui","right");
+
+  /* ④ per-stratum contrasts */
+  frame(X,x0,455,x1,545,"④ WITHIN-STRATUM CONTRASTS — each quantile of e(x) compared separately, then pooled by size");
+  const rowsS=R.stratInfo.rows, k=rowsS.length;
+  const all=rowsS.filter(r=>!r.skip).map(r=>r.d).concat([D.sate]);
+  let slo=Math.min(...all,0), shi=Math.max(...all,0); const sp=(shi-slo)*0.2+0.2; slo-=sp; shi+=sp;
+  const ssx=v=>x0+40+(v-slo)/(shi-slo)*(x1-x0-58), zx=ssx(0);
+  vline(X,zx,462,540,"#e2e8f0",1);
+  const bwid=Math.min(16,(78)/Math.max(1,k));
+  rowsS.forEach((r,i)=>{
+    const bx=x0+40+i*((x1-x0-58)/k), colw=(x1-x0-58)/k-3;
+    const yy=466+i*(74/k);
+    if(r.skip){ txt(X,"stratum "+(i+1)+": no comparison possible",x0+44,yy+8,"#b91c1c","bold 8px ui-sans-serif,system-ui"); return; }
+    const a=Math.min(zx,ssx(r.d)), b=Math.max(zx,ssx(r.d));
+    X.fillStyle=Math.abs(r.d-D.sate)<0.3?CGOOD:"#fb923c"; X.fillRect(a,yy,Math.max(1,b-a),Math.max(4,74/k-3));
+    txt(X,"e∈["+r.elo.toFixed(2)+","+r.ehi.toFixed(2)+"]",x0+38,yy+8,"#475569","bold 7.5px ui-sans-serif,system-ui","right");
+    txt(X,r.d.toFixed(2),b+3,yy+8,"#475569","bold 7.5px ui-sans-serif,system-ui");
+  });
+  vline(X,ssx(D.sate),460,542,CTRUE,2,[4,3]);
+  txt(X,"true "+D.sate.toFixed(2),ssx(D.sate),459,CTRUE,"bold 9px ui-sans-serif,system-ui","center");
+}
+function psBal(){
+  const R=P.res; if(!R) return;
+  let h="<tr><th>covariate</th><th>SMD raw</th><th>after IPW</th><th>after matching</th><th>balanced?</th></tr>";
+  for(const b of R.balance){
+    const okI=Math.abs(b.ipw)<0.1, okM=Math.abs(b.matched)<0.1;
+    h+=`<tr class="${okI?"win":""}"><td style="text-align:left">${b.name}</td><td>${b.raw.toFixed(4)}</td><td>${b.ipw.toFixed(4)}</td><td>${b.matched.toFixed(4)}</td><td>${okI?"✅ IPW":"⚠️ IPW"} · ${okM?"✅ match":"⚠️ match"}</td></tr>`;
+  }
+  h+=`<tr><td style="text-align:left">treated / control</td><td>${R.nTreat}</td><td>${R.nCtrl}</td><td>${R.matchInfo.nMatched} pairs</td><td>${R.matchInfo.nDropped} treated dropped</td></tr>`;
+  el("pBal").innerHTML=h;
+}
+function psTable(){
+  const D=P.data, R=P.res; if(!D) return;
+  const rows=[
+    ["naive difference",R.naive,"—","nothing","0"],
+    ["IPW Horvitz–Thompson",R.ipwHT,"ATE","all "+D.n+" rows","ESS "+R.ess.toFixed(0)],
+    ["IPW Hájek (stabilised)",R.ipwHajek,"ATE","all "+D.n+" rows","ESS "+R.ess.toFixed(0)],
+    ["stratify K="+P.K,R.strat,"ATE",R.stratInfo.used+" of "+P.K+" strata used",R.stratInfo.dropped+" dropped"],
+    ["matching (caliper "+P.caliper.toFixed(2)+")",R.match,"ATT",R.matchInfo.nMatched+" pairs",R.matchInfo.nDropped+" treated lost"],
+    ["g-computation",R.gcomp,"ATE","all "+D.n+" rows","0"],
+    ["AIPW",R.aipw,"ATE","all "+D.n+" rows","0"]
+  ];
+  let h="<tr><th>method</th><th>estimate</th><th>error</th><th>estimand</th><th>uses</th><th>discarded</th></tr>";
+  const tol=Math.max(0.12,Math.abs(D.sate)*0.06);
+  for(const [nm,v,est,uses,disc] of rows){
+    const err=v-D.sate, good=Math.abs(err)<=tol;
+    h+=`<tr class="${good?"win":(Math.abs(err)>3*tol?"lose":"")}"><td style="text-align:left">${nm}</td><td>${v.toFixed(4)}</td><td>${err>=0?"+":""}${err.toFixed(4)}</td><td>${est}</td><td>${uses}</td><td>${disc}</td></tr>`;
+  }
+  h+=`<tr><td style="text-align:left"><b>true ATE</b></td><td><b>${D.sate.toFixed(4)}</b></td><td>0.0000</td><td>ATE</td><td>both potential outcomes</td><td>—</td></tr>`;
+  h+=`<tr><td style="text-align:left">true ATT</td><td>${D.satt.toFixed(4)}</td><td>—</td><td>ATT</td><td>treated only</td><td>—</td></tr>`;
+  el("pTable").innerHTML=h;
+}
+function psReport(){
+  const D=P.data, R=P.res; if(!D) return;
+  el("pMin").textContent=R.clip.minRaw<0.001?R.clip.minRaw.toExponential(1):R.clip.minRaw.toFixed(4);
+  el("pWmax").textContent="×"+R.wMax.toFixed(1);
+  el("pEss").textContent=R.ess.toFixed(0)+" / "+D.n;
+  const worst=Math.max(...R.balance.map(b=>Math.abs(b.ipw)));
+  el("pSmd").textContent=worst.toFixed(3);
+  const frac=R.ess/D.n, gap=Math.abs(R.ipwHT-R.ipwHajek);
+  if(frac<0.35||R.wMax>40)
+    setDiag(el("pDiag"),"diag-bad","💥 Positivity is broken — the weights, not the data, are now doing the talking.",
+      `The smallest fitted propensity is <b>${R.clip.minRaw.toExponential(2)}</b>, the largest weight is <b>×${R.wMax.toFixed(1)}</b>, and the Kish effective sample size is <b>${R.ess.toFixed(0)}</b> out of ${D.n} rows — you have ${(frac*100).toFixed(1)}% of the sample you think you have. Horvitz–Thompson returns <b>${R.ipwHT.toFixed(3)}</b> while Hájek returns <b>${R.ipwHajek.toFixed(3)}</b>, a gap of <b>${gap.toFixed(3)}</b>, and that gap is the alarm: the two differ only in their denominator, so when they disagree it means a few enormous weights are dominating the numerator. This is not a numerical bug — the engine clamps <code>e</code> into <code>[${R.clip.eps.toFixed(3)}, ${(1-R.clip.eps).toFixed(3)}]</code> with a hard floor at 1e−6, so nothing returns Infinity. It is the <em>estimand</em> failing: for a unit with <code>e(x) ≈ 0</code> there is genuinely nobody comparable in the treated arm, so <code>E[Y(1)|X=x]</code> is not identified and averaging over it is wishful thinking. Raise <b>trim ε</b> to cut those units out and watch the variance collapse — and remember you have now silently changed the population you are talking about.`);
+  else if(worst<0.1&&frac>0.6)
+    setDiag(el("pDiag"),"diag-good","✅ The score is doing its job — balance achieved, weights sane.",
+      `Before adjustment the arms differed by <b>${R.balance[0].raw.toFixed(3)}</b> standardised units on X₁ and <b>${R.balance[1].raw.toFixed(3)}</b> on X₂. After inverse-probability weighting those fall to <b>${R.balance[0].ipw.toFixed(3)}</b> and <b>${R.balance[1].ipw.toFixed(3)}</b>, both inside the conventional 0.1 line, and the effective sample size is <b>${R.ess.toFixed(0)}</b> of ${D.n} — you kept ${(frac*100).toFixed(0)}% of your information. That is the Rosenbaum–Rubin result made visible: nobody balanced X₁ and X₂ directly, they balanced one scalar <code>e(x)</code> and the covariates followed. Note what matching costs by comparison: <b>${R.matchInfo.nMatched}</b> pairs formed, <b>${R.matchInfo.nDropped}</b> treated units discarded for having no partner inside the caliper, residual imbalance <b>${Math.abs(R.balance[0].matched).toFixed(3)}</b> on X₁ — matching throws data away to buy a transparent comparison, weighting keeps everyone and buys variance instead.`);
+  else
+    setDiag(el("pDiag"),"diag-warn",`⚠️ Partially balanced — worst |SMD| after weighting is ${worst.toFixed(3)}.`,
+      `The propensity model is fitted correctly, but the sample is working hard: ESS <b>${R.ess.toFixed(0)}</b> of ${D.n}, largest weight <b>×${R.wMax.toFixed(1)}</b>, HT vs Hájek gap <b>${gap.toFixed(3)}</b>. Stratification used <b>${R.stratInfo.used}</b> of ${P.K} strata${R.stratInfo.dropped?`, dropping ${R.stratInfo.dropped} that held only one arm`:""}. Panel ④ is where to look: each stratum is an independent little experiment among units of similar propensity, and their contrasts should scatter around the true ${D.sate.toFixed(2)} rather than drift monotonically — if they drift, the score is misspecified. Push <b>K</b> up for finer strata and less residual bias, until strata get so thin that some hold only one arm and the estimator quietly deletes them.`);
+}
+function psWire(){
+  const bind=(id,vid,f,g)=>{ const e=el(id); e.oninput=()=>{ const v=parseFloat(e.value); f(v); el(vid).textContent=g(v); psFit(); }; };
+  bind("pNs","pNsV",v=>P.n=v,v=>v);
+  bind("pGs","pGsV",v=>P.conf=v/100,v=>(v/100).toFixed(2));
+  bind("pAs","pAsV",v=>P.shift=v/10,v=>(v/10).toFixed(2));
+  bind("pEs","pEsV",v=>P.eps=v/1000,v=>(v/1000).toFixed(3));
+  bind("pKs","pKsV",v=>P.K=v,v=>v);
+  bind("pCs","pCsV",v=>P.caliper=v/100,v=>(v/100).toFixed(2));
+  bind("pZs","pZsV",v=>P.seed=v,v=>v);
+  el("pRoll").onclick=()=>{ P.seed=1+((P.seed*23+7)%99); el("pZs").value=P.seed; el("pZsV").textContent=P.seed; psFit(); };
+  el("pRep").onclick=()=>{ P.replacement=!P.replacement; el("pRep").textContent="♻️ with replacement: "+(P.replacement?"ON":"OFF"); psFit(); };
+  el("pBreak").onclick=()=>{ P.conf=2.4; P.shift=-3.0; el("pGs").value=240; el("pGsV").textContent="2.40"; el("pAs").value=-30; el("pAsV").textContent="-3.00"; psFit(); };
+  document.querySelectorAll("#pPresets .ds-btn").forEach(b=>b.onclick=()=>{
+    const p=b.dataset.p;
+    if(p==="ok"){ P.conf=1.2; P.shift=0; P.eps=0.01; }
+    if(p==="thin"){ P.conf=2.0; P.shift=-1.6; P.eps=0.01; }
+    if(p==="bad"){ P.conf=2.5; P.shift=-3.4; P.eps=0.001; }
+    if(p==="mild"){ P.conf=0.4; P.shift=0; P.eps=0.01; }
+    el("pGs").value=Math.round(P.conf*100); el("pGsV").textContent=P.conf.toFixed(2);
+    el("pAs").value=Math.round(P.shift*10); el("pAsV").textContent=P.shift.toFixed(2);
+    el("pEs").value=Math.round(P.eps*1000); el("pEsV").textContent=P.eps.toFixed(3);
+    document.querySelectorAll("#pPresets .ds-btn").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on"); psFit(); });
+}
+
+/* ================================================================
+   MODULE 3 — doubly robust, bootstrap, sensitivity
+   ================================================================ */
+const drC=el("drCanvas"), drX=drC.getContext("2d");
+let R3={ n:2400, conf:1.0, eps:0.01, lam:1.0, pU:0.5, B:120, seed:9, psKind:"correct", omKind:"correct",
+         data:null, res:null, grid:null, boot:null };
+
+function drFit(){
+  const D=makeSCM({ n:R3.n, conf:R3.conf, bY:3, tau:2, sigma:1, seed:R3.seed, shift:0 });
+  const r=analyse(D,{psKind:R3.psKind,omKind:R3.omKind,eps:R3.eps,K:5,caliper:0.2});
+  R3.data=D; R3.res=r;
+  R3.grid=drGrid(D,{eps:R3.eps,K:5,caliper:0.2});
+  drDraw(); drTable(); drSens(); drReport();
+}
+function drDraw(){
+  const D=R3.data, r=R3.res, G=R3.grid; if(!D) return;
+  const X=drX, W=drC.width; X.clearRect(0,0,W,drC.height); X.fillStyle="#fbfdff"; X.fillRect(0,0,W,drC.height);
+  const x0=44, x1=W-14;
+
+  /* ① the 2x2 */
+  frame(X,x0,16,x1,185,"① THE DOUBLY-ROBUST 2×2 — same data, four combinations of right and wrong");
+  const labels=["PS ✅ / OM ✅","PS ✅ / OM ❌","PS ❌ / OM ✅","PS ❌ / OM ❌"];
+  const vals=G.map(g=>g.aipw), all=vals.concat([D.sate,0]);
+  let lo=Math.min(...all), hi=Math.max(...all); const pad=(hi-lo)*0.2+0.2; lo-=pad; hi+=pad;
+  const sx=v=>x0+90+(v-lo)/(hi-lo)*(x1-x0-112), zx=sx(0);
+  vline(X,zx,24,180,"#e2e8f0",1);
+  const tol=Math.max(0.12,Math.abs(D.sate)*0.06);
+  G.forEach((g,i)=>{
+    const yy=32+i*36, err=g.aipw-D.sate, good=Math.abs(err)<=tol;
+    const a=Math.min(zx,sx(g.aipw)), b=Math.max(zx,sx(g.aipw));
+    X.fillStyle=good?CGOOD:CBAD; X.fillRect(a,yy,Math.max(1,b-a),16);
+    txt(X,labels[i],x0+86,yy+12,"#334155","bold 9.5px ui-sans-serif,system-ui","right");
+    txt(X,g.aipw.toFixed(4)+"  ("+(err>=0?"+":"")+err.toFixed(4)+")",b+5,yy+12,good?"#065f46":"#991b1b","bold 9.5px ui-sans-serif,system-ui");
+    txt(X,good?"AIPW survives":"nothing left to rescue it",x0+86,yy+24,good?"#16a34a":"#dc2626","8px ui-sans-serif,system-ui","right");
+  });
+  vline(X,sx(D.sate),28,182,CTRUE,2,[4,3]);
+  txt(X,"true "+D.sate.toFixed(3),sx(D.sate),26,CTRUE,"bold 9.5px ui-sans-serif,system-ui","center");
+
+  /* ② sensitivity curve */
+  frame(X,x0,210,x1,355,"② SENSITIVITY — bias left behind by an unmeasured U of strength λ, against the estimate it would have to erase");
+  const est=Math.abs(r.aipw), curve=[];
+  for(let i=0;i<=90;i++){ const l=i/30; curve.push([l,sensitivityBias(r.e,l,l,R3.pU)]); }
+  const cyMax=Math.max(est*1.35, curve[curve.length-1][1], 0.1);
+  const cx=l=>x0+8+l/3*(x1-x0-16), cy=v=>350-Math.max(0,Math.min(1,v/cyMax))*128;
+  hline(X,cy(est),x0+8,x1-8,"#0ea5e9",1.5,[5,4]);
+  txt(X,"|estimate| = "+est.toFixed(3),x1-10,cy(est)-4,"#0369a1","bold 9px ui-sans-serif,system-ui","right");
+  lineOf(X,curve.map(p=>[cx(p[0]),cy(p[1])]),"#f59e0b",2.2);
+  const star=sensitivityLambdaStar(r.e,est,R3.pU,8);
+  if(!star.capped&&star.lam<=3){ vline(X,cx(star.lam),222,352,"#dc2626",2,[3,3]); txt(X,"λ* = "+star.lam.toFixed(2),cx(star.lam),220,"#dc2626","bold 10px ui-sans-serif,system-ui","center"); }
+  const here=sensitivityBias(r.e,R3.lam,R3.lam,R3.pU);
+  if(R3.lam<=3){ X.fillStyle="#7c3aed"; X.beginPath(); X.arc(cx(R3.lam),cy(here),4,0,Math.PI*2); X.fill();
+    txt(X,"λ="+R3.lam.toFixed(2)+" ⇒ bias "+here.toFixed(3),cx(R3.lam)+7,cy(here)-6,"#6d28d9","bold 9px ui-sans-serif,system-ui"); }
+  for(const g of [0,1,2,3]){ const gx=cx(g); vline(X,gx,348,352,"#94a3b8",1); txt(X,"λ="+g,gx,363,"#94a3b8","8px ui-sans-serif,system-ui","center"); }
+
+  /* ③ bootstrap */
+  frame(X,x0,380,x1,505,"③ THE BOOTSTRAP — refit the whole pipeline on each resample, then take the 2.5th and 97.5th percentiles");
+  if(R3.boot&&R3.boot.ok){
+    const d=R3.boot.draws, ex=extentOf(d.concat([D.sate])), Bn=30, h=histOf(d,Bn,ex[0],ex[1]);
+    const mx=Math.max(1,...h), bw=(x1-x0-16)/Bn;
+    for(let j=0;j<Bn;j++){ const bx=x0+8+j*bw, v=ex[0]+(j+0.5)/Bn*(ex[1]-ex[0]);
+      X.fillStyle=(v>=R3.boot.lo&&v<=R3.boot.hi)?"#7dd3fc":"#e2e8f0"; X.fillRect(bx,498-h[j]/mx*86,bw-1,h[j]/mx*86); }
+    const bx=v=>x0+8+(v-ex[0])/(ex[1]-ex[0])*(x1-x0-16);
+    vline(X,bx(R3.boot.lo),398,500,"#0369a1",2); vline(X,bx(R3.boot.hi),398,500,"#0369a1",2);
+    vline(X,bx(D.sate),392,502,CTRUE,2,[4,3]);
+    txt(X,"true "+D.sate.toFixed(3),bx(D.sate),390,CTRUE,"bold 9px ui-sans-serif,system-ui","center");
+    txt(X,"["+R3.boot.lo.toFixed(3)+", "+R3.boot.hi.toFixed(3)+"]  from "+R3.boot.B+" resamples   ·   bootstrap SE "+R3.boot.se.toFixed(4)+"   ·   influence-function SE "+r.aipwSE.toFixed(4),
+        x0+8,398,"#475569","bold 9px ui-sans-serif,system-ui");
+    const covers=R3.boot.lo<=D.sate&&D.sate<=R3.boot.hi;
+    txt(X,covers?"✅ the interval covers the truth":"❌ the interval misses the truth — it happens about 5% of the time by design",x1-8,498,covers?"#16a34a":"#dc2626","bold 9px ui-sans-serif,system-ui","right");
+  } else {
+    txt(X,"press  🥾 Bootstrap the interval  — "+R3.B+" resamples of the whole pipeline, propensity model and all",(x0+x1)/2,445,"#94a3b8","bold 11px ui-sans-serif,system-ui","center");
+    txt(X,"the analytic influence-function SE is already available for free: "+r.aipwSE.toFixed(4),(x0+x1)/2,465,"#94a3b8","10px ui-sans-serif,system-ui","center");
+  }
+}
+function drTable(){
+  const D=R3.data, G=R3.grid; if(!D) return;
+  const labs=["✅ correct","✅ correct","❌ misspecified","❌ misspecified"], labs2=["✅ correct","❌ misspecified","✅ correct","❌ misspecified"];
+  let h="<tr><th>propensity model</th><th>outcome model</th><th>plain IPW</th><th>g-computation</th><th>AIPW</th><th>AIPW error</th><th>verdict</th></tr>";
+  const tol=Math.max(0.12,Math.abs(D.sate)*0.06);
+  G.forEach((g,i)=>{
+    const err=g.aipw-D.sate, good=Math.abs(err)<=tol;
+    h+=`<tr class="${good?"win":"lose"}"><td style="text-align:left">${labs[i]}</td><td style="text-align:left">${labs2[i]}</td><td>${g.ipw.toFixed(4)}</td><td>${g.gcomp.toFixed(4)}</td><td><b>${g.aipw.toFixed(4)}</b></td><td>${err>=0?"+":""}${err.toFixed(4)}</td><td>${good?"✅ recovers τ":"❌ biased"}</td></tr>`;
+  });
+  h+=`<tr><td style="text-align:left" colspan="4"><b>true ATE, known by construction</b></td><td><b>${D.sate.toFixed(4)}</b></td><td>0.0000</td><td>the answer key</td></tr>`;
+  el("dTable").innerHTML=h;
+}
+function drSens(){
+  const D=R3.data, r=R3.res; if(!D) return;
+  const est=Math.abs(r.aipw), sdY=sdev(D.Y), ev=eValue(r.aipw,sdY);
+  let h="<tr><th>λ (both arrows)</th><th>bias it would leave</th><th>estimate after removing it</th><th>would it survive?</th></tr>";
+  for(const l of [0.25,0.5,1.0,1.5,2.0,3.0]){
+    const b=sensitivityBias(r.e,l,l,R3.pU), after=r.aipw-Math.sign(r.aipw||1)*b;
+    const survives=Math.abs(after)>0.25*Math.max(0.1,est);
+    h+=`<tr class="${survives?"win":"lose"}"><td>${l.toFixed(2)}</td><td>${b.toFixed(4)}</td><td>${after.toFixed(4)}</td><td>${survives?"✅ effect remains":"❌ explained away"}</td></tr>`;
+  }
+  const star=sensitivityLambdaStar(r.e,est,R3.pU,8);
+  h+=`<tr><td style="text-align:left"><b>λ* — exactly enough to erase it</b></td><td>${est.toFixed(4)}</td><td>0.0000</td><td><b>${star.capped?"λ &gt; 8 needed":"λ* = "+star.lam.toFixed(3)}</b></td></tr>`;
+  h+=`<tr><td style="text-align:left">E-value (approx, RR ≈ exp(0.91·d))</td><td>d = ${ev.d.toFixed(3)}</td><td>RR ≈ ${ev.rr.toFixed(3)}</td><td>E ≈ ${ev.ev.toFixed(3)}</td></tr>`;
+  el("dSens").innerHTML=h;
+}
+function drReport(){
+  const D=R3.data, r=R3.res, G=R3.grid; if(!D) return;
+  el("dEst").textContent=r.aipw.toFixed(3);
+  el("dCi").textContent = R3.boot&&R3.boot.ok ? "["+R3.boot.lo.toFixed(2)+", "+R3.boot.hi.toFixed(2)+"]" : "±"+(1.96*r.aipwSE).toFixed(3);
+  const star=sensitivityLambdaStar(r.e,Math.abs(r.aipw),R3.pU,8);
+  el("dLam").textContent = star.capped ? "λ > 8" : star.lam.toFixed(2);
+  el("dEv").textContent = eValue(r.aipw,sdev(D.Y)).ev.toFixed(2);
+  const tol=Math.max(0.12,Math.abs(D.sate)*0.06);
+  const good=G.filter(g=>Math.abs(g.aipw-D.sate)<=tol).length;
+  const badCell=G[3], err=r.aipw-D.sate;
+  if(R3.psKind==="wrong"&&R3.omKind==="wrong")
+    setDiag(el("dDiag"),"diag-bad","❌ Both models are wrong — and this is the one cell where doubly robust is not.",
+      `AIPW returns <b>${r.aipw.toFixed(4)}</b> against a truth of <b>${D.sate.toFixed(4)}</b>, an error of <b>${err.toFixed(4)}</b>. "Doubly robust" has always meant <em>one</em> of two models may be wrong, never both — the guarantee is an <code>OR</code>, and it gets quoted as though it were magic. Plain IPW with the wrong score is off one way (${G[3].ipw.toFixed(3)}), g-computation with the wrong outcome model off another (${G[3].gcomp.toFixed(3)}), and AIPW splits the difference badly rather than well. Flip either toggle back to ✅ and watch it snap onto the truth. Worth stressing what "wrong" means here: the misspecified models see <code>W₁ = exp(X₁/2)</code> and <code>W₂ = X₂/(1+exp(X₁))+10</code>, which contain <em>exactly the same information</em> as X₁ and X₂. Nothing is unmeasured. Only the functional form is wrong, and that is enough.`);
+  else if(good>=3&&R3.psKind==="correct"&&R3.omKind==="correct")
+    setDiag(el("dDiag"),"diag-good",`🛡 ${good} of 4 cells recover the true effect — the "either" is doing real work.`,
+      `On this one dataset: both models right gives <b>${G[0].aipw.toFixed(4)}</b>; only the propensity model right, <b>${G[1].aipw.toFixed(4)}</b>; only the outcome model right, <b>${G[2].aipw.toFixed(4)}</b>; neither, <b>${G[3].aipw.toFixed(4)}</b>. The truth is <b>${D.sate.toFixed(4)}</b>. The mechanism, stated precisely: if <code>e</code> is right then <code>E[T/e − 1 | X] = 0</code> and the correction terms average away regardless of the outcome model; if <code>m</code> is right the residuals average to zero given X and the corrections vanish regardless of the propensity model. Either way one half sterilises the other's mistake. ${R3.boot&&R3.boot.ok?`The bootstrap 95% interval is <b>[${R3.boot.lo.toFixed(3)}, ${R3.boot.hi.toFixed(3)}]</b> from ${R3.boot.B} resamples, against a free influence-function SE of ${r.aipwSE.toFixed(4)}`:`Bootstrap the interval to see the price — the free influence-function SE is already <b>${r.aipwSE.toFixed(4)}</b>`}. Then remember the λ slider: none of this touches unmeasured confounding, and <b>λ ≈ ${star.capped?">8":star.lam.toFixed(2)}</b> would erase the whole result.`);
+  else
+    setDiag(el("dDiag"),"diag-info",`🛡 One model is misspecified — and AIPW is still within ${Math.abs(err).toFixed(4)} of the truth.`,
+      `The ${R3.psKind==="wrong"?"propensity":"outcome"} model is fitted on the distorted covariates and is genuinely wrong; the ${R3.psKind==="wrong"?"outcome":"propensity"} model is correct. AIPW returns <b>${r.aipw.toFixed(4)}</b> against <b>${D.sate.toFixed(4)}</b>. Look at the single-model estimators in the same row: plain IPW gives <b>${(R3.psKind==="wrong"?G[2].ipw:G[1].ipw).toFixed(4)}</b> and g-computation <b>${(R3.psKind==="wrong"?G[2].gcomp:G[1].gcomp).toFixed(4)}</b> — one is badly off and AIPW has quietly leaned on the other. A subtler reason to prefer it even when both models look fine: the AIPW error depends on the <em>product</em> of the two errors, so two mediocre models beat one excellent one.`);
+}
+function drWire(){
+  const bind=(id,vid,f,g,refit)=>{ const e=el(id); e.oninput=()=>{ const v=parseFloat(e.value); f(v); el(vid).textContent=g(v); if(refit===false){ drDraw(); drSens(); drReport(); } else { R3.boot=null; drFit(); } }; };
+  bind("dNs","dNsV",v=>R3.n=v,v=>v);
+  bind("dGs","dGsV",v=>R3.conf=v/100,v=>(v/100).toFixed(2));
+  bind("dEs","dEsV",v=>R3.eps=v/1000,v=>(v/1000).toFixed(3));
+  bind("dLs","dLsV",v=>R3.lam=v/100,v=>(v/100).toFixed(2),false);
+  bind("dPu","dPuV",v=>R3.pU=v/100,v=>(v/100).toFixed(2),false);
+  bind("dBs","dBsV",v=>R3.B=v,v=>v,false);
+  bind("dZs","dZsV",v=>R3.seed=v,v=>v);
+  el("dRoll").onclick=()=>{ R3.seed=1+((R3.seed*29+11)%99); el("dZs").value=R3.seed; el("dZsV").textContent=R3.seed; R3.boot=null; drFit(); };
+  el("dPs").onclick=()=>{ R3.psKind=R3.psKind==="correct"?"wrong":"correct"; drSyncBtns(); R3.boot=null; drFit(); };
+  el("dOm").onclick=()=>{ R3.omKind=R3.omKind==="correct"?"wrong":"correct"; drSyncBtns(); R3.boot=null; drFit(); };
+  el("dGrid").onclick=()=>{ R3.grid=drGrid(R3.data,{eps:R3.eps,K:5,caliper:0.2}); drDraw(); drTable(); drReport(); };
+  el("dBoot").onclick=()=>{
+    const b=el("dBoot"); b.textContent="🥾 resampling…"; b.disabled=true;
+    setTimeout(()=>{ R3.boot=bootstrapATE(R3.data,{psKind:R3.psKind,omKind:R3.omKind,eps:R3.eps},R3.B,R3.seed);
+      b.textContent="🥾 Bootstrap the interval"; b.disabled=false; drDraw(); drReport(); },20);
+  };
+}
+function drSyncBtns(){
+  el("dPs").textContent="propensity model: "+(R3.psKind==="correct"?"✅ correct":"❌ misspecified");
+  el("dOm").textContent="outcome model: "+(R3.omKind==="correct"?"✅ correct":"❌ misspecified");
+  el("dPs").classList.toggle("on",R3.psKind==="correct");
+  el("dOm").classList.toggle("on",R3.omKind==="correct");
+}
+
+/* ================= module switching ================= */
+function showMod(m){
+  document.querySelectorAll("#subnav .subnav-btn").forEach(b=>b.classList.toggle("on",b.dataset.mod===m));
+  document.querySelectorAll(".mod").forEach(d=>d.classList.add("hidden"));
+  el("mod-"+m).classList.remove("hidden");
+}
+document.querySelectorAll("#subnav .subnav-btn").forEach(b=>b.onclick=()=>showMod(b.dataset.mod));
+
+cfWire(); psWire(); drWire();
+cfSyncBtns(); drSyncBtns();
+cfFit(); psFit(); drFit();
+showMod("cf");
+
+// ================= UNDERSTAND step engine =================
+const STEPS = [
+ { title:"1. A different question, not a harder version of the same one",
+   why:"Every model in this series so far has answered a question of the form 'given these features, what value of y should I expect?'. That is a question about the world as it is, and a model that answers it well is allowed to lean on anything correlated with the answer — the ice-cream sales column may predict drownings beautifully and it is not wrong to use it, because nobody is proposing to close the ice-cream shops. Causal inference asks something structurally different: what would happen to y if I reached in and SET the treatment, leaving everything upstream alone? That question is not answerable from the joint distribution of the data at all, no matter how much of it you have and no matter how flexible your model is, because two completely different causal structures can generate exactly the same joint distribution. The extra thing you need is not more data. It is an assumption about how the treatment came to be assigned, and that assumption has to come from outside the dataset.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">PREDICTION:&nbsp;&nbsp;E[Y | X = x]<br>&nbsp;&nbsp;"among people who happen to have x, what is y?"<br>&nbsp;&nbsp;→ use every correlated column you can find ✅<br><br>CAUSATION:&nbsp;&nbsp;E[Y | do(T = 1)] − E[Y | do(T = 0)]<br>&nbsp;&nbsp;"if I SET the treatment, what changes?"<br>&nbsp;&nbsp;→ not a function of the joint distribution alone ❌<br><br>same data · two causal structures · same likelihood<br>the tie-break comes from ASSUMPTIONS, not from n</div>`,
+   code:`# a model with a great R^2 and a useless answer
+model.fit(X, y)            # ice_cream_sales predicts drownings, r = 0.9
+model.predict(x_new)       # fine! nobody is intervening on ice cream.
+
+# the causal question is not the same object
+# E[Y | do(T=1)] - E[Y | do(T=0)]      <-- what a policy would achieve
+# E[Y | T=1]    - E[Y | T=0]           <-- what your GROUP BY returns
+# these differ by the confounding bias, and no algorithm can tell them apart` },
+
+ { title:"2. Potential outcomes, and the one that is always missing",
+   why:"Rubin's framing is the cleanest way in. Every unit i has two potential outcomes: Y_i(1), what would happen if it were treated, and Y_i(0), what would happen if it were not. Both are properties of the unit that exist before you do anything — they are not predictions, they are the two branches of a counterfactual. The causal effect for that unit is Y_i(1) − Y_i(0). And then the trap closes: you observe Y_i = T_i·Y_i(1) + (1−T_i)·Y_i(0), which is exactly one of the two. The other is missing, permanently, for everybody, and no amount of data collection recovers it because it refers to a world that did not happen. Holland called this the fundamental problem of causal inference, and it reframes the whole field as a missing-data problem with a 50% missingness rate that is guaranteed by physics rather than by carelessness. Which is oddly liberating, because missing-data problems have a well-developed toolkit, and every method on this page is a way of imputing the column you cannot see.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">unit&nbsp;&nbsp;&nbsp;T&nbsp;&nbsp;&nbsp;Y(0)&nbsp;&nbsp;&nbsp;Y(1)&nbsp;&nbsp;&nbsp;effect<br>&nbsp;&nbsp;1&nbsp;&nbsp;&nbsp;1&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dc2626">?</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;8.2&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dc2626">?</span><br>&nbsp;&nbsp;2&nbsp;&nbsp;&nbsp;0&nbsp;&nbsp;&nbsp;&nbsp;5.1&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dc2626">?</span>&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dc2626">?</span><br>&nbsp;&nbsp;3&nbsp;&nbsp;&nbsp;1&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dc2626">?</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;6.7&nbsp;&nbsp;&nbsp;&nbsp;<span style="color:#dc2626">?</span><br><br>consistency:&nbsp;&nbsp;Y = T·Y(1) + (1−T)·Y(0)<br>exactly HALF the table is unobservable, always<br><br>→ causal inference IS a missing-data problem</div>`,
+   code:`# the individual effect is never identified. the AVERAGE can be.
+ATE = mean(Y1 - Y0)      # every row of this needs an imputed column
+
+# on THIS page both columns are constructed, so there is an answer key:
+y0 = b0 + b1*x1 + b2*x2 + sigma*eps
+y1 = y0 + tau                       # SAME eps -> effect is exactly tau
+Y  = y1 if t else y0                # only one is revealed to the estimators
+# sate = mean(y1 - y0) == tau, to machine precision. that is the scoreboard.` },
+
+ { title:"3. Name your estimand before you touch the data",
+   why:"There are at least three distinct numbers in play and confusing them causes more wasted argument than any modelling choice. The ATE is E[Y(1) − Y(0)] averaged over everybody, which is what a policy applied to the whole population would achieve. The ATT is E[Y(1) − Y(0) | T=1], averaged over the people who actually got treated, which is what 'was this programme worth running for the people we ran it on' means. The ATU is the mirror image. When the effect is constant they coincide; when the effect varies with who you are — and it usually does — they can differ substantially, and this page shows it live: switch on a heterogeneous effect and the ATE sits at 2.00 while the ATT sits at 2.59. Now notice that different methods target different estimands by construction. Nearest-neighbour matching pairs treated units to controls and therefore estimates the ATT; IPW with 1/e and 1/(1−e) weights estimates the ATE; weighting by e/(1−e) instead estimates the ATT. Nobody ever chose that on purpose, they chose a method.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ATE&nbsp;&nbsp;E[Y(1)−Y(0)]&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;everybody<br>ATT&nbsp;&nbsp;E[Y(1)−Y(0) | T=1]&nbsp;the treated<br>ATU&nbsp;&nbsp;E[Y(1)−Y(0) | T=0]&nbsp;the untreated<br><br>measured live on this page with a heterogeneous effect:<br>&nbsp;&nbsp;ATE 1.997&nbsp;&nbsp;·&nbsp;&nbsp;ATT 2.590<br>&nbsp;&nbsp;matching → 2.330&nbsp;&nbsp;(nearer the ATT)<br>&nbsp;&nbsp;AIPW&nbsp;&nbsp;&nbsp;&nbsp; → 1.996&nbsp;&nbsp;(the ATE)<br><br>the method silently picks the estimand for you</div>`,
+   code:`# IPW weights decide the estimand. this is not a tuning knob, it is the QUESTION.
+w_ate = T/e + (1-T)/(1-e)            # -> ATE
+w_att = T   + (1-T)*e/(1-e)          # -> ATT  (treated keep weight 1)
+w_ato = T*(1-e) + (1-T)*e            # -> ATO, the "overlap weights"
+
+# matching treated -> control estimates the ATT.
+# matching in BOTH directions estimates the ATE.
+# reviewers rarely ask which one you did. do it anyway.` },
+
+ { title:"4. Confounding, drawn as structure rather than described as a vibe",
+   why:"Confounding has a precise structural definition, and once you see it as a graph it stops being a vague warning. Draw an arrow from X to T because sicker patients are more likely to be prescribed the drug, and an arrow from X to Y because sicker patients do worse regardless. Now there are two paths from T to Y: the causal one you want, T → Y, and the back-door path T ← X → Y that carries association without causation. Your GROUP BY sums both. Algebraically the naive difference decomposes into the ATT plus E[Y(0)|T=1] − E[Y(0)|T=0] — the gap between what would have happened to the two groups anyway. That second term is confounding, exactly and entirely, and this page computes it directly from the potential outcomes: 1.3701 at a confounding strength of 1.0. The crucial and under-appreciated property is that it does not shrink with n. Sampling error is O(1/√n); bias is O(1). Ten million rows gives you a very tight confidence interval centred on the wrong number.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;X&nbsp;&nbsp;(severity)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↙&nbsp;&nbsp;&nbsp;↘<br>&nbsp;&nbsp;&nbsp;&nbsp;T&nbsp;&nbsp;──→&nbsp;&nbsp;Y<br>&nbsp;&nbsp;(drug)&nbsp;&nbsp;&nbsp;(death)<br><br>path 1&nbsp;&nbsp;T → Y&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;the effect ✅<br>path 2&nbsp;&nbsp;T ← X → Y&nbsp;&nbsp;the BACK DOOR ❌<br><br>naive = ATT + { E[Y(0)|T=1] − E[Y(0)|T=0] }<br>measured here: 3.3701 = 2.0000 + 1.3701<br><br>bias is O(1). noise is O(1/√n). n does not help.</div>`,
+   code:`# block the back door by conditioning on X (the back-door criterion)
+#   sum_x  ( E[Y|T=1,X=x] - E[Y|T=0,X=x] ) * P(X=x)
+#
+# WARNING: "adjust for everything" is wrong and can make things worse.
+#   COLLIDER   T -> C <- Y      conditioning on C OPENS a path. never adjust.
+#   MEDIATOR   T -> M -> Y      conditioning on M removes part of the EFFECT.
+#   instrument Z -> T           adjusting amplifies any residual bias.
+# you need the graph, not the correlation matrix. more covariates != safer.` },
+
+ { title:"5. Randomisation — why the gold standard is gold",
+   why:"If you assign treatment by a coin flip, the arrow from X into T is gone — not blocked, not adjusted for, gone. Then T is independent of the potential outcomes by construction, and it is independent of every confounder simultaneously, including the ones you never thought of, never measured, and could not have named. That last clause is the whole value proposition, and it is why no observational method dominates a trial: propensity methods handle the confounders you measured, and randomisation handles all of them. Watch it on this page — the same naive difference in means goes from 3.3701 to 2.0078 when you flip the randomise toggle, with no covariates involved anywhere in the calculation. Two caveats keep it honest. Randomisation buys unbiasedness in expectation, not balance in your particular sample, so a single small trial can still be unlucky and blocking or stratified randomisation is worth the trouble. And the estimand is the population you enrolled, which is why trial results and real-world effects diverge so often.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">observational:&nbsp;&nbsp;X ──→ T ──→ Y&nbsp;&nbsp;&nbsp;&nbsp;bias 1.3701<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└────────↗<br><br>randomised:&nbsp;&nbsp;&nbsp;&nbsp;X&nbsp;&nbsp;✂&nbsp;&nbsp;T ──→ Y&nbsp;&nbsp;&nbsp;&nbsp;bias 0.0078<br><br>P(T=1|X) = 0.5 for everyone<br>⇒ (Y(0),Y(1)) ⟂ T&nbsp;&nbsp;&nbsp;"exchangeability"<br>⇒ E[Y|T=1] − E[Y|T=0] = ATE<br><br>and it holds for confounders you never MEASURED<br>which is the part no adjustment method can match</div>`,
+   code:`# the trial
+t = 1 if rng.random() < 0.5 else 0        # depends on NOTHING
+ate = Y[t==1].mean() - Y[t==0].mean()     # unbiased. that is the whole method.
+
+# still true things worth saying out loud:
+#  - unbiased IN EXPECTATION. one small trial can still be unlucky.
+#    -> block / stratify on strong prognostic covariates, then it cannot be.
+#  - covariate adjustment in an RCT is for PRECISION, not bias. pre-specify it.
+#  - non-compliance turns it into an intention-to-treat estimand. say which.` },
+
+ { title:"6. Assumption one: conditional ignorability — and it is untestable",
+   why:"When you cannot randomise, you assume something that would have been true if you had: that within levels of the covariates you measured, treatment is as good as random. Formally (Y(0),Y(1)) ⟂ T | X. This is the assumption every method on this page rests on, it is the assumption that turns an association into an effect, and there is no test for it. None. Not a residual plot, not a goodness-of-fit statistic, not a cross-validated score — the quantity you would need to check it is the counterfactual you do not have. What makes it genuinely dangerous is that violations are silent and consistent. Hide one confounder on this page and IPW, matching, stratification, g-computation and AIPW all move together to about 0.82 against a truth of 2.00, agreeing with one another to within 0.01, while the balance table on the covariates you did keep looks immaculate. Cross-method agreement is often reported as a robustness check. It is not one. It only means they share an assumption.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">(Y(0), Y(1)) ⟂ T | X<br>"within levels of X, treatment is as good as random"<br><br>hide ONE confounder on this page:<br>&nbsp;&nbsp;IPW&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0.821<br>&nbsp;&nbsp;g-comp&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0.817&nbsp;&nbsp;&nbsp;truth 2.000<br>&nbsp;&nbsp;AIPW&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0.816<br>&nbsp;&nbsp;balance on X₁&nbsp;&nbsp;✅ perfect<br><br>they agree to 0.005 and they are ALL WRONG<br>agreement is not evidence — it is a SHARED assumption</div>`,
+   code:`# there is no test. these are the honest substitutes:
+# 1. negative control outcome: something the treatment CANNOT affect.
+#    a non-zero "effect" there is confounding you did not remove.
+# 2. negative control exposure: a treatment that cannot affect this outcome.
+# 3. sensitivity analysis: how strong must an unmeasured U be to erase this?
+# 4. draw the DAG and defend each missing arrow OUT LOUD, in the paper.
+
+# what is NOT a test of ignorability:
+#   a good balance table   (only covers what you measured)
+#   a high AUC             (that is a POSITIVITY problem, not a good sign)
+#   methods agreeing       (they share the assumption)` },
+
+ { title:"7. Assumption two: positivity — everybody must have had a chance",
+   why:"To average a contrast over a covariate value you need both arms to be populated at that value: 0 < e(x) < 1 for every x in the population you are averaging over. If some group was never treated — the drug is simply not given to people over eighty — then E[Y(1)|X=over eighty] is not estimable and any number your model returns there is extrapolation dressed as inference. Unlike ignorability, this one is visible: plot the overlap of the propensity scores and the hole is right there. Its numerical signature is dramatic. Push the overlap slider on this page and the smallest score reaches 2.7e−7, the largest inverse-probability weight reaches 168, the Kish effective sample size falls to 189 out of 2000 rows, and Horvitz–Thompson and Hájek — which differ only in their denominator — split apart to 1.52 versus 2.14 against a truth of 2.00. That divergence is the best cheap alarm in the toolkit. The fixes all shrink the question: trim the tails, use overlap weights, or restrict to the region of common support and say so.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">0 &lt; e(x) &lt; 1&nbsp;&nbsp;for all x you average over<br><br>break it and watch:<br>&nbsp;&nbsp;min e(x)&nbsp;&nbsp;&nbsp;2.7e−7<br>&nbsp;&nbsp;max weight&nbsp;&nbsp;×168<br>&nbsp;&nbsp;Kish ESS&nbsp;&nbsp;&nbsp;189 of 2000 rows&nbsp;&nbsp;(9.4%)<br>&nbsp;&nbsp;HT&nbsp;&nbsp;&nbsp;&nbsp;1.516&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;truth 2.000<br>&nbsp;&nbsp;Hajek 2.143<br><br>HT and Hajek differ ONLY in the denominator.<br>if they disagree, a few rows own your answer.</div>`,
+   code:`ess = (w.sum() ** 2) / (w ** 2).sum()      # Kish. print it. every time.
+
+# three honest repairs, all of which CHANGE THE POPULATION:
+e = np.clip(e, 0.01, 0.99)                 # trimming: bias for variance
+w_overlap = T*(1-e) + (1-T)*e              # overlap weights: max weight is 1
+keep = (e > lo) & (e < hi)                 # common support, and REPORT the n
+
+# a propensity model with AUC 0.95 is not a triumph, it is a positivity FAILURE.
+# it means treatment was near-deterministic and there is nothing to compare.` },
+
+ { title:"8. Assumption three: SUTVA, and the one nobody checks",
+   why:"The stable unit treatment value assumption bundles two claims that are so easy to state that they get skipped. First, no interference: my outcome depends on my treatment, not on yours. Vaccinate half a school and the unvaccinated half gets fewer infections too, so your control group was treated by your treatment group and the measured effect is an underestimate of the individual effect and an overestimate of nothing in particular. Marketplace experiments break it constantly — raise prices for half the sellers and the other half see more demand. The second claim is consistency, or 'no hidden versions of treatment': Y = T·Y(1) + (1−T)·Y(0) presumes there is one well-defined thing called treatment. Ask for the causal effect of 'obesity' on mortality and the question quietly contains a dozen different interventions — diet, surgery, exercise, a drug — with different effects, so the estimand is not merely hard to estimate, it is not defined. Hernán's rule of thumb is the sharpest tool here: if you cannot describe the randomised trial you would have run, you do not have an estimand yet.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">SUTVA = no interference + no hidden versions<br><br>INTERFERENCE breaks it:<br>&nbsp;&nbsp;vaccines · social networks · marketplace pricing<br>&nbsp;&nbsp;→ your control group was treated by your treated group<br><br>HIDDEN VERSIONS break it:<br>&nbsp;&nbsp;"effect of obesity" — diet? surgery? drug? which?<br>&nbsp;&nbsp;→ the estimand is not hard, it is UNDEFINED<br><br>the test:&nbsp;&nbsp;describe the trial you would have run.<br>can't? then there is no causal question yet.</div>`,
+   code:`# interference is a design problem, not an estimator problem
+#   cluster randomisation: randomise SCHOOLS, not pupils
+#   switchback / time-sliced designs for marketplaces
+#   exposure mappings: model the effect of "fraction of my neighbours treated"
+
+# hidden versions are a DEFINITION problem
+#   bad : "effect of obesity on mortality"
+#   good: "effect of a 12-month GLP-1 agonist vs placebo on 5-year mortality"
+# if the treatment cannot be assigned, it cannot be the T in Y(1) - Y(0).` },
+
+ { title:"9. The propensity score — one number that carries all the confounding",
+   why:"Rosenbaum and Rubin's 1983 theorem is one of the genuinely surprising results in statistics. Define e(x) = P(T=1|X=x), the probability of being treated given what you know. Then if treatment is ignorable given the whole covariate vector X, it is also ignorable given the single scalar e(X); and X ⟂ T | e(X). Read that again — among units with the same propensity score, the covariate distributions are the same in both arms. However many covariates you had, you now have one number, and units sharing it are exchangeable in expectation. It is a dimension-reduction theorem with the balance built into it. This page demonstrates it directly rather than citing it: the marginal standardised mean difference on X₁ is 0.977, and the mean within-stratum SMD across eight strata of the fitted score is 0.121. Two warnings. The true score is unknown so you fit it, and a misspecified score does not balance. And judge it by balance, never by AUC — a score that predicts treatment perfectly has told you there is no overlap and nothing to compare.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">e(x) = P(T = 1 | X = x)<br><br>ROSENBAUM–RUBIN (1983):<br>&nbsp;&nbsp;if&nbsp;&nbsp;(Y0,Y1) ⟂ T | X<br>&nbsp;&nbsp;then (Y0,Y1) ⟂ T | e(X)&nbsp;&nbsp;&nbsp;← ONE scalar<br>&nbsp;&nbsp;and&nbsp;&nbsp;X ⟂ T | e(X)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;← "balancing score"<br><br>measured here, X₁:<br>&nbsp;&nbsp;marginal |SMD| 0.977<br>&nbsp;&nbsp;within strata of e(x)&nbsp;&nbsp;0.121&nbsp;&nbsp;(8 strata)<br><br>judge it on BALANCE. AUC is not a virtue here.</div>`,
+   code:`# fit it with maximum likelihood -- IRLS, i.e. Newton on the log-likelihood
+# dl/db = X'(y - p)        d2l/db2 = -X'WX,   W = diag(p(1-p))
+beta += solve(X.T @ W @ X + lam*I, X.T @ (y - p))
+
+# two guards that matter in real data:
+#   ridge lam         -- separation makes X'WX singular
+#   trust region      -- unguarded Newton sends a coefficient to 1e100
+#
+# TEST IT: at the fitted beta, dl/db == lam*beta (stationarity of the penalised
+# objective). check the gradient by CENTRAL FINITE DIFFERENCES on UNTRAINED
+# weights -- at convergence the gradient is ~0 and you measure only round-off.` },
+
+ { title:"10. Matching and stratification — spending the score, and the bill",
+   why:"With a score in hand there are two intuitive ways to spend it. Matching pairs each treated unit with the nearest control on the logit of the score (the logit, because it stretches the tails where the raw score is compressed), optionally within a caliper of about 0.2 standard deviations. It produces something that looks and feels like a small trial, which is its great virtue — you can show a reviewer the matched table. It also quietly deletes every treated unit with no partner, and those are precisely the units least like any control, so the estimand shifts from the ATT to the ATT among the matchable and the paper should say so. Stratification does the same job by sorting once: cut the score into quantiles, take the within-stratum contrast, weight by stratum size. Cochran's classic result is that five strata remove around 90% of the bias; on this page five strata take a bias of 1.37 down to about 0.06. Push K higher for less residual bias until strata get thin enough to contain only one arm, at which point the estimator starts silently discarding them.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">MATCHING&nbsp;&nbsp;→ ATT, among the MATCHABLE<br>&nbsp;&nbsp;match on logit(e), caliper 0.2 SD<br>&nbsp;&nbsp;with replacement:&nbsp;&nbsp;less bias, more variance<br>&nbsp;&nbsp;without:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;order-dependent, cleaner story<br>&nbsp;&nbsp;<span style="color:#dc2626">every dropped treated unit changes the question</span><br><br>STRATIFICATION → ATE<br>&nbsp;&nbsp;K = 5 removes ~90% of the bias (Cochran, 1968)<br>&nbsp;&nbsp;measured here: 1.3701 → ~0.06 residual<br>&nbsp;&nbsp;K too large ⇒ strata with only one arm ⇒ dropped</div>`,
+   code:`# match on the LOGIT, not the raw score: e = 0.98 vs 0.99 is a big gap
+key    = logit(e)
+width  = 0.2 * key.std()               # Austin's caliper, and it is a convention
+
+for i in treated_sorted_desc:
+    j = nearest_available(controls, key[i], width)
+    if j is None:  dropped += 1;  continue      # <-- REPORT THIS NUMBER
+    pairs.append((i, j))
+
+# then CHECK BALANCE on the matched sample, not the original.
+# then report: n treated, n matched, n dropped, SMD before, SMD after.
+# a matched analysis without those five numbers is not reproducible.` },
+
+ { title:"11. IPW — rebuild the trial you could not run",
+   why:"Inverse-probability weighting takes the other road: keep everybody and reweight. Count a treated unit 1/e times and a control 1/(1−e) times, so a treated unit who was very unlikely to be treated stands in for all the people like them who were not. The result is a pseudo-population in which treatment is independent of X by construction, and a plain difference of weighted means is unbiased for the ATE. Horvitz–Thompson divides by n and is exactly unbiased but has fat tails; Hájek divides by the sum of weights, which self-normalises and trades a sliver of bias for a large variance reduction, and is what you should reach for. The essential diagnostic is the Kish effective sample size (Σw)²/Σw². When 2000 rows report an ESS of 189, you have 189 observations and no confidence interval will restore the rest. When HT and Hájek disagree — 1.52 against 2.14 here — stop and look at the weights before you look at the result.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">w = T/e + (1−T)/(1−e)<br><br>HT&nbsp;&nbsp;&nbsp;&nbsp;(1/n)Σ[ TY/e − (1−T)Y/(1−e) ]&nbsp;&nbsp;unbiased, wild<br>Hájek&nbsp;ΣTY/e / ΣT/e − …&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;stabilised ✅<br><br>ESS = (Σw)² / Σw²&nbsp;&nbsp;&nbsp;&nbsp;how many rows you REALLY have<br><br>with constant e, Hájek ≡ the naive estimator, exactly.<br>(asserted to 1e−9 in the test suite — a free sanity check)<br><br>trimming e to [ε, 1−ε] is a real BIAS/VARIANCE trade,<br>not a numerical convenience. report ε and the n you cut.</div>`,
+   code:`w = np.where(T==1, 1/e, 1/(1-e))
+ht    = np.mean(np.where(T==1, Y/e, -Y/(1-e)))
+hajek = np.average(Y[T==1], weights=w[T==1]) - np.average(Y[T==0], weights=w[T==0])
+
+ess = w.sum()**2 / (w**2).sum()
+print(f"ESS {ess:.0f} of {len(w)}   max w {w.max():.1f}   HT-Hajek {ht-hajek:+.3f}")
+
+# the standard error must account for the ESTIMATED weights.
+# using the naive weighted SE is anti-conservative. bootstrap the WHOLE
+# pipeline -- refit the propensity model inside every resample -- or use the
+# influence function. this page does both and they agree: 0.0633 vs 0.0688.` },
+
+ { title:"12. Doubly robust, and the honest list of what you still do not have",
+   why:"AIPW puts the two halves together: start from the g-computation contrast m₁(x) − m₀(x) and add an inverse-probability-weighted correction built from the outcome model's own residuals. If the propensity model is right the correction terms average to zero whatever the outcome model said; if the outcome model is right the residuals average to zero whatever the propensity model said. Two chances, and this page runs all four cells on identical data to show it is real: 1.9985, 1.9654, 1.9995 and then 2.4367 when both are wrong. There is a subtler payoff too — the AIPW error scales with the product of the two models' errors, so two mediocre models beat one excellent one, which is what makes it the natural place to plug machine learning in (with cross-fitting, which is what modern double machine learning is). And then the closing honesty. It does not test ignorability. It does not manufacture overlap. It does not tell you whether your estimand is the one the decision-maker needs. An observational study with a beautiful balance table and a tight doubly-robust interval can still be wrong by any amount at all, and the only defensible response is to say how strong the confounder you missed would have to be.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ψ = m₁ − m₀ + T(Y−m₁)/e − (1−T)(Y−m₀)/(1−e)<br><br>&nbsp;&nbsp;PS ✅ OM ✅ → 1.9985&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;truth 2.0000<br>&nbsp;&nbsp;PS ✅ OM ❌ → 1.9654&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;the weights saved it<br>&nbsp;&nbsp;PS ❌ OM ✅ → 1.9995&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;the model saved it<br>&nbsp;&nbsp;PS ❌ OM ❌ → <span style="color:#dc2626">2.4367</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;nothing left<br><br>error ∝ (PS error) × (OM error)<br>⇒ two mediocre models beat one excellent one<br><br>set m = 0 and AIPW collapses onto HT IPW, exactly.</div>`,
+   code:`psi  = m1 - m0 + np.where(T==1, (Y-m1)/e, -(Y-m0)/(1-e))
+ate  = psi.mean()
+se   = psi.std(ddof=1) / np.sqrt(n)     # influence-function SE, free
+
+# what this still does NOT give you:
+#   - a test for unmeasured confounding                   (there is none)
+#   - overlap you did not have                            (check it yourself)
+#   - the estimand the decision-maker actually needs       (ATE? ATT? policy?)
+#   - external validity                                   (whose population?)
+#
+# in practice:
+#   from econml.dr import LinearDRLearner      # AIPW with ML nuisance models
+#   from dowhy import CausalModel              # identify -> estimate -> refute
+#   Chernozhukov et al., "Double/Debiased ML"  # AIPW + cross-fitting
+#   Hernan & Robins, "Causal Inference: What If"  -- free, and correct.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curS = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curS=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-sky-500 bg-sky-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-sky-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curS-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curS+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curS>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curS+1); },4600); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>

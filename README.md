@@ -65,5 +65,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 
 - [MachineLearningFromZero · Day 61 — ARIMA (Time Series)](https://dev48v.infy.uk/ml/day61-arima-time-series.html) — `day61-arima-time-series.html`
 
+- [MachineLearningFromZero · Day 62 — Causal Inference](https://dev48v.infy.uk/ml/day62-causal-inference.html) — `day62-causal-inference.html`
+
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
