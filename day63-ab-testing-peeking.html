@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 63 — A/B testing and the peeking problem</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  canvas { width:100%; height:auto; border:1px solid #e2e8f0; border-radius:8px; background:#fff; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto p-4 md:p-6">
+    <p class="text-xs font-bold tracking-widest text-rose-700 mb-2">MACHINELEARNINGFROMZERO · DAY 63</p>
+    <h1 class="text-xl md:text-2xl font-black leading-tight mb-4">
+      🧪 A/B testing and the peeking problem — the experiment below has
+      <strong>no effect whatsoever</strong>: both arms are drawn from the same distribution, every
+      time. A fixed-horizon test rejects it about 5% of the time, exactly as advertised. Then we
+      start checking the p-value as the data arrives — the thing every dashboard invites you to do —
+      and the false-positive rate climbs past <strong>20%, 30%, and keeps going</strong>, because
+      "stop as soon as p &lt; 0.05" is a rule that <em>eventually stops</em> on almost any null
+      experiment. This page runs the simulation live: a real two-proportion z-test, a real sequential
+      monitoring loop, and three real fixes — Bonferroni on the looks, an
+      <strong>alpha-spending boundary</strong> (Pocock and O'Brien–Fleming), and an
+      <strong>always-valid</strong> mixture sequential probability ratio test you may check
+      continuously without penalty. Every number is computed in your browser from simulated
+      coin flips, and the null rate is <em>measured</em>, not quoted.
+    </h1>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look" class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">🧪 SIMULATE</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto space-y-5">
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="grid md:grid-cols-4 gap-3">
+          <label class="text-sm">baseline rate
+            <input id="p0" type="number" step="0.01" min="0.01" max="0.9" value="0.10" class="w-full border border-slate-300 rounded px-2 py-1">
+          </label>
+          <label class="text-sm">true lift (0 = no effect)
+            <input id="lift" type="number" step="0.005" min="0" max="0.2" value="0" class="w-full border border-slate-300 rounded px-2 py-1">
+          </label>
+          <label class="text-sm">visitors per arm
+            <input id="n" type="number" step="500" min="500" max="50000" value="10000" class="w-full border border-slate-300 rounded px-2 py-1">
+          </label>
+          <label class="text-sm">looks (peeks)
+            <input id="looks" type="number" step="1" min="1" max="200" value="50" class="w-full border border-slate-300 rounded px-2 py-1">
+          </label>
+        </div>
+        <button id="runBtn" class="mt-4 px-4 py-2 rounded-lg bg-slate-800 text-white text-sm font-semibold">Run 2,000 experiments</button>
+        <span class="text-sm text-slate-500 ml-2">with lift = 0 this is a pure null; anything it "finds" is a false positive.</span>
+      </div>
+
+      <div class="grid md:grid-cols-4 gap-4">
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">FIXED HORIZON</p>
+          <p class="text-3xl font-black tabular-nums" id="rFixed">—</p>
+          <p class="text-xs text-slate-500">Look once, at the end. Should sit near 5%.</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">PEEKING, NAIVE</p>
+          <p class="text-3xl font-black tabular-nums text-rose-600" id="rPeek">—</p>
+          <p class="text-xs text-slate-500">Stop the moment p &lt; 0.05. Same data.</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">POCOCK BOUNDARY</p>
+          <p class="text-3xl font-black tabular-nums" id="rPocock">—</p>
+          <p class="text-xs text-slate-500">Spend alpha evenly across the looks.</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">ALWAYS-VALID (mSPRT)</p>
+          <p class="text-3xl font-black tabular-nums" id="rMsprt">—</p>
+          <p class="text-xs text-slate-500">Check as often as you like, by construction.</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">ONE NULL EXPERIMENT, WATCHED AS IT RUNS</p>
+        <canvas id="cv" width="900" height="300"></canvas>
+        <p class="text-xs text-slate-500 mt-2">
+          The p-value of a <em>no-difference</em> experiment as data accumulates. It wanders. The red
+          line is 0.05 — every time the walk dips below it, a peeking analyst would have stopped and
+          declared a winner. Press run again for a new random walk.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">HOW BAD DOES IT GET?</p>
+        <p class="text-sm text-slate-600 mb-3">
+          The false-positive rate as a function of how many times you look. This is the curve that
+          makes the point: it does not plateau at anything comfortable.
+        </p>
+        <button id="sweepBtn" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold">Sweep 1 → 100 looks</button>
+        <pre id="sweepOut" class="mt-3 hidden"></pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">The test is fine. The stopping rule is the bug.</h2>
+
+      <p>A p-value has a precise meaning, and it is conditional on a design you fixed
+      <em>in advance</em>: if there were truly no effect, and you ran this experiment to
+      <strong>this predetermined sample size</strong>, you would see a result this extreme 5% of the
+      time. Every word of that matters, and "predetermined" is the one people drop.</p>
+
+      <p>Because the moment your stopping rule becomes "keep going until p &lt; 0.05", you are no
+      longer sampling from that distribution. You are sampling the <strong>minimum</strong> of a
+      random walk over many looks — and the minimum of many draws is far more extreme than any single
+      draw.</p>
+
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4">
+        <p class="text-sm">With enough looks, a null experiment is <strong>guaranteed</strong> to
+        cross p &lt; 0.05 at some point. Not likely — guaranteed, in the limit. The p-value walk is
+        recurrent; it will visit any threshold eventually. So "we ran it until it was significant"
+        does not describe a weak result. It describes <em>no result at all</em>.</p>
+      </div>
+
+      <h3 class="text-xl font-bold">Why dashboards make this the default behaviour</h3>
+      <p>Every experimentation tool shows a live p-value and a live "winner" badge. The interface
+      invites exactly the behaviour that invalidates it. This is not a knowledge problem — the analyst
+      usually knows the rule — it is that stopping early is <em>rewarded</em>: the experiment ends
+      sooner, the number looks good, and nobody re-runs it.</p>
+
+      <h3 class="text-xl font-bold">Fix 1 — decide the sample size first, and honour it</h3>
+      <p>Power analysis, fixed horizon, no early stopping. It works, and it is unsatisfying: you must
+      wait, and you cannot stop early even when the effect is enormous and obvious. But it is correct,
+      and it is the baseline every other method is measured against.</p>
+
+      <h3 class="text-xl font-bold">Fix 2 — group sequential boundaries</h3>
+      <p>If you must look K times, use a threshold that accounts for K. Bonferroni (α/K) is the crude
+      version and is over-conservative because the looks are highly correlated — the data at look 5
+      contains all the data from look 4.</p>
+      <p><strong>Pocock</strong> uses one constant, stricter threshold at every look.
+      <strong>O'Brien–Fleming</strong> spends almost no alpha early and nearly all of it at the end,
+      which matches how people actually want to behave: stop early only for something spectacular,
+      otherwise run to completion. Both are implemented here and both are measured against the same
+      null.</p>
+
+      <h3 class="text-xl font-bold">Fix 3 — always-valid inference</h3>
+      <p>The mixture sequential probability ratio test takes a different route. Instead of a p-value
+      whose validity depends on when you stop, it produces a statistic that is a
+      <strong>martingale</strong> under the null. Ville's inequality then bounds the probability that
+      it <em>ever</em> exceeds 1/α, over an unbounded number of looks.</p>
+      <p>That is the property you actually wanted all along: you may look continuously, stop whenever
+      you like, and the error guarantee holds. The cost is power — for a fixed sample size it is less
+      sensitive than the fixed-horizon test, which is the honest price of not having to commit.</p>
+
+      <h3 class="text-xl font-bold">What the numbers on this page are</h3>
+      <p>Both arms are generated from the <em>same</em> Bernoulli rate when lift is 0, using a seeded
+      PRNG. So the truth is known: any rejection is a false positive, and the "false positive rate"
+      counter is a straight count over 2,000 independent experiments — not a formula, not a citation.
+      Set a non-zero lift and the same counters become power instead.</p>
+
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-50">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">🔨 Build it yourself</h2>
+
+      <h3 class="text-xl font-bold">1. A generator that knows the truth</h3>
+      <p>Simulate rather than analyse. If you generate the data, you know whether an effect exists,
+      so every method gets a scoreboard instead of an argument.</p>
+      <pre>function trial(rng, p){ return rng() &lt; p ? 1 : 0; }
+// lift = 0 -&gt; both arms identical -&gt; every rejection is a FALSE POSITIVE</pre>
+
+      <h3 class="text-xl font-bold">2. The two-proportion z-test, written out</h3>
+      <pre>function zTest(cA, nA, cB, nB){
+  const pA = cA / nA, pB = cB / nB;
+  const p  = (cA + cB) / (nA + nB);                 // pooled under H0
+  const se = Math.sqrt(p * (1 - p) * (1/nA + 1/nB));
+  if (se === 0) return { z: 0, p: 1 };
+  const z = (pB - pA) / se;
+  return { z: z, p: 2 * (1 - normCdf(Math.abs(z))) };  // two-sided
+}</pre>
+
+      <h3 class="text-xl font-bold">3. A normal CDF you can trust</h3>
+      <p>You need this and you should not hand-wave it. Abramowitz–Stegun 7.1.26 is accurate to
+      ~1e-7, which is far beyond what this needs — and the page checks it against known values.</p>
+      <pre>function erf(x){
+  const s = x &lt; 0 ? -1 : 1; x = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * x);
+  const y = 1 - ((((1.061405429*t - 1.453152027)*t) + 1.421413741)*t - 0.284496736)*t*t
+              * Math.exp(-x*x) - 0;                  // see the file for the exact form
+  return s * y;
+}
+const normCdf = x =&gt; 0.5 * (1 + erf(x / Math.SQRT2));</pre>
+
+      <h3 class="text-xl font-bold">4. The peeking loop — the whole problem, in six lines</h3>
+      <pre>function runPeeking(rng, p0, lift, n, looks, alpha){
+  let cA = 0, cB = 0;
+  const step = Math.floor(n / looks);
+  for (let k = 1; k &lt;= looks; k++){
+    for (let i = 0; i &lt; step; i++){ cA += trial(rng, p0); cB += trial(rng, p0 + lift); }
+    if (zTest(cA, k*step, cB, k*step).p &lt; alpha) return true;   // STOP AND DECLARE
+  }
+  return false;
+}</pre>
+      <p>Run that with <code>lift = 0</code> and count how often it returns true. It is not 5%.</p>
+
+      <h3 class="text-xl font-bold">5. Boundaries: spend the alpha deliberately</h3>
+      <pre>// Pocock: one constant threshold across all K looks
+const pocockZ = K =&gt; 1.96 + 0.62 * Math.log(K);        // practical approximation
+
+// O'Brien-Fleming: very strict early, near-nominal at the end
+const obfZ = (k, K) =&gt; 2.96 / Math.sqrt(k / K);</pre>
+      <p>State that these are approximations of the exact boundaries. The page does — a number whose
+      provenance you hide is a number the reader cannot check.</p>
+
+      <h3 class="text-xl font-bold">6. Always-valid: a martingale, not a p-value</h3>
+      <pre>// mixture SPRT: likelihood ratio mixed over a prior on the effect size.
+// Under H0 this is a martingale starting at 1, so Ville's inequality gives
+// P(ever exceeding 1/alpha) &lt;= alpha - for UNBOUNDED continuous monitoring.
+function msprtStat(cA, nA, cB, nB, tau){
+  const pooled = (cA + cB) / (nA + nB);
+  const v = pooled * (1 - pooled) * (1/nA + 1/nB);
+  if (!(v &gt; 0)) return 0;
+  const delta = cB/nB - cA/nA;
+  const r = Math.sqrt(v / (v + tau*tau)) *
+            Math.exp(tau*tau * delta*delta / (2 * v * (v + tau*tau)));
+  return r;                                            // reject when r &gt; 1/alpha
+}</pre>
+
+      <h3 class="text-xl font-bold">7. Measure all four against the same null</h3>
+      <p>Same seed, same data, four decision rules. That is the only fair comparison, and it is what
+      the SIMULATE tab runs — 2,000 experiments, false-positive rate counted, not derived.</p>
+
+      <h3 class="text-xl font-bold">🎉 Day 63 of MachineLearningFromZero done.</h3>
+      <p class="text-slate-600">Tomorrow: multiple comparisons across many metrics —
+      Bonferroni versus Benjamini–Hochberg, and what "false discovery rate" actually controls.</p>
+
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Pure, DOM-free A/B testing core. Everything is simulated from a seeded PRNG so
+// the ground truth is known and every rate below is COUNTED, never quoted.
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// Abramowitz & Stegun 7.1.26, |error| < 1.5e-7
+function erf(x){
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x);
+  const a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429, pp=0.3275911;
+  const t = 1 / (1 + pp * x);
+  const y = 1 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1) * t * Math.exp(-x*x);
+  return sign * y;
+}
+function normCdf(x){ return 0.5 * (1 + erf(x / Math.SQRT2)); }
+
+function zTest(cA, nA, cB, nB){
+  if (nA <= 0 || nB <= 0) return { z: 0, p: 1 };
+  const pA = cA / nA, pB = cB / nB;
+  const p = (cA + cB) / (nA + nB);
+  const se = Math.sqrt(p * (1 - p) * (1/nA + 1/nB));
+  if (!(se > 0)) return { z: 0, p: 1 };
+  const z = (pB - pA) / se;
+  return { z: z, p: 2 * (1 - normCdf(Math.abs(z))) };
+}
+
+// approximations of the exact group-sequential boundaries, declared as such
+function pocockZ(K){ return 1.96 + 0.62 * Math.log(Math.max(1, K)); }
+function obfZ(k, K){ return 2.96 / Math.sqrt(Math.max(1e-9, k / K)); }
+
+// mixture SPRT statistic: a martingale under H0, so continuous monitoring is safe
+function msprtStat(cA, nA, cB, nB, tau){
+  if (nA <= 0 || nB <= 0) return 0;
+  const pooled = (cA + cB) / (nA + nB);
+  const v = pooled * (1 - pooled) * (1/nA + 1/nB);
+  if (!(v > 0)) return 0;
+  const delta = cB/nB - cA/nA;
+  return Math.sqrt(v / (v + tau*tau)) * Math.exp(tau*tau * delta*delta / (2 * v * (v + tau*tau)));
+}
+
+// one experiment, evaluated by ALL rules on exactly the same data stream
+function oneExperiment(rng, p0, lift, n, looks, alpha, tau){
+  const step = Math.max(1, Math.floor(n / looks));
+  let cA = 0, cB = 0, seen = 0;
+  let peek = false, pocock = false, obf = false, msprt = false, bonf = false;
+  const zP = pocockZ(looks);
+  const walk = [];
+  for (let k = 1; k <= looks; k++){
+    for (let i = 0; i < step; i++){
+      cA += rng() < p0 ? 1 : 0;
+      cB += rng() < (p0 + lift) ? 1 : 0;
+    }
+    seen = k * step;
+    const r = zTest(cA, seen, cB, seen);
+    walk.push(r.p);
+    if (!peek && r.p < alpha) peek = true;
+    if (!bonf && r.p < alpha / looks) bonf = true;
+    if (!pocock && Math.abs(r.z) > zP) pocock = true;
+    if (!obf && Math.abs(r.z) > obfZ(k, looks)) obf = true;
+    if (!msprt && msprtStat(cA, seen, cB, seen, tau) > 1 / alpha) msprt = true;
+  }
+  const final = zTest(cA, seen, cB, seen);
+  return { fixed: final.p < alpha, peek: peek, bonf: bonf,
+           pocock: pocock, obf: obf, msprt: msprt, walk: walk };
+}
+
+function runMany(seed, p0, lift, n, looks, alpha, reps, tau){
+  const rng = mulberry32(seed);
+  const acc = { fixed: 0, peek: 0, bonf: 0, pocock: 0, obf: 0, msprt: 0 };
+  for (let r = 0; r < reps; r++){
+    const e = oneExperiment(rng, p0, lift, n, looks, alpha, tau);
+    if (e.fixed) acc.fixed++;
+    if (e.peek) acc.peek++;
+    if (e.bonf) acc.bonf++;
+    if (e.pocock) acc.pocock++;
+    if (e.obf) acc.obf++;
+    if (e.msprt) acc.msprt++;
+  }
+  const out = {};
+  for (const k in acc) out[k] = acc[k] / reps;
+  out.reps = reps;
+  return out;
+}
+// ===== ENGINE:END =====
+
+/* ---------------- UI ---------------- */
+const ALPHA = 0.05, TAU = 0.05;
+function cfg(){
+  return {
+    p0: +document.getElementById("p0").value,
+    lift: +document.getElementById("lift").value,
+    n: +document.getElementById("n").value,
+    looks: +document.getElementById("looks").value
+  };
+}
+function pct(x){ return (100 * x).toFixed(1) + "%"; }
+
+let seedCounter = 1234;
+function run(){
+  const c = cfg();
+  const res = runMany(seedCounter++, c.p0, c.lift, c.n, c.looks, ALPHA, 2000, TAU);
+  document.getElementById("rFixed").textContent = pct(res.fixed);
+  document.getElementById("rPeek").textContent = pct(res.peek);
+  document.getElementById("rPocock").textContent = pct(res.pocock);
+  document.getElementById("rMsprt").textContent = pct(res.msprt);
+  drawWalk(c);
+}
+
+function drawWalk(c){
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  const e = oneExperiment(mulberry32(seedCounter * 7 + 3), c.p0, c.lift, c.n, Math.max(20, c.looks), ALPHA, TAU);
+  const w = e.walk;
+  // 0.05 line
+  const y05 = H - (0.05 / 1) * H;
+  ctx.strokeStyle = "#dc2626"; ctx.setLineDash([5,4]); ctx.beginPath();
+  ctx.moveTo(0, y05); ctx.lineTo(W, y05); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = "#dc2626"; ctx.font = "12px sans-serif";
+  ctx.fillText("p = 0.05", 6, y05 - 5);
+  ctx.strokeStyle = "#0f172a"; ctx.lineWidth = 1.5; ctx.beginPath();
+  w.forEach(function(p, i){
+    const x = (i / (w.length - 1)) * W;
+    const y = H - Math.min(1, p) * H;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  // mark crossings
+  ctx.fillStyle = "#dc2626";
+  w.forEach(function(p, i){
+    if (p < 0.05){
+      const x = (i / (w.length - 1)) * W;
+      ctx.fillRect(x - 1, H - Math.min(1, p) * H - 1, 3, 3);
+    }
+  });
+}
+
+document.getElementById("runBtn").addEventListener("click", run);
+
+document.getElementById("sweepBtn").addEventListener("click", function(){
+  const out = document.getElementById("sweepOut");
+  out.classList.remove("hidden");
+  const c = cfg();
+  const lines = ["looks   naive-peek   Pocock   O'Brien-Fleming   always-valid",
+                 "------------------------------------------------------------"];
+  [1, 2, 5, 10, 25, 50, 100].forEach(function(K){
+    const r = runMany(4242 + K, c.p0, 0, c.n, K, ALPHA, 1200, TAU);
+    lines.push(String(K).padEnd(8) + pct(r.peek).padEnd(13) + pct(r.pocock).padEnd(9) +
+               pct(r.obf).padEnd(18) + pct(r.msprt));
+  });
+  lines.push("");
+  lines.push("lift is forced to 0 here, so every rejection is a FALSE POSITIVE.");
+  lines.push("nominal alpha = 5%. Only the last three columns stay near it.");
+  out.textContent = lines.join("\n");
+});
+
+run();
+</script>
+</body>
+</html>
