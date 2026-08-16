@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 64 — Multiple comparisons: FWER vs FDR</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  canvas { width:100%; height:auto; border:1px solid #e2e8f0; border-radius:8px; background:#fff; }
+  td,th { font-size:12px; padding:4px 6px; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto p-4 md:p-6">
+    <p class="text-xs font-bold tracking-widest text-rose-700 mb-2">MACHINELEARNINGFROMZERO · DAY 64</p>
+    <h1 class="text-xl md:text-2xl font-black leading-tight mb-4">
+      🎯 Multiple comparisons — yesterday's page showed one experiment checked many times. This is
+      the other shape of the same problem: <strong>many experiments checked once</strong>. Track 40
+      metrics on an A/B test where <em>nothing</em> changed and you will find a "significant" one
+      about 87% of the time, because 1 − 0.95⁴⁰ is 0.87 — and that number is measured here, not
+      quoted. The fix everyone reaches for is <strong>Bonferroni</strong>, which controls the
+      probability of <em>any</em> false positive (FWER) and is correct, conservative, and often
+      useless: at 40 metrics each test runs at α = 0.00125 and real effects vanish.
+      <strong>Benjamini–Hochberg</strong> controls something different — the expected
+      <em>proportion</em> of your discoveries that are false (FDR) — which is usually the quantity you
+      actually care about when screening. The distinction is not a technicality: at 200 hypotheses
+      with 20 real effects, Bonferroni finds a handful and BH finds most of them, while keeping the
+      false-discovery share near the level you set. Every rate on this page is
+      <strong>counted over simulated experiments whose ground truth is known</strong>.
+    </h1>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look" class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">🎯 SIMULATE</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto space-y-5">
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="grid md:grid-cols-4 gap-3">
+          <label class="text-sm">hypotheses tested
+            <input id="m" type="range" min="5" max="200" value="40" class="w-full">
+            <span id="mV" class="font-bold tabular-nums">40</span>
+          </label>
+          <label class="text-sm">how many are REAL
+            <input id="real" type="range" min="0" max="60" value="0" class="w-full">
+            <span id="realV" class="font-bold tabular-nums">0</span>
+          </label>
+          <label class="text-sm">effect size (z)
+            <input id="eff" type="range" min="10" max="45" value="30" class="w-full">
+            <span id="effV" class="font-bold tabular-nums">3.0</span>
+          </label>
+          <label class="text-sm">experiments
+            <input id="reps" type="number" min="200" max="20000" step="200" value="3000" class="w-full border border-slate-300 rounded px-2 py-1">
+          </label>
+        </div>
+        <p class="text-sm text-slate-600 mt-3">
+          With <strong>0 real effects</strong> every rejection is a false positive, and the first card
+          below is the number that should alarm you.
+        </p>
+      </div>
+
+      <div class="grid md:grid-cols-4 gap-4">
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">ANY FALSE POSITIVE, UNCORRECTED</p>
+          <p class="text-3xl font-black tabular-nums text-rose-600" id="fwerNone">—</p>
+          <p class="text-xs text-slate-500">theory: 1 − 0.95<sup>m</sup> = <span id="theory">—</span></p>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">BONFERRONI</p>
+          <p class="text-3xl font-black tabular-nums" id="fwerBonf">—</p>
+          <p class="text-xs text-slate-500">FWER held at or below 5%</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">HOLM</p>
+          <p class="text-3xl font-black tabular-nums" id="fwerHolm">—</p>
+          <p class="text-xs text-slate-500">same guarantee, uniformly more power</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">BENJAMINI–HOCHBERG</p>
+          <p class="text-3xl font-black tabular-nums" id="fdrBH">—</p>
+          <p class="text-xs text-slate-500">this is FDR, a different quantity — see below</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5 overflow-auto">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">WHAT EACH METHOD ACTUALLY BUYS</p>
+        <table class="w-full">
+          <thead class="text-left text-slate-500">
+            <tr><th>method</th><th>controls</th><th>FWER (any false +)</th><th>FDR (share false)</th><th>power (real effects found)</th><th>discoveries</th></tr>
+          </thead>
+          <tbody id="rows" class="tabular-nums"></tbody>
+        </table>
+        <p class="text-xs text-slate-500 mt-3">
+          Read the last two columns together. A method with no discoveries has a perfect FDR and is
+          worthless; a method with everything has perfect power and is noise.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">THE BH STAIRCASE, ON ONE EXPERIMENT</p>
+        <canvas id="cv" width="900" height="300"></canvas>
+        <p class="text-xs text-slate-500 mt-2">
+          Sorted p-values against the line <em>i</em>·α/<em>m</em>. BH finds the <strong>largest</strong>
+          <em>i</em> whose p-value is under the line and rejects everything up to it — including
+          p-values that individually sit <em>above</em> it. That "reject things that failed their own
+          threshold" step is the part that looks wrong and is the whole method.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">SWEEP THE NUMBER OF HYPOTHESES</p>
+        <button id="sweepBtn" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold">Sweep m = 5 → 200</button>
+        <pre id="sweepOut" class="mt-3 hidden"></pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">Two different questions, two different guarantees</h2>
+
+      <p>Yesterday: one experiment, looked at repeatedly. Today: many experiments, each looked at
+      once. Same underlying failure — more chances to be surprised — but the fixes control
+      genuinely different quantities, and choosing the wrong one is expensive in both directions.</p>
+
+      <div class="bg-slate-100 rounded-xl p-4">
+        <p class="text-sm"><strong>FWER</strong> — P(at least one false positive anywhere). Suits a
+        confirmatory test where a single wrong claim is unacceptable.</p>
+        <p class="text-sm mt-2"><strong>FDR</strong> — E[false discoveries / total discoveries]. Suits
+        screening, where you expect to follow up and a known minority of duds is tolerable.</p>
+      </div>
+
+      <h3 class="text-xl font-bold">Why 40 metrics is 87%</h3>
+      <p>Each test is independently wrong 5% of the time under the null. The chance that
+      <em>none</em> of 40 is wrong is 0.95⁴⁰ ≈ 0.13, so the chance at least one is wrong is
+      <strong>≈ 87%</strong>. That is not a subtle statistical effect — it is near-certainty, and it
+      is why "we tracked 40 metrics and one moved" is not evidence of anything.</p>
+
+      <h3 class="text-xl font-bold">Bonferroni: correct, and often too blunt</h3>
+      <p>Test each hypothesis at α/m. The union bound guarantees FWER ≤ α, and it needs no assumption
+      about dependence, which is why it survives everything. The cost is power: at m = 40 each test
+      runs at α = 0.00125, and a real effect that would have been found comfortably at 0.05 now
+      disappears. The simulation shows exactly how many real effects are lost.</p>
+
+      <h3 class="text-xl font-bold">Holm: strictly better, and free</h3>
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4">
+        <p class="text-sm">Holm's step-down gives the <strong>same</strong> FWER guarantee with
+        <strong>uniformly more power</strong> — it is never worse than Bonferroni and often better,
+        under identical assumptions. There is essentially no reason to use plain Bonferroni once you
+        know Holm exists, and yet Bonferroni is what everyone reaches for.</p>
+      </div>
+
+      <h3 class="text-xl font-bold">Benjamini–Hochberg, and the step that looks wrong</h3>
+      <p>Sort the p-values. Find the largest <em>k</em> with p<sub>(k)</sub> ≤ k·α/m. Reject
+      <strong>all</strong> hypotheses 1…k — including ones whose own p-value exceeds their own
+      threshold.</p>
+      <p>That step feels like cheating and is not. The guarantee is about the <em>proportion</em> of
+      discoveries that are false, not about each one individually, and rejecting the whole prefix is
+      what makes the proportion come out right. The staircase plot on the SIMULATE tab shows it
+      happening.</p>
+
+      <h3 class="text-xl font-bold">FDR is only meaningful if you discover something</h3>
+      <p>Under a complete null — no real effects at all — FDR and FWER coincide, because any
+      discovery is a false one. BH's advantage appears exactly when some effects are real, which is
+      also when the "0 real effects" slider stops being the interesting setting.</p>
+      <p>And a method that rejects nothing reports an FDR of 0. Always read the discovery count
+      alongside it, which is why both columns are in the table.</p>
+
+      <h3 class="text-xl font-bold">Dependence</h3>
+      <p>Plain BH assumes independence or positive dependence. Metrics on the same experiment are
+      usually positively correlated — revenue and conversion move together — so BH is normally fine.
+      Under arbitrary dependence you need <strong>Benjamini–Yekutieli</strong>, which divides by a
+      harmonic factor and costs real power. Knowing which regime you are in matters more than the
+      arithmetic.</p>
+
+      <h3 class="text-xl font-bold">The honest summary</h3>
+      <p>One confirmatory metric decided in advance: no correction needed. A handful of pre-registered
+      metrics where a wrong claim is costly: Holm. Screening hundreds of metrics or features to decide
+      what to investigate: BH. Reporting the raw p-values from 40 metrics and highlighting the small
+      one: not statistics.</p>
+
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-50">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">🔨 Build it yourself</h2>
+
+      <h3 class="text-xl font-bold">1. Generate p-values whose truth you know</h3>
+      <pre>// nulls: p ~ Uniform(0,1) exactly. alternatives: a shifted z, converted to p.
+function experiment(rng, m, nReal, effect){
+  const ps = [], isReal = [];
+  for (let i = 0; i &lt; m; i++){
+    if (i &lt; nReal){
+      const z = effect + gauss(rng);
+      ps.push(2 * (1 - normCdf(Math.abs(z))));
+      isReal.push(true);
+    } else {
+      ps.push(rng());              // the null p-value IS uniform - that is the definition
+      isReal.push(false);
+    }
+  }
+  return { ps, isReal };
+}</pre>
+      <p>Drawing null p-values as uniform is not a shortcut; it is what "p-value under the null"
+      means. If your simulation needs a test statistic to produce them, the test is what you are
+      studying — here the corrections are.</p>
+
+      <h3 class="text-xl font-bold">2. The three corrections</h3>
+      <pre>const uncorrected = (ps, a) =&gt; ps.map(p =&gt; p &lt;= a);
+
+const bonferroni  = (ps, a) =&gt; ps.map(p =&gt; p &lt;= a / ps.length);
+
+function holm(ps, a){
+  const m = ps.length;
+  const order = ps.map((p, i) =&gt; [p, i]).sort((x, y) =&gt; x[0] - y[0]);
+  const out = new Array(m).fill(false);
+  for (let k = 0; k &lt; m; k++){
+    if (order[k][0] &gt; a / (m - k)) break;   // step DOWN, stop at the first failure
+    out[order[k][1]] = true;
+  }
+  return out;
+}
+
+function benjaminiHochberg(ps, a){
+  const m = ps.length;
+  const order = ps.map((p, i) =&gt; [p, i]).sort((x, y) =&gt; x[0] - y[0]);
+  let kMax = -1;
+  for (let k = 0; k &lt; m; k++)
+    if (order[k][0] &lt;= (k + 1) * a / m) kMax = k;   // the LARGEST such k
+  const out = new Array(m).fill(false);
+  for (let k = 0; k &lt;= kMax; k++) out[order[k][1]] = true;  // reject the whole prefix
+  return out;
+}</pre>
+      <p>Note the difference in the loops. Holm <strong>breaks</strong> at the first failure; BH keeps
+      scanning and remembers the last success. Writing BH with a <code>break</code> is the classic
+      bug — it silently turns BH into something weaker and the FDR control quietly stops being what
+      you think.</p>
+
+      <h3 class="text-xl font-bold">3. Measure the two guarantees separately</h3>
+      <pre>let anyFalse = 0, fdrSum = 0, found = 0, realTotal = 0, discoveries = 0;
+for (const trial of trials){
+  const rej = method(trial.ps, alpha);
+  const V = rej.filter((r, i) =&gt; r &amp;&amp; !trial.isReal[i]).length;   // false discoveries
+  const S = rej.filter((r, i) =&gt; r &amp;&amp;  trial.isReal[i]).length;   // true discoveries
+  if (V &gt; 0) anyFalse++;                                          // -&gt; FWER
+  fdrSum += (V + S) ? V / (V + S) : 0;                            // -&gt; FDR
+  found += S; realTotal += trial.isReal.filter(Boolean).length;
+  discoveries += V + S;
+}
+const FWER = anyFalse / trials.length;
+const FDR  = fdrSum   / trials.length;      // EXPECTED PROPORTION, averaged per trial
+const power = realTotal ? found / realTotal : 0;</pre>
+      <p>FDR is an average of ratios, one per experiment, with 0 when nothing is discovered. Pooling
+      all discoveries across trials and dividing once gives a different number that is not FDR.</p>
+
+      <h3 class="text-xl font-bold">4. Check the null against theory first</h3>
+      <pre>// with nReal = 0, the uncorrected FWER must land on 1 - (1-alpha)^m
+const expected = 1 - Math.pow(1 - alpha, m);
+assert(Math.abs(measuredFWER - expected) &lt; 0.02);</pre>
+      <p>If that does not hold, the generator is wrong and every later comparison is meaningless. Pin
+      the simulation to a closed form wherever one exists.</p>
+
+      <h3 class="text-xl font-bold">5. Then check the guarantees hold</h3>
+      <pre>assert(fwer(bonferroni) &lt;= alpha + tol);       // union bound
+assert(fwer(holm)       &lt;= alpha + tol);       // same guarantee
+assert(power(holm)      &gt;= power(bonferroni)); // uniformly more power
+assert(fdr(bh)          &lt;= alpha + tol);       // FDR, not FWER
+assert(power(bh)        &gt;= power(holm));       // the trade BH is making</pre>
+
+      <h3 class="text-xl font-bold">🎉 Day 64 of MachineLearningFromZero done.</h3>
+
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Pure, DOM-free multiple-comparison corrections. Ground truth is generated, so
+// every rate below is COUNTED rather than quoted.
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function erf(x){
+  const sign = x < 0 ? -1 : 1;
+  x = Math.abs(x);
+  const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,pp=0.3275911;
+  const t = 1 / (1 + pp * x);
+  const y = 1 - (((((a5*t + a4)*t) + a3)*t + a2)*t + a1) * t * Math.exp(-x*x);
+  return sign * y;
+}
+function normCdf(x){ return 0.5 * (1 + erf(x / Math.SQRT2)); }
+
+function gauss(rng){
+  let u = 0, v = 0;
+  while (u === 0) u = rng();
+  while (v === 0) v = rng();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+// A null p-value is Uniform(0,1) by definition; alternatives come from a shifted z.
+function experiment(rng, m, nReal, effect){
+  const ps = [], isReal = [];
+  for (let i = 0; i < m; i++){
+    if (i < nReal){
+      const z = effect + gauss(rng);
+      ps.push(2 * (1 - normCdf(Math.abs(z))));
+      isReal.push(true);
+    } else {
+      ps.push(rng());
+      isReal.push(false);
+    }
+  }
+  return { ps: ps, isReal: isReal };
+}
+
+function uncorrected(ps, alpha){
+  return ps.map(function(p){ return p <= alpha; });
+}
+
+function bonferroni(ps, alpha){
+  const t = alpha / ps.length;
+  return ps.map(function(p){ return p <= t; });
+}
+
+// step DOWN: stop at the first failure
+function holm(ps, alpha){
+  const m = ps.length;
+  const order = ps.map(function(p, i){ return [p, i]; }).sort(function(a, b){ return a[0] - b[0]; });
+  const out = new Array(m).fill(false);
+  for (let k = 0; k < m; k++){
+    if (order[k][0] > alpha / (m - k)) break;
+    out[order[k][1]] = true;
+  }
+  return out;
+}
+
+// step UP: keep scanning, remember the LARGEST k, then reject the whole prefix.
+// Writing this with a break turns BH into something weaker and the FDR control
+// quietly stops being what you think it is.
+function benjaminiHochberg(ps, alpha){
+  const m = ps.length;
+  const order = ps.map(function(p, i){ return [p, i]; }).sort(function(a, b){ return a[0] - b[0]; });
+  let kMax = -1;
+  for (let k = 0; k < m; k++) if (order[k][0] <= (k + 1) * alpha / m) kMax = k;
+  const out = new Array(m).fill(false);
+  for (let k = 0; k <= kMax; k++) out[order[k][1]] = true;
+  return out;
+}
+
+// arbitrary dependence: divide alpha by the harmonic number
+function benjaminiYekutieli(ps, alpha){
+  let c = 0;
+  for (let i = 1; i <= ps.length; i++) c += 1 / i;
+  return benjaminiHochberg(ps, alpha / c);
+}
+
+const METHODS = {
+  uncorrected: uncorrected,
+  bonferroni: bonferroni,
+  holm: holm,
+  bh: benjaminiHochberg,
+  by: benjaminiYekutieli
+};
+
+// FWER, FDR, power and discovery count - reported together, always.
+function evaluateMethod(name, seed, reps, m, nReal, effect, alpha){
+  const rng = mulberry32(seed);
+  const fn = METHODS[name];
+  let anyFalse = 0, fdrSum = 0, found = 0, realTotal = 0, discoveries = 0;
+  for (let t = 0; t < reps; t++){
+    const e = experiment(rng, m, nReal, effect);
+    const rej = fn(e.ps, alpha);
+    let V = 0, S = 0;
+    for (let i = 0; i < m; i++){
+      if (!rej[i]) continue;
+      if (e.isReal[i]) S++; else V++;
+    }
+    if (V > 0) anyFalse++;
+    fdrSum += (V + S) ? V / (V + S) : 0;
+    found += S;
+    realTotal += nReal;
+    discoveries += V + S;
+  }
+  return {
+    method: name,
+    fwer: anyFalse / reps,
+    fdr: fdrSum / reps,
+    power: realTotal ? found / realTotal : null,
+    discoveries: discoveries / reps
+  };
+}
+
+function theoreticalFWER(m, alpha){ return 1 - Math.pow(1 - alpha, m); }
+
+// the staircase, for one experiment
+function bhStaircase(ps, alpha){
+  const m = ps.length;
+  const sorted = ps.slice().sort(function(a, b){ return a - b; });
+  let kMax = -1;
+  for (let k = 0; k < m; k++) if (sorted[k] <= (k + 1) * alpha / m) kMax = k;
+  return { sorted: sorted, kMax: kMax, line: sorted.map(function(_, k){ return (k + 1) * alpha / m; }) };
+}
+// ===== ENGINE:END =====
+
+/* ---------------- UI ---------------- */
+const ALPHA = 0.05;
+function cfg(){
+  return {
+    m: +document.getElementById("m").value,
+    real: Math.min(+document.getElementById("real").value, +document.getElementById("m").value),
+    eff: (+document.getElementById("eff").value) / 10,
+    reps: +document.getElementById("reps").value
+  };
+}
+const pct = x => x === null ? "—" : (100 * x).toFixed(1) + "%";
+
+function run(){
+  const c = cfg();
+  document.getElementById("mV").textContent = c.m;
+  document.getElementById("realV").textContent = c.real;
+  document.getElementById("effV").textContent = c.eff.toFixed(1);
+  document.getElementById("theory").textContent = pct(theoreticalFWER(c.m, ALPHA));
+
+  const names = ["uncorrected", "bonferroni", "holm", "bh", "by"];
+  const controls = { uncorrected: "nothing", bonferroni: "FWER", holm: "FWER",
+                     bh: "FDR", by: "FDR (any dependence)" };
+  const res = {};
+  names.forEach(function(n){ res[n] = evaluateMethod(n, 7, c.reps, c.m, c.real, c.eff, ALPHA); });
+
+  document.getElementById("fwerNone").textContent = pct(res.uncorrected.fwer);
+  document.getElementById("fwerBonf").textContent = pct(res.bonferroni.fwer);
+  document.getElementById("fwerHolm").textContent = pct(res.holm.fwer);
+  document.getElementById("fdrBH").textContent = pct(res.bh.fdr);
+
+  document.getElementById("rows").innerHTML = names.map(function(n){
+    const r = res[n];
+    return "<tr class='border-t border-slate-100'><td class='font-bold'>" + n + "</td>" +
+      "<td>" + controls[n] + "</td>" +
+      "<td class='" + (r.fwer > 0.06 && n !== "uncorrected" ? "text-rose-600 font-bold" : "") + "'>" + pct(r.fwer) + "</td>" +
+      "<td class='" + (r.fdr > 0.06 ? "text-rose-600 font-bold" : "") + "'>" + pct(r.fdr) + "</td>" +
+      "<td class='font-bold'>" + pct(r.power) + "</td>" +
+      "<td>" + r.discoveries.toFixed(2) + "</td></tr>";
+  }).join("");
+
+  draw(c);
+}
+
+function draw(c){
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  const e = experiment(mulberry32(31), c.m, c.real, c.eff);
+  const st = bhStaircase(e.ps, ALPHA);
+  const n = st.sorted.length;
+  const maxY = Math.max(0.2, st.sorted[Math.min(n - 1, Math.floor(n * 0.6))] * 1.2);
+  const x = i => 30 + (i / Math.max(1, n - 1)) * (W - 45);
+  const y = v => H - 24 - Math.min(1, v / maxY) * (H - 44);
+
+  ctx.strokeStyle = "#dc2626"; ctx.lineWidth = 1.5; ctx.beginPath();
+  st.line.forEach(function(v, i){ i ? ctx.lineTo(x(i), y(v)) : ctx.moveTo(x(i), y(v)); });
+  ctx.stroke();
+  ctx.fillStyle = "#dc2626"; ctx.font = "11px sans-serif";
+  ctx.fillText("i · α / m", W - 70, y(st.line[n - 1]) - 6);
+
+  st.sorted.forEach(function(p, i){
+    ctx.fillStyle = i <= st.kMax ? "#059669" : "#94a3b8";
+    ctx.beginPath(); ctx.arc(x(i), y(p), 3.2, 0, 6.3); ctx.fill();
+  });
+  if (st.kMax >= 0){
+    ctx.strokeStyle = "#059669"; ctx.setLineDash([4, 4]); ctx.beginPath();
+    ctx.moveTo(x(st.kMax), 0); ctx.lineTo(x(st.kMax), H); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "#059669";
+    ctx.fillText("reject everything left of here (" + (st.kMax + 1) + ")", Math.min(x(st.kMax) + 6, W - 210), 16);
+  } else {
+    ctx.fillStyle = "#94a3b8"; ctx.fillText("no p-value falls under the line - reject nothing", 40, 20);
+  }
+}
+
+["m","real","eff","reps"].forEach(function(id){
+  document.getElementById(id).addEventListener("input", run);
+});
+
+document.getElementById("sweepBtn").addEventListener("click", function(){
+  const out = document.getElementById("sweepOut");
+  out.classList.remove("hidden");
+  const lines = ["  m     uncorrected FWER   theory    bonferroni   holm     BH (FDR)",
+                 "  ---------------------------------------------------------------"];
+  [5, 10, 20, 40, 80, 150, 200].forEach(function(m){
+    const u = evaluateMethod("uncorrected", 3, 1500, m, 0, 3, ALPHA);
+    const b = evaluateMethod("bonferroni", 3, 1500, m, 0, 3, ALPHA);
+    const h = evaluateMethod("holm", 3, 1500, m, 0, 3, ALPHA);
+    const bh = evaluateMethod("bh", 3, 1500, m, 0, 3, ALPHA);
+    lines.push("  " + String(m).padEnd(6) + pct(u.fwer).padEnd(18) +
+               pct(theoreticalFWER(m, ALPHA)).padEnd(10) + pct(b.fwer).padEnd(13) +
+               pct(h.fwer).padEnd(9) + pct(bh.fdr));
+  });
+  lines.push("");
+  lines.push("  0 real effects, so every discovery is false. Under a complete null");
+  lines.push("  FDR and FWER coincide - BH's advantage only appears once effects exist.");
+  out.textContent = lines.join("\n");
+});
+
+run();
+</script>
+</body>
+</html>
