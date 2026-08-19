@@ -69,6 +69,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 63 — A/B testing and the peeking problem](https://dev48v.infy.uk/ml/day63-ab-testing-peeking.html) — `day63-ab-testing-peeking.html`
 - [MachineLearningFromZero · Day 64 — Multiple comparisons: FWER, FDR, Benjamini-Hochberg](https://dev48v.infy.uk/ml/day64-multiple-comparisons.html) — `day64-multiple-comparisons.html`
 - [MachineLearningFromZero · Day 65 — The bootstrap](https://dev48.infy.uk/ml/day65-bootstrap.html) — `day65-bootstrap.html`
+- [MachineLearningFromZero · Day 66 — Leakage in cross-validation](https://dev48.infy.uk/ml/day66-cv-leakage.html) — `day66-cv-leakage.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

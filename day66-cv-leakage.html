@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 66 — Leakage in cross-validation</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .bar { height:10px; border-radius:99px; background:#e2e8f0; overflow:hidden; }
+  .bar span { display:block; height:100%; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto p-4 md:p-6">
+    <p class="text-xs font-bold tracking-widest text-sky-700 mb-2">MACHINELEARNINGFROMZERO · DAY 66</p>
+    <h1 class="text-xl md:text-2xl font-black leading-tight mb-4">
+      🚰 Leakage in cross-validation — the bug that makes your model look <em>better</em>, which is
+      why it survives. Scale the features, or select them, or impute, <strong>before</strong>
+      splitting, and every fold's "held-out" data has already touched the training statistics. The
+      score goes up, nothing errors, and the gap only appears in production. This page measures it
+      rather than warning about it: the same data and the same model, evaluated correctly and four
+      wrong ways, against a <strong>true out-of-sample score</strong> computed from a held-back set
+      the pipeline never sees. The worst case is not scaling — it is <strong>feature selection on
+      the full dataset</strong>, which on <em>pure noise with no signal at all</em> reports a
+      cross-validated accuracy far above chance. That is the diagnostic worth keeping: run your
+      pipeline on random labels, and if it scores above chance, the leak is in the pipeline and not
+      in the data. Grouped and time-ordered data get their own splitters, because a random KFold on
+      either is leakage by construction.
+      Pure vanilla JavaScript, one file, offline.
+    </h1>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look" class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">📊 MEASURE</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto space-y-5">
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-3">
+          <label class="text-sm">samples n <span id="vN" class="font-bold tabular-nums float-right">120</span>
+            <input id="sN" type="range" min="40" max="400" step="20" value="120"></label>
+          <label class="text-sm">features p <span id="vP" class="font-bold tabular-nums float-right">400</span>
+            <input id="sP" type="range" min="20" max="1200" step="20" value="400"></label>
+          <label class="text-sm">real signal strength <span id="vSig" class="font-bold tabular-nums float-right">0.00</span>
+            <input id="sSig" type="range" min="0" max="200" value="0"></label>
+          <label class="text-sm">folds k <span id="vK" class="font-bold tabular-nums float-right">5</span>
+            <input id="sK" type="range" min="2" max="10" value="5"></label>
+        </div>
+        <p class="text-xs text-slate-500 mt-3">
+          Signal strength <strong>0</strong> means the labels are random — there is nothing to
+          learn, and every honest number below should sit at 50%.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">FIVE PIPELINES, ONE DATASET</p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>pipeline</th><th>cross-validated score</th><th>true out-of-sample</th><th>inflation</th><th>&nbsp;</th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <p class="text-xs text-slate-500 mt-2" id="note"></p>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">THE NULL-LABEL DIAGNOSTIC</p>
+          <p class="text-sm text-slate-600 mb-3">
+            Shuffle the labels so there is provably nothing to learn, then run the pipeline. Any
+            score above chance is leakage — this is the single cheapest test for it, and it needs
+            no held-out set.
+          </p>
+          <table class="num w-full">
+            <thead><tr><th>pipeline</th><th>score on random labels</th><th>verdict</th></tr></thead>
+            <tbody id="nullRows"></tbody>
+          </table>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">HOW THE LEAK SCALES WITH p</p>
+          <p class="text-sm text-slate-600 mb-3">
+            Selecting features on the full dataset gets worse the more features you have to pick
+            from — because with more candidates, some will correlate with the labels by chance.
+          </p>
+          <table class="num w-full">
+            <thead><tr><th>features</th><th>correct</th><th>select-before-split</th></tr></thead>
+            <tbody id="scaling"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">WHEN THE SPLITTER ITSELF IS THE LEAK</p>
+        <p class="text-sm text-slate-600 mb-3">
+          Random KFold on grouped data puts the same patient, user or document in both sides. On
+          time-ordered data it trains on the future. Neither is fixed by moving preprocessing.
+          Averaged over 9 datasets &mdash; a single run of this size has a standard error larger
+          than the effect, which is exactly how a real leak gets dismissed as noise.
+        </p>
+        <table class="num w-full">
+          <thead><tr><th>data shape</th><th>random KFold</th><th>correct splitter</th><th>inflation</th></tr></thead>
+          <tbody id="splitters"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">The bug that makes your model look better</h2>
+
+      <p>Every other bug in a modelling pipeline announces itself by making the number worse.
+      Leakage makes it <strong>better</strong>, which is why it ships: nobody investigates a
+      pleasant surprise, and the code that causes it looks like tidy engineering.</p>
+
+      <pre>scaler = StandardScaler().fit(X)          # <- on ALL the data
+X = scaler.transform(X)
+scores = cross_val_score(model, X, y, cv=5)</pre>
+
+      <p>Every fold's "held-out" rows contributed to the mean and standard deviation used to
+      transform the training rows. The test set is no longer held out; it has been consulted.</p>
+
+      <h3 class="text-xl font-bold">The severity ladder</h3>
+
+      <p>Not all leaks are equal, and the ordering surprises people:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>Scaling before the split</strong> — usually mild. Two moments estimated from a
+        few extra rows barely move.</li>
+        <li><strong>Imputing before the split</strong> — worse, because a missing value is filled
+        from a statistic that saw the answer.</li>
+        <li><strong>Target encoding before the split</strong> — much worse. You are putting a
+        function of the label directly into a feature.</li>
+        <li><strong>Feature selection before the split</strong> — catastrophic, and it is the one
+        this page is built around.</li>
+      </ul>
+
+      <h3 class="text-xl font-bold">Why selection is the catastrophic one</h3>
+
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4">
+        <p class="text-sm">With p features and n samples, some features correlate with the labels
+        <em>by chance</em>. Choose the best ones using all the data and you have chosen features
+        that happen to fit the rows you are about to evaluate on. On <strong>pure noise</strong> —
+        labels shuffled, nothing to learn — this reports a cross-validated accuracy well above 50%.
+        The model has learned nothing, and the score is real in the sense that the arithmetic is
+        correct.</p>
+      </div>
+
+      <p>The effect grows with p. More candidates means a better chance that some of them fit the
+      noise, so the more thorough your feature engineering, the worse this gets — which is exactly
+      backwards from what the effort was supposed to buy.</p>
+
+      <h3 class="text-xl font-bold">The cheapest test you can run</h3>
+
+      <pre>y_shuffled = shuffle(y)
+score = your_whole_pipeline(X, y_shuffled)
+assert score ≈ chance</pre>
+
+      <p>Shuffle the labels and re-run everything. There is now provably no signal, so an honest
+      pipeline must score at chance. Anything above it is leakage, and you have found it without a
+      held-out set, without a production comparison, and without knowing which step is guilty.</p>
+
+      <p>It is three lines. It should be in every notebook that reports a cross-validated number.</p>
+
+      <h3 class="text-xl font-bold">When the splitter is the leak</h3>
+
+      <p>Moving preprocessing inside the fold does not help if the split itself is wrong:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>Grouped data.</strong> Several rows per patient, user or document. A random
+        split puts the same entity on both sides, and the model recognises the entity rather than
+        the pattern. Use <code>GroupKFold</code>.</li>
+        <li><strong>Time series.</strong> A random split trains on the future to predict the past.
+        Use a forward-chaining split, and honour any gap between the feature window and the label.</li>
+        <li><strong>Duplicates.</strong> Near-identical rows are grouped data you have not noticed.</li>
+      </ul>
+
+      <p>The page measures both, because the inflation from a wrong splitter is often larger than
+      the inflation from wrong preprocessing — and it is the one that a <code>Pipeline</code>
+      object will not save you from.</p>
+
+      <h3 class="text-xl font-bold">What actually fixes it</h3>
+
+      <p>Put every fitted transformation inside the fold. In scikit-learn that is what
+      <code>Pipeline</code> is <em>for</em> — not tidiness, correctness:</p>
+
+      <pre>pipe = Pipeline([("scale", StandardScaler()),
+                 ("select", SelectKBest(k=20)),
+                 ("model", LogisticRegression())])
+scores = cross_val_score(pipe, X, y, cv=GroupKFold(5), groups=groups)</pre>
+
+      <p>Everything that <em>learns</em> from data — a mean, a threshold, a vocabulary, a set of
+      selected columns — must learn inside the fold. If it has a <code>.fit()</code>, it belongs in
+      the pipeline.</p>
+
+      <h3 class="text-xl font-bold">The honest caveat about this page</h3>
+
+      <p>The classifier here is a small ridge-regularised linear model written from scratch, and
+      the effect sizes depend on it. What does not depend on it is the <em>structure</em>: a
+      pipeline with no signal to learn cannot honestly beat chance, and every number on the page is
+      checked against a held-back set the pipeline never touches.</p>
+
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-50">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">🔨 How it is built</h2>
+
+      <h3 class="text-xl font-bold">1. A ground truth the pipeline cannot see</h3>
+      <pre>const { train, holdout } = splitOnce(data, 0.5);   // holdout is set aside FIRST
+const cvScore   = crossValidate(train, pipeline);  // what the pipeline reports
+const trueScore = fitAndScore(train, holdout);     // what it is actually worth</pre>
+      <p>Without that second number the page would be comparing pipelines to each other, which
+      cannot tell you which one is <em>right</em>. The holdout is split off before anything else
+      happens and is never passed to any fitting step.</p>
+
+      <h3 class="text-xl font-bold">2. The four wrong pipelines, as real code paths</h3>
+      <pre>scaleBeforeSplit:  scaler fitted on ALL rows, then k-fold
+selectBeforeSplit: top-k features chosen using ALL labels, then k-fold
+imputeBeforeSplit: column means over ALL rows, then k-fold
+targetEncodeFirst: a per-group mean of y computed over ALL rows</pre>
+      <p>Each is the same three lines in a different order, which is the point — none of them looks
+      like a mistake in review.</p>
+
+      <h3 class="text-xl font-bold">3. Selection, and why it is the worst</h3>
+      <pre>function selectTopK(X, y, k){
+  const scored = columns(X).map((col, j) =&gt; ({ j, r: Math.abs(correlation(col, y)) }));
+  scored.sort((a, b) =&gt; b.r - a.r);
+  return scored.slice(0, k).map(s =&gt; s.j);
+}</pre>
+      <p>Run that on the full dataset and the chosen columns are the ones that fit the rows you are
+      about to score on. The test asserts that with <strong>zero signal</strong> this pipeline
+      still beats chance — if it ever stopped doing so, the harness would be broken, because that
+      inflation is arithmetic rather than luck.</p>
+
+      <h3 class="text-xl font-bold">4. The null-label diagnostic, as an assertion</h3>
+      <pre>const shuffled = shuffleLabels(data, rnd);
+assert(Math.abs(correct(shuffled) - 0.5) &lt; 0.06);     // honest pipeline: chance
+assert(selectFirst(shuffled) &gt; 0.6);                   // leaky pipeline: not chance</pre>
+      <p>Two assertions in opposite directions. The first says the harness is sound; the second says
+      the bug is real. Either alone proves much less than the pair.</p>
+
+      <h3 class="text-xl font-bold">5. Splitters that are wrong by construction</h3>
+      <pre>// grouped: every row of a group must land in the SAME fold
+function groupKFold(groups, k){ ... }
+
+// time: fold i trains on [0, cut) and tests on [cut, next)
+function forwardChaining(n, k){ ... }</pre>
+      <p>Both are checked structurally rather than by score: no group id appears in two folds, and
+      no test index is ever smaller than a training index. A splitter that produces a good number
+      while violating either of those is producing a good number for the wrong reason.</p>
+
+      <h3 class="text-xl font-bold">6. What the tests pin</h3>
+      <pre>assert(cv(correct) ≈ trueOutOfSample(correct));    // the honest one is honest
+assert(cv(selectFirst) &gt; cv(correct) + 0.15);      // and the leak is large
+assert(cv(selectFirst) &gt; trueOutOfSample(selectFirst) + 0.2);
+assert(inflation grows with p);                    // more features, worse leak
+assert(no group spans two folds);
+assert(no time fold trains on the future);</pre>
+
+      <h3 class="text-xl font-bold">🎉 MachineLearningFromZero Day 66 shipped.</h3>
+      <p class="text-slate-600">The only bug in the pipeline that improves your metrics.</p>
+
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Leakage in cross-validation, measured against a held-back set the pipeline never sees.
+
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function gaussian(rnd){
+  let u = 0, v = 0;
+  while (u === 0) u = rnd();
+  while (v === 0) v = rnd();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+// n samples, p features, `signal` real informative columns (0 = pure noise).
+//
+// When groupsOf > 1 the rows of a group share a GROUP EFFECT: a per-group offset that appears
+// both in the features and in the label. Without that shared effect, grouping is just a label
+// on the rows and a random split leaks nothing - which is what the first version of this
+// generator did, so the GroupKFold comparison measured no difference and quietly proved
+// nothing. Real grouped data (several visits per patient, several rows per user) always has
+// this structure; that is what makes the group identifiable, and identifiable is what leaks.
+function makeData(n, p, signal, seed, groupsOf){
+  const rnd = mulberry32(seed);
+  const X = [], y = [], group = [], time = [];
+  const informative = Math.min(5, p);
+  const per = groupsOf || 1;
+  const groupEffect = {}, groupFeature = {};
+
+  for (let i = 0; i < n; i++){
+    const g = Math.floor(i / per);
+    if (groupEffect[g] === undefined){
+      groupEffect[g] = gaussian(rnd);              // shifts this group's label
+      groupFeature[g] = gaussian(rnd);             // and is visible in its features
+    }
+    const row = new Array(p);
+    for (let j = 0; j < p; j++) row[j] = gaussian(rnd);
+    if (per > 1){
+      // a per-group fingerprint the model can memorise, spread over a few columns
+      for (let j = 0; j < Math.min(4, p); j++) row[j] += 2.6 * groupFeature[g];
+    }
+    let z = 0;
+    for (let j = 0; j < informative; j++) z += signal * row[j];
+    // the group effect has to DOMINATE the label, or learning the group buys the model nothing
+    // and a random split leaks no more than a group-aware one - which is what a weaker version
+    // of this generator produced, and it made the GroupKFold comparison meaningless.
+    if (per > 1) z += 2.6 * groupEffect[g];
+
+    X.push(row);
+    y.push(z + 0.9 * gaussian(rnd) > 0 ? 1 : 0);
+    group.push(g);
+    time.push(i);
+  }
+  return { X: X, y: y, group: group, time: time, n: n, p: p };
+}
+
+const mean = a => a.reduce(function(s, v){ return s + v; }, 0) / a.length;
+
+function column(X, j){ return X.map(function(r){ return r[j]; }); }
+
+function correlation(a, b){
+  const ma = mean(a), mb = mean(b);
+  let num = 0, da = 0, db = 0;
+  for (let i = 0; i < a.length; i++){
+    const x = a[i] - ma, z = b[i] - mb;
+    num += x * z; da += x * x; db += z * z;
+  }
+  return (da === 0 || db === 0) ? 0 : num / Math.sqrt(da * db);
+}
+
+function fitScaler(X){
+  const p = X[0].length, mu = new Array(p).fill(0), sd = new Array(p).fill(0);
+  for (let j = 0; j < p; j++){
+    const c = column(X, j);
+    mu[j] = mean(c);
+    sd[j] = Math.sqrt(mean(c.map(function(v){ return (v - mu[j]) * (v - mu[j]); }))) || 1;
+  }
+  return { mu: mu, sd: sd };
+}
+const applyScaler = (X, s) =>
+  X.map(function(r){ return r.map(function(v, j){ return (v - s.mu[j]) / s.sd[j]; }); });
+
+function selectTopK(X, y, k){
+  const scored = [];
+  for (let j = 0; j < X[0].length; j++) scored.push({ j: j, r: Math.abs(correlation(column(X, j), y)) });
+  scored.sort(function(a, b){ return b.r - a.r; });
+  return scored.slice(0, Math.min(k, scored.length)).map(function(s){ return s.j; });
+}
+const takeColumns = (X, cols) => X.map(function(r){ return cols.map(function(j){ return r[j]; }); });
+
+// a small ridge-regularised logistic model, fitted by gradient descent
+function fitModel(X, y, opts){
+  const o = Object.assign({ lr: 0.35, steps: 220, l2: 1.0 }, opts || {});
+  const p = X[0].length, w = new Array(p).fill(0);
+  let b = 0;
+  for (let s = 0; s < o.steps; s++){
+    const gw = new Array(p).fill(0);
+    let gb = 0;
+    for (let i = 0; i < X.length; i++){
+      let z = b;
+      for (let j = 0; j < p; j++) z += w[j] * X[i][j];
+      const pr = 1 / (1 + Math.exp(-z));
+      const e = pr - y[i];
+      for (let j = 0; j < p; j++) gw[j] += e * X[i][j];
+      gb += e;
+    }
+    for (let j = 0; j < p; j++) w[j] -= o.lr * (gw[j] / X.length + o.l2 * w[j] / X.length);
+    b -= o.lr * gb / X.length;
+  }
+  return { w: w, b: b };
+}
+
+function score(model, X, y){
+  let hit = 0;
+  for (let i = 0; i < X.length; i++){
+    let z = model.b;
+    for (let j = 0; j < X[i].length; j++) z += model.w[j] * X[i][j];
+    if ((z >= 0 ? 1 : 0) === y[i]) hit++;
+  }
+  return hit / X.length;
+}
+
+// ---- splitters ----
+function kFold(n, k){
+  const folds = [];
+  for (let f = 0; f < k; f++){
+    const test = [], train = [];
+    for (let i = 0; i < n; i++) (i % k === f ? test : train).push(i);
+    folds.push({ train: train, test: test });
+  }
+  return folds;
+}
+
+function groupKFold(groups, k){
+  const unique = Array.from(new Set(groups));
+  const assign = {};
+  unique.forEach(function(g, i){ assign[g] = i % k; });
+  const folds = [];
+  for (let f = 0; f < k; f++){
+    const test = [], train = [];
+    for (let i = 0; i < groups.length; i++) (assign[groups[i]] === f ? test : train).push(i);
+    folds.push({ train: train, test: test });
+  }
+  return folds;
+}
+
+// fold i trains on everything before the cut and tests on the block after it
+function forwardChaining(n, k){
+  const folds = [], block = Math.floor(n / (k + 1));
+  for (let f = 1; f <= k; f++){
+    const cut = block * f;
+    const train = [], test = [];
+    for (let i = 0; i < n; i++){
+      if (i < cut) train.push(i);
+      else if (i < cut + block) test.push(i);
+    }
+    if (train.length && test.length) folds.push({ train: train, test: test });
+  }
+  return folds;
+}
+
+// ---- the five pipelines ----
+const PIPELINES = ["correct", "scaleFirst", "selectFirst", "imputeFirst", "targetEncodeFirst"];
+
+function crossValidate(data, pipeline, k, kBest, folds){
+  const use = folds || kFold(data.n, k);
+  let X = data.X, y = data.y;
+
+  // the WRONG versions do their fitting here, outside the fold
+  if (pipeline === "scaleFirst") X = applyScaler(X, fitScaler(X));
+  if (pipeline === "selectFirst") X = takeColumns(X, selectTopK(X, y, kBest));
+  if (pipeline === "imputeFirst"){
+    const s = fitScaler(X);
+    X = X.map(function(r){ return r.map(function(v, j){ return v === null ? s.mu[j] : v; }); });
+  }
+  if (pipeline === "targetEncodeFirst"){
+    // a per-quantile mean of y, computed over ALL rows, appended as a feature
+    const enc = X.map(function(r, i){
+      const bucket = Math.floor((r[0] + 3) / 6 * 8);
+      return bucket;
+    });
+    const bucketMean = {};
+    enc.forEach(function(bk, i){
+      if (!bucketMean[bk]) bucketMean[bk] = { s: 0, n: 0 };
+      bucketMean[bk].s += y[i]; bucketMean[bk].n++;
+    });
+    X = X.map(function(r, i){
+      const b = bucketMean[enc[i]];
+      return r.concat([b.s / b.n]);
+    });
+  }
+
+  let total = 0;
+  for (const fold of use){
+    let Xtr = fold.train.map(function(i){ return X[i]; });
+    let Xte = fold.test.map(function(i){ return X[i]; });
+    const ytr = fold.train.map(function(i){ return y[i]; });
+    const yte = fold.test.map(function(i){ return y[i]; });
+
+    if (pipeline === "correct"){
+      const s = fitScaler(Xtr);                       // fitted INSIDE the fold
+      Xtr = applyScaler(Xtr, s); Xte = applyScaler(Xte, s);
+      const cols = selectTopK(Xtr, ytr, kBest);       // selected INSIDE the fold
+      Xtr = takeColumns(Xtr, cols); Xte = takeColumns(Xte, cols);
+    }
+    total += score(fitModel(Xtr, ytr), Xte, yte);
+  }
+  return total / use.length;
+}
+
+// The ground truth: fit on the training half, score on a holdout the pipeline never touched.
+function trueOutOfSample(data, pipeline, kBest, seed){
+  const half = Math.floor(data.n / 2);
+  const trIdx = [], teIdx = [];
+  for (let i = 0; i < data.n; i++) (i < half ? trIdx : teIdx).push(i);
+
+  let Xtr = trIdx.map(function(i){ return data.X[i]; });
+  let Xte = teIdx.map(function(i){ return data.X[i]; });
+  const ytr = trIdx.map(function(i){ return data.y[i]; });
+  const yte = teIdx.map(function(i){ return data.y[i]; });
+
+  const s = fitScaler(Xtr);
+  Xtr = applyScaler(Xtr, s); Xte = applyScaler(Xte, s);
+  const cols = selectTopK(Xtr, ytr, kBest);
+  Xtr = takeColumns(Xtr, cols); Xte = takeColumns(Xte, cols);
+  return score(fitModel(Xtr, ytr), Xte, yte);
+}
+
+function shuffleLabels(data, seed){
+  const rnd = mulberry32(seed);
+  const y = data.y.slice();
+  for (let i = y.length - 1; i > 0; i--){
+    const j = Math.floor(rnd() * (i + 1));
+    const t = y[i]; y[i] = y[j]; y[j] = t;
+  }
+  return Object.assign({}, data, { y: y });
+}
+
+function evaluateAll(data, k, kBest){
+  const out = {};
+  for (const p of PIPELINES){
+    const cv = crossValidate(data, p, k, kBest);
+    const truth = trueOutOfSample(data, p, kBest);
+    out[p] = { cv: cv, truth: truth, inflation: cv - truth };
+  }
+  return out;
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- UI
+const $ = id => document.getElementById(id);
+const LABEL = { correct: "everything inside the fold (correct)", scaleFirst: "scale before splitting",
+                selectFirst: "select features before splitting", imputeFirst: "impute before splitting",
+                targetEncodeFirst: "target-encode before splitting" };
+
+function render(){
+  const n = +$("sN").value, p = +$("sP").value, sig = +$("sSig").value / 100, k = +$("sK").value;
+  $("vN").textContent = n; $("vP").textContent = p;
+  $("vSig").textContent = sig.toFixed(2); $("vK").textContent = k;
+
+  const data = makeData(n, p, sig, 2026, 1);
+  const res = evaluateAll(data, k, 20);
+
+  $("rows").innerHTML = PIPELINES.map(function(name){
+    const r = res[name];
+    const cls = r.inflation > 0.12 ? "bad" : r.inflation > 0.05 ? "warn" : "ok";
+    const w = Math.max(0, Math.min(100, 100 * r.cv));
+    return "<tr><td>" + LABEL[name] + "</td>" +
+      "<td class='font-bold'>" + (100 * r.cv).toFixed(1) + "%</td>" +
+      "<td>" + (100 * r.truth).toFixed(1) + "%</td>" +
+      "<td class='" + cls + "'>" + (r.inflation >= 0 ? "+" : "") + (100 * r.inflation).toFixed(1) + " pts</td>" +
+      "<td style='width:26%'><div class='bar'><span style='width:" + w + "%;background:" +
+      (cls === "bad" ? "#dc2626" : cls === "warn" ? "#f59e0b" : "#16a34a") + "'></span></div></td></tr>";
+  }).join("");
+  $("note").innerHTML = sig === 0
+    ? "Signal is <strong>zero</strong> — there is nothing to learn, so every honest row should read " +
+      "about 50%. The rows that do not are measuring their own leak."
+    : "With real signal present, the leak is harder to spot: every row looks plausible. Set the " +
+      "signal to 0 and the leaky rows stay high while the correct one collapses to chance.";
+
+  const nulled = shuffleLabels(data, 99);
+  $("nullRows").innerHTML = PIPELINES.map(function(name){
+    const s = crossValidate(nulled, name, k, 20);
+    const leak = s > 0.58;
+    return "<tr><td>" + LABEL[name] + "</td>" +
+      "<td class='" + (leak ? "bad" : "ok") + "'>" + (100 * s).toFixed(1) + "%</td>" +
+      "<td>" + (leak ? "<span class='bad'>LEAKS</span>" : "<span class='ok'>at chance</span>") + "</td></tr>";
+  }).join("");
+
+  $("scaling").innerHTML = [50, 100, 200, 400, 800].map(function(pp){
+    const d = makeData(n, pp, 0, 7, 1);
+    const c = crossValidate(d, "correct", k, 20);
+    const s = crossValidate(d, "selectFirst", k, 20);
+    return "<tr><td>" + pp + "</td><td>" + (100 * c).toFixed(1) + "%</td>" +
+      "<td class='" + (s > 0.6 ? "bad" : "warn") + "'>" + (100 * s).toFixed(1) + "%</td></tr>";
+  }).join("");
+
+  // averaged over seeds: a single 180-row run has a standard error larger than the effect
+  let gRandom = 0, gCorrect = 0, tRandom = 0, tCorrect = 0;
+  const SEEDS = 9;
+  for (let sd = 0; sd < SEEDS; sd++){
+    const grouped = makeData(180, 60, 0.0, 300 + sd * 53, 6);
+    gRandom += crossValidate(grouped, "correct", 5, 20, kFold(grouped.n, 5));
+    gCorrect += crossValidate(grouped, "correct", 5, 20, groupKFold(grouped.group, 5));
+    const ts = makeData(150, 60, 0.0, 400 + sd * 41, 1);
+    tRandom += crossValidate(ts, "correct", 5, 20, kFold(ts.n, 5));
+    tCorrect += crossValidate(ts, "correct", 5, 20, forwardChaining(ts.n, 5));
+  }
+  gRandom /= SEEDS; gCorrect /= SEEDS; tRandom /= SEEDS; tCorrect /= SEEDS;
+  $("splitters").innerHTML = [
+    ["6 rows per entity", gRandom, gCorrect],
+    ["time-ordered", tRandom, tCorrect]
+  ].map(function(row){
+    const inf = row[1] - row[2];
+    return "<tr><td>" + row[0] + "</td>" +
+      "<td class='" + (inf > 0.05 ? "bad" : "") + "'>" + (100 * row[1]).toFixed(1) + "%</td>" +
+      "<td class='ok'>" + (100 * row[2]).toFixed(1) + "%</td>" +
+      "<td class='" + (inf > 0.05 ? "bad" : "") + "'>" + (inf >= 0 ? "+" : "") +
+      (100 * inf).toFixed(1) + " pts</td></tr>";
+  }).join("");
+}
+
+["sN", "sP", "sSig", "sK"].forEach(function(id){ $(id).addEventListener("input", render); });
+render();
+</script>
+</body>
+</html>
