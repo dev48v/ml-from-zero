@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 65 — The bootstrap</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .hist { display:flex; align-items:flex-end; gap:1px; height:120px; }
+  .hist div { flex:1; background:#0ea5e9; border-radius:2px 2px 0 0; min-height:1px; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto p-4 md:p-6">
+    <p class="text-xs font-bold tracking-widest text-sky-700 mb-2">MACHINELEARNINGFROMZERO · DAY 65</p>
+    <h1 class="text-xl md:text-2xl font-black leading-tight mb-4">
+      🥾 The bootstrap — resample your data with replacement, recompute the statistic, and read the
+      confidence interval off the resulting distribution. No formula, no normality assumption, and
+      it works for statistics that have no closed form at all. It is the single most useful trick in
+      applied statistics and it is <strong>routinely sold as assumption-free, which it is not</strong>.
+      This page runs the real thing — percentile, basic (reverse-percentile) and BCa intervals — and
+      then does the only test that matters: <strong>measured coverage</strong>. A nominal 95%
+      interval is checked against known truth over thousands of simulated datasets, and the number
+      that comes back is often not 95%. For the mean it is close. For the variance at n=10 it is
+      not. For the <strong>maximum</strong> it collapses entirely, and no number of bootstrap
+      resamples fixes it, because the failure is structural rather than statistical. BCa's bias
+      correction and acceleration are implemented properly (jackknife acceleration, not a
+      hand-wave) and repair the skew cases the percentile interval gets wrong.
+      Pure vanilla JavaScript, one file, offline.
+    </h1>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look" class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">📊 MEASURE</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto space-y-5">
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-3">
+          <label class="text-sm">statistic
+            <select id="stat" class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm">
+              <option value="mean">mean</option>
+              <option value="median">median</option>
+              <option value="variance">variance</option>
+              <option value="p90">90th percentile</option>
+              <option value="max">maximum</option>
+              <option value="cv">coefficient of variation</option>
+            </select></label>
+          <label class="text-sm">population
+            <select id="pop" class="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm">
+              <option value="normal">normal</option>
+              <option value="lognormal">lognormal (skewed)</option>
+              <option value="exponential">exponential</option>
+              <option value="uniform">uniform</option>
+            </select></label>
+          <label class="text-sm">sample size n <span id="vN" class="font-bold tabular-nums float-right">30</span>
+            <input id="sN" type="range" min="5" max="200" value="30"></label>
+          <label class="text-sm">bootstrap resamples B <span id="vB" class="font-bold tabular-nums float-right">2000</span>
+            <input id="sB" type="range" min="200" max="5000" step="200" value="2000"></label>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">ONE SAMPLE, BOOTSTRAPPED</p>
+          <div class="hist mb-2" id="hist"></div>
+          <p class="text-xs text-slate-500 mb-3" id="histAxis"></p>
+          <table class="num w-full">
+            <thead><tr><th>interval</th><th>lower</th><th>upper</th><th>width</th><th>covers truth?</th></tr></thead>
+            <tbody id="ci"></tbody>
+          </table>
+          <p class="text-xs text-slate-500 mt-2" id="truth"></p>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">MEASURED COVERAGE OF A NOMINAL 95% INTERVAL</p>
+          <p class="text-sm text-slate-600 mb-3">
+            2,000 fresh datasets from the known population. How often does each interval actually
+            contain the true value?
+          </p>
+          <table class="num w-full">
+            <thead><tr><th>interval</th><th>coverage</th><th>truth below CI</th><th>truth above CI</th><th>mean width</th></tr></thead>
+            <tbody id="cov"></tbody>
+          </table>
+          <p class="text-xs text-slate-500 mt-2" id="covNote"></p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">WHERE IT WORKS AND WHERE IT DOES NOT</p>
+        <p class="text-sm text-slate-600 mb-3">
+          The same machinery, every statistic, on the current population and n. Nominal 95%.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>statistic</th><th>percentile</th><th>basic</th><th>BCa</th><th>verdict</th></tr></thead>
+            <tbody id="grid"></tbody>
+          </table>
+        </div>
+        <p class="text-xs text-slate-500 mt-2">
+          The maximum is the structural failure. A bootstrap resample can never contain a value
+          larger than the largest observation, so the bootstrap distribution of the max is
+          <strong>bounded above by the sample max</strong> and cannot reach the truth from below.
+          More resamples do not help; it is not a Monte Carlo error.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">DOES B MATTER?</p>
+        <p class="text-sm text-slate-600 mb-3">
+          Two different sources of error get conflated. Increasing B removes <em>Monte Carlo</em>
+          noise. It does nothing at all about the bootstrap's own approximation error.
+        </p>
+        <table class="num w-full">
+          <thead><tr><th>B</th><th>coverage (mean)</th><th>coverage (max)</th></tr></thead>
+          <tbody id="bTable"></tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">Resample your own data and pretend it is the population</h2>
+
+      <p>You have one sample of size n and you want a confidence interval for something with no
+      convenient formula — a median, a 90th percentile, an AUC, the ratio of two things. Classical
+      statistics offers you an asymptotic approximation and a table of conditions.</p>
+
+      <p>Efron's answer in 1979 was to stop deriving and start resampling. Draw n values from your
+      own sample <em>with replacement</em>, recompute the statistic, repeat a few thousand times, and
+      read the interval off the spread of the results.</p>
+
+      <pre>for b in 1..B:
+    resample = n draws WITH REPLACEMENT from the sample
+    theta*[b] = statistic(resample)
+
+CI = [ quantile(theta*, 0.025), quantile(theta*, 0.975) ]</pre>
+
+      <p>Four lines. It works for statistics nobody has derived a variance for. It is the best
+      value-for-effort idea in the whole subject.</p>
+
+      <h3 class="text-xl font-bold">And it is not assumption-free</h3>
+
+      <p>The bootstrap assumes your sample is a good stand-in for the population. When that holds
+      badly, the interval is wrong — and it is wrong <em>quietly</em>, because it still produces two
+      numbers with a reassuring 95% attached.</p>
+
+      <p>So the only honest way to present it is measured coverage: generate thousands of datasets
+      from a population you know, build the interval each time, and count how often it actually
+      contains the truth. A nominal 95% interval that covers 87% of the time is not a 95% interval.</p>
+
+      <h3 class="text-xl font-bold">Three intervals, and they are not the same</h3>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>Percentile.</strong> Take the 2.5th and 97.5th percentiles of the bootstrap
+        distribution. Obvious and most common.</li>
+        <li><strong>Basic</strong> (reverse percentile). Reflect around the observed estimate:
+        <code>[2θ̂ − q₉₇.₅, 2θ̂ − q₂.₅]</code>. Counter-intuitive, and correct more often than
+        percentile when the estimator is biased — because the bootstrap distribution's
+        <em>skew</em> points the same way as the estimator's, so you have to flip it.</li>
+        <li><strong>BCa</strong>. Bias-corrected and accelerated: shifts the quantiles using a bias
+        term <code>z₀</code> measured from the bootstrap distribution and an acceleration term
+        <code>a</code> from the jackknife. More work, and the only one that adapts to skew.</li>
+      </ul>
+
+      <h3 class="text-xl font-bold">The failure that is not fixable</h3>
+
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4">
+        <p class="text-sm">The bootstrap <strong>does not work for the maximum</strong>, and this is
+        not a small-sample wobble. A resample is drawn from the observed values, so
+        <code>max(resample) ≤ max(sample)</code> — always. The bootstrap distribution of the maximum
+        is pinned at the sample max from above, roughly 63% of resamples hit it exactly, and the
+        interval cannot reach the true population maximum, which is larger. Coverage collapses and
+        stays collapsed at any B and any n.</p>
+      </div>
+
+      <p>The general lesson is worth more than the special case: the bootstrap works when the
+      statistic is a <em>smooth</em> function of the data. Extremes are not smooth — one observation
+      determines the answer — and the same warning applies to anything dominated by a single point.</p>
+
+      <h3 class="text-xl font-bold">B is not the accuracy dial</h3>
+
+      <p>Two different errors get conflated constantly:</p>
+
+      <ol class="list-decimal pl-6 space-y-1">
+        <li><strong>Monte Carlo error</strong> — you only drew B resamples. Fixed by raising B.</li>
+        <li><strong>Bootstrap approximation error</strong> — your sample is not the population.
+        Fixed only by more <em>data</em>.</li>
+      </ol>
+
+      <p>Raising B from 2,000 to 20,000 stabilises the endpoints and changes coverage by nothing
+      worth measuring. The page shows both columns so the distinction is visible rather than
+      asserted. B ≈ 2,000 is enough for a 95% interval; spend the rest of your compute on getting a
+      bigger sample.</p>
+
+      <h3 class="text-xl font-bold">When to reach for it</h3>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li>Smooth statistics — means, ratios, correlations, model metrics — yes, and BCa if the
+        distribution looks skewed.</li>
+        <li>Extremes, minima, maxima, anything determined by one observation — no.</li>
+        <li>Dependent data — not the ordinary bootstrap. Resampling rows destroys the dependence
+        structure; use a block bootstrap for time series or a cluster bootstrap for grouped data.</li>
+        <li>Tiny samples — check coverage before you trust it. At n=10 several of these intervals
+        are well below their nominal level, which this page measures rather than warns about.</li>
+      </ul>
+
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-50">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">🔨 How it is built</h2>
+
+      <h3 class="text-xl font-bold">1. The resample, and the detail that matters</h3>
+      <pre>function resample(sample, rnd){
+  const out = new Array(sample.length);
+  for (let i = 0; i &lt; sample.length; i++)
+    out[i] = sample[Math.floor(rnd() * sample.length)];   // WITH replacement, same n
+  return out;
+}</pre>
+      <p>Same size, with replacement. Both halves are load-bearing: a smaller resample changes the
+      variance you are estimating, and sampling without replacement returns the original sample
+      permuted, whose statistic never moves.</p>
+
+      <h3 class="text-xl font-bold">2. Percentile and basic are not variations on each other</h3>
+      <pre>const lo = quantile(boot, alpha / 2), hi = quantile(boot, 1 - alpha / 2);
+
+percentile = [lo, hi];
+basic      = [2 * theta - hi, 2 * theta - lo];   // reflected, and the ends SWAP</pre>
+      <p>The swap is the whole idea. If the bootstrap distribution leans right, the estimator
+      probably does too, so the correction must lean left. Copying the ends across without swapping
+      produces an interval that is sometimes inverted, which is the standard bug here.</p>
+
+      <h3 class="text-xl font-bold">3. BCa, with a real jackknife</h3>
+      <pre>// bias correction: where does the observed estimate sit in the bootstrap distribution?
+const z0 = probit(fraction(boot, b =&gt; b &lt; theta));
+
+// acceleration: skew of the jackknife (leave-one-out) values
+const jack = sample.map((_, i) =&gt; statistic(without(sample, i)));
+const jbar = mean(jack), d = jack.map(v =&gt; jbar - v);
+const a = sum(d³) / (6 * sum(d²)^1.5);
+
+const adj = z =&gt; normalCdf(z0 + (z0 + z) / (1 - a * (z0 + z)));
+BCa = [ quantile(boot, adj(-1.96)), quantile(boot, adj(+1.96)) ];</pre>
+      <p>Both corrections are measured from the data. <code>z₀</code> is zero when the observed
+      estimate sits exactly at the bootstrap median, and <code>a</code> is zero when the jackknife
+      values are symmetric — so on symmetric problems BCa reduces to the percentile interval, which
+      is the identity the tests check first. A BCa that differs from percentile on a symmetric
+      problem has a bug in one of the two corrections.</p>
+
+      <h3 class="text-xl font-bold">4. Coverage is the only real test</h3>
+      <pre>let covered = 0;
+for (let t = 0; t &lt; TRIALS; t++){
+  const sample = drawFrom(population, n);      // truth is KNOWN
+  const ci = bootstrapCI(sample, statistic, B);
+  if (ci.lo &lt;= truth &amp;&amp; truth &lt;= ci.hi) covered++;
+}
+coverage = covered / TRIALS;                   // should be 0.95. Often is not.</pre>
+      <p>Everything else on the page is machinery; this loop is the argument. It also records
+      <em>which side</em> the misses fall on, because a 90% interval that misses 9% low and 1% high
+      is a differently broken thing from one that misses 5% each way.</p>
+
+      <h3 class="text-xl font-bold">5. The maximum, and why B cannot save it</h3>
+      <pre>// a resample is drawn from the observed values, so:
+assert(Math.max(...resample) &lt;= Math.max(...sample));    // ALWAYS
+
+// therefore the whole bootstrap distribution of the max is bounded above by the sample max,
+// while the truth is above it. The upper end cannot get there.
+assert(Math.max(...boot) === Math.max(...sample));</pre>
+      <p>That second assertion holds for every dataset, which is what makes this a structural
+      failure rather than a noisy one. Roughly 1 − (1 − 1/n)<sup>n</sup> ≈ 63% of resamples contain
+      the sample maximum at all, so the bootstrap distribution has a point mass of about 63% sitting
+      on the ceiling.</p>
+
+      <h3 class="text-xl font-bold">6. The tests</h3>
+      <pre>assert(coverage(mean, normal, n=100)  &gt; 0.93);   // it works where it works
+assert(coverage(max,  anything)       &lt; 0.60);   // and fails where it fails
+assert(bootMax === sampleMax);                   // structurally, on every dataset
+assert(|BCa − percentile| &lt; tol) on a symmetric problem;
+assert(coverage at B=500 ≈ coverage at B=5000);  // B is not the accuracy dial</pre>
+      <p>The second assertion is the one worth stealing. Asserting that a method
+      <em>fails where it should fail</em> is how you find out that your implementation is doing the
+      thing you think it is, rather than something that merely produces plausible numbers.</p>
+
+      <h3 class="text-xl font-bold">🎉 MachineLearningFromZero Day 65 shipped.</h3>
+      <p class="text-slate-600">The most useful trick in applied statistics, with its failure modes
+      measured instead of footnoted.</p>
+
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// The bootstrap: percentile, basic, BCa - and measured coverage, which is the point.
+
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function gaussian(rnd){
+  let u = 0, v = 0;
+  while (u === 0) u = rnd();
+  while (v === 0) v = rnd();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+// ---- statistics ----
+const mean = a => a.reduce(function(s, v){ return s + v; }, 0) / a.length;
+
+function quantile(sorted, p){
+  if (!sorted.length) return NaN;
+  const idx = (sorted.length - 1) * p;
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  return lo === hi ? sorted[lo] : sorted[lo] + (idx - lo) * (sorted[hi] - sorted[lo]);
+}
+
+const sortNum = a => a.slice().sort(function(x, y){ return x - y; });
+
+const STATS = {
+  mean: mean,
+  median: a => quantile(sortNum(a), 0.5),
+  variance: function(a){
+    const m = mean(a);
+    return a.reduce(function(s, v){ return s + (v - m) * (v - m); }, 0) / (a.length - 1);
+  },
+  p90: a => quantile(sortNum(a), 0.9),
+  max: a => Math.max.apply(null, a),
+  cv: function(a){
+    const m = mean(a);
+    return Math.sqrt(STATS.variance(a)) / m;
+  }
+};
+
+// ---- populations, with KNOWN truth ----
+const POPS = {
+  normal: {
+    draw: rnd => 10 + 2 * gaussian(rnd),
+    truth: { mean: 10, median: 10, variance: 4, p90: 10 + 2 * 1.2815515655446004,
+             max: null, cv: 2 / 10 }
+  },
+  lognormal: {
+    draw: rnd => Math.exp(0.5 * gaussian(rnd)),
+    truth: { mean: Math.exp(0.125), median: 1,
+             variance: (Math.exp(0.25) - 1) * Math.exp(0.25),
+             p90: Math.exp(0.5 * 1.2815515655446004), max: null,
+             cv: Math.sqrt(Math.exp(0.25) - 1) }
+  },
+  exponential: {
+    draw: rnd => -Math.log(1 - rnd()),
+    truth: { mean: 1, median: Math.LN2, variance: 1, p90: -Math.log(0.1), max: null, cv: 1 }
+  },
+  uniform: {
+    draw: rnd => rnd(),
+    truth: { mean: 0.5, median: 0.5, variance: 1 / 12, p90: 0.9, max: 1, cv: Math.sqrt(1 / 12) / 0.5 }
+  }
+};
+
+function drawSample(popName, n, rnd){
+  const p = POPS[popName], out = new Array(n);
+  for (let i = 0; i < n; i++) out[i] = p.draw(rnd);
+  return out;
+}
+
+// ---- the bootstrap itself ----
+function resample(sample, rnd){
+  const n = sample.length, out = new Array(n);
+  for (let i = 0; i < n; i++) out[i] = sample[Math.floor(rnd() * n)];   // WITH replacement, same n
+  return out;
+}
+
+function bootstrapDistribution(sample, statFn, B, rnd){
+  const out = new Array(B);
+  for (let b = 0; b < B; b++) out[b] = statFn(resample(sample, rnd));
+  return sortNum(out);
+}
+
+// ---- normal quantile helpers (Acklam's inverse CDF, and a matching CDF) ----
+function normalCdf(z){
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989422804014327 * Math.exp(-z * z / 2);
+  let p = d * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 +
+          t * (-1.821255978 + t * 1.330274429))));
+  return z > 0 ? 1 - p : p;
+}
+
+function probit(p){
+  if (p <= 0) return -6;
+  if (p >= 1) return 6;
+  const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687,
+             138.3577518672690, -30.66479806614716, 2.506628277459239];
+  const b = [-54.47609879822406, 161.5858368580409, -155.6989798598866,
+             66.80131188771972, -13.28068155288572];
+  const c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838,
+             -2.549732539343734, 4.374664141464968, 2.938163982698783];
+  const d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
+  const pl = 0.02425;
+  let q, r;
+  if (p < pl){
+    q = Math.sqrt(-2 * Math.log(p));
+    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+  if (p > 1 - pl){
+    q = Math.sqrt(-2 * Math.log(1 - p));
+    return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+  q = p - 0.5; r = q * q;
+  return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q /
+         (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+}
+
+// ---- the three intervals ----
+function percentileCI(boot, alpha){
+  return { lo: quantile(boot, alpha / 2), hi: quantile(boot, 1 - alpha / 2) };
+}
+
+// reflected around the estimate - and the ENDS SWAP, which is the whole idea
+function basicCI(boot, theta, alpha){
+  const lo = quantile(boot, alpha / 2), hi = quantile(boot, 1 - alpha / 2);
+  return { lo: 2 * theta - hi, hi: 2 * theta - lo };
+}
+
+function jackknife(sample, statFn){
+  const n = sample.length, out = new Array(n);
+  for (let i = 0; i < n; i++){
+    const w = sample.slice(0, i).concat(sample.slice(i + 1));
+    out[i] = statFn(w);
+  }
+  return out;
+}
+
+function bcaCI(sample, boot, theta, statFn, alpha){
+  // bias correction: where the observed estimate sits inside the bootstrap distribution
+  let below = 0;
+  for (const b of boot) if (b < theta) below++;
+  const z0 = probit(below / boot.length);
+
+  // acceleration: skew of the leave-one-out values
+  const jack = jackknife(sample, statFn);
+  const jbar = mean(jack);
+  let s2 = 0, s3 = 0;
+  for (const v of jack){ const d = jbar - v; s2 += d * d; s3 += d * d * d; }
+  const a = s2 === 0 ? 0 : s3 / (6 * Math.pow(s2, 1.5));
+
+  const adj = function(z){
+    const num = z0 + z;
+    const den = 1 - a * num;
+    return normalCdf(z0 + num / (den === 0 ? 1e-12 : den));
+  };
+  const zLo = probit(alpha / 2), zHi = probit(1 - alpha / 2);
+  return { lo: quantile(boot, Math.min(0.999, Math.max(0.001, adj(zLo)))),
+           hi: quantile(boot, Math.min(0.999, Math.max(0.001, adj(zHi)))),
+           z0: z0, a: a };
+}
+
+function allIntervals(sample, statName, B, alpha, rnd){
+  const statFn = STATS[statName];
+  const theta = statFn(sample);
+  const boot = bootstrapDistribution(sample, statFn, B, rnd);
+  return {
+    theta: theta, boot: boot,
+    percentile: percentileCI(boot, alpha),
+    basic: basicCI(boot, theta, alpha),
+    bca: bcaCI(sample, boot, theta, statFn, alpha)
+  };
+}
+
+// ---- the only real test: measured coverage ----
+function coverage(statName, popName, n, B, trials, alpha, seed){
+  const rnd = mulberry32(seed);
+  const truth = POPS[popName].truth[statName];
+  if (truth == null) return null;                    // no closed-form truth for this pair
+  const kinds = ["percentile", "basic", "bca"];
+  const hit = { percentile: 0, basic: 0, bca: 0 };
+  const low = { percentile: 0, basic: 0, bca: 0 };
+  const high = { percentile: 0, basic: 0, bca: 0 };
+  const width = { percentile: 0, basic: 0, bca: 0 };
+  for (let t = 0; t < trials; t++){
+    const sample = drawSample(popName, n, rnd);
+    const r = allIntervals(sample, statName, B, alpha, rnd);
+    for (const k of kinds){
+      const ci = r[k];
+      width[k] += ci.hi - ci.lo;
+      if (ci.lo <= truth && truth <= ci.hi) hit[k]++;
+      else if (truth < ci.lo) low[k]++;
+      else high[k]++;
+    }
+  }
+  const out = {};
+  for (const k of kinds)
+    out[k] = { coverage: hit[k] / trials, missedLow: low[k] / trials,
+               missedHigh: high[k] / trials, width: width[k] / trials };
+  out.truth = truth;
+  return out;
+}
+
+// The structural failure, stated as a check rather than a warning.
+function maxIsPinned(sample, B, rnd){
+  const boot = bootstrapDistribution(sample, STATS.max, B, rnd);
+  const sampleMax = STATS.max(sample);
+  let atCeiling = 0;
+  for (const b of boot) if (b === sampleMax) atCeiling++;
+  return { bootMax: boot[boot.length - 1], sampleMax: sampleMax,
+           exceeds: boot.filter(function(b){ return b > sampleMax; }).length,
+           ceilingShare: atCeiling / boot.length };
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- UI
+const $ = id => document.getElementById(id);
+const ALPHA = 0.05;
+
+function render(){
+  const statName = $("stat").value, popName = $("pop").value;
+  const n = +$("sN").value, B = +$("sB").value;
+  $("vN").textContent = n; $("vB").textContent = B;
+
+  const rnd = mulberry32(4242);
+  const sample = drawSample(popName, n, rnd);
+  const r = allIntervals(sample, statName, B, ALPHA, rnd);
+  const truth = POPS[popName].truth[statName];
+
+  const lo = r.boot[0], hi = r.boot[r.boot.length - 1], BINS = 40;
+  const bins = new Array(BINS).fill(0);
+  for (const b of r.boot){
+    const k = hi === lo ? 0 : Math.min(BINS - 1, Math.floor((b - lo) / (hi - lo) * BINS));
+    bins[k]++;
+  }
+  const top = Math.max.apply(null, bins) || 1;
+  $("hist").innerHTML = bins.map(function(b){
+    return '<div style="height:' + (100 * b / top) + '%"></div>';
+  }).join("");
+  $("histAxis").textContent = "bootstrap distribution of the " + statName + ": " +
+    lo.toFixed(3) + " to " + hi.toFixed(3) + ", B = " + B;
+
+  const rows = [["percentile", r.percentile], ["basic", r.basic], ["BCa", r.bca]];
+  $("ci").innerHTML = rows.map(function(pair){
+    const ci = pair[1];
+    const covers = truth != null && ci.lo <= truth && truth <= ci.hi;
+    return "<tr><td>" + pair[0] + "</td><td>" + ci.lo.toFixed(4) + "</td><td>" + ci.hi.toFixed(4) +
+      "</td><td>" + (ci.hi - ci.lo).toFixed(4) + "</td><td class='" +
+      (truth == null ? "" : covers ? "ok" : "bad") + "'>" +
+      (truth == null ? "no closed form" : covers ? "yes" : "NO") + "</td></tr>";
+  }).join("");
+
+  $("truth").innerHTML = "observed estimate <strong>" + r.theta.toFixed(4) + "</strong>" +
+    (truth != null ? ", true value <strong>" + truth.toFixed(4) + "</strong>" : ", true value has no closed form here") +
+    " &middot; BCa corrections z&#8320; = " + r.bca.z0.toFixed(4) + ", a = " + r.bca.a.toFixed(4) +
+    (Math.abs(r.bca.z0) < 0.02 && Math.abs(r.bca.a) < 0.02 ? " (both near zero, so BCa collapses to percentile)" : "");
+
+  const cov = coverage(statName, popName, n, Math.min(B, 800), 2000, ALPHA, 99);
+  if (cov){
+    $("cov").innerHTML = ["percentile", "basic", "bca"].map(function(k){
+      const c = cov[k];
+      const cls = c.coverage >= 0.93 ? "ok" : c.coverage >= 0.88 ? "warn" : "bad";
+      return "<tr><td>" + (k === "bca" ? "BCa" : k) + "</td>" +
+        "<td class='" + cls + "'>" + (100 * c.coverage).toFixed(1) + "%</td>" +
+        "<td>" + (100 * c.missedLow).toFixed(1) + "%</td>" +
+        "<td>" + (100 * c.missedHigh).toFixed(1) + "%</td>" +
+        "<td>" + c.width.toFixed(4) + "</td></tr>";
+    }).join("");
+    const best = ["percentile", "basic", "bca"].reduce(function(a, k){
+      return Math.abs(cov[k].coverage - 0.95) < Math.abs(cov[a].coverage - 0.95) ? k : a;
+    }, "percentile");
+    $("covNote").innerHTML = "Nominal 95%. Closest here: <strong>" + (best === "bca" ? "BCa" : best) +
+      "</strong> at " + (100 * cov[best].coverage).toFixed(1) + "%. " +
+      (cov.percentile.coverage < 0.9
+        ? "The percentile interval is well under its nominal level — this is a case where the bootstrap needs help or should not be used."
+        : "");
+  } else {
+    $("cov").innerHTML = "<tr><td colspan='5' class='text-slate-500'>this population has no closed-form truth for that statistic</td></tr>";
+    $("covNote").textContent = "";
+  }
+
+  // the grid across statistics
+  $("grid").innerHTML = Object.keys(STATS).map(function(sn){
+    const c = coverage(sn, popName, n, 400, 800, ALPHA, 7);
+    if (!c) return "<tr><td>" + sn + "</td><td colspan='4' class='text-slate-400'>no closed-form truth</td></tr>";
+    const cell = function(k){
+      const v = c[k].coverage;
+      const cls = v >= 0.93 ? "ok" : v >= 0.88 ? "warn" : "bad";
+      return "<td class='" + cls + "'>" + (100 * v).toFixed(1) + "%</td>";
+    };
+    const worst = Math.min(c.percentile.coverage, c.basic.coverage, c.bca.coverage);
+    const best = Math.max(c.percentile.coverage, c.basic.coverage, c.bca.coverage);
+    const verdict = best < 0.6 ? "<span class='bad'>broken</span>"
+                  : best < 0.9 ? "<span class='warn'>undercovers</span>"
+                  : "<span class='ok'>fine</span>";
+    return "<tr><td>" + sn + "</td>" + cell("percentile") + cell("basic") + cell("bca") +
+           "<td>" + verdict + "</td></tr>";
+  }).join("");
+
+  // B is not the accuracy dial
+  $("bTable").innerHTML = [200, 500, 1000, 2000].map(function(b){
+    const cm = coverage("mean", popName, n, b, 600, ALPHA, 21);
+    const cx = coverage("max", "uniform", n, b, 600, ALPHA, 21);
+    return "<tr><td>" + b + "</td><td>" + (100 * cm.percentile.coverage).toFixed(1) + "%</td>" +
+      "<td class='bad'>" + (100 * cx.percentile.coverage).toFixed(1) + "%</td></tr>";
+  }).join("");
+}
+
+["stat", "pop", "sN", "sB"].forEach(function(id){
+  $(id).addEventListener("input", render);
+  $(id).addEventListener("change", render);
+});
+render();
+</script>
+</body>
+</html>
