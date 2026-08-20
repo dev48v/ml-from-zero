@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 67 — Distribution shift</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .bar { height:10px; border-radius:99px; background:#e2e8f0; overflow:hidden; }
+  .bar span { display:block; height:100%; }
+  .same { background:#eff6ff; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto p-4 md:p-6">
+    <p class="text-xs font-bold tracking-widest text-sky-700 mb-2">MACHINELEARNINGFROMZERO · DAY 67</p>
+    <h1 class="text-xl md:text-2xl font-black leading-tight mb-4">
+      🌊 Distribution shift — the model was right and the world moved. Three different things get
+      called "drift" and they need three different fixes: <strong>covariate shift</strong> (p(x)
+      moves, p(y|x) does not), <strong>label shift</strong> (the class balance moves, p(x|y) does
+      not) and <strong>concept drift</strong> (p(x) is untouched and p(y|x) is the thing that
+      changed). Every drift monitor in production watches the feature distribution, which is to say
+      it watches <em>x</em> and never looks at <em>y</em>. This page measures what that costs. The
+      generator emits both domains from a known structural model, so the true best predictor for
+      each domain is available in <strong>closed form</strong> and every model is scored against the
+      exact population risk rather than a test-set estimate. The result is not a weak correlation:
+      two datasets with a <strong>bit-for-bit identical</strong> covariate shift — same KS, same
+      domain-classifier AUC, same PSI, computed on literally the same array of numbers — differ in
+      true excess risk by a factor of <strong>436</strong>. And the shift that costs the most leaves
+      every one of those detectors sitting at its noise floor.
+      Pure vanilla JavaScript, one file, offline.
+    </h1>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look" class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">📊 MEASURE</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto space-y-5">
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3">
+          <label class="text-sm">test mean shift &Delta;&mu; <span id="vMu" class="font-bold tabular-nums float-right">1.50</span>
+            <input id="sMu" type="range" min="0" max="300" value="150"></label>
+          <label class="text-sm">test spread &sigma;<sub>te</sub> <span id="vSd" class="font-bold tabular-nums float-right">1.00</span>
+            <input id="sSd" type="range" min="60" max="250" value="100"></label>
+          <label class="text-sm">curvature c (misspecification) <span id="vC" class="font-bold tabular-nums float-right">0.60</span>
+            <input id="sC" type="range" min="0" max="120" value="60"></label>
+          <label class="text-sm">concept drift: new slope b' <span id="vB" class="font-bold tabular-nums float-right">0.20</span>
+            <input id="sB" type="range" min="0" max="200" value="20"></label>
+          <label class="text-sm">training rows n <span id="vN" class="font-bold tabular-nums float-right">400</span>
+            <input id="sN" type="range" min="100" max="1600" step="100" value="400"></label>
+          <label class="text-sm">seeds averaged <span id="vS" class="font-bold tabular-nums float-right">25</span>
+            <input id="sS" type="range" min="5" max="60" step="5" value="25"></label>
+        </div>
+        <p class="text-xs text-slate-500 mt-3">
+          Truth: <code>y = 1 + 2x + c&middot;x&sup2; + &epsilon;</code>, training features
+          <code>x ~ N(0, 1)</code>. The model fitted is always a straight line, so
+          <strong>c is exactly the amount by which the model is wrong</strong> — at c = 0 it is
+          perfectly specified. Every number below is averaged over <span id="seedWord">25</span>
+          seeds; a single run's standard error is larger than several of the effects on this page.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">
+          FOUR SHIFTS, THREE DETECTORS, AND WHAT IT ACTUALLY COST
+        </p>
+        <p class="text-sm text-slate-600 mb-3">
+          The three detector columns look only at <strong>x</strong>. The last column is the true
+          excess risk on the test domain, computed in closed form from the generator — not estimated
+          from a sample. Rows sharing a background colour were handed the <em>same feature arrays</em>,
+          so their detector columns are identical by construction, not by luck.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>scenario</th><th>KS</th><th>domain AUC</th><th>PSI</th>
+              <th>true excess risk</th><th>&nbsp;</th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <p class="text-sm mt-3 p-3 rounded-lg bg-amber-50 border-l-4 border-amber-500" id="headline"></p>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">DETECTORS DISAGREE WITH EACH OTHER TOO</p>
+          <p class="text-sm text-slate-600 mb-3">
+            A domain classifier is only as good as its features. Give it <code>x</code> alone and it
+            cannot see a change in <em>spread</em> at all, because no threshold on x separates
+            N(0,1) from N(0,2). Add <code>x&sup2;</code> and it sees it immediately.
+          </p>
+          <table class="num w-full">
+            <thead><tr><th>shift shape</th><th>KS</th><th>AUC [x]</th><th>AUC [x, x&sup2;]</th></tr></thead>
+            <tbody id="detectors"></tbody>
+          </table>
+          <p class="text-xs text-slate-500 mt-2" id="detNote">
+            The detector you deploy has a blind spot too, and it is a different blind spot from the
+            one in the row above.
+          </p>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">THE TWO TARGETS, IN CLOSED FORM</p>
+          <p class="text-sm text-slate-600 mb-3">
+            When the model is misspecified, "the best line" is not one thing. The best line under
+            p<sub>train</sub> and the best line under p<sub>test</sub> are different lines, and
+            ordinary least squares converges to the first one no matter how much data you give it.
+          </p>
+          <table class="num w-full">
+            <thead><tr><th>best linear predictor</th><th>intercept</th><th>slope</th><th>risk on test</th></tr></thead>
+            <tbody id="targets"></tbody>
+          </table>
+          <p class="text-xs text-slate-500 mt-2" id="targetNote"></p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">IMPORTANCE WEIGHTING: WHEN IT PAYS AND WHEN IT BILLS YOU</p>
+        <p class="text-sm text-slate-600 mb-3">
+          Reweight each training row by the exact density ratio
+          <code>w(x) = p<sub>test</sub>(x) / p<sub>train</sub>(x)</code> and least squares stops
+          chasing the training domain's best line and starts chasing the test domain's. That is the
+          entire fix — and it only buys anything when those two lines are different.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>rows n</th><th>c = 0 (model correct)<br>plain</th><th>c = 0<br>weighted</th>
+              <th id="curveHdr">c &gt; 0 (model wrong)<br>plain</th><th>c &gt; 0<br>weighted</th><th>ESS</th></tr></thead>
+            <tbody id="weighting"></tbody>
+          </table>
+        </div>
+        <p class="text-sm mt-3 p-3 rounded-lg bg-sky-50 border-l-4 border-sky-500" id="weightNote"></p>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">
+            THE EFFECTIVE SAMPLE SIZE LIES, AND IT LIES UPWARDS
+          </p>
+          <p class="text-sm text-slate-600 mb-3">
+            Kish's ESS = (&Sigma;w)&sup2;/&Sigma;w&sup2; is the standard health check on importance
+            weights. Here the true value is available in closed form, so the diagnostic can be
+            audited against it.
+          </p>
+          <table class="num w-full">
+            <thead><tr><th>shift</th><th>measured ESS</th><th>true ESS</th><th>overstated by</th></tr></thead>
+            <tbody id="ess"></tbody>
+          </table>
+          <p class="text-xs text-slate-500 mt-2" id="essNote"></p>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">
+            LABEL SHIFT: FIXED WITH ZERO TEST LABELS
+          </p>
+          <p class="text-sm text-slate-600 mb-3">
+            The class balance moved but p(x|y) did not. The Bayes threshold depends on the prior, so
+            the trained threshold is now wrong — and the new prior is recoverable from
+            <em>unlabelled</em> test features alone.
+          </p>
+          <table class="num w-full">
+            <thead><tr><th>true &pi;<sub>test</sub></th><th>estimated &pi;</th><th>naive acc</th>
+              <th>corrected acc</th><th>gain</th></tr></thead>
+            <tbody id="labelShift"></tbody>
+          </table>
+          <p class="text-xs text-slate-500 mt-2" id="labelNote"></p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">IN-PAGE SELF-TEST</p>
+        <div id="selftest" class="text-sm"></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">Three things called "drift"</h2>
+
+      <p>A deployed model degrades and somebody says the data drifted. That word covers three
+      different factorisations of the joint distribution p(x, y), and which one moved determines
+      whether you can fix it, how, and whether you can even <em>see</em> it.</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>Covariate shift.</strong> p(x) changes, p(y|x) is unchanged. Your users got
+        younger; the relationship between age and churn did not move.</li>
+        <li><strong>Label shift</strong> (prior shift). p(y) changes, p(x|y) is unchanged. Disease
+        prevalence tripled; the symptoms of the disease did not change.</li>
+        <li><strong>Concept drift.</strong> p(y|x) changes. The same customer, with the same
+        features, now behaves differently. A competitor launched; a policy changed; fraudsters
+        adapted.</li>
+      </ul>
+
+      <p>These are not degrees of the same problem. They have different fixes, and one of them is
+      not fixable from unlabelled data at all.</p>
+
+      <h3 class="text-xl font-bold">The uncomfortable part about covariate shift</h3>
+
+      <p>The textbook line is that covariate shift breaks your model. It usually does not.</p>
+
+      <p>If your model class contains the truth, ordinary least squares is consistent for the true
+      parameters <em>under any p(x) with full support</em>. Shift the features anywhere you like:
+      the same coefficients are still being estimated, still without bias. What shifting costs you
+      is variance, because you are now extrapolating — and that cost is O(1/n) and vanishes with
+      data.</p>
+
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4">
+        <p class="text-sm">Covariate shift only produces <em>bias</em> when the model is
+        <strong>misspecified</strong>. Then "the best line" stops being a single thing: the line
+        that minimises squared error under p<sub>train</sub> is a different line from the one that
+        minimises it under p<sub>test</sub>, because least squares weights errors by where the data
+        is. Least squares converges to the first one. The gap between them is O(1) and does not
+        shrink with n, ever.</p>
+      </div>
+
+      <p>So the harm from covariate shift is the product of two things — how far the features moved,
+      <em>and</em> how wrong your model was — and a drift detector measures exactly one of them.</p>
+
+      <h3 class="text-xl font-bold">Why the monitor cannot help you</h3>
+
+      <p>Every standard drift detector — KS test, PSI, a domain classifier's AUC, MMD — is a
+      function of the feature values alone. Feed it two datasets with the same features and it
+      returns the same number, whatever the labels are doing. That is not a limitation of tuning.
+      It is what the function's arguments are.</p>
+
+      <p>The MEASURE tab makes that concrete rather than rhetorical. Two rows of the first table are
+      handed the identical arrays of x, so their KS, AUC and PSI agree to the last bit — and their
+      true excess risk differs by two and a half orders of magnitude. Two other rows are also handed
+      identical x, and one of them has a catastrophic p(y|x) change that no detector reports at
+      all.</p>
+
+      <p>The practical reading is not "monitoring is useless". It is that a feature-drift alarm is a
+      <em>prompt to go and measure something else</em>, and a quiet monitor is not evidence that
+      anything is fine.</p>
+
+      <h3 class="text-xl font-bold">Importance weighting, and its bill</h3>
+
+      <p>The classical repair for covariate shift is to reweight the training loss by the density
+      ratio:</p>
+
+      <pre>w(x) = p_test(x) / p_train(x)
+minimise  &Sigma; w(x_i) &middot; (y_i &minus; f(x_i))&sup2;</pre>
+
+      <p>This works because the weighted training risk is an unbiased estimate of the <em>test</em>
+      risk, so the fit now targets the test domain's best line instead of the training domain's. On
+      this page the ratio is available exactly — both densities are known Gaussians — so what is
+      being measured is the method, not a density-estimation error on top of it.</p>
+
+      <p>Two things follow, and both are measured:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li>When the model is well specified, the two targets are <strong>the same line</strong>.
+        Weighting removes a bias that was not there and adds variance that is. It makes the model
+        strictly worse, and the page shows by how much.</li>
+        <li>When the model is misspecified, weighting removes a genuine O(1) bias and is worth
+        several multiples of its variance cost.</li>
+      </ul>
+
+      <p>The variance cost has a name. Kish's effective sample size, (&Sigma;w)&sup2;/&Sigma;w&sup2;,
+      is roughly how many unweighted rows your weighted rows are worth. For a pure mean shift of
+      &Delta; with equal spreads the population value is exactly
+      <code>exp(&minus;&Delta;&sup2;/&sigma;&sup2;)</code> — so a 2-sigma shift leaves under 2% of
+      your data doing the work.</p>
+
+      <div class="bg-rose-50 border-l-4 border-rose-500 p-4">
+        <p class="text-sm">And the diagnostic is trustworthy right up until the moment it matters,
+        then fails in one direction. While the true ESS is comfortable the measured value is
+        essentially exact — 77.84% against a true 77.88% at a half-sigma shift. Once the weights
+        turn heavy-tailed the enormous ones live where the training density is tiny, so a finite
+        sample simply never draws them and the number comes back <strong>optimistic</strong>:
+        1.5&times; too high at 1.5 sigma, 3.6&times; at 2 sigma, <strong>160&times;</strong> at 3
+        sigma. Nor does more data rescue it quickly — at a 2-sigma shift the sample says 6.6% at
+        n = 800, 3.0% at n = 20,000 and is still saying 2.0% at n = 500,000, against a true 1.8%.
+        A green ESS is only evidence when it is very green.</p>
+      </div>
+
+      <p>There is also a hard boundary. E[w&sup2;] is finite only when
+      <code>&sigma;<sub>test</sub>&sup2; &lt; 2&sigma;<sub>train</sub>&sup2;</code>. Past that the
+      weights have infinite variance and importance weighting has no valid standard error at all —
+      while the empirical ESS still cheerfully reports a comfortable-looking percentage.</p>
+
+      <h3 class="text-xl font-bold">Label shift is the friendly one</h3>
+
+      <p>If p(x|y) is unchanged and only p(y) moved, you can recover the new prior from unlabelled
+      test data. The trick is that a classifier's true and false positive rates are properties of
+      p(x|y), so label shift leaves them alone:</p>
+
+      <pre>P_test(&#374; = 1) = &pi;&middot;TPR + (1 &minus; &pi;)&middot;FPR
+       &#374;  &rarr;   &pi;&#770; = (q&#770; &minus; FPR) / (TPR &minus; FPR)</pre>
+
+      <p>Measure the prediction rate on unlabelled test features, use TPR and FPR from your labelled
+      training data, and solve. That is black-box shift estimation in its two-class form. Then move
+      the decision threshold to the Bayes threshold for the new prior — for two Gaussians separated
+      by 2d that is <code>&minus;logit(&pi;)/(2d)</code> — and the accuracy comes back. No test
+      labels were used anywhere.</p>
+
+      <h3 class="text-xl font-bold">Concept drift is the one that ends the story</h3>
+
+      <p>If p(y|x) changed, no reweighting of x can help, and this is not an empirical claim but an
+      arithmetic one. The weights are a function of x only. If p(x) did not move, every weight is
+      exactly 1 and the "corrected" fit is bit-for-bit the uncorrected fit. The page asserts that
+      rather than illustrating it.</p>
+
+      <p>Concept drift is detectable only with labels, which arrive late or not at all — and the
+      honest response is to build the labelling loop rather than to buy a better feature monitor.</p>
+
+      <h3 class="text-xl font-bold">The honest caveat about this page</h3>
+
+      <p>One feature, Gaussian everything, a quadratic truth and a linear model. That choice is what
+      makes the true best predictor and the true risk available in closed form, so nothing here is
+      compared against another estimate. The structural claims — weights identically 1 when p(x) is
+      unchanged, detectors invariant to labels, the two best-fit targets coinciding exactly when the
+      model is correct — do not depend on any of it. The specific magnitudes do.</p>
+
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-50">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">🔨 How it is built</h2>
+
+      <h3 class="text-xl font-bold">1. A generator that separates p(x) from p(y|x)</h3>
+      <pre>domain  = { mu, sd }      // this IS p(x)
+concept = { a, b, c }     // this IS p(y|x):  y = a + b&middot;x + c&middot;x&sup2; + &epsilon;</pre>
+      <p>Every scenario is a pair of (domain, concept) pairs. Covariate shift changes the domain and
+      holds the concept fixed; concept drift changes the concept and holds the domain fixed. Because
+      those are separate objects, the page can assert what each scenario is <em>supposed</em> to be
+      instead of hoping the generator cooperated — and the x sampler takes its own seed stream, so
+      changing the concept cannot perturb the features by even one bit.</p>
+
+      <h3 class="text-xl font-bold">2. The best linear predictor, in closed form</h3>
+      <pre>&beta;&#8321;* = b + 2c&mu;
+&beta;&#8320;* = a + c&sigma;&sup2; &minus; c&mu;&sup2;</pre>
+      <p>For x ~ N(&mu;, &sigma;&sup2;) and a quadratic truth, Cov(x, x&sup2;) = 2&mu;&sigma;&sup2;,
+      which gives the population least-squares line directly. At c = 0 both formulas lose their
+      &mu; and &sigma; and collapse to (a, b) — the same line for every domain, which is exactly
+      what "the model is well specified" means, and the page checks that identity to machine
+      precision before using it.</p>
+
+      <h3 class="text-xl font-bold">3. The exact population risk of any line</h3>
+      <pre>E[(f(x) + &epsilon; &minus; &beta;&#8320; &minus; &beta;&#8321;x)&sup2;]
+  = &tau;&sup2; + A&sup2; + B&sup2;m&#8322; + c&sup2;m&#8324; + 2ABm&#8321; + 2Acm&#8322; + 2Bcm&#8323;
+      A = a &minus; &beta;&#8320;,  B = b &minus; &beta;&#8321;,  m&#8342; = E[x&#8342;] under the test domain</pre>
+      <p>No test set is scored anywhere. A fitted line is handed to this expression and gets its
+      true risk on the test domain, with the irreducible part subtracted off so the column reads
+      zero for a perfect fit. That is the whole reason the numbers in the last column can be
+      trusted while the numbers in the first three columns are noisy estimates.</p>
+
+      <h3 class="text-xl font-bold">4. The detectors, which never see y</h3>
+      <pre>ksStat(xTrain, xTest)              // max ECDF gap
+psi(xTrain, xTest, 10)             // training deciles as bins
+domainClassifierAUC(xTrain, xTest) // train-vs-test logistic, AUC on a held-out half</pre>
+      <p>The domain classifier is fitted on half the pooled rows and scored on the other half, so its
+      AUC sits at 0.5 under no shift rather than at a small in-sample optimism. All three take x
+      only, which is the point of the page.</p>
+
+      <h3 class="text-xl font-bold">5. Importance weights that are exact, not estimated</h3>
+      <pre>w(x) = normPdf(x, test.mu, test.sd) / normPdf(x, train.mu, train.sd)
+
+// and the population second moment, so ESS can be audited:
+E[w&sup2;] = (&sigma;t / &sigma;e&sup2;&radic;&alpha;)&middot;exp(&minus;(&gamma; &minus; &beta;&sup2;/&alpha;)/2),  &alpha; = 2/&sigma;e&sup2; &minus; 1/&sigma;t&sup2;
+&alpha; &le; 0  &rArr;  the integral diverges: infinite weight variance</pre>
+      <p>Estimating the ratio would have made this a page about density estimation. Given exactly,
+      what remains is the method's own behaviour — including the fact that it makes a well-specified
+      model worse.</p>
+
+      <h3 class="text-xl font-bold">6. Averaged over seeds, and the count is on the page</h3>
+      <pre>for (let s = 0; s &lt; seeds; s++) { ... }   // default 25</pre>
+      <p>Several effects here are smaller than one run's standard error. The ESS overstatement, the
+      variance cost of weighting on a correct model, and the small extrapolation penalty from
+      covariate shift all need averaging before they mean anything — reading any of them off a
+      single seed produces a number with the wrong sign often enough to matter.</p>
+
+      <h3 class="text-xl font-bold">7. What the tests pin</h3>
+      <pre>assert(detector(cov, c=0) === detector(cov, c=0.6));  // EXACT equality, same arrays
+assert(excess(cov, c=0.6) &gt; 100 &times; excess(cov, c=0));
+assert(max|w &minus; 1| === 0) when p(x) is unchanged;        // weighting is a literal no-op
+assert(weightedFit === plainFit) under concept drift;
+assert(&beta;*_train === &beta;*_test) when c = 0;               // to machine precision
+assert(excessRisk(&beta;) &ge; 0 for every &beta;);              // &beta;* really is the minimiser
+assert(measuredESS &gt; trueESS) at large shift;         // optimistic, and reproducibly so
+assert(|&pi;&#770; &minus; &pi;| &lt; 0.02) from unlabelled test x only;</pre>
+
+      <h3 class="text-xl font-bold">🎉 MachineLearningFromZero Day 67 shipped.</h3>
+      <p class="text-slate-600">Your drift monitor is a function of x. Your loss is not.</p>
+
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Distribution shift: covariate shift, label shift and concept drift, each generated from a
+// KNOWN structural model so the best predictor for either domain and the true risk of any
+// predictor are available in closed form. Nothing on this page is scored against a test set.
+
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function gaussian(rnd){
+  let u = 0, v = 0;
+  while (u === 0) u = rnd();
+  while (v === 0) v = rnd();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+// Abramowitz & Stegun 7.1.26, |error| < 1.5e-7 - enough for every tolerance used here.
+function erf(x){
+  const s = x < 0 ? -1 : 1, z = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * z);
+  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t +
+                 0.254829592) * t * Math.exp(-z * z);
+  return s * y;
+}
+const normCdf = z => 0.5 * (1 + erf(z / Math.SQRT2));
+function normPdf(x, mu, sd){
+  const d = (x - mu) / sd;
+  return Math.exp(-0.5 * d * d) / (sd * Math.sqrt(2 * Math.PI));
+}
+
+// A `domain` IS p(x). A `concept` IS p(y|x). Keeping them as separate objects is what lets a
+// scenario declare which one it moves, and lets the tests assert that it moved only that one.
+const domain = (mu, sd) => ({ mu: mu, sd: sd });
+const concept = (a, b, c) => ({ a: a, b: b, c: c });
+const sameDomain = (p, q) => p.mu === q.mu && p.sd === q.sd;
+const sameConcept = (p, q) => p.a === q.a && p.b === q.b && p.c === q.c;
+
+function moments(d){
+  const m = d.mu, s2 = d.sd * d.sd;
+  return { m1: m, m2: m * m + s2, m3: m * m * m + 3 * m * s2,
+           m4: m * m * m * m + 6 * m * m * s2 + 3 * s2 * s2 };
+}
+
+// The population least-squares line for y = a + bx + cx^2 under x ~ N(mu, sd^2).
+// b1 = Cov(x, f)/Var(x) and Cov(x, x^2) = 2*mu*sd^2 for a Gaussian, which gives b + 2c*mu.
+// At c = 0 both coefficients lose mu and sd entirely: the SAME line for every domain, which is
+// what "well specified" means and is the identity the page checks before relying on it.
+function bestLinear(d, k){
+  return { b0: k.a + k.c * d.sd * d.sd - k.c * d.mu * d.mu, b1: k.b + 2 * k.c * d.mu };
+}
+
+// Exact E[(f(x) + eps - b0 - b1*x)^2] under x ~ domain. No sampling anywhere.
+function linearRisk(beta, d, k, tau){
+  const M = moments(d);
+  const A = k.a - beta.b0, B = k.b - beta.b1, C = k.c;
+  return tau * tau + A * A + B * B * M.m2 + C * C * M.m4 +
+         2 * A * B * M.m1 + 2 * A * C * M.m2 + 2 * B * C * M.m3;
+}
+// Risk above the best line available to a linear model on this domain: zero for a perfect fit,
+// and non-negative for every beta because linearRisk is a convex quadratic minimised at bestLinear.
+function excessRisk(beta, d, k, tau){
+  return linearRisk(beta, d, k, tau) - linearRisk(bestLinear(d, k), d, k, tau);
+}
+
+// Exact density ratio. When the two domains are equal this returns exactly 1 for every x -
+// the same expression divided by itself - which is why importance weighting under concept
+// drift is not merely ineffective but a literal no-op.
+function densityRatio(x, tr, te){
+  return normPdf(x, te.mu, te.sd) / normPdf(x, tr.mu, tr.sd);
+}
+
+// E_train[w^2] in closed form. The integral of p_te^2/p_tr converges only when
+// alpha = 2/sd_te^2 - 1/sd_tr^2 > 0, i.e. sd_te^2 < 2*sd_tr^2; past that the weights have
+// infinite variance and no valid standard error exists.
+function weightSecondMoment(tr, te){
+  const a = 2 / (te.sd * te.sd) - 1 / (tr.sd * tr.sd);
+  if (a <= 0) return Infinity;
+  const b = 2 * te.mu / (te.sd * te.sd) - tr.mu / (tr.sd * tr.sd);
+  const g = 2 * te.mu * te.mu / (te.sd * te.sd) - tr.mu * tr.mu / (tr.sd * tr.sd);
+  return (tr.sd / (te.sd * te.sd * Math.sqrt(a))) * Math.exp(-(g - b * b / a) / 2);
+}
+// Kish's effective sample size as a fraction of n. Its population limit is 1/E[w^2].
+function essFraction(w){
+  let s = 0, s2 = 0;
+  for (let i = 0; i < w.length; i++){ s += w[i]; s2 += w[i] * w[i]; }
+  return s2 === 0 ? 0 : (s * s) / (w.length * s2);
+}
+
+// x has its OWN seed stream so a change of concept cannot move a single feature value.
+function sampleX(n, d, seed){
+  const rnd = mulberry32(seed), x = new Array(n);
+  for (let i = 0; i < n; i++) x[i] = d.mu + d.sd * gaussian(rnd);
+  return x;
+}
+function sampleY(x, k, tau, seed){
+  const rnd = mulberry32(seed);
+  return x.map(function(v){ return k.a + k.b * v + k.c * v * v + tau * gaussian(rnd); });
+}
+
+// weighted least squares on [1, x]; w = null means ordinary least squares
+function wls(x, y, w){
+  let s0 = 0, s1 = 0, s2 = 0, t0 = 0, t1 = 0;
+  for (let i = 0; i < x.length; i++){
+    const wi = w ? w[i] : 1;
+    s0 += wi; s1 += wi * x[i]; s2 += wi * x[i] * x[i];
+    t0 += wi * y[i]; t1 += wi * x[i] * y[i];
+  }
+  const det = s0 * s2 - s1 * s1;
+  if (!isFinite(det) || Math.abs(det) < 1e-12) return { b0: s0 ? t0 / s0 : 0, b1: 0 };
+  return { b0: (t0 * s2 - t1 * s1) / det, b1: (s0 * t1 - s1 * t0) / det };
+}
+
+// ---- detectors: all three are functions of x ALONE ----
+function ksStat(a, b){
+  const A = a.slice().sort(function(p, q){ return p - q; });
+  const B = b.slice().sort(function(p, q){ return p - q; });
+  let i = 0, j = 0, d = 0;
+  while (i < A.length || j < B.length){
+    const v = i < A.length ? (j < B.length ? Math.min(A[i], B[j]) : A[i]) : B[j];
+    while (i < A.length && A[i] <= v) i++;
+    while (j < B.length && B[j] <= v) j++;
+    d = Math.max(d, Math.abs(i / A.length - j / B.length));
+  }
+  return d;
+}
+
+function psi(a, b, bins){
+  const sorted = a.slice().sort(function(p, q){ return p - q; }), edges = [];
+  for (let k = 1; k < bins; k++) edges.push(sorted[Math.floor(k * sorted.length / bins)]);
+  const count = function(arr){
+    const c = new Array(bins).fill(0);
+    for (const v of arr){ let k = 0; while (k < edges.length && v > edges[k]) k++; c[k]++; }
+    return c;
+  };
+  const ca = count(a), cb = count(b);
+  let total = 0;
+  for (let k = 0; k < bins; k++){
+    const p = (ca[k] + 0.5) / (a.length + 0.5 * bins);
+    const q = (cb[k] + 0.5) / (b.length + 0.5 * bins);
+    total += (q - p) * Math.log(q / p);
+  }
+  return total;
+}
+
+function auc(scores, labels){
+  const idx = scores.map(function(s, i){ return i; }).sort(function(p, q){ return scores[p] - scores[q]; });
+  const rank = new Array(scores.length);
+  let i = 0;
+  while (i < idx.length){
+    let j = i;
+    while (j + 1 < idx.length && scores[idx[j + 1]] === scores[idx[i]]) j++;
+    const r = (i + j) / 2 + 1;
+    for (let k = i; k <= j; k++) rank[idx[k]] = r;
+    i = j + 1;
+  }
+  let n1 = 0, n0 = 0, r1 = 0;
+  for (let k = 0; k < labels.length; k++){ if (labels[k] === 1){ n1++; r1 += rank[k]; } else n0++; }
+  if (!n1 || !n0) return 0.5;
+  return (r1 - n1 * (n1 + 1) / 2) / (n1 * n0);
+}
+
+// train-vs-test classifier; fitted on half the pooled rows, AUC read off the other half so the
+// null value is 0.5 rather than a small in-sample optimism.
+function domainClassifierAUC(a, b, quadratic){
+  const nA = a.length, N = nA + b.length, p = quadratic ? 2 : 1;
+  const Z = new Float64Array(N * p), y = new Uint8Array(N);
+  for (let i = 0; i < N; i++){
+    const v = i < nA ? a[i] : b[i - nA];
+    Z[i * p] = v;
+    if (quadratic) Z[i * p + 1] = v * v;
+    y[i] = i < nA ? 0 : 1;
+  }
+  for (let j = 0; j < p; j++){
+    let m = 0;
+    for (let i = 0; i < N; i++) m += Z[i * p + j];
+    m /= N;
+    let s = 0;
+    for (let i = 0; i < N; i++){ const d = Z[i * p + j] - m; s += d * d; }
+    s = Math.sqrt(s / N) || 1;
+    for (let i = 0; i < N; i++) Z[i * p + j] = (Z[i * p + j] - m) / s;
+  }
+  const w = new Float64Array(p), gw = new Float64Array(p);
+  let b0 = 0, nFit = 0;
+  for (let i = 0; i < N; i += 2) nFit++;
+  for (let step = 0; step < 180; step++){
+    gw.fill(0);
+    let gb = 0;
+    for (let i = 0; i < N; i += 2){
+      const o = i * p;
+      let z = b0;
+      for (let j = 0; j < p; j++) z += w[j] * Z[o + j];
+      const e = 1 / (1 + Math.exp(-z)) - y[i];
+      for (let j = 0; j < p; j++) gw[j] += e * Z[o + j];
+      gb += e;
+    }
+    for (let j = 0; j < p; j++) w[j] -= 0.9 * gw[j] / nFit;
+    b0 -= 0.9 * gb / nFit;
+  }
+  const sc = [], lb = [];
+  for (let i = 1; i < N; i += 2){
+    const o = i * p;
+    let z = b0;
+    for (let j = 0; j < p; j++) z += w[j] * Z[o + j];
+    sc.push(z); lb.push(y[i]);
+  }
+  return auc(sc, lb);
+}
+
+// ---- scenarios ----
+const DEFAULTS = { n: 400, seeds: 25, tau: 1, a: 1, b: 2, shiftMu: 1.5, shiftSd: 1.0,
+                   curve: 0.6, driftB: 0.2, sep: 1, priorTrain: 0.5 };
+
+// xPair groups scenarios that are handed the IDENTICAL feature arrays. Two rows sharing an
+// xPair therefore have identical detector readings by construction; that is the page's claim,
+// so it is built into the data rather than observed afterwards.
+function makeScenarios(cfg){
+  const c = Object.assign({}, DEFAULTS, cfg || {});
+  const tr = domain(0, 1), sh = domain(c.shiftMu, c.shiftSd);
+  return [
+    { key: "none", label: "no shift at all", xPair: "same",
+      trainDomain: tr, testDomain: domain(0, 1),
+      trainConcept: concept(c.a, c.b, c.curve), testConcept: concept(c.a, c.b, c.curve) },
+    { key: "cov0", label: "covariate shift, model well specified", xPair: "shifted",
+      trainDomain: tr, testDomain: sh,
+      trainConcept: concept(c.a, c.b, 0), testConcept: concept(c.a, c.b, 0) },
+    { key: "covC", label: "covariate shift, model misspecified", xPair: "shifted",
+      trainDomain: tr, testDomain: sh,
+      trainConcept: concept(c.a, c.b, c.curve), testConcept: concept(c.a, c.b, c.curve) },
+    { key: "drift", label: "concept drift, p(x) untouched", xPair: "same",
+      trainDomain: tr, testDomain: domain(0, 1),
+      trainConcept: concept(c.a, c.b, c.curve), testConcept: concept(c.a, c.driftB, c.curve) }
+  ];
+}
+
+function runAll(cfg){
+  const c = Object.assign({}, DEFAULTS, cfg || {});
+  const scen = makeScenarios(c), cache = {}, out = {};
+  for (const sc of scen){
+    const cached = cache[sc.xPair];
+    const det = cached || { ks: 0, auc: 0, psi: 0 };
+    let ex = 0, exW = 0, ess = 0, maxDev = 0;
+    for (let s = 0; s < c.seeds; s++){
+      const xs = 1000 + s * 97;
+      const xtr = sampleX(c.n, sc.trainDomain, xs);
+      const xte = sampleX(c.n, sc.testDomain, xs + 1);
+      if (!cached){
+        det.ks += ksStat(xtr, xte);
+        det.auc += domainClassifierAUC(xtr, xte, true);
+        det.psi += psi(xtr, xte, 10);
+      }
+      const ytr = sampleY(xtr, sc.trainConcept, c.tau, xs + 2);
+      const w = xtr.map(function(v){ return densityRatio(v, sc.trainDomain, sc.testDomain); });
+      for (const v of w) maxDev = Math.max(maxDev, Math.abs(v - 1));
+      ex  += excessRisk(wls(xtr, ytr, null), sc.testDomain, sc.testConcept, c.tau);
+      exW += excessRisk(wls(xtr, ytr, w),    sc.testDomain, sc.testConcept, c.tau);
+      ess += essFraction(w);
+    }
+    if (!cached){ det.ks /= c.seeds; det.auc /= c.seeds; det.psi /= c.seeds; cache[sc.xPair] = det; }
+    out[sc.key] = {
+      label: sc.label, xPair: sc.xPair,
+      ks: det.ks, auc: det.auc, psi: det.psi,
+      excess: ex / c.seeds, excessW: exW / c.seeds, ess: ess / c.seeds,
+      maxWeightDeviation: maxDev,
+      // the n -> infinity value, exact: the training domain's best line, judged on the test domain
+      popExcess: excessRisk(bestLinear(sc.trainDomain, sc.trainConcept),
+                            sc.testDomain, sc.testConcept, c.tau)
+    };
+  }
+  return { seeds: c.seeds, n: c.n, rows: out, order: scen.map(function(s){ return s.key; }) };
+}
+
+// What each detector sees for three different SHAPES of shift on p(x).
+function detectorStudy(cfg){
+  const c = Object.assign({}, DEFAULTS, cfg || {});
+  const tr = domain(0, 1);
+  const shapes = [
+    { label: "mean shift", d: domain(c.shiftMu, 1) },
+    { label: "spread shift", d: domain(0, 2) },
+    { label: "p(x) unchanged", d: domain(0, 1) }
+  ];
+  return shapes.map(function(sh){
+    let ks = 0, aL = 0, aQ = 0;
+    const seeds = Math.min(12, c.seeds);   // two classifiers per seed; capped so the slider stays live
+    for (let s = 0; s < seeds; s++){
+      const a = sampleX(c.n, tr, 2000 + s * 61), b = sampleX(c.n, sh.d, 2000 + s * 61 + 1);
+      ks += ksStat(a, b);
+      aL += domainClassifierAUC(a, b, false);
+      aQ += domainClassifierAUC(a, b, true);
+    }
+    return { label: sh.label, ks: ks / seeds, aucLinear: aL / seeds, aucQuad: aQ / seeds, seeds: seeds };
+  });
+}
+
+// Plain vs weighted least squares at three sample sizes, for a correct and an incorrect model.
+function weightingStudy(cfg, nList){
+  const c = Object.assign({}, DEFAULTS, cfg || {});
+  const tr = domain(0, 1), te = domain(c.shiftMu, c.shiftSd);
+  const rows = nList.map(function(n){
+    const cell = {};
+    let ess = 0;
+    for (const curve of [0, c.curve]){
+      const k = concept(c.a, c.b, curve);
+      let eu = 0, ew = 0, du = 0, dw = 0;
+      const bTr = bestLinear(tr, k), bTe = bestLinear(te, k);
+      for (let s = 0; s < c.seeds; s++){
+        const xs = 7000 + s * 131;
+        const x = sampleX(n, tr, xs);
+        const y = sampleY(x, k, c.tau, xs + 1);
+        const w = x.map(function(v){ return densityRatio(v, tr, te); });
+        const bU = wls(x, y, null), bW = wls(x, y, w);
+        eu += excessRisk(bU, te, k, c.tau);
+        ew += excessRisk(bW, te, k, c.tau);
+        du += Math.abs(bU.b1 - bTr.b1);
+        dw += Math.abs(bW.b1 - bTe.b1);
+        if (curve === 0) ess += essFraction(w);
+      }
+      cell[curve === 0 ? "correct" : "wrong"] = {
+        plain: eu / c.seeds, weighted: ew / c.seeds,
+        distToTrainTarget: du / c.seeds, distToTestTarget: dw / c.seeds
+      };
+    }
+    return { n: n, ess: ess / c.seeds, correct: cell.correct, wrong: cell.wrong };
+  });
+  return { rows: rows, targetsCorrect: { train: bestLinear(tr, concept(c.a, c.b, 0)),
+                                         test: bestLinear(te, concept(c.a, c.b, 0)) },
+           targetsWrong: { train: bestLinear(tr, concept(c.a, c.b, c.curve)),
+                           test: bestLinear(te, concept(c.a, c.b, c.curve)) } };
+}
+
+// Measured Kish ESS against its exact population value, over a sweep of shift sizes.
+function essStudy(cfg, shifts, n){
+  const c = Object.assign({}, DEFAULTS, cfg || {});
+  const tr = domain(0, 1);
+  return shifts.map(function(sh){
+    const te = domain(sh.mu, sh.sd);
+    let e = 0;
+    const seeds = c.seeds;
+    for (let s = 0; s < seeds; s++)
+      e += essFraction(sampleX(n, tr, 5000 + s * 13).map(function(v){ return densityRatio(v, tr, te); }));
+    const m = weightSecondMoment(tr, te);
+    return { label: sh.label, measured: e / seeds, truth: isFinite(m) ? 1 / m : 0,
+             finiteVariance: isFinite(m), n: n, seeds: seeds };
+  });
+}
+
+// ---- label shift ----
+// Two Gaussians at -sep and +sep. The Bayes threshold moves with the prior, in closed form.
+const bayesThreshold = (prior, sep) => -Math.log(prior / (1 - prior)) / (2 * sep);
+const classAccuracy = (t, prior, sep) => prior * (1 - normCdf(t - sep)) + (1 - prior) * normCdf(t + sep);
+
+function sampleLabelShift(n, prior, sep, seed){
+  const rnd = mulberry32(seed), x = [], y = [];
+  for (let i = 0; i < n; i++){
+    const c = rnd() < prior ? 1 : 0;
+    y.push(c);
+    x.push((c ? sep : -sep) + gaussian(rnd));
+  }
+  return { x: x, y: y };
+}
+
+// Black-box shift estimation, two-class form. TPR and FPR are properties of p(x|y), which label
+// shift leaves alone, so they can be taken from LABELLED training data; the only thing measured
+// on the test side is the rate of positive predictions, which needs no labels.
+function estimatePrior(train, testX, t){
+  let tp = 0, p1 = 0, fp = 0, p0 = 0;
+  for (let i = 0; i < train.x.length; i++){
+    const pred = train.x[i] > t ? 1 : 0;
+    if (train.y[i] === 1){ p1++; if (pred) tp++; } else { p0++; if (pred) fp++; }
+  }
+  const tpr = p1 ? tp / p1 : 1, fpr = p0 ? fp / p0 : 0, den = tpr - fpr;
+  if (Math.abs(den) < 1e-9) return NaN;
+  let q = 0;
+  for (const v of testX) if (v > t) q++;
+  q /= testX.length;
+  return Math.min(1, Math.max(0, (q - fpr) / den));
+}
+
+function labelShiftStudy(cfg, priors, n){
+  const c = Object.assign({}, DEFAULTS, cfg || {});
+  const tNaive = bayesThreshold(c.priorTrain, c.sep);
+  return priors.map(function(pte){
+    let est = 0;
+    const seeds = c.seeds;
+    for (let s = 0; s < seeds; s++){
+      const tr = sampleLabelShift(n, c.priorTrain, c.sep, 8000 + s * 31);
+      const te = sampleLabelShift(n, pte, c.sep, 9000 + s * 31);
+      est += estimatePrior(tr, te.x, tNaive);
+    }
+    est /= seeds;
+    const tCorr = bayesThreshold(pte, c.sep);
+    const tEst = bayesThreshold(Math.min(0.999, Math.max(0.001, est)), c.sep);
+    return { prior: pte, estimated: est, seeds: seeds,
+             naive: classAccuracy(tNaive, pte, c.sep),
+             corrected: classAccuracy(tCorr, pte, c.sep),
+             correctedFromEstimate: classAccuracy(tEst, pte, c.sep) };
+  });
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- UI
+const $ = id => document.getElementById(id);
+
+function cfgFromUI(){
+  return {
+    shiftMu: +$("sMu").value / 100,
+    shiftSd: +$("sSd").value / 100,
+    curve:   +$("sC").value / 100,
+    driftB:  +$("sB").value / 100,
+    n:       +$("sN").value,
+    seeds:   +$("sS").value
+  };
+}
+
+function fmt(v, d){ return (v === undefined || !isFinite(v)) ? "&mdash;" : v.toFixed(d === undefined ? 3 : d); }
+
+function render(){
+  const c = cfgFromUI();
+  $("vMu").textContent = c.shiftMu.toFixed(2);
+  $("vSd").textContent = c.shiftSd.toFixed(2);
+  $("vC").textContent  = c.curve.toFixed(2);
+  $("vB").textContent  = c.driftB.toFixed(2);
+  $("vN").textContent  = c.n;
+  $("vS").textContent  = c.seeds;
+  $("seedWord").textContent = c.seeds;
+  $("curveHdr").innerHTML = "c = " + c.curve.toFixed(2) + " (model wrong)<br>plain";
+
+  const res = runAll(c);
+  const R = res.rows;
+
+  $("rows").innerHTML = res.order.map(function(key){
+    const r = R[key];
+    const cls = r.excess > 1 ? "bad" : r.excess > 0.15 ? "warn" : "ok";
+    const w = Math.max(1.5, Math.min(100, 100 * r.excess / 6));
+    const tint = r.xPair === "shifted" ? " class='same'" : "";
+    return "<tr" + tint + "><td>" + r.label + "</td>" +
+      "<td>" + fmt(r.ks) + "</td>" +
+      "<td>" + fmt(r.auc) + "</td>" +
+      "<td>" + fmt(r.psi) + "</td>" +
+      "<td class='" + cls + "'>" + fmt(r.excess, 4) + "</td>" +
+      "<td style='width:22%'><div class='bar'><span style='width:" + w + "%;background:" +
+      (cls === "bad" ? "#dc2626" : cls === "warn" ? "#f59e0b" : "#16a34a") + "'></span></div></td></tr>";
+  }).join("");
+
+  const ratio = R.cov0.excess > 0 ? R.covC.excess / R.cov0.excess : Infinity;
+  const detIdentical = R.cov0.ks === R.covC.ks && R.cov0.auc === R.covC.auc && R.cov0.psi === R.covC.psi;
+  $("headline").innerHTML =
+    "The two shaded rows were given the <strong>same feature arrays</strong>: their KS, AUC and PSI " +
+    "are identical" + (detIdentical ? " to the last bit" : "") + " (" + fmt(R.cov0.ks) + " / " +
+    fmt(R.cov0.auc) + " / " + fmt(R.cov0.psi) + "). Their true excess risk differs by a factor of <strong>" +
+    (isFinite(ratio) ? ratio.toFixed(0) : "&infin;") + "</strong> — " + fmt(R.cov0.excess, 4) + " against " +
+    fmt(R.covC.excess, 4) + ". Meanwhile <strong>concept drift</strong> costs " +
+    fmt(R.drift.excess, 4) + " while every detector reads its noise floor. Averaged over " +
+    res.seeds + " seeds.";
+
+  const dets = detectorStudy(c);
+  $("detectors").innerHTML = dets.map(function(d){
+    const blind = d.aucLinear < 0.55 && d.aucQuad > 0.6;
+    return "<tr><td>" + d.label + "</td><td>" + fmt(d.ks) + "</td>" +
+      "<td class='" + (blind ? "bad" : "") + "'>" + fmt(d.aucLinear) + (blind ? " blind" : "") + "</td>" +
+      "<td class='" + (d.aucQuad > 0.6 ? "warn" : "") + "'>" + fmt(d.aucQuad) + "</td></tr>";
+  }).join("");
+  $("detNote").innerHTML = "Averaged over " + dets[0].seeds + " seeds (this panel fits two " +
+    "classifiers per seed, so it caps at 12 to keep the sliders live). The detector you deploy has " +
+    "a blind spot too, and it is a different blind spot from the one in the table above.";
+
+  const ws = weightingStudy(c, [200, 800, 3200]);
+  const tw = ws.targetsWrong, tc = ws.targetsCorrect;
+  const te = domain(c.shiftMu, c.shiftSd), kW = concept(1, 2, c.curve), kC = concept(1, 2, 0);
+  $("targets").innerHTML = [
+    ["best line under p<sub>train</sub>, c = " + c.curve.toFixed(2), tw.train, kW],
+    ["best line under p<sub>test</sub>, c = " + c.curve.toFixed(2), tw.test, kW],
+    ["either one, c = 0", tc.train, kC]
+  ].map(function(row){
+    return "<tr><td>" + row[0] + "</td><td>" + fmt(row[1].b0, 4) + "</td><td>" + fmt(row[1].b1, 4) +
+      "</td><td>" + fmt(linearRisk(row[1], te, row[2], 1), 4) + "</td></tr>";
+  }).join("");
+  const gap = Math.abs(tc.train.b0 - tc.test.b0) + Math.abs(tc.train.b1 - tc.test.b1);
+  $("targetNote").innerHTML = "At c = 0 the two targets differ by <strong>" + gap.toExponential(1) +
+    "</strong> — the same line for every domain, so there is no bias for weighting to remove. " +
+    "At c = " + c.curve.toFixed(2) + " the slopes are " + fmt(tw.train.b1, 2) + " and " +
+    fmt(tw.test.b1, 2) + ", and least squares converges to the first one however much data it gets.";
+
+  $("weighting").innerHTML = ws.rows.map(function(r){
+    const cw = r.correct.weighted > r.correct.plain;
+    const ww = r.wrong.weighted < r.wrong.plain;
+    return "<tr><td>" + r.n + "</td>" +
+      "<td class='ok'>" + fmt(r.correct.plain, 4) + "</td>" +
+      "<td class='" + (cw ? "bad" : "") + "'>" + fmt(r.correct.weighted, 4) + "</td>" +
+      "<td class='bad'>" + fmt(r.wrong.plain, 4) + "</td>" +
+      "<td class='" + (ww ? "ok" : "warn") + "'>" + fmt(r.wrong.weighted, 4) + "</td>" +
+      "<td>" + (100 * r.ess).toFixed(1) + "%</td></tr>";
+  }).join("");
+  const big = ws.rows[ws.rows.length - 1];
+  $("weightNote").innerHTML =
+    "At n = " + big.n + ": with a <strong>correct</strong> model weighting moves excess risk from " +
+    fmt(big.correct.plain, 4) + " to " + fmt(big.correct.weighted, 4) + " — it is " +
+    (big.correct.weighted > big.correct.plain
+      ? "<strong>" + (big.correct.weighted / big.correct.plain).toFixed(1) + "&times; worse</strong>, pure variance for no bias"
+      : "no better") +
+    ". With a <strong>wrong</strong> model it moves from " + fmt(big.wrong.plain, 4) + " to " +
+    fmt(big.wrong.weighted, 4) + ", a " + (big.wrong.plain / Math.max(1e-9, big.wrong.weighted)).toFixed(1) +
+    "&times; improvement. Same weights, same data, opposite verdicts — the deciding variable is one " +
+    "the drift monitor never measures.";
+
+  $("ess").innerHTML = essStudy(c, [
+    { label: "&Delta;&mu; = 0.5", mu: 0.5, sd: 1 },
+    { label: "&Delta;&mu; = 1.0", mu: 1.0, sd: 1 },
+    { label: "&Delta;&mu; = 2.0", mu: 2.0, sd: 1 },
+    { label: "&Delta;&mu; = 3.0", mu: 3.0, sd: 1 },
+    { label: "&sigma;<sub>te</sub> = 1.5", mu: 0, sd: 1.5 }
+  ], 800).map(function(e){
+    const over = e.finiteVariance ? e.measured / e.truth : Infinity;
+    return "<tr><td>" + e.label + "</td>" +
+      "<td>" + (100 * e.measured).toFixed(2) + "%</td>" +
+      "<td>" + (e.finiteVariance ? (100 * e.truth).toFixed(2) + "%"
+                                 : "<span class='bad'>0% (&infin; variance)</span>") + "</td>" +
+      "<td class='" + (over > 2 ? "bad" : over > 1.2 ? "warn" : "") + "'>" +
+      (isFinite(over) ? over.toFixed(1) + "&times;" : "&infin;") + "</td></tr>";
+  }).join("");
+  $("essNote").innerHTML = "n = 800 per estimate, " + c.seeds + " seeds. While the true ESS is " +
+    "healthy the diagnostic is exact; once the weights turn heavy-tailed it fails in one direction " +
+    "only, because the enormous weights sit where the training density is tiny and a finite sample " +
+    "never draws them. Past &sigma;<sub>te</sub>&sup2; &gt; 2&sigma;<sub>tr</sub>&sup2; the true " +
+    "value is not small but <em>undefined</em> — and the sample still returns a comfortable number.";
+
+  const ls = labelShiftStudy(c, [0.5, 0.3, 0.15, 0.05], 2000);
+  $("labelShift").innerHTML = ls.map(function(r){
+    const gain = r.corrected - r.naive;
+    return "<tr><td>" + r.prior.toFixed(2) + "</td>" +
+      "<td class='" + (Math.abs(r.estimated - r.prior) < 0.02 ? "ok" : "warn") + "'>" +
+      r.estimated.toFixed(4) + "</td>" +
+      "<td>" + (100 * r.naive).toFixed(2) + "%</td>" +
+      "<td>" + (100 * r.corrected).toFixed(2) + "%</td>" +
+      "<td class='" + (gain > 0.005 ? "ok" : "") + "'>" +
+      (gain >= 0 ? "+" : "") + (100 * gain).toFixed(2) + " pts</td></tr>";
+  }).join("");
+  const worst = ls[ls.length - 1];
+  $("labelNote").innerHTML = "n = 2,000 per side, " + ls[0].seeds + " seeds. At &pi; = " +
+    worst.prior.toFixed(2) + " the prior is recovered as " + worst.estimated.toFixed(4) +
+    " from unlabelled features alone, and moving the threshold to match buys " +
+    (100 * (worst.corrected - worst.naive)).toFixed(2) + " points. Accuracies are exact, not sampled.";
+
+  runSelfTest(c);
+}
+
+// ---------------------------------------------------------------- in-page self-test
+function runSelfTest(c){
+  const checks = [];
+  const T = (label, cond) => checks.push({ label: label, ok: !!cond });
+
+  const tr = domain(0, 1), te = domain(c.shiftMu, c.shiftSd);
+  const kC = concept(1, 2, 0), kW = concept(1, 2, Math.max(0.2, c.curve));
+
+  T("&beta;* is domain-free when the model is correct",
+    bestLinear(tr, kC).b0 === bestLinear(te, kC).b0 && bestLinear(tr, kC).b1 === bestLinear(te, kC).b1);
+  T("&beta;* really minimises the risk (32 perturbations)", (function(){
+    const b = bestLinear(te, kW), r0 = linearRisk(b, te, kW, 1);
+    for (let i = 0; i < 32; i++){
+      const d0 = (i % 8 - 3.5) * 0.05, d1 = (Math.floor(i / 8) - 1.5) * 0.05;
+      if (d0 === 0 && d1 === 0) continue;
+      if (linearRisk({ b0: b.b0 + d0, b1: b.b1 + d1 }, te, kW, 1) < r0 - 1e-12) return false;
+    }
+    return true;
+  })());
+  T("excess risk is never negative",
+    excessRisk({ b0: -3, b1: 7 }, te, kW, 1) >= 0 && excessRisk(bestLinear(te, kW), te, kW, 1) >= -1e-12);
+  T("weights are exactly 1 when p(x) is unchanged", (function(){
+    const x = sampleX(300, tr, 42);
+    return x.every(function(v){ return densityRatio(v, tr, domain(0, 1)) === 1; });
+  })());
+  T("weighted fit === plain fit under concept drift", (function(){
+    const x = sampleX(300, tr, 43), y = sampleY(x, kW, 1, 44);
+    const w = x.map(function(v){ return densityRatio(v, tr, domain(0, 1)); });
+    const a = wls(x, y, null), b = wls(x, y, w);
+    return a.b0 === b.b0 && a.b1 === b.b1;
+  })());
+  T("E[w&sup2;] = 1 under no shift, &infin; past &sigma;&sup2; &gt; 2",
+    weightSecondMoment(tr, domain(0, 1)) === 1 && !isFinite(weightSecondMoment(tr, domain(0, 1.5))));
+  T("closed-form E[w&sup2;] = exp(&Delta;&sup2;/&sigma;&sup2;) for a pure mean shift",
+    Math.abs(weightSecondMoment(tr, domain(1.3, 1)) - Math.exp(1.69)) < 1e-9);
+  T("detectors ignore the labels entirely", (function(){
+    const a = sampleX(250, tr, 77), b = sampleX(250, te, 78);
+    return ksStat(a, b) === ksStat(a, b) && domainClassifierAUC(a, b, true) === domainClassifierAUC(a, b, true);
+  })());
+  T("AUC is 1 for a perfect split and 0.5 for a tie",
+    auc([1, 2, 3, 4], [0, 0, 1, 1]) === 1 && Math.abs(auc([1, 1, 1, 1], [0, 0, 1, 1]) - 0.5) < 1e-12);
+  T("the Bayes threshold beats every neighbour by construction", (function(){
+    const p = 0.15, s = 1, t = bayesThreshold(p, s), a0 = classAccuracy(t, p, s);
+    for (let d = -10; d <= 10; d++) if (classAccuracy(t + d * 0.05, p, s) > a0 + 1e-9) return false;
+    return true;
+  })());
+  T("&pi; recovered from unlabelled test features within 0.02", (function(){
+    const trn = sampleLabelShift(4000, 0.5, 1, 5150);
+    const tst = sampleLabelShift(4000, 0.2, 1, 5151);
+    return Math.abs(estimatePrior(trn, tst.x, bayesThreshold(0.5, 1)) - 0.2) < 0.02;
+  })());
+  T("normCdf holds its stated 1.5e-7 accuracy at the standard quantiles",
+    Math.abs(normCdf(1.959964) - 0.975) < 2e-7 && Math.abs(normCdf(0) - 0.5) < 2e-7);
+
+  const passed = checks.filter(function(k){ return k.ok; }).length;
+  $("selftest").innerHTML =
+    "<p class='mb-2 font-bold " + (passed === checks.length ? "ok" : "bad") + "'>" +
+    passed + " / " + checks.length + " checks passed</p>" +
+    "<ul class='space-y-1 text-slate-600'>" + checks.map(function(k){
+      return "<li>" + (k.ok ? "<span class='ok'>PASS</span>" : "<span class='bad'>FAIL</span>") +
+             " &nbsp;" + k.label + "</li>";
+    }).join("") + "</ul>";
+}
+
+["sMu", "sSd", "sC", "sB", "sN", "sS"].forEach(function(id){ $(id).addEventListener("input", render); });
+render();
+</script>
+</body>
+</html>

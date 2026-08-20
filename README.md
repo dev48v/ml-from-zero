@@ -70,6 +70,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 64 — Multiple comparisons: FWER, FDR, Benjamini-Hochberg](https://dev48v.infy.uk/ml/day64-multiple-comparisons.html) — `day64-multiple-comparisons.html`
 - [MachineLearningFromZero · Day 65 — The bootstrap](https://dev48.infy.uk/ml/day65-bootstrap.html) — `day65-bootstrap.html`
 - [MachineLearningFromZero · Day 66 — Leakage in cross-validation](https://dev48.infy.uk/ml/day66-cv-leakage.html) — `day66-cv-leakage.html`
+- [MachineLearningFromZero · Day 67 — Distribution shift](https://dev48.infy.uk/ml/day67-distribution-shift.html) — `day67-distribution-shift.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
