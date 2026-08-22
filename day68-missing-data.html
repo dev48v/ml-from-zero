@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 68 — Missing data: MCAR, MAR, MNAR</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .bar { height:10px; border-radius:99px; background:#e2e8f0; overflow:hidden; }
+  .bar span { display:block; height:100%; }
+  .same { background:#eff6ff; }
+  .same2 { background:#f5f3ff; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto p-4 md:p-6">
+    <p class="text-xs font-bold tracking-widest text-sky-700 mb-2">MACHINELEARNINGFROMZERO · DAY 68</p>
+    <h1 class="text-xl md:text-2xl font-black leading-tight mb-4">
+      🫥 Missing data — the rows that are not there decide the answer. Three mechanisms get
+      named: <strong>MCAR</strong> (missing for no reason), <strong>MAR</strong> (missing for a
+      reason you recorded) and <strong>MNAR</strong> (missing because of the value itself). The
+      standard advice is to test which one you have, and the standard test compares the variables
+      you <em>do</em> observe across the missingness pattern. This page builds the whole mechanism
+      space out of two numbers — &beta; for x-dependence, &delta; for y-dependence — so the truth
+      is exact, then hands two different worlds the <strong>same observed dataset</strong>: same x
+      array, same missingness mask, same recorded y values, cell for cell. Every diagnostic, every
+      imputation, every confidence interval is <strong>bit-identical</strong> across the pair, and
+      the quantity being estimated is not. Multiple imputation's 95% interval covers the truth
+      <strong>93.6%</strong> of the time in one world and <strong>0.0%</strong> in the other —
+      the same interval, both times.
+      Pure vanilla JavaScript, one file, offline.
+    </h1>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look" class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">📊 MEASURE</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto space-y-5">
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3">
+          <label class="text-sm">observed fraction r <span id="vR" class="font-bold tabular-nums float-right">0.60</span>
+            <input id="sR" type="range" min="30" max="90" value="60"></label>
+          <label class="text-sm">&beta; — missingness leans on x <span id="vK" class="font-bold tabular-nums float-right">1.00</span>
+            <input id="sK" type="range" min="0" max="250" value="100"></label>
+          <label class="text-sm">&delta; — missing y sit higher <span id="vD" class="font-bold tabular-nums float-right">1.50</span>
+            <input id="sD" type="range" min="0" max="300" value="150"></label>
+          <label class="text-sm">true slope b <span id="vB" class="font-bold tabular-nums float-right">2.00</span>
+            <input id="sB" type="range" min="0" max="400" value="200"></label>
+          <label class="text-sm">rows n <span id="vN" class="font-bold tabular-nums float-right">400</span>
+            <input id="sN" type="range" min="100" max="1600" step="100" value="400"></label>
+          <label class="text-sm">seeds averaged <span id="vS" class="font-bold tabular-nums float-right">25</span>
+            <input id="sS" type="range" min="5" max="60" step="5" value="25"></label>
+        </div>
+        <p class="text-xs text-slate-500 mt-3">
+          Truth: <code>x ~ N(0,1)</code>, <code>y = 1 + b&middot;x + &epsilon;</code>, so
+          <code>E[y]</code>, <code>Var(y)</code>, <code>corr(x,y)</code> and the slope are all known
+          exactly. Missingness is <code>P(observed | x) = &Phi;(&alpha; + &beta;x)</code> with
+          &alpha; solved so the observed fraction is exactly r whatever &beta; is, and the missing
+          y's are drawn <code>&delta;</code> above the observed ones at the same x.
+          <strong>&beta; = 0 and &delta; = 0 is MCAR; &delta; = 0 is MAR; &delta; &ne; 0 is MNAR.</strong>
+          Every number below is averaged over <span id="seedWord">25</span> seeds.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">
+          FIVE MISSINGNESS WORLDS, ONE DIAGNOSTIC, AND WHAT IT ACTUALLY COST
+        </p>
+        <p class="text-sm text-slate-600 mb-3">
+          The diagnostic is the usual one: compare the variables you <em>do</em> have across the
+          missingness pattern (here a Welch t on x between recorded and missing rows) and reject
+          MCAR at 5%. Rows sharing a background colour were handed the <strong>same observed
+          dataset</strong> — so their diagnostic columns are identical by construction, not by luck.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>world</th><th>obs %</th><th>|t| on x</th><th>MCAR rejected</th>
+              <th>true E[y]</th><th>complete-case</th><th>multiple imputation</th><th>&nbsp;</th></tr></thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+        <p class="text-sm mt-3 p-3 rounded-lg bg-amber-50 border-l-4 border-amber-500" id="headline"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">THE TWIN WORLDS, CELL BY CELL</p>
+        <p class="text-sm text-slate-600 mb-3">
+          One realisation, one seed, &beta; = <span id="twinBeta">1.00</span>. The generator that
+          produces the observed dataset is <strong>not given &delta;</strong> — the two worlds share
+          the object, so every row below that is a function of observed data is identical for a
+          structural reason rather than a numerical coincidence.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>quantity</th><th>world A &mdash; MAR (&delta; = 0)</th>
+              <th>world B &mdash; MNAR (&delta; &gt; 0)</th><th>identical?</th></tr></thead>
+            <tbody id="twin"></tbody>
+          </table>
+        </div>
+        <p class="text-xs text-slate-500 mt-2" id="twinNote"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">
+          "COMPLETE-CASE IS BIASED UNDER MAR" IS HALF A SENTENCE — IT DEPENDS ON THE ESTIMAND
+        </p>
+        <p class="text-sm text-slate-600 mb-3">
+          Dropping incomplete rows selects on x. That moves the <em>mean</em> of y and leaves
+          <em>p(y|x)</em> alone, so the regression slope is untouched — until the mechanism starts
+          selecting on y itself. Closed-form columns are population values; measured columns are
+          averages over <span id="seedWord2">25</span> seeds.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>world</th><th>E[y] truth</th><th>CC mean: exact</th><th>CC mean: measured</th>
+              <th>slope truth</th><th>CC slope: exact</th><th>CC slope: measured</th></tr></thead>
+            <tbody id="estimands"></tbody>
+          </table>
+        </div>
+        <p class="text-sm mt-3 p-3 rounded-lg bg-sky-50 border-l-4 border-sky-500" id="estNote"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">
+          FIVE METHODS, FOUR TRUTHS — EACH METHOD BREAKS A DIFFERENT COLUMN
+        </p>
+        <p class="text-sm text-slate-600 mb-3">
+          World A (MAR), where every one of these methods is <em>allowed</em> to work. The truth row
+          is exact, not a large-sample estimate.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>method</th><th>mean of y</th><th>sd of y</th><th>corr(x, y)</th>
+              <th>slope</th><th>rows used</th></tr></thead>
+            <tbody id="methods"></tbody>
+          </table>
+        </div>
+        <p class="text-xs text-slate-500 mt-2" id="methodNote"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">
+          THE SAME INTERVAL, TWO DIFFERENT COVERAGES
+        </p>
+        <p class="text-sm text-slate-600 mb-3">
+          Nominal 95%. The MAR and MNAR columns are computed from <strong>the same intervals</strong>
+          — the observed data is identical, so the interval is identical, and only the quantity it
+          is trying to cover has moved. Averaged over <span id="covWord">250</span> replications.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>method</th><th>mean CI width</th><th>MCAR</th><th>MAR (world A)</th>
+              <th>MNAR (world B)</th><th>same interval?</th></tr></thead>
+            <tbody id="coverage"></tbody>
+          </table>
+        </div>
+        <p class="text-sm mt-3 p-3 rounded-lg bg-rose-50 border-l-4 border-rose-500" id="covNote"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">IN-PAGE SELF-TEST</p>
+        <div id="selftest" class="text-sm"></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">Three mechanisms, and only two of them are testable</h2>
+
+      <p>Every dataset with holes in it has a second, invisible dataset attached: the mechanism that
+      decided which cells you got. Write <code>R</code> for the indicator "this value was recorded".
+      The three names are three statements about what <code>R</code> depends on.</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>MCAR.</strong> <code>P(R | x, y) = P(R)</code>. The holes are unrelated to
+        anything. Dropping them costs you sample size and nothing else.</li>
+        <li><strong>MAR.</strong> <code>P(R | x, y) = P(R | x)</code>. The holes depend only on
+        things you <em>have</em>. Sick patients skip the follow-up visit — and you recorded that they
+        were sick.</li>
+        <li><strong>MNAR.</strong> <code>P(R | x, y)</code> genuinely depends on <code>y</code>.
+        High earners decline to state their income; the reason the value is missing is the value.</li>
+      </ul>
+
+      <p>MCAR is a special case of MAR, not an alternative to it — which is why a test that "rejects
+      MCAR" has told you almost nothing about whether your method is safe.</p>
+
+      <h3 class="text-xl font-bold">The whole space is two numbers</h3>
+
+      <p>On this page the mechanism is <code>P(R = 1 | x) = &Phi;(&alpha; + &beta;x)</code>, and the
+      missing y's are drawn <code>&delta;</code> above the recorded ones at the same x. That is the
+      entire generator:</p>
+
+      <pre>&beta; = 0, &delta; = 0   &rarr;  MCAR
+&beta; &ne; 0, &delta; = 0   &rarr;  MAR
+&delta; &ne; 0          &rarr;  MNAR   (whatever &beta; is)</pre>
+
+      <p>&delta; is not a hand-wave. Fixing the recorded conditional at N(&mu;(x), &tau;&sup2;) and
+      the missing one at N(&mu;(x) + &delta;, &tau;&sup2;) <em>implies</em> a missingness model, and
+      Bayes gives it in closed form:</p>
+
+      <pre>logit P(R = 1 | x, y) = logit P(R = 1 | x) + &delta;&sup2;/2&tau;&sup2; &minus; (&delta;/&tau;&sup2;)(y &minus; &mu;(x))</pre>
+
+      <p>The coefficient on y is exactly <code>&minus;&delta;/&tau;&sup2;</code>. At &delta; = 0 it
+      is exactly zero and the mechanism does not depend on y at all — which is the definition of MAR,
+      arrived at rather than asserted. The page checks that identity numerically instead of trusting
+      the algebra.</p>
+
+      <h3 class="text-xl font-bold">Why the twin worlds are the whole point</h3>
+
+      <p>Both worlds are built from the same call to the sampler that produces the observed data —
+      a function that is <em>not given &delta;</em>. World A fills the holes with &delta; = 0, world
+      B with &delta; &gt; 0. You are handed x, the mask, and the recorded y's, and those are the same
+      arrays.</p>
+
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4">
+        <p class="text-sm">So <em>any</em> function of the observed data returns the same value in
+        both worlds. Not approximately: bit for bit. The t-test, Little's MCAR test, a logistic
+        regression of the mask on every column you have, the complete-case estimate, mean imputation,
+        multiple imputation, its standard error, its degrees of freedom, its confidence interval.
+        And the quantity all of that is estimating differs by <code>&delta;(1 &minus; r)</code>.
+        The distinction between MAR and MNAR is not hard to test. It is <strong>not a function of
+        the data</strong>.</p>
+      </div>
+
+      <p>That is a much stronger statement than the usual "MNAR is hard". Hard problems have better
+      estimators. This one has none, because two different answers are consistent with the identical
+      evidence — and only an assumption, from outside the data, picks between them.</p>
+
+      <h3 class="text-xl font-bold">What the standard test is actually testing</h3>
+
+      <p>Comparing the observed variables across the missingness pattern — Little's test in its
+      one-variable form — is a test of &beta;, and only of &beta;. On the MEASURE tab it has full
+      power on the axis that barely matters and, by construction, none at all on the axis that
+      decides the answer. Both of the following are on the page:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li>A pair where the test <strong>screams</strong> in both worlds (identical t), one of which
+        multiple imputation handles perfectly and one of which it does not handle at all.</li>
+        <li>A pair where the test sits at its <strong>5% noise floor</strong> in both worlds — the
+        dataset that looks textbook-MCAR — and one of them has a complete-case estimate off by
+        &delta;(1 &minus; r).</li>
+      </ul>
+
+      <p>A quiet diagnostic is evidence about &beta;. It is not evidence about &delta;.</p>
+
+      <h3 class="text-xl font-bold">Complete-case: it depends what you are estimating</h3>
+
+      <p>"Listwise deletion is biased under MAR" is half a sentence. Selecting rows on x changes the
+      distribution of x, so it changes <code>E[y]</code>. It does not change
+      <code>p(y | x)</code> — so a regression of y on x, fitted on complete cases only, is
+      <em>unbiased for the slope</em> under exactly the MAR mechanism that ruins the mean. The page
+      measures both against exact values.</p>
+
+      <p>What breaks the slope is selection on y. The fifth world truncates: any y above a threshold
+      is never recorded. Now the recorded conditional is a truncated normal, the slope attenuates,
+      and the closed form for how much is on the page next to the measurement.</p>
+
+      <h3 class="text-xl font-bold">Imputation: four ways to be right and one way to be honest</h3>
+
+      <p>Filling holes in is not one method, and the methods fail in different columns:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>Mean imputation</strong> gives you back the complete-case mean — the same number,
+        as an algebraic identity — while quietly shrinking the variance to
+        <code>r &middot; s&sup2;</code> and pulling the correlation towards zero. (The page asserted
+        that identity <em>bit for bit</em> and the assertion failed: the two routines add up the
+        same quantity in different orders, so they land 1.6e-15 apart. Fifteen significant figures
+        of agreement, and not sixteen.)</li>
+        <li><strong>Regression imputation</strong> fixes the mean and puts every imputed point
+        exactly on the fitted line, so the correlation comes back <em>too strong</em>. Two methods,
+        two opposite directions of error on the same column.</li>
+        <li><strong>Stochastic regression imputation</strong> adds the residual noise back and gets
+        all four point estimates right — and still reports a standard error computed as if the
+        imputed values were data.</li>
+        <li><strong>Multiple imputation</strong> is the only one of the five that admits it guessed:
+        m completed datasets, pooled by Rubin's rules, with a between-imputation variance term that
+        exists precisely to price the guess.</li>
+      </ul>
+
+      <div class="bg-rose-50 border-l-4 border-rose-500 p-4">
+        <p class="text-sm">Mean imputation's interval failure is arithmetic, not bad luck. The
+        reported standard error is <code>s<sub>imp</sub>/&radic;n</code> and the real one is
+        <code>s<sub>obs</sub>/&radic;(rn)</code>, so the interval is too narrow by a factor of
+        <strong>exactly r</strong> and the coverage lands on
+        <code>2&Phi;(1.96r) &minus; 1</code>. At r = 0.6 that is 76.0%, and the page measures 77.6%
+        against the prediction. A nominal 95% interval that covers three quarters of the time is not
+        a rounding error, and nothing about the point estimate looks wrong.</p>
+      </div>
+
+      <p>Multiple imputation is not free of this either, and the page does not round it up: at
+      m = 10 its MAR coverage measures <strong>93.6%</strong> against a nominal 95%, a residual
+      undercoverage from the approximate Bayesian bootstrap at a small number of imputations. That
+      is a one-point problem. The MNAR column below it is a ninety-four-point problem.</p>
+
+      <h3 class="text-xl font-bold">The honest caveat about this page</h3>
+
+      <p>One covariate, Gaussian everything, a correctly specified linear model, and imputation
+      models that match the truth exactly. That is deliberate: it removes every other source of
+      error, so what is left is the mechanism. Real imputation also has to get the model right, and
+      that only adds problems. The structural claims — the observed data being identical across the
+      twins, the implied coefficient on y being exactly <code>&minus;&delta;/&tau;&sup2;</code>,
+      mean imputation returning the complete-case mean bit for bit, the variance identity — do not
+      depend on any of it. The specific magnitudes do.</p>
+
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-50">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">🔨 How it is built</h2>
+
+      <h3 class="text-xl font-bold">1. A sampler that cannot see &delta;</h3>
+      <pre>sampleBase(n, cfg, beta, seed)   // -&gt; { x, R, yObs, yMisBase }   NO delta argument
+completeY(base, delta)           // -&gt; y, differing from base ONLY on the missing cells</pre>
+      <p>The twin claim is enforced by the function signature. Two worlds with the same
+      <code>(beta, seed)</code> are handed the same cached base <em>object</em>, so "the observed
+      data is identical" is not something the page checks afterwards and hopes for — it is the only
+      thing that could have happened. The complete vectors then differ by exactly &delta; on exactly
+      the missing cells, which the self-test verifies both ways.</p>
+
+      <h3 class="text-xl font-bold">2. The observed fraction is exactly r for every &beta;</h3>
+      <pre>c = &Phi;&#8315;&sup1;(r);   &alpha; = c&middot;&radic;(1 + &beta;&sup2;)
+E[&Phi;(&alpha; + &beta;x)] = &Phi;(&alpha;/&radic;(1 + &beta;&sup2;)) = &Phi;(c) = r</pre>
+      <p>Without that solve, turning up &beta; would also change how much data you have, and every
+      comparison across the table would confound the two. With it, &beta; moves the <em>shape</em> of
+      the missingness and nothing else. &Phi;&#8315;&sup1; is a bisection on the page's own &Phi;, so
+      the two are consistent to machine precision even though &Phi; itself is only good to 1.5e-7.</p>
+
+      <h3 class="text-xl font-bold">3. Closed forms for everything the table prints</h3>
+      <pre>E[y]            = a + &delta;(1 &minus; r)
+E[x | R = 1]    = (&beta;/&radic;(1+&beta;&sup2;)) &middot; &phi;(c)/r          // and E[x|R=0] = &minus;(&hellip;)/(1&minus;r)
+CC mean target  = a + b&middot;E[x | R = 1]
+CC slope target = b                              // p(y|x) is untouched by selection on x
+truncated world : E[y | y &lt; t] = a &minus; &sigma;&#7522;&middot;&phi;(c)/&Phi;(c)</pre>
+      <p>The decomposition <code>r&middot;E[x|R=1] + (1&minus;r)&middot;E[x|R=0] = 0</code> is
+      asserted to 1e-12 before any of it is used, because that identity is the one that fails first
+      if the selection algebra is wrong. The truncated world's attenuated slope has no tidy closed
+      form, so it is integrated: the inverse-Mills conditional mean
+      <code>&mu;(x) &minus; &tau;&phi;(z)/&Phi;(z)</code> is fed through a Simpson quadrature of the
+      population least-squares slope, and the quadrature is checked by making it reproduce the mean,
+      which <em>does</em> have a closed form.</p>
+
+      <h3 class="text-xl font-bold">4. The implied MNAR mechanism, derived not declared</h3>
+      <pre>P(R=1 | x,y) = p&middot;f&#8320;(y) / (p&middot;f&#8320;(y) + (1&minus;p)&middot;f&#8321;(y))     // Bayes, computed always
+&rArr; logit P(R=1|x,y) = logit p + &delta;&sup2;/2&tau;&sup2; &minus; (&delta;/&tau;&sup2;)(y &minus; &mu;(x))</pre>
+      <p>The page never branches on &delta; to decide whether the mechanism depends on y — it
+      computes the posterior every time and reads the slope off numerically with a central
+      difference. At &delta; = 0 that slope comes back 0 and the whole y-grid returns the same
+      probability, which is MAR falling out of the arithmetic rather than being stipulated.</p>
+
+      <h3 class="text-xl font-bold">5. Five estimators behind one interface</h3>
+      <pre>completeCase / meanImpute / regressionImpute / stochasticImpute / multipleImpute
+   -&gt; { mean, sd, corr, slope, se, lo, hi }</pre>
+      <p>Every method produces a completed y (or a subset) and the same <code>statsOf</code> reads
+      all four estimands off it, so no method gets a bespoke code path that could flatter it.
+      Multiple imputation draws its parameters from an approximate Bayesian bootstrap of the
+      recorded rows — resample, refit, impute with residual noise — then pools with Rubin's rules,
+      including the <code>(1 + 1/m)B</code> term and the degrees of freedom that follow from it. Its
+      t quantile is a Cornish&ndash;Fisher expansion, checked in the verifier against a numerically
+      integrated t distribution.</p>
+
+      <h3 class="text-xl font-bold">6. Two identities that catch a lot</h3>
+      <pre>meanImpute.mean &equiv; completeCase.mean                   // algebraically; 1.6e-15 in floats
+s&sup2;<sub>imp</sub> &equiv; &Sigma;<sub>obs</sub>(y &minus; &#375;<sub>obs</sub>)&sup2; / (n &minus; 1)                     // to 1e-12</pre>
+      <p>The first is why mean imputation is so persistent: it changes no number anyone looks at.
+      The second is why it is so damaging: the imputed cells contribute exactly zero to the sum of
+      squares, so the variance is deflated by exactly the response rate and every interval built
+      from it is too narrow by exactly r.</p>
+      <p>The first was written as <code>===</code> and it <em>failed</em>. Complete-case adds the
+      recorded y's and divides by k; mean imputation adds the recorded y's plus (n&minus;k) copies of
+      their average and divides by n. Same number on paper, two different summation orders in
+      binary64, 1.6e-15 apart. The test now asserts the identity to 1e-12 and says why — a
+      <code>===</code> that has to be relaxed is worth keeping visible rather than quietly
+      loosening.</p>
+
+      <h3 class="text-xl font-bold">7. What the tests pin</h3>
+      <pre>assert(P(R|x) is constant across x) when &beta; = 0;        // MCAR is a value, not a mode
+assert(P(R|x,y) does not move with y) when &delta; = 0;      // MAR, derived from Bayes
+assert(implied &part;logit/&part;y === &minus;&delta;/&tau;&sup2;);
+assert(worldA.base === worldB.base);                    // same object, not just equal
+assert(yB &minus; yA === &delta; on missing, === 0 on observed);
+assert(diagnostic(A) === diagnostic(B));                // to the last bit
+assert(MI(A) === MI(B)) while truth(A) &ne; truth(B);
+assert(meanImpute.mean === completeCase.mean);
+assert(coverage(meanImpute | MCAR) &asymp; 2&Phi;(1.96r) &minus; 1);</pre>
+
+      <h3 class="text-xl font-bold">🎉 MachineLearningFromZero Day 68 shipped.</h3>
+      <p class="text-slate-600">The rows you can see cannot tell you why the others left.</p>
+
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Missing data. The entire mechanism space is two numbers:
+//   beta  - how strongly P(recorded) leans on x, which you HAVE          -> MCAR when 0
+//   delta - how far the missing y's sit above the recorded ones at the same x -> MAR when 0
+// MCAR is beta = 0 AND delta = 0; MAR is delta = 0 (so MCAR is a special case of MAR, as it
+// should be); MNAR is delta != 0 whatever beta is. The sampler that produces the OBSERVED
+// dataset is not given delta at all, which is what makes the twin worlds bit-identical by
+// construction rather than by luck.
+
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function gaussian(rnd){
+  let u = 0, v = 0;
+  while (u === 0) u = rnd();
+  while (v === 0) v = rnd();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+// Abramowitz & Stegun 7.1.26, |error| < 1.5e-7 - enough for every tolerance used here.
+function erf(x){
+  const s = x < 0 ? -1 : 1, z = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * z);
+  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t +
+                 0.254829592) * t * Math.exp(-z * z);
+  return s * y;
+}
+const normCdf = z => 0.5 * (1 + erf(z / Math.SQRT2));
+const normPdfStd = z => Math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI);
+
+// Bisection on the page's OWN normCdf, so Phi(normInv(p)) reproduces p to machine precision even
+// though normCdf itself is only accurate to ~1.5e-7 in absolute terms. That self-consistency is
+// what the closed forms need; absolute accuracy is checked separately.
+function normInv(p){
+  if (!(p > 0)) return -Infinity;
+  if (!(p < 1)) return Infinity;
+  let lo = -12, hi = 12;
+  for (let i = 0; i < 120; i++){
+    const mid = 0.5 * (lo + hi);
+    if (normCdf(mid) < p) lo = mid; else hi = mid;
+  }
+  return 0.5 * (lo + hi);
+}
+
+// Cornish-Fisher expansion for the Student-t quantile. Accurate to ~1e-4 for df >= 8, which is
+// where Rubin's degrees of freedom live; the verifier checks it against an integrated t CDF.
+function tQuantile(p, df){
+  const z = normInv(p);
+  if (!isFinite(df) || df > 1e6) return z;
+  const d = Math.max(3, df), z2 = z * z, z3 = z2 * z, z5 = z3 * z2, z7 = z5 * z2, z9 = z7 * z2;
+  return z + (z3 + z) / (4 * d) +
+             (5 * z5 + 16 * z3 + 3 * z) / (96 * d * d) +
+             (3 * z7 + 19 * z5 + 17 * z3 - 15 * z) / (384 * d * d * d) +
+             (79 * z9 + 776 * z7 + 1482 * z5 - 1920 * z3 - 945 * z) / (92160 * d * d * d * d);
+}
+
+const DEFAULTS = { n: 400, seeds: 25, rTarget: 0.6, beta: 1, delta: 1.5,
+                   a: 1, b: 2, tau: 1, m: 10 };
+const COV_REPS = 250;   // replications for every coverage figure on the page
+const DET_REPS = 200;   // replications for every "MCAR rejected" figure
+
+function cfgOf(o){
+  const c = Object.assign({}, DEFAULTS, o || {});
+  c.c = normInv(c.rTarget);      // the probit threshold
+  c.r = normCdf(c.c);            // the mechanism's own observed fraction, exactly consistent
+  c.sdY = Math.sqrt(c.b * c.b + c.tau * c.tau);
+  return c;
+}
+
+// alpha is solved so E[Phi(alpha + beta x)] = r for EVERY beta: turning up the x-dependence
+// must not also change how much data there is, or every column confounds the two.
+const alphaOf = (cfg, beta) => cfg.c * Math.sqrt(1 + beta * beta);
+const pObs = (x, cfg, beta) => normCdf(alphaOf(cfg, beta) + beta * x);
+
+// P(R = 1 | x, y), by Bayes, computed the same way whatever delta is - never short-circuited on
+// delta === 0, because "the mechanism does not depend on y" is the thing being demonstrated.
+function pObsGivenXY(x, y, cfg, beta, delta){
+  const p = pObs(x, cfg, beta), mu = cfg.a + cfg.b * x;
+  const f0 = normPdfStd((y - mu) / cfg.tau) / cfg.tau;
+  const f1 = normPdfStd((y - mu - delta) / cfg.tau) / cfg.tau;
+  const den = p * f0 + (1 - p) * f1;
+  return den > 0 ? (p * f0) / den : p;
+}
+// The closed form that falls out of the same Bayes step: the coefficient on y is -delta/tau^2.
+const impliedYSlope = (cfg, delta) => -delta / (cfg.tau * cfg.tau);
+function impliedLogit(x, y, cfg, beta, delta){
+  const p = pObs(x, cfg, beta), mu = cfg.a + cfg.b * x, t2 = cfg.tau * cfg.tau;
+  return Math.log(p / (1 - p)) + delta * delta / (2 * t2) - (delta / t2) * (y - mu);
+}
+
+// ---- exact population quantities ----
+// E[x | R = 1] for a probit selection: x and the latent threshold are jointly normal, so this is
+// the standard inverse-Mills result. r*E[x|R=1] + (1-r)*E[x|R=0] = 0 is asserted before use.
+function selection(cfg, beta){
+  const k = beta / Math.sqrt(1 + beta * beta), lam = normPdfStd(cfg.c);
+  return { exObs: k * lam / cfg.r, exMis: -k * lam / (1 - cfg.r), k: k, lambda: lam };
+}
+const trueMean = (cfg, w) => cfg.a + (w.kind === "truncate" ? 0 : w.delta * (1 - cfg.r));
+const trueSd = cfg => cfg.sdY;
+const trueCorr = cfg => cfg.b / cfg.sdY;
+
+// The population value complete-case analysis converges to, for each world.
+function ccMeanTarget(cfg, w){
+  if (w.kind === "truncate") return cfg.a - cfg.sdY * normPdfStd(cfg.c) / cfg.r;
+  return cfg.a + cfg.b * selection(cfg, w.beta).exObs;   // note: no delta - selection is on x only
+}
+// Under selection on x, p(y|x) among the recorded rows is untouched, so the slope target is b
+// exactly. Under truncation on y it is not, and there is no tidy closed form - so it is
+// integrated, using E[y | x, y < t] = mu(x) - tau*phi(z)/Phi(z).
+function truncatedPopulation(cfg){
+  const t = cfg.a + cfg.sdY * cfg.c;
+  const lo = -9, hi = 9, N = 4000, h = (hi - lo) / N;
+  let W = 0, Sx = 0, Sy = 0, Sxx = 0, Sxy = 0;
+  for (let i = 0; i <= N; i++){
+    const x = lo + i * h, sw = (i === 0 || i === N) ? 1 : (i % 2 ? 4 : 2);
+    const mu = cfg.a + cfg.b * x, z = (t - mu) / cfg.tau, P = normCdf(z);
+    const m = P > 1e-12 ? mu - cfg.tau * normPdfStd(z) / P : t;   // limit as P -> 0 is the threshold
+    const g = sw * P * normPdfStd(x);
+    W += g; Sx += g * x; Sy += g * m; Sxx += g * x * x; Sxy += g * x * m;
+  }
+  const mx = Sx / W, my = Sy / W;
+  return { slope: (Sxy / W - mx * my) / (Sxx / W - mx * mx), mean: my, threshold: t };
+}
+function ccSlopeTarget(cfg, w){
+  return w.kind === "truncate" ? truncatedPopulation(cfg).slope : cfg.b;
+}
+
+// ---- the worlds ----
+function worldsOf(cfg){
+  return [
+    { key: "mcar",  label: "MCAR &mdash; the holes depend on nothing", kind: "probit",
+      beta: 0, delta: 0, pair: "flat" },
+    { key: "mnarF", label: "MNAR &mdash; same mask distribution, missing y sit higher", kind: "probit",
+      beta: 0, delta: cfg.delta, pair: "flat" },
+    { key: "mar",   label: "MAR &mdash; the holes follow x", kind: "probit",
+      beta: cfg.beta, delta: 0, pair: "tilted" },
+    { key: "mnarM", label: "MNAR &mdash; same mask, same recorded y, missing y sit higher", kind: "probit",
+      beta: cfg.beta, delta: cfg.delta, pair: "tilted" },
+    { key: "trunc", label: "MNAR &mdash; y above a threshold is never recorded", kind: "truncate",
+      beta: 0, delta: 0, pair: "trunc" }
+  ];
+}
+
+// NOTE the signature: no delta. The observed dataset CANNOT depend on it.
+function sampleBase(n, cfg, beta, seed){
+  const alpha = alphaOf(cfg, beta);
+  const rx = mulberry32(seed), rr = mulberry32(seed + 101),
+        ry = mulberry32(seed + 202), rm = mulberry32(seed + 303);
+  const x = new Array(n), R = new Uint8Array(n), yObs = new Array(n), yMisBase = new Array(n);
+  for (let i = 0; i < n; i++){
+    const xi = gaussian(rx);
+    x[i] = xi;
+    R[i] = rr() < normCdf(alpha + beta * xi) ? 1 : 0;
+    const mu = cfg.a + cfg.b * xi;
+    if (R[i]){ yObs[i] = mu + cfg.tau * gaussian(ry); yMisBase[i] = NaN; }
+    else     { yObs[i] = NaN; yMisBase[i] = mu + cfg.tau * gaussian(rm); }
+  }
+  return { x: x, R: R, yObs: yObs, yMisBase: yMisBase, n: n };
+}
+function completeY(base, delta){
+  const y = new Array(base.n);
+  for (let i = 0; i < base.n; i++) y[i] = base.R[i] ? base.yObs[i] : base.yMisBase[i] + delta;
+  return y;
+}
+function sampleTruncated(n, cfg, seed){
+  const rx = mulberry32(seed), ry = mulberry32(seed + 202);
+  const t = cfg.a + cfg.sdY * cfg.c;
+  const x = new Array(n), R = new Uint8Array(n), yObs = new Array(n), y = new Array(n);
+  for (let i = 0; i < n; i++){
+    const xi = gaussian(rx);
+    x[i] = xi;
+    y[i] = cfg.a + cfg.b * xi + cfg.tau * gaussian(ry);
+    R[i] = y[i] < t ? 1 : 0;
+    yObs[i] = R[i] ? y[i] : NaN;
+  }
+  return { x: x, R: R, yObs: yObs, y: y, n: n, base: null };
+}
+
+// Worlds sharing (beta, seed) are handed the SAME base object, so "identical observed data" is
+// object identity and not a numerical coincidence.
+function makeWorld(n, cfg, w, seed, cache){
+  if (w.kind === "truncate") return sampleTruncated(n, cfg, seed);
+  const key = w.beta + "|" + seed + "|" + n;
+  let base = cache && cache[key];
+  if (!base){ base = sampleBase(n, cfg, w.beta, seed); if (cache) cache[key] = base; }
+  return { x: base.x, R: base.R, yObs: base.yObs, y: completeY(base, w.delta), n: n, base: base };
+}
+
+// ---- estimators, all behind one interface ----
+function statsOf(x, y, idx){
+  const k = idx ? idx.length : x.length;
+  let sx = 0, sy = 0;
+  for (let j = 0; j < k; j++){ const i = idx ? idx[j] : j; sx += x[i]; sy += y[i]; }
+  const mx = sx / k, my = sy / k;
+  let sxx = 0, syy = 0, sxy = 0;
+  for (let j = 0; j < k; j++){
+    const i = idx ? idx[j] : j, dx = x[i] - mx, dy = y[i] - my;
+    sxx += dx * dx; syy += dy * dy; sxy += dx * dy;
+  }
+  const vx = sxx / (k - 1), vy = syy / (k - 1), cxy = sxy / (k - 1);
+  return { n: k, mean: my, sd: Math.sqrt(vy), corr: cxy / Math.sqrt(vx * vy),
+           slope: cxy / vx, se: Math.sqrt(vy / k) };
+}
+function withCI(st){
+  const q = tQuantile(0.975, st.n - 1);
+  st.lo = st.mean - q * st.se; st.hi = st.mean + q * st.se; st.width = st.hi - st.lo;
+  return st;
+}
+function ols(x, y){
+  const k = x.length;
+  let sx = 0, sy = 0;
+  for (let i = 0; i < k; i++){ sx += x[i]; sy += y[i]; }
+  const mx = sx / k, my = sy / k;
+  let sxx = 0, sxy = 0;
+  for (let i = 0; i < k; i++){ const dx = x[i] - mx; sxx += dx * dx; sxy += dx * (y[i] - my); }
+  const b1 = sxx > 1e-12 ? sxy / sxx : 0, b0 = my - b1 * mx;
+  let rss = 0;
+  for (let i = 0; i < k; i++){ const e = y[i] - b0 - b1 * x[i]; rss += e * e; }
+  return { b0: b0, b1: b1, sigma: Math.sqrt(rss / Math.max(1, k - 2)) };
+}
+function observedIndex(w){
+  const idx = [];
+  for (let i = 0; i < w.n; i++) if (w.R[i]) idx.push(i);
+  return idx;
+}
+function completeCase(w){ return withCI(statsOf(w.x, w.yObs, observedIndex(w))); }
+function meanImpute(w){
+  const idx = observedIndex(w);
+  let s = 0;
+  for (const i of idx) s += w.yObs[i];
+  const bar = s / idx.length, y = new Array(w.n);
+  for (let i = 0; i < w.n; i++) y[i] = w.R[i] ? w.yObs[i] : bar;
+  const st = withCI(statsOf(w.x, y, null));
+  st.fill = bar;
+  return st;
+}
+function regressionImpute(w, noise, seed){
+  const idx = observedIndex(w), bx = [], by = [];
+  for (const i of idx){ bx.push(w.x[i]); by.push(w.yObs[i]); }
+  const f = ols(bx, by), rnd = mulberry32(seed || 1), y = new Array(w.n);
+  for (let i = 0; i < w.n; i++)
+    y[i] = w.R[i] ? w.yObs[i] : f.b0 + f.b1 * w.x[i] + (noise ? f.sigma * gaussian(rnd) : 0);
+  return withCI(statsOf(w.x, y, null));
+}
+// Proper multiple imputation: approximate Bayesian bootstrap of the RECORDED rows for the
+// parameters, residual noise for the draw, Rubin's rules for the pooling. It touches x, R and
+// yObs only - never w.y - which is why it returns the identical answer in both twin worlds.
+function multipleImpute(w, cfg, m, seed){
+  const n = w.n, idx = observedIndex(w), nObs = idx.length, rnd = mulberry32(seed);
+  const Q = [], U = [], SD = [], CR = [], SL = [];
+  const bx = new Array(nObs), by = new Array(nObs), yc = new Array(n);
+  for (let j = 0; j < m; j++){
+    for (let k = 0; k < nObs; k++){
+      const t = idx[Math.min(nObs - 1, Math.floor(rnd() * nObs))];
+      bx[k] = w.x[t]; by[k] = w.yObs[t];
+    }
+    const f = ols(bx, by);
+    for (let i = 0; i < n; i++)
+      yc[i] = w.R[i] ? w.yObs[i] : f.b0 + f.b1 * w.x[i] + f.sigma * gaussian(rnd);
+    const st = statsOf(w.x, yc, null);
+    Q.push(st.mean); U.push(st.sd * st.sd / n);
+    SD.push(st.sd); CR.push(st.corr); SL.push(st.slope);
+  }
+  const mean = a => a.reduce(function(p, q){ return p + q; }, 0) / a.length;
+  const Qbar = mean(Q), Wbar = mean(U);
+  let B = 0;
+  for (const q of Q) B += (q - Qbar) * (q - Qbar);
+  B = m > 1 ? B / (m - 1) : 0;
+  const T = Wbar + (1 + 1 / m) * B;
+  const rM = Wbar > 0 ? (1 + 1 / m) * B / Wbar : 0;
+  const df = rM > 0 ? (m - 1) * Math.pow(1 + 1 / rM, 2) : 1e6;
+  const q975 = tQuantile(0.975, df), se = Math.sqrt(T);
+  return { n: n, mean: Qbar, se: se, lo: Qbar - q975 * se, hi: Qbar + q975 * se,
+           width: 2 * q975 * se, sd: mean(SD), corr: mean(CR), slope: mean(SL),
+           df: df, fmi: rM / (1 + rM) };
+}
+
+// ---- the diagnostic: a function of the OBSERVED data, which is the whole problem ----
+function welchT(x, R){
+  let n1 = 0, n0 = 0, s1 = 0, s0 = 0;
+  for (let i = 0; i < x.length; i++){ if (R[i]){ n1++; s1 += x[i]; } else { n0++; s0 += x[i]; } }
+  if (n1 < 2 || n0 < 2) return 0;
+  const m1 = s1 / n1, m0 = s0 / n0;
+  let v1 = 0, v0 = 0;
+  for (let i = 0; i < x.length; i++){
+    const d = x[i] - (R[i] ? m1 : m0);
+    if (R[i]) v1 += d * d; else v0 += d * d;
+  }
+  v1 /= (n1 - 1); v0 /= (n0 - 1);
+  const se = Math.sqrt(v1 / n1 + v0 / n0);
+  return se > 0 ? (m1 - m0) / se : 0;
+}
+const twoSidedP = t => 2 * (1 - normCdf(Math.abs(t)));
+
+// ---- studies ----
+function worldStudy(cfg){
+  const ws = worldsOf(cfg), cache = {}, out = {};
+  for (const w of ws){
+    let t = 0, cc = 0, mi = 0, obs = 0;
+    for (let s = 0; s < cfg.seeds; s++){
+      const world = makeWorld(cfg.n, cfg, w, 1000 + s * 97, cache);
+      t += Math.abs(welchT(world.x, world.R));
+      cc += completeCase(world).mean;
+      mi += multipleImpute(world, cfg, cfg.m, 400000 + s * 7).mean;
+      for (let i = 0; i < world.n; i++) obs += world.R[i];
+    }
+    let rej = 0;
+    const dcache = {};
+    for (let s = 0; s < DET_REPS; s++){
+      const world = makeWorld(cfg.n, cfg, w, 20000 + s * 13, dcache);
+      if (twoSidedP(welchT(world.x, world.R)) < 0.05) rej++;
+    }
+    out[w.key] = { label: w.label, pair: w.pair, t: t / cfg.seeds, reject: rej / DET_REPS,
+                   cc: cc / cfg.seeds, mi: mi / cfg.seeds, obs: obs / (cfg.seeds * cfg.n),
+                   truth: trueMean(cfg, w) };
+  }
+  return { rows: out, order: ws.map(function(w){ return w.key; }), seeds: cfg.seeds,
+           detReps: DET_REPS };
+}
+
+function estimandStudy(cfg){
+  const ws = worldsOf(cfg), cache = {}, out = [];
+  for (const w of ws){
+    let mean = 0, slope = 0;
+    for (let s = 0; s < cfg.seeds; s++){
+      const st = completeCase(makeWorld(cfg.n, cfg, w, 1000 + s * 97, cache));
+      mean += st.mean; slope += st.slope;
+    }
+    out.push({ key: w.key, label: w.label, pair: w.pair,
+               truthMean: trueMean(cfg, w), ccMeanExact: ccMeanTarget(cfg, w),
+               ccMeanMeasured: mean / cfg.seeds,
+               truthSlope: cfg.b, ccSlopeExact: ccSlopeTarget(cfg, w),
+               ccSlopeMeasured: slope / cfg.seeds });
+  }
+  return out;
+}
+
+function methodStudy(cfg){
+  const w = { key: "mar", kind: "probit", beta: cfg.beta, delta: 0 };
+  const names = ["complete-case", "mean imputation", "regression imputation",
+                 "stochastic regression", "multiple imputation (m = " + cfg.m + ")"];
+  const acc = names.map(function(nm){ return { name: nm, mean: 0, sd: 0, corr: 0, slope: 0, rows: 0 }; });
+  const cache = {};
+  for (let s = 0; s < cfg.seeds; s++){
+    const world = makeWorld(cfg.n, cfg, w, 1000 + s * 97, cache);
+    const res = [completeCase(world), meanImpute(world),
+                 regressionImpute(world, false, 0), regressionImpute(world, true, 900 + s),
+                 multipleImpute(world, cfg, cfg.m, 400000 + s * 7)];
+    for (let k = 0; k < res.length; k++){
+      acc[k].mean += res[k].mean; acc[k].sd += res[k].sd;
+      acc[k].corr += res[k].corr; acc[k].slope += res[k].slope; acc[k].rows += res[k].n;
+    }
+  }
+  for (const a of acc){
+    a.mean /= cfg.seeds; a.sd /= cfg.seeds; a.corr /= cfg.seeds;
+    a.slope /= cfg.seeds; a.rows /= cfg.seeds;
+  }
+  return { rows: acc, truth: { mean: cfg.a, sd: trueSd(cfg), corr: trueCorr(cfg), slope: cfg.b } };
+}
+
+// Coverage. The MAR and MNAR columns come from THE SAME intervals - the observed data is
+// identical, so the interval is computed once and checked against two different truths.
+function coverageStudy(cfg, reps){
+  const R = reps || COV_REPS;
+  const names = ["complete-case", "mean imputation", "regression imputation",
+                 "stochastic regression", "multiple imputation (m = " + cfg.m + ")"];
+  const truthA = cfg.a, truthB = cfg.a + cfg.delta * (1 - cfg.r);
+  const acc = names.map(function(nm){
+    return { name: nm, width: 0, mcar: 0, mar: 0, mnar: 0, identical: true };
+  });
+  let widthRatio = 0;
+  for (let s = 0; s < R; s++){
+    const seed = 60000 + s * 17;
+    // pair 1: beta = 0 (the MCAR / flat-MNAR twins)
+    const flat = { kind: "probit", beta: 0, delta: 0 };
+    const wf = makeWorld(cfg.n, cfg, flat, seed, null);
+    const rf = [completeCase(wf), meanImpute(wf), regressionImpute(wf, false, 0),
+                regressionImpute(wf, true, 5000 + s), multipleImpute(wf, cfg, cfg.m, 700000 + s * 3)];
+    widthRatio += rf[1].width / rf[0].width;
+    // pair 2: beta = cfg.beta - ONE set of intervals, TWO truths
+    const tilt = { kind: "probit", beta: cfg.beta, delta: 0 };
+    const wt = makeWorld(cfg.n, cfg, tilt, seed + 1, null);
+    const rt = [completeCase(wt), meanImpute(wt), regressionImpute(wt, false, 0),
+                regressionImpute(wt, true, 5000 + s), multipleImpute(wt, cfg, cfg.m, 700000 + s * 3)];
+    for (let k = 0; k < acc.length; k++){
+      if (rf[k].lo <= cfg.a && cfg.a <= rf[k].hi) acc[k].mcar++;
+      if (rt[k].lo <= truthA && truthA <= rt[k].hi) acc[k].mar++;
+      if (rt[k].lo <= truthB && truthB <= rt[k].hi) acc[k].mnar++;
+      acc[k].width += rt[k].width;
+    }
+  }
+  for (const a of acc){
+    a.width /= R; a.mcar /= R; a.mar /= R; a.mnar /= R;
+  }
+  const z = tQuantile(0.975, 1e9);
+  return { rows: acc, reps: R, truthA: truthA, truthB: truthB,
+           widthRatio: widthRatio / R,
+           predictedMeanImpute: 2 * normCdf(z * cfg.r) - 1 };
+}
+
+// One realisation, audited cell by cell.
+function twinAudit(cfg, seed){
+  const base = sampleBase(cfg.n, cfg, cfg.beta, seed);
+  const A = { x: base.x, R: base.R, yObs: base.yObs, y: completeY(base, 0), n: cfg.n, base: base };
+  const B = { x: base.x, R: base.R, yObs: base.yObs, y: completeY(base, cfg.delta), n: cfg.n, base: base };
+  const miA = multipleImpute(A, cfg, cfg.m, 12345), miB = multipleImpute(B, cfg, cfg.m, 12345);
+  let diffX = 0, diffMask = 0, diffObs = 0, diffAll = 0, worstShift = 0, nMis = 0, nObs = 0;
+  for (let i = 0; i < cfg.n; i++){
+    if (A.x[i] !== B.x[i]) diffX++;
+    if (A.R[i] !== B.R[i]) diffMask++;
+    if (A.R[i]){
+      nObs++;
+      if (A.yObs[i] !== B.yObs[i]) diffObs++;
+      if (A.y[i] !== B.y[i]) diffAll++;
+    } else {
+      nMis++;
+      if (A.y[i] !== B.y[i]) diffAll++;
+      worstShift = Math.max(worstShift, Math.abs((B.y[i] - A.y[i]) - cfg.delta));
+    }
+  }
+  const mA = A.y.reduce(function(p, q){ return p + q; }, 0) / cfg.n;
+  const mB = B.y.reduce(function(p, q){ return p + q; }, 0) / cfg.n;
+  // the implied coefficient on y, read off numerically from the Bayes posterior
+  const probe = function(delta){
+    const x0 = 0.3, y0 = cfg.a + cfg.b * x0, h = 1e-3;
+    const lg = function(y){ const p = pObsGivenXY(x0, y, cfg, cfg.beta, delta); return Math.log(p / (1 - p)); };
+    return (lg(y0 + h) - lg(y0 - h)) / (2 * h);
+  };
+  return {
+    n: cfg.n, nObs: nObs, nMis: nMis, sameBase: A.base === B.base,
+    diffX: diffX, diffMask: diffMask, diffObs: diffObs, diffComplete: diffAll,
+    worstShiftError: worstShift,
+    tA: welchT(A.x, A.R), tB: welchT(B.x, B.R),
+    pA: twoSidedP(welchT(A.x, A.R)), pB: twoSidedP(welchT(B.x, B.R)),
+    ccA: completeCase(A).mean, ccB: completeCase(B).mean,
+    miA: miA.mean, miB: miB.mean, loA: miA.lo, hiA: miA.hi, loB: miB.lo, hiB: miB.hi,
+    sampleMeanA: mA, sampleMeanB: mB,
+    truthA: cfg.a, truthB: cfg.a + cfg.delta * (1 - cfg.r),
+    ySlopeA: probe(0), ySlopeB: probe(cfg.delta),
+    ySlopeExactB: impliedYSlope(cfg, cfg.delta)
+  };
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- UI
+const $ = id => document.getElementById(id);
+
+function cfgFromUI(){
+  return cfgOf({
+    rTarget: +$("sR").value / 100,
+    beta:    +$("sK").value / 100,
+    delta:   +$("sD").value / 100,
+    b:       +$("sB").value / 100,
+    n:       +$("sN").value,
+    seeds:   +$("sS").value
+  });
+}
+function fmt(v, d){ return (v === undefined || v === null || !isFinite(v)) ? "&mdash;" : v.toFixed(d === undefined ? 3 : d); }
+const pct = v => (100 * v).toFixed(1) + "%";
+const yes = "<span class='ok'>yes</span>", no = "<span class='bad'>no</span>";
+
+function render(){
+  const c = cfgFromUI();
+  $("vR").textContent = c.r.toFixed(2);
+  $("vK").textContent = c.beta.toFixed(2);
+  $("vD").textContent = c.delta.toFixed(2);
+  $("vB").textContent = c.b.toFixed(2);
+  $("vN").textContent = c.n;
+  $("vS").textContent = c.seeds;
+  $("seedWord").textContent = c.seeds;
+  $("seedWord2").textContent = c.seeds;
+  $("covWord").textContent = COV_REPS;
+  $("twinBeta").textContent = c.beta.toFixed(2);
+
+  // ---- main table
+  const res = worldStudy(c), R = res.rows;
+  $("rows").innerHTML = res.order.map(function(key){
+    const r = R[key];
+    const ccErr = Math.abs(r.cc - r.truth), miErr = Math.abs(r.mi - r.truth);
+    const cls = e => e > 0.25 ? "bad" : e > 0.06 ? "warn" : "ok";
+    const tint = r.pair === "flat" ? " class='same'" : r.pair === "tilted" ? " class='same2'" : "";
+    const w = Math.max(1.5, Math.min(100, 100 * miErr / 1.2));
+    return "<tr" + tint + "><td>" + r.label + "</td>" +
+      "<td>" + (100 * r.obs).toFixed(1) + "</td>" +
+      "<td>" + fmt(r.t, 2) + "</td>" +
+      "<td class='" + (r.reject > 0.5 ? "warn" : "") + "'>" + pct(r.reject) + "</td>" +
+      "<td>" + fmt(r.truth, 3) + "</td>" +
+      "<td class='" + cls(ccErr) + "'>" + fmt(r.cc, 3) + " <span style='font-size:10px'>(" +
+      (r.cc > r.truth ? "+" : "") + fmt(r.cc - r.truth, 2) + ")</span></td>" +
+      "<td class='" + cls(miErr) + "'>" + fmt(r.mi, 3) + " <span style='font-size:10px'>(" +
+      (r.mi > r.truth ? "+" : "") + fmt(r.mi - r.truth, 2) + ")</span></td>" +
+      "<td style='width:14%'><div class='bar'><span style='width:" + w + "%;background:" +
+      (cls(miErr) === "bad" ? "#dc2626" : cls(miErr) === "warn" ? "#f59e0b" : "#16a34a") +
+      "'></span></div></td></tr>";
+  }).join("");
+
+  const flatSame = R.mcar.t === R.mnarF.t && R.mcar.reject === R.mnarF.reject;
+  const tiltSame = R.mar.t === R.mnarM.t && R.mar.reject === R.mnarM.reject;
+  $("headline").innerHTML =
+    "The two <span class='px-1 rounded' style='background:#eff6ff'>blue</span> rows were handed the " +
+    "same observed dataset and the diagnostic is <strong>silent</strong> in both (|t| = " +
+    fmt(R.mcar.t, 2) + ", MCAR rejected " + pct(R.mcar.reject) + " of the time — its noise floor)" +
+    (flatSame ? ", identical to the last bit" : "") + ". The two " +
+    "<span class='px-1 rounded' style='background:#f5f3ff'>violet</span> rows were also handed the " +
+    "same observed dataset and the diagnostic <strong>screams</strong> in both (|t| = " +
+    fmt(R.mar.t, 2) + ", rejected " + pct(R.mar.reject) + ")" +
+    (tiltSame ? ", again identical to the last bit" : "") + ". So the test separates the pairs " +
+    "perfectly and separates the worlds <em>within</em> a pair not at all — and the damage lives " +
+    "inside the pairs: multiple imputation lands " + fmt(Math.abs(R.mar.mi - R.mar.truth), 3) +
+    " from the truth in the MAR world and " + fmt(Math.abs(R.mnarM.mi - R.mnarM.truth), 3) +
+    " in its MNAR twin, from the identical input. Averaged over " + res.seeds + " seeds (" +
+    res.detReps + " for the rejection rates).";
+
+  // ---- twin audit
+  const T = twinAudit(c, 777);
+  const row = (q, a, b, same) => "<tr><td>" + q + "</td><td>" + a + "</td><td>" + b + "</td><td>" +
+    (same ? yes : no) + "</td></tr>";
+  $("twin").innerHTML = [
+    row("x values differing", T.diffX + " of " + T.n, T.diffX + " of " + T.n, T.diffX === 0),
+    row("missingness mask differing", T.diffMask + " of " + T.n, T.diffMask + " of " + T.n, T.diffMask === 0),
+    row("recorded y differing", T.diffObs + " of " + T.nObs, T.diffObs + " of " + T.nObs, T.diffObs === 0),
+    row("diagnostic t on x", T.tA.toFixed(9), T.tB.toFixed(9), T.tA === T.tB),
+    row("diagnostic p-value", T.pA.toExponential(4), T.pB.toExponential(4), T.pA === T.pB),
+    row("complete-case mean", T.ccA.toFixed(9), T.ccB.toFixed(9), T.ccA === T.ccB),
+    row("multiple-imputation estimate", T.miA.toFixed(9), T.miB.toFixed(9), T.miA === T.miB),
+    row("its 95% interval", "[" + T.loA.toFixed(4) + ", " + T.hiA.toFixed(4) + "]",
+        "[" + T.loB.toFixed(4) + ", " + T.hiB.toFixed(4) + "]", T.loA === T.loB && T.hiA === T.hiB),
+    row("<strong>complete-data cells differing</strong>", "&mdash;",
+        "<strong>" + T.diffComplete + " of " + T.n + "</strong> (all missing)", false),
+    row("<strong>&part;logit P(recorded) / &part;y</strong>", "<strong>" + T.ySlopeA.toFixed(6) + "</strong>",
+        "<strong>" + T.ySlopeB.toFixed(6) + "</strong>", false),
+    row("<strong>true E[y]</strong>", "<strong>" + T.truthA.toFixed(4) + "</strong>",
+        "<strong>" + T.truthB.toFixed(4) + "</strong>", false)
+  ].join("");
+  $("twinNote").innerHTML = "The two worlds share the base <em>object</em>: " +
+    (T.sameBase ? "<span class='ok'>confirmed</span>" : "<span class='bad'>NOT shared</span>") +
+    ". Their complete vectors differ on exactly the " + T.nMis + " missing cells, each by &delta; = " +
+    c.delta.toFixed(2) + " (worst deviation " + T.worstShiftError.toExponential(1) +
+    "). The measured &part;logit/&part;y in world B is " + T.ySlopeB.toFixed(6) +
+    " against the closed form &minus;&delta;/&tau;&sup2; = " + T.ySlopeExactB.toFixed(6) +
+    " — so world B really is MNAR and world A really is MAR, and no row above the bold ones can " +
+    "tell them apart because every one of them is a function of the same numbers.";
+
+  // ---- estimand grid
+  const es = estimandStudy(c);
+  $("estimands").innerHTML = es.map(function(r){
+    const mErr = Math.abs(r.ccMeanMeasured - r.truthMean), sErr = Math.abs(r.ccSlopeMeasured - r.truthSlope);
+    const tint = r.pair === "flat" ? " class='same'" : r.pair === "tilted" ? " class='same2'" : "";
+    return "<tr" + tint + "><td>" + r.label + "</td>" +
+      "<td>" + fmt(r.truthMean, 3) + "</td>" +
+      "<td>" + fmt(r.ccMeanExact, 3) + "</td>" +
+      "<td class='" + (mErr > 0.1 ? "bad" : "ok") + "'>" + fmt(r.ccMeanMeasured, 3) + "</td>" +
+      "<td>" + fmt(r.truthSlope, 3) + "</td>" +
+      "<td>" + fmt(r.ccSlopeExact, 3) + "</td>" +
+      "<td class='" + (sErr > 0.1 ? "bad" : "ok") + "'>" + fmt(r.ccSlopeMeasured, 3) + "</td></tr>";
+  }).join("");
+  const mar = es.find(function(r){ return r.key === "mar"; });
+  const tr = es.find(function(r){ return r.key === "trunc"; });
+  $("estNote").innerHTML =
+    "Under <strong>MAR</strong> complete-case gets the mean wrong by " +
+    fmt(mar.ccMeanMeasured - mar.truthMean, 3) + " (closed form " +
+    fmt(mar.ccMeanExact - mar.truthMean, 3) + ") and the slope wrong by " +
+    fmt(mar.ccSlopeMeasured - mar.truthSlope, 3) + " — selection on x moves p(x) and leaves p(y|x) " +
+    "alone, so listwise deletion is a disaster for one estimand and unbiased for the other, in the " +
+    "same dataset. Under <strong>truncation on y</strong> both go: the mean by " +
+    fmt(tr.ccMeanMeasured - tr.truthMean, 3) + " and the slope by " +
+    fmt(tr.ccSlopeMeasured - tr.truthSlope, 3) + ", against an integrated prediction of " +
+    fmt(tr.ccSlopeExact - tr.truthSlope, 3) + ".";
+
+  // ---- method table
+  const ms = methodStudy(c);
+  const cell = (v, t, tol) => "<td class='" + (Math.abs(v - t) > tol ? "bad" : "ok") + "'>" +
+    fmt(v, 3) + "</td>";
+  $("methods").innerHTML =
+    "<tr style='background:#f8fafc'><td><strong>truth (exact)</strong></td><td><strong>" +
+    fmt(ms.truth.mean, 3) + "</strong></td><td><strong>" + fmt(ms.truth.sd, 3) +
+    "</strong></td><td><strong>" + fmt(ms.truth.corr, 3) + "</strong></td><td><strong>" +
+    fmt(ms.truth.slope, 3) + "</strong></td><td>" + c.n + "</td></tr>" +
+    ms.rows.map(function(r){
+      return "<tr><td>" + r.name + "</td>" +
+        cell(r.mean, ms.truth.mean, 0.08) +
+        cell(r.sd, ms.truth.sd, 0.08 * ms.truth.sd) +
+        cell(r.corr, ms.truth.corr, 0.04) +
+        cell(r.slope, ms.truth.slope, 0.08 * Math.max(0.5, ms.truth.slope)) +
+        "<td>" + r.rows.toFixed(0) + "</td></tr>";
+    }).join("");
+  const cc = ms.rows[0], mi0 = ms.rows[1], ri = ms.rows[2];
+  $("methodNote").innerHTML = "Mean imputation's estimate of the mean is " + mi0.mean.toFixed(12) +
+    " and complete-case's is " + cc.mean.toFixed(12) + " — the same number as an algebraic identity " +
+    "(the two summation orders differ around 1e-15), because the imputed cells sit exactly on it. " +
+    "It buys nothing and costs the sd (" + fmt(mi0.sd, 3) + " against " +
+    fmt(ms.truth.sd, 3) + ") and the correlation (" + fmt(mi0.corr, 3) + " against " +
+    fmt(ms.truth.corr, 3) + "). Regression imputation misses the correlation in the <em>other</em> " +
+    "direction (" + fmt(ri.corr, 3) + ") because every imputed point lies exactly on the fitted " +
+    "line. Averaged over " + c.seeds + " seeds.";
+
+  // ---- coverage
+  const cv = coverageStudy(c, COV_REPS);
+  $("coverage").innerHTML = cv.rows.map(function(r){
+    const g = v => "<td class='" + (v > 0.9 ? "ok" : v > 0.7 ? "warn" : "bad") + "'>" + pct(v) + "</td>";
+    return "<tr><td>" + r.name + "</td><td>" + fmt(r.width, 3) + "</td>" +
+      g(r.mcar) + g(r.mar) + g(r.mnar) + "<td>" + yes + "</td></tr>";
+  }).join("");
+  const mi = cv.rows[4], mim = cv.rows[1];
+  $("covNote").innerHTML =
+    "The MAR and MNAR columns are <strong>the same intervals</strong>, scored against two different " +
+    "truths (" + cv.truthA.toFixed(3) + " and " + cv.truthB.toFixed(3) + "). Multiple imputation — " +
+    "the method that is supposed to solve this — covers " + pct(mi.mar) + " in world A and " +
+    pct(mi.mnar) + " in world B, at an identical width of " + fmt(mi.width, 3) + ". Nothing in the " +
+    "data chose between those two columns. Separately: mean imputation's interval is " +
+    cv.widthRatio.toFixed(3) + "&times; the honest one against a predicted r = " + c.r.toFixed(3) +
+    ", so its MCAR coverage should be 2&Phi;(1.96r) &minus; 1 = " + pct(cv.predictedMeanImpute) +
+    " and it measures " + pct(mim.mcar) + ". " + cv.reps + " replications.";
+
+  runSelfTest(c);
+}
+
+// ---------------------------------------------------------------- in-page self-test
+function runSelfTest(c){
+  const checks = [];
+  const T = (label, cond) => checks.push({ label: label, ok: !!cond });
+
+  T("MCAR is exactly &beta; = 0: P(recorded | x) is constant across x", (function(){
+    const p0 = pObs(-3, c, 0);
+    for (let i = -30; i <= 30; i++) if (pObs(i * 0.2, c, 0) !== p0) return false;
+    return Math.abs(p0 - c.r) < 1e-12;
+  })());
+  T("&alpha; is solved so the observed fraction is r for every &beta;", (function(){
+    for (const b of [0, 0.5, 1, 2.5]){
+      let s = 0;
+      const N = 4000, h = 16 / N;
+      for (let i = 0; i <= N; i++){
+        const x = -8 + i * h, sw = (i === 0 || i === N) ? 1 : (i % 2 ? 4 : 2);
+        s += sw * pObs(x, c, b) * normPdfStd(x);
+      }
+      if (Math.abs(s * h / 3 - c.r) > 1e-6) return false;
+    }
+    return true;
+  })());
+  T("MAR falls out of Bayes: at &delta; = 0 the mechanism does not move with y", (function(){
+    let worst = 0;
+    for (let i = -20; i <= 20; i++)
+      worst = Math.max(worst, Math.abs(pObsGivenXY(0.4, c.a + c.b * 0.4 + i * 0.25, c, c.beta, 0) -
+                                       pObs(0.4, c, c.beta)));
+    return worst < 1e-12;
+  })());
+  T("the implied coefficient on y is exactly &minus;&delta;/&tau;&sup2;", (function(){
+    if (c.delta === 0) return true;
+    const x0 = -0.7, y0 = c.a + c.b * x0, h = 1e-3;
+    const lg = y => { const p = pObsGivenXY(x0, y, c, c.beta, c.delta); return Math.log(p / (1 - p)); };
+    const num = (lg(y0 + h) - lg(y0 - h)) / (2 * h);
+    const alt = impliedLogit(x0, y0 + h, c, c.beta, c.delta) - impliedLogit(x0, y0 - h, c, c.beta, c.delta);
+    return Math.abs(num - impliedYSlope(c, c.delta)) < 1e-6 &&
+           Math.abs(alt / (2 * h) - impliedYSlope(c, c.delta)) < 1e-9;
+  })());
+  T("the observed dataset is generated without &delta; and is bit-identical across the twins", (function(){
+    const b = sampleBase(300, c, c.beta, 5150);
+    const yA = completeY(b, 0), yB = completeY(b, c.delta);
+    for (let i = 0; i < 300; i++){
+      if (b.R[i]){ if (yA[i] !== yB[i]) return false; }
+      else if (Math.abs((yB[i] - yA[i]) - c.delta) > 1e-12) return false;
+    }
+    return true;
+  })());
+  T("r&middot;E[x|R=1] + (1&minus;r)&middot;E[x|R=0] = 0", (function(){
+    for (const b of [0, 0.4, 1, 2]){
+      const s = selection(c, b);
+      if (Math.abs(c.r * s.exObs + (1 - c.r) * s.exMis) > 1e-12) return false;
+    }
+    return true;
+  })());
+  T("mean imputation returns the complete-case mean (to 1e-12 &mdash; <code>===</code> fails on summation order)", (function(){
+    const w = makeWorld(400, c, { kind: "probit", beta: c.beta, delta: 0 }, 616, null);
+    return Math.abs(meanImpute(w).mean - completeCase(w).mean) < 1e-12;
+  })());
+  T("mean-imputed variance = &Sigma;<sub>obs</sub>(y &minus; &#375;)&sup2;/(n&minus;1) exactly", (function(){
+    const w = makeWorld(400, c, { kind: "probit", beta: c.beta, delta: 0 }, 617, null);
+    const st = meanImpute(w);
+    let ss = 0, k = 0;
+    for (let i = 0; i < w.n; i++) if (w.R[i]){ const d = w.yObs[i] - st.fill; ss += d * d; k++; }
+    return Math.abs(st.sd * st.sd - ss / (w.n - 1)) < 1e-12 && k < w.n;
+  })());
+  T("the diagnostic reads exactly the same on both twins", (function(){
+    const b = sampleBase(400, c, c.beta, 4242);
+    const A = { x: b.x, R: b.R, yObs: b.yObs, y: completeY(b, 0), n: 400 };
+    const B = { x: b.x, R: b.R, yObs: b.yObs, y: completeY(b, c.delta), n: 400 };
+    return welchT(A.x, A.R) === welchT(B.x, B.R) && completeCase(A).mean === completeCase(B).mean;
+  })());
+  T("multiple imputation returns the identical interval in both twins", (function(){
+    const b = sampleBase(400, c, c.beta, 4243);
+    const A = { x: b.x, R: b.R, yObs: b.yObs, y: completeY(b, 0), n: 400 };
+    const B = { x: b.x, R: b.R, yObs: b.yObs, y: completeY(b, c.delta), n: 400 };
+    const mA = multipleImpute(A, c, c.m, 99), mB = multipleImpute(B, c, c.m, 99);
+    return mA.mean === mB.mean && mA.lo === mB.lo && mA.hi === mB.hi;
+  })());
+  T("&hellip; while the two truths differ by &delta;(1 &minus; r)", (function(){
+    const gap = (c.a + c.delta * (1 - c.r)) - c.a;
+    return Math.abs(gap - c.delta * (1 - c.r)) < 1e-12;
+  })());
+  T("the truncated world's quadrature reproduces its closed-form mean", (function(){
+    const q = truncatedPopulation(c);
+    return Math.abs(q.mean - ccMeanTarget(c, { kind: "truncate", beta: 0, delta: 0 })) < 1e-6;
+  })());
+  T("&Phi;&#8315;&sup1; inverts &Phi; to 1e-9", (function(){
+    for (const p of [0.05, 0.25, 0.5, 0.6, 0.975])
+      if (Math.abs(normCdf(normInv(p)) - p) > 1e-9) return false;
+    return true;
+  })());
+  T("the t quantile exceeds the normal one and converges to it", (function(){
+    const z = normInv(0.975);
+    return tQuantile(0.975, 5) > tQuantile(0.975, 50) &&
+           tQuantile(0.975, 50) > z && Math.abs(tQuantile(0.975, 1e9) - z) < 1e-12;
+  })());
+  T("every method returns a finite interval containing its own estimate", (function(){
+    const w = makeWorld(300, c, { kind: "probit", beta: c.beta, delta: c.delta }, 818, null);
+    const all = [completeCase(w), meanImpute(w), regressionImpute(w, false, 0),
+                 regressionImpute(w, true, 7), multipleImpute(w, c, c.m, 8)];
+    return all.every(function(r){
+      return isFinite(r.lo) && isFinite(r.hi) && r.lo < r.mean && r.mean < r.hi;
+    });
+  })());
+
+  const passed = checks.filter(function(k){ return k.ok; }).length;
+  $("selftest").innerHTML =
+    "<p class='mb-2 font-bold " + (passed === checks.length ? "ok" : "bad") + "'>" +
+    passed + " / " + checks.length + " checks passed</p>" +
+    "<ul class='space-y-1 text-slate-600'>" + checks.map(function(k){
+      return "<li>" + (k.ok ? "<span class='ok'>PASS</span>" : "<span class='bad'>FAIL</span>") +
+             " &nbsp;" + k.label + "</li>";
+    }).join("") + "</ul>";
+}
+
+["sR", "sK", "sD", "sB", "sN", "sS"].forEach(function(id){ $(id).addEventListener("input", render); });
+render();
+</script>
+</body>
+</html>
