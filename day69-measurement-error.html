@@ -1,0 +1,1574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero · Day 69 — Measurement error in a predictor</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim { color:#94a3b8; }
+  .same { background:#eff6ff; }
+  .same2 { background:#f5f3ff; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto p-4 md:p-6">
+    <p class="text-xs font-bold tracking-widest text-sky-700 mb-2">MACHINELEARNINGFROMZERO · DAY 69</p>
+    <h1 class="text-xl md:text-2xl font-black leading-tight mb-4">
+      &#128207; Measurement error in a predictor &mdash; every column in every dataset is a
+      <em>recording</em> of something, and the recording is not the thing. Write
+      <code>w = x + u</code>: you fit on <code>w</code>, the world runs on <code>x</code>. The
+      textbook consequence is <strong>attenuation</strong> &mdash; the slope comes back multiplied
+      by the reliability &lambda; &mdash; and the textbook reaction is that it is conservative, so
+      never mind. This page builds the <strong>whole family of worlds that produce the identical
+      observed data</strong>: one <code>(w, y)</code> pair of arrays, and a continuum of structural
+      truths behind it, the true slope running from the fitted one up to the fitted one divided by
+      the observed R&sup2; &mdash; the Frisch bound, derived here as
+      &sigma;<sub>&epsilon;</sub>&sup2; &ge; 0 rather than quoted. Every diagnostic you would reach
+      for is <strong>bit-identical</strong> across the family, and the same 95% interval covers the
+      truth <strong>95.3%</strong> of the time in one member and <strong>0.0%</strong> in another.
+      Then the part nobody warns you about: mismeasure one predictor and the coefficient on a
+      <em>perfectly measured</em> one moves too &mdash; a variable with an effect of exactly
+      <strong>0.000</strong> is fitted at <strong>0.4636</strong>, |t| = 9.8 at a thousand rows and
+      68.8 at forty thousand, and it outranks the variable that does have an effect.
+      Pure vanilla JavaScript, one file, no build step.
+    </h1>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look" class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">📊 MEASURE</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto space-y-5">
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3">
+          <label class="text-sm">observed R&sup2; of y on w <span id="vR2" class="font-bold tabular-nums float-right">0.50</span>
+            <input id="sR2" type="range" min="10" max="90" step="1" value="50"></label>
+          <label class="text-sm">reliability &lambda; = &sigma;&sup2;<sub>x</sub>/&sigma;&sup2;<sub>w</sub> <span id="vLam" class="font-bold tabular-nums float-right">0.70</span>
+            <input id="sLam" type="range" min="5" max="100" step="1" value="70"></label>
+          <label class="text-sm">rows n <span id="vN" class="font-bold tabular-nums float-right">800</span>
+            <input id="sN" type="range" min="100" max="3200" step="100" value="800"></label>
+          <label class="text-sm">seeds averaged <span id="vS" class="font-bold tabular-nums float-right">25</span>
+            <input id="sS" type="range" min="5" max="60" step="5" value="25"></label>
+          <label class="text-sm">corr(x&#8321;, x&#8322;) in the 2-predictor model <span id="vRho" class="font-bold tabular-nums float-right">0.70</span>
+            <input id="sRho" type="range" min="-90" max="90" step="5" value="70"></label>
+          <label class="text-sm">reliability of x&#8321; there <span id="vLam1" class="font-bold tabular-nums float-right">0.50</span>
+            <input id="sLam1" type="range" min="10" max="100" step="5" value="50"></label>
+          <label class="text-sm">true &beta;&#8322; on the CLEAN predictor <span id="vB2" class="font-bold tabular-nums float-right">0.00</span>
+            <input id="sB2" type="range" min="-100" max="100" step="5" value="0"></label>
+        </div>
+        <p class="text-xs text-slate-500 mt-3">
+          The <strong>observed law is fixed</strong>: <code>Var(w) = 1</code>,
+          <code>Var(y) = 2</code>, <code>corr(w, y)&sup2; = R&sup2;</code>, so the population
+          least-squares slope of y on w is <code>c = &radic;(R&sup2;&middot;2)</code> whatever else
+          is true. A world is then a choice of &lambda;: the true slope is <code>&beta; = c/&lambda;</code>,
+          the error variance is <code>&sigma;&sup2;<sub>u</sub> = 1 &minus; &lambda;</code> and the
+          residual variance is <code>&sigma;&sup2;<sub>&epsilon;</sub> = 2 &minus; c&sup2;/&lambda;</code>.
+          That last one has to be non-negative, which is the <strong>entire</strong> constraint:
+          <code>&lambda; &ge; R&sup2;</code>. Every number below is averaged over
+          <span id="seedWord">25</span> seeds unless it says otherwise.
+          <span id="clampNote"></span>
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">
+          SIX WORLDS, ONE DATASET &mdash; THE FITTED SLOPE IS THE SAME NUMBER IN ALL OF THEM
+        </p>
+        <p class="text-sm text-slate-600 mb-3">
+          Every row was handed the <strong>same <code>(w, y)</code> arrays</strong> &mdash; the same
+          object, not a copy. So the fitted-slope and interval columns are identical for a structural
+          reason, and only the <em>truth</em> column moves. Coverage is measured over
+          <span id="covWord">400</span> fresh datasets, and because the interval does not depend on
+          the world, all six coverages are read off <strong>the same intervals</strong>. The last
+          column is not a second measurement &mdash; it is the closed form
+          <code>&Phi;(q &minus; &delta;) &minus; &Phi;(&minus;q &minus; &delta;)</code> with
+          <code>&delta; = (&beta; &minus; c)&radic;n / s</code>, so the measured column has something
+          to be wrong against.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>world</th><th>true &beta;</th><th>&sigma;&sup2;<sub>u</sub></th>
+              <th>&sigma;&sup2;<sub>&epsilon;</sub></th><th>fitted slope</th><th>95% interval</th>
+              <th>covers &beta;?</th><th>coverage</th><th>predicted</th></tr></thead>
+            <tbody id="rowsWorlds"></tbody>
+          </table>
+        </div>
+        <p class="text-sm mt-3 p-3 rounded-lg bg-amber-50 border-l-4 border-amber-500" id="headline"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">
+          TEN DIAGNOSTICS, THREE WORLDS, ONE SET OF NUMBERS
+        </p>
+        <p class="text-sm text-slate-600 mb-3">
+          One realisation, seed 4242. The three worlds below disagree about the true slope by a
+          factor of <span id="factorSpan" class="font-bold">2.00</span> and about whether the error
+          is in the predictor at all. Everything a residual plot, a holdout set, a bootstrap or a
+          heteroskedasticity test can see is in this table.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>quantity</th><th>world A &mdash; no error</th>
+              <th>world B &mdash; classical, &lambda; = &lambda;<sub>min</sub></th>
+              <th>world C &mdash; Berkson</th><th>identical?</th></tr></thead>
+            <tbody id="diagRows"></tbody>
+          </table>
+        </div>
+        <p class="text-xs text-slate-500 mt-2" id="diagNote"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">
+          WHAT THE THREE WORLDS ACTUALLY DIFFER IN &mdash; ALL OF IT LATENT
+        </p>
+        <p class="text-sm text-slate-600 mb-3">
+          Same seed, same arrays. Each world reconstructs a triple
+          <code>(x, u, &epsilon;)</code> from the shared noise, and the reconstruction has to put
+          <code>w</code> and <code>y</code> back exactly &mdash; the last two columns are that check.
+          Classical and Berkson are mirror images: one has the error independent of the
+          <em>truth</em>, the other independent of the <em>recording</em>, and
+          <strong>u is never observed in either</strong>.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>world</th><th>relation</th><th>&beta;</th><th>Var(x)</th>
+              <th>Cov(w, u)</th><th>Cov(x, u)</th><th>max |w &minus; rebuild|</th>
+              <th>max |y &minus; rebuild|</th></tr></thead>
+            <tbody id="latentRows"></tbody>
+          </table>
+        </div>
+        <p class="text-sm mt-3 p-3 rounded-lg bg-violet-50 border-l-4 border-violet-500" id="latentNote"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">
+          THE ATTENUATED COEFFICIENT IS THE <em>BETTER</em> PREDICTOR &mdash; WHICH IS WHY NOBODY NOTICES
+        </p>
+        <p class="text-sm text-slate-600 mb-3">
+          Predicting y from w, the fitted line is the best linear predictor by definition, so its
+          risk is <code>Var(y) &minus; c&sup2;</code> in every world. Substituting the
+          <em>unbiased</em> structural coefficient makes the prediction worse, by exactly
+          <code>(c &minus; &beta;)&sup2;</code>. Closed forms and a measured holdout, side by side.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>world</th><th>true &beta;</th><th>MSE, fitted slope (exact)</th>
+              <th>MSE, fitted slope (holdout)</th><th>MSE, true &beta; (exact)</th>
+              <th>MSE, true &beta; (holdout)</th><th>ratio</th></tr></thead>
+            <tbody id="predRows"></tbody>
+          </table>
+        </div>
+        <p class="text-sm mt-3 p-3 rounded-lg bg-sky-50 border-l-4 border-sky-500" id="predNote"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">
+          MORE DATA MAKES IT WORSE, AND THE POINT ESTIMATE NEVER MOVES
+        </p>
+        <p class="text-sm text-slate-600 mb-3">
+          A single fixed world with a perfectly ordinary instrument &mdash;
+          &lambda; = <span id="ssLam">0.90</span>, so 10% of the variance in the recorded column is
+          noise. Bias is O(1) and the standard error is O(1/&radic;n), so the interval walks off the
+          truth as the sample grows. <span id="ssReps">200</span> replications per row.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>n</th><th>true &beta;</th><th>mean fitted slope</th>
+              <th>mean CI width</th><th>bias / SE</th><th>coverage of the true &beta;</th>
+              <th>&nbsp;</th></tr></thead>
+            <tbody id="ssRows"></tbody>
+          </table>
+        </div>
+        <p class="text-sm mt-3 p-3 rounded-lg bg-rose-50 border-l-4 border-rose-500" id="ssNote"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">
+          MISMEASURE ONE PREDICTOR AND THE OTHER COEFFICIENT MOVES TOO
+        </p>
+        <p class="text-sm text-slate-600 mb-3">
+          Two predictors. <code>x&#8321;</code> is recorded with error (reliability
+          <span id="cLam">0.50</span>), <code>x&#8322;</code> is recorded <strong>perfectly</strong>,
+          true &beta;&#8321; = 1 and true &beta;&#8322; = <span id="cB2">0.00</span>. The exact
+          columns solve the population normal equations
+          <code>(&Sigma;<sub>xx</sub> + D)&#8315;&sup1;&Sigma;<sub>xx</sub>&beta;</code>; the
+          measured columns are an OLS fit at n = 40,000.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>corr(x&#8321;, x&#8322;)</th><th>&beta;&#8321; exact</th>
+              <th>&beta;&#8321; measured</th><th>&beta;&#8322; exact</th><th>&beta;&#8322; measured</th>
+              <th>|t| at n=1k</th><th>|t| at n=40k</th><th>bias on the clean one</th>
+              <th>ranking</th></tr></thead>
+            <tbody id="contamRows"></tbody>
+          </table>
+        </div>
+        <p class="text-sm mt-3 p-3 rounded-lg bg-amber-50 border-l-4 border-amber-500" id="contamNote"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">
+          THE FIX IS NOT AN ESTIMATOR, IT IS A SECOND MEASUREMENT
+        </p>
+        <p class="text-sm text-slate-600 mb-3">
+          Record the same quantity twice &mdash; <code>w&#8321; = x + u&#8321;</code>,
+          <code>w&#8322; = x + u&#8322;</code> &mdash; and &lambda; becomes
+          <em>estimable</em>: <code>corr(w&#8321;, w&#8322;) = &lambda;</code> exactly, because the
+          two errors are independent and the shared part is all there is.
+          <span id="covWord2">400</span> replications at n = <span id="repN">800</span>,
+          &lambda; = <span id="repLam">0.50</span>, true &beta; = <span id="repBeta">2.000</span>.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>estimator</th><th>needs</th><th>mean estimate</th><th>bias</th>
+              <th>mean CI width</th><th>coverage (nominal 95%)</th></tr></thead>
+            <tbody id="repairRows"></tbody>
+          </table>
+        </div>
+        <p class="text-sm mt-3 p-3 rounded-lg bg-emerald-50 border-l-4 border-emerald-600" id="repairNote"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">IN-PAGE SELF-TEST</p>
+        <div id="selftest" class="text-sm"></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">The column is a recording, not the thing</h2>
+
+      <p>Self-reported income, a survey scale, a sensor reading, last month's spend pulled from a
+      system that rounds, "years of experience" typed into a form, a proxy like postcode standing in
+      for wealth. In every case the model is fitted on <code>w</code> and the world runs on
+      <code>x</code>, and the gap between them is not a modelling choice &mdash; it is a property of
+      the instrument.</p>
+
+      <p>The <strong>classical</strong> error model is three lines:</p>
+
+      <pre>x            latent truth,  Var(x) = &sigma;&sup2;&#8339;
+w = x + u    the recording, u &#8869; x,  Var(u) = &sigma;&sup2;&#8342;
+y = a + &beta;x + &epsilon;   the world,     &epsilon; &#8869; (x, u)</pre>
+
+      <p>Define the <strong>reliability</strong> <code>&lambda; = &sigma;&sup2;&#8339; /
+      (&sigma;&sup2;&#8339; + &sigma;&sup2;&#8342;)</code> &mdash; the share of the recorded
+      column's variance that is signal. Then the population least-squares slope of y on w is</p>
+
+      <pre>plim &beta;&#770;<sub>OLS</sub> = Cov(w, y)/Var(w) = &beta;&sigma;&sup2;&#8339; / (&sigma;&sup2;&#8339; + &sigma;&sup2;&#8342;) = &lambda;&beta;</pre>
+
+      <p>That is <strong>attenuation</strong>, or regression dilution: the coefficient is shrunk
+      towards zero by exactly the reliability. It is usually presented as reassuring &mdash; the
+      effect is real and you are underselling it. Two things are wrong with that reading, and both
+      are measured on the MEASURE tab.</p>
+
+      <h3 class="text-xl font-bold">The observationally equivalent family</h3>
+
+      <p>Fix the observed law. Standardise so <code>Var(w) = 1</code>, and write
+      <code>c = Cov(w, y)</code>, <code>v = Var(y)</code>. Under the classical model a world is one
+      number, &lambda;, and every structural quantity is forced:</p>
+
+      <pre>&beta;   = c/&lambda;
+&sigma;&sup2;&#8342; = 1 &minus; &lambda;
+&sigma;&sup2;&#8341; = v &minus; c&sup2;/&lambda;</pre>
+
+      <p>The only constraint in the whole problem is that a variance cannot be negative:</p>
+
+      <pre>&sigma;&sup2;&#8341; &ge; 0   &hArr;   &lambda; &ge; c&sup2;/v = R&sup2;   &hArr;   c &le; &beta; &le; v/c</pre>
+
+      <p>So the true slope is not identified &mdash; it lives in an interval whose lower end is the
+      slope you fitted and whose upper end is <code>v/c</code>, which is the reciprocal of the
+      <em>reverse</em> regression (w on y). That is the classical <strong>Frisch bound</strong>, and
+      the page arrives at it as a non-negativity condition rather than importing it.</p>
+
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4">
+        <p class="text-sm">The width of that interval is <code>1/R&sup2;</code>. A model with
+        R&sup2; = 0.50 has a true slope somewhere in a 2&times; range; at R&sup2; = 0.10 the range is
+        <strong>10&times;</strong>. The worse your fit, the less the data pins down the mechanism
+        &mdash; which is the opposite of the instinct that a weak fit means a small effect. A weak
+        fit is equally consistent with a large effect measured badly.</p>
+      </div>
+
+      <h3 class="text-xl font-bold">Why the family shares its data <em>exactly</em></h3>
+
+      <p>The page does not simulate each world and hope the datasets look alike. It draws the
+      observed data <strong>once</strong>, from three independent standard normals, and then
+      reconstructs each world's latents as a linear map of the same three:</p>
+
+      <pre>w = z&#8321;
+y = a + c&middot;z&#8321; + s&middot;z&#8322;                      s = &radic;(v &minus; c&sup2;)
+
+x = &lambda;z&#8321; + (c(1&minus;&lambda;)/s)z&#8322; + &radic;(&lambda;(1&minus;&lambda;) &minus; c&sup2;(1&minus;&lambda;)&sup2;/s&sup2;) z&#8323;
+u = w &minus; x,   &epsilon; = y &minus; a &minus; &beta;x</pre>
+
+      <p>Because everything is a linear combination of jointly Gaussian coordinates, "uncorrelated"
+      upgrades to "independent" for free, so the classical model's independence assumptions hold
+      exactly rather than approximately. The page checks the three inner products
+      <code>&lt;x,u&gt;</code>, <code>&lt;x,&epsilon;&gt;</code>,
+      <code>&lt;u,&epsilon;&gt;</code> are zero and that the three variances land on
+      &lambda;, 1&minus;&lambda; and v&minus;c&sup2;/&lambda;. The last coordinate
+      <code>z&#8323;</code> is what makes it possible at all: with only two noise directions the
+      system is over-determined and has solutions at &lambda; = 1 and &lambda; = &frac12; only.</p>
+
+      <p>The coefficient on <code>z&#8323;</code> is real exactly when
+      <code>&lambda; &ge; R&sup2;</code> &mdash; the same bound, arrived at a second and completely
+      different way. That agreement is one of the self-tests.</p>
+
+      <h3 class="text-xl font-bold">Berkson error: the same noise, the opposite consequence</h3>
+
+      <p>There is a second error model that looks identical on a scatterplot and behaves in the
+      opposite way. In <strong>Berkson</strong> error the recorded value is the fixed one and the
+      truth scatters around <em>it</em>:</p>
+
+      <pre>classical:  w = x + u,  u &#8869; x    &rArr;  Cov(w, u) = &sigma;&sup2;&#8342;,  Cov(x, u) = 0
+Berkson:    x = w + u,  u &#8869; w    &rArr;  Cov(w, u) = 0,   Cov(x, u) = &sigma;&sup2;&#8342;</pre>
+
+      <p>This is not exotic. It is what you have whenever the recorded value is a target, a setting,
+      a nominal dose, a bucket label or a rounded grid point: everyone in the "40&ndash;49" band is
+      recorded as 45 and their true ages scatter around it. And the consequence is completely
+      different &mdash; <code>y = a + &beta;(w + u) + &epsilon; = a + &beta;w + (&beta;u + &epsilon;)</code>,
+      with <code>u &#8869; w</code>, so the regression of y on w has slope exactly &beta;. <strong>No
+      attenuation at all</strong>, only a fatter residual.</p>
+
+      <div class="bg-violet-50 border-l-4 border-violet-500 p-4">
+        <p class="text-sm">Both families are on the page and both reproduce the identical observed
+        arrays. So the data is consistent with "the slope is too small by a factor of &lambda;" and
+        with "the slope is exactly right and the residual is inflated" simultaneously. The thing that
+        separates them &mdash; whether <code>u</code> is independent of the truth or of the recording
+        &mdash; is a statement about <code>u</code>, and <code>u</code> is never observed. It is a
+        fact about the instrument, and it has to come from whoever built the instrument.</p>
+      </div>
+
+      <h3 class="text-xl font-bold">Attenuation is optimal for prediction, which is the trap</h3>
+
+      <p>Given that you will only ever have <code>w</code> at prediction time, the attenuated
+      coefficient is not a mistake &mdash; it is the answer. <code>&lambda;&beta;</code> is the
+      coefficient of the best linear predictor of y from w, so its risk is
+      <code>v &minus; c&sup2;</code>, and substituting the <em>correct</em> structural &beta;
+      raises the risk by exactly <code>(c &minus; &beta;)&sup2;</code>. On the default settings that
+      is a <strong>2.00&times;</strong> increase in test MSE from using the unbiased number, and the value at the Frisch bound is 1/R&sup2; exactly.</p>
+
+      <p>So the two questions come apart completely:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>"What will y be, given the recording I will have?"</strong> &mdash; the fitted
+        model is right, attenuation and all. Nothing needs fixing.</li>
+        <li><strong>"How much does x move y?"</strong> &mdash; the fitted model is wrong by a factor
+        the data cannot supply, and a better holdout score means nothing.</li>
+      </ul>
+
+      <p>Every validation habit in machine learning answers the first question. That is why this
+      failure mode survives review: the model is genuinely good, the residuals are genuinely clean,
+      the holdout is genuinely honest, and the coefficient is genuinely not the effect.</p>
+
+      <h3 class="text-xl font-bold">The bias does not stay in its own column</h3>
+
+      <p>With one predictor, attenuation at least points in a known direction. With two it stops
+      being conservative. Let <code>x&#8321;</code> be mismeasured with
+      <code>d = (1&minus;&lambda;&#8321;)/&lambda;&#8321;</code>, let <code>x&#8322;</code> be
+      recorded perfectly, and let <code>&rho;</code> be their correlation. The population
+      coefficients are <code>(&Sigma; + D)&#8315;&sup1;&Sigma;&beta;</code>, and the 2&times;2 case
+      is small enough to write out:</p>
+
+      <pre>&beta;&#770;&#8321; = &beta;&#8321;(1 &minus; &rho;&sup2;) / (1 + d &minus; &rho;&sup2;)
+&beta;&#770;&#8322; = &beta;&#8322; + <strong>d&rho;&beta;&#8321; / (1 + d &minus; &rho;&sup2;)</strong></pre>
+
+      <p>The second term is the whole problem. It is zero only if &rho; = 0, or
+      &beta;&#8321; = 0, or the measurement is perfect. Otherwise the coefficient on the column you
+      measured <em>perfectly</em> is biased, by an amount that has nothing to do with
+      &beta;&#8322;:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li>Set &beta;&#8322; = 0 exactly. At &rho; = 0.7 and &lambda;&#8321; = 0.5 the fitted
+        &beta;&#770;&#8322; is <strong>0.464</strong> &mdash; a variable with no effect at all,
+        reported with a large t statistic that grows with n.</li>
+        <li>It is <em>larger</em> than &beta;&#770;&#8321; = 0.338, so the two predictors swap
+        places in any importance ranking. The variable that matters looks secondary to the one that
+        does not matter at all.</li>
+        <li>The sign flips whenever
+        <code>&beta;&#8322; &lt; &minus;d&rho;&beta;&#8321;/(1 + d &minus; &rho;&sup2;)</code>, and
+        the page locates that threshold and prints it.</li>
+        <li>&beta;&#770;&#8321; is attenuated by <code>(1&minus;&rho;&sup2;)/(1+d&minus;&rho;&sup2;)</code>,
+        which is <em>worse</em> than &lambda;&#8321;: 0.338 against the single-predictor 0.500.
+        Correlated predictors amplify the dilution rather than absorbing it.</li>
+      </ul>
+
+      <p>"Conservative" is a one-predictor statement, and it does not generalise. This is also the
+      cleanest reason to distrust a coefficient table as a variable-importance story: one noisy
+      column redistributes signal onto whichever columns it correlates with.</p>
+
+      <h3 class="text-xl font-bold">What actually fixes it</h3>
+
+      <p>Nothing that is a function of <code>(w, y)</code> alone can, because the family shares that
+      function. Every repair works by adding information from outside it:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>A known &lambda;</strong> &mdash; from a calibration study, an instrument
+        specification, a validated scale. Then <code>&beta;&#770;/&lambda;</code> is unbiased and its
+        interval just scales. This is the honest version of "assume something".</li>
+        <li><strong>A replicate measurement.</strong> Record the same quantity twice with independent
+        errors and <code>corr(w&#8321;, w&#8322;) = &lambda;</code> exactly. The parameter that was
+        unidentifiable becomes a correlation coefficient. This is the important one: the fix is a
+        change to the <em>data collection</em>, not to the estimator.</li>
+        <li><strong>An instrument.</strong> Anything correlated with x and unrelated to &epsilon;
+        works, and a replicate is the easiest instrument there is:
+        <code>&beta;&#770;<sub>IV</sub> = Cov(w&#8322;, y)/Cov(w&#8322;, w&#8321;) &rarr; &beta;</code>,
+        since the numerator is <code>&beta;&sigma;&sup2;&#8339;</code> and the denominator is
+        <code>&sigma;&sup2;&#8339;</code> and the errors cancel out of both.</li>
+        <li><strong>A validation subsample</strong> where the gold-standard x is available for some
+        rows &mdash; regression calibration, the same idea with a different budget.</li>
+      </ul>
+
+      <p>All four are priced on the page, with measured coverage. The one that is <em>not</em> on the
+      list is more data: it is measured instead, and it moves coverage in the wrong direction.</p>
+
+      <h3 class="text-xl font-bold">The honest caveat about this page</h3>
+
+      <p>Gaussian everything, a correctly specified linear model, homoscedastic error, and
+      measurement error that is additive, mean-zero and independent &mdash; the friendliest possible
+      version. That is deliberate: it removes every other source of trouble, so what is left is the
+      instrument. Real measurement error is often <em>differential</em> (correlated with y), which is
+      strictly worse and can bias in either direction, or multiplicative, or heaped on round numbers.
+      The structural claims &mdash; the shared observed data, the Frisch bound, the exact
+      &beta;&#770;&#8322; formula, the replicate identity &mdash; do not depend on the friendly
+      settings. The specific magnitudes do.</p>
+
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-50">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">🔨 How it is built</h2>
+
+      <h3 class="text-xl font-bold">1. A sampler that does not know which world it is in</h3>
+      <pre>sampleBase(n, cfg, seed)            // -&gt; { obs:{w,y}, z1, z2 }   NO lambda, NO kind
+classicalWorld(base, cfg, lambda)   // -&gt; { obs: base.obs, x, u, eps, beta }
+berksonWorld(base, cfg, theta)      // -&gt; { obs: base.obs, x, u, eps, beta }</pre>
+      <p>Every world returns <code>base.obs</code> &mdash; the identical object, asserted with
+      <code>===</code>. "The observed data is the same" is therefore not a numerical coincidence the
+      page checks afterwards; it is the only thing that could have happened. The third noise
+      direction <code>z&#8323;</code> is drawn lazily and memoised on the base, so worlds built from
+      one base share it too and the latent comparison is apples to apples.</p>
+
+      <h3 class="text-xl font-bold">2. The latents are a closed-form linear map, and it is derived</h3>
+      <pre>a&#8321; = &lambda;                        &lt;- forced by Cov(x, u) = 0
+a&#8322; = c(1 &minus; &lambda;)/s               &lt;- forced by Cov(x, &epsilon;) = 0
+a&#8323;&sup2; = &lambda;(1 &minus; &lambda;) &minus; a&#8322;&sup2;         &lt;- forced by Var(x) = &lambda;
+Cov(u, &epsilon;) = 0 and Var(u) = 1 &minus; &lambda; and Var(&epsilon;) = v &minus; c&sup2;/&lambda;   fall out</pre>
+      <p>Three of the six conditions determine the map and the other three are then satisfied
+      automatically &mdash; which is the interesting part, because it means the classical model is
+      exactly as flexible as one parameter and no more. The page verifies the automatic ones rather
+      than assuming them, on a grid of &lambda;. <code>u</code> and <code>&epsilon;</code> are built
+      from their <em>own</em> coefficients, never as <code>w &minus; x</code>, so
+      <code>x + u = w</code> is a real check on the algebra instead of a tautology.</p>
+
+      <h3 class="text-xl font-bold">3. Where the tolerance is, and why</h3>
+      <pre>|x + u &minus; w|      &lt; 1e-13     // not ===
+|a + &beta;x + &epsilon; &minus; y| &lt; 1e-13     // not ===</pre>
+      <p>These are exact algebraic identities and they still fail bit-equality, and the reason is
+      worth being precise about, because the obvious suspect is not the culprit. The coefficient
+      vectors are exact: <code>a&#8321; + b&#8321; = 1</code> to the bit for every &lambda; on a
+      41-point grid, and the <code>z&#8321;</code> coefficient of &epsilon; &mdash;
+      <code>c &minus; (c/&lambda;)&lambda;</code>, the term you would expect to be one ulp off
+      &mdash; is exactly 0 at most &lambda; and never worse than 1.1e-16. What actually breaks it is
+      <strong>summation order</strong>: <code>(a&#8321;z&#8321; + a&#8322;z&#8322; + a&#8323;z&#8323;)
+      + (b&#8321;z&#8321; + b&#8322;z&#8322; + b&#8323;z&#8323;)</code> is not
+      <code>(a&#8321;+b&#8321;)z&#8321; + &hellip;</code> in binary64, which lands the rebuild at
+      4.4e-16 on w and 8.9e-16 on y. Day 68 hit the identical wall on a mean-imputation identity at
+      1.6e-15, and the same rule applies: a <code>===</code> that has to be relaxed is worth leaving
+      visible with its reason attached rather than quietly widened, and the reason should be the real
+      one. The observed arrays themselves <em>are</em> compared with <code>===</code>, because there
+      the claim is object identity, not arithmetic.</p>
+
+      <h3 class="text-xl font-bold">4. The interval is computed once and scored six times</h3>
+      <pre>for each replication:
+    base = sampleBase(n, cfg, seed)          // world-free
+    fit  = ols(base.obs.w, base.obs.y)
+    lo, hi = fit.b &plusmn; t&#8320;.&#8320;&#8323;&#8325;(n&minus;2)&middot;fit.se
+    for each world: coverage[world] += (lo &le; world.beta &le; hi)</pre>
+      <p>One loop, six coverages, literally the same endpoints. That is what makes the headline a
+      structural statement instead of a comparison of two simulations that happen to differ. The t
+      quantile is a Cornish&ndash;Fisher expansion, checked in the verifier against a numerically
+      integrated Student-t CDF.</p>
+
+      <h3 class="text-xl font-bold">5. Population coefficients, not large-sample estimates</h3>
+      <pre>b = solve(&Sigma;&#8339;&#8339; + D, &Sigma;&#8339;&#8339;&beta;)                      // Gaussian elimination, exact
+&beta;&#770;&#8322; = &beta;&#8322; + d&rho;&beta;&#8321;/(1 + d &minus; &rho;&sup2;)             // closed form, asserted equal to 1e-12</pre>
+      <p>The two-predictor table has an exact column and a measured column and they are produced by
+      code that shares nothing: one is a linear solve on population covariances, the other is a real
+      OLS fit with an intercept on 40,000 simulated rows. Agreement to Monte-Carlo precision is the
+      check; the closed form is what the prose is allowed to claim.</p>
+
+      <h3 class="text-xl font-bold">6. Four repairs behind one interface</h3>
+      <pre>naive        &beta;&#770;                     needs nothing        &rarr; biased by (&lambda;&minus;1)&beta;
+oracle MoM   &beta;&#770;/&lambda;                   needs &lambda;              &rarr; unbiased, interval scales
+replicate    &beta;&#770;/&lambda;&#770;,  &lambda;&#770; = corr(w&#8321;,w&#8322;)  needs a 2nd reading  &rarr; delta-method SE
+2SLS         Cov(w&#8322;,y)/Cov(w&#8322;,w&#8321;)      needs a 2nd reading  &rarr; standard IV SE</pre>
+      <p>The replicate design is generated <em>forwards</em> from the structural parameters rather
+      than reconstructed from the shared arrays, because it is a different experiment: two readings
+      per row is data the single-measurement design does not have. The page asserts that its
+      <code>(w&#8321;, y)</code> margin still matches the observed law &mdash; the extra column is
+      new information, not a different world.</p>
+
+      <h3 class="text-xl font-bold">7. What the tests pin</h3>
+      <pre>assert(worldA.obs === worldB.obs);                    // same object
+assert(|x + u &minus; w| &lt; 1e-13) for every &lambda; on a grid;
+assert(Cov(x,u) = Cov(x,&epsilon;) = Cov(u,&epsilon;) = 0 in the population);
+assert(Var(x)=&lambda;, Var(u)=1&minus;&lambda;, Var(&epsilon;)=v&minus;c&sup2;/&lambda;);
+assert(a&#8323;&sup2; &ge; 0  &hArr;  &lambda; &ge; R&sup2;  &hArr;  &sigma;&sup2;&#8341; &ge; 0);
+assert(&beta;(&lambda;<sub>min</sub>) === v/c === 1/(reverse-regression slope));
+assert(classical(&lambda;=1) and berkson(&theta;=0) agree exactly);
+assert(Cov(w,u)=&sigma;&sup2;&#8342; classical, = 0 Berkson; Cov(x,u) the other way round);
+assert(every diagnostic is identical across worlds);
+assert(&beta;&#770;&#8322; closed form === the 2x2 solve to 1e-12);
+assert(&beta;&#770;&#8322; &ne; &beta;&#8322; when &rho;&ne;0, === &beta;&#8322; when &rho;=0);
+assert(corr(w&#8321;,w&#8322;) &rarr; &lambda;);
+assert(coverage falls as n rises);</pre>
+
+      <h3 class="text-xl font-bold">🎉 MachineLearningFromZero Day 69 shipped.</h3>
+      <p class="text-slate-600">The column is a recording. The coefficient is about the recording.</p>
+
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Measurement error in a PREDICTOR (errors in variables).
+//
+// The observed law is FIXED: Var(w) = 1, Var(y) = v, Cov(w, y) = c, so R^2 = c^2/v and the
+// population least-squares slope of y on w is exactly c. A "world" is a structural story behind
+// that law:
+//
+//   classical:  w = x + u with u independent of x   ->  beta = c/lambda,  attenuation by lambda
+//   Berkson:    x = w + u with u independent of w   ->  beta = c,         no attenuation at all
+//
+// Both families reproduce the SAME observed arrays - the same object, not a copy - because the
+// sampler is not given lambda and each world reconstructs its latents as a linear map of the same
+// three Gaussian coordinates. The classical family is admissible exactly when lambda >= R^2, which
+// is the Frisch bound derived as a non-negative-variance condition.
+
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function gaussian(rnd){
+  let u = 0, v = 0;
+  while (u === 0) u = rnd();
+  while (v === 0) v = rnd();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+// Replication seeds. An arithmetic progression of seeds is NOT safe here: 44000 + r*7907 fed to
+// mulberry32 put the naive coverage estimate at 99.2% over 250 reps and 97.3% over 1000, which
+// reads exactly like an over-coverage RESULT and is a property of the seed stream. Multiplicative
+// hashing fixes it (95.2% / 94.9% on the same reps) and an assertion now guards it.
+function repSeed(tag, r){
+  return (Math.imul(r + 1, 2654435761) ^ Math.imul(tag + 1, 0x9E3779B1)) >>> 0;
+}
+
+// Abramowitz & Stegun 7.1.26, |error| < 1.5e-7 - enough for every tolerance used here.
+function erf(x){
+  const s = x < 0 ? -1 : 1, z = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * z);
+  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t +
+                 0.254829592) * t * Math.exp(-z * z);
+  return s * y;
+}
+const normCdf = z => 0.5 * (1 + erf(z / Math.SQRT2));
+const normPdfStd = z => Math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI);
+
+// Bisection on the page's OWN normCdf, so Phi(normInv(p)) reproduces p to machine precision.
+function normInv(p){
+  let lo = -12, hi = 12;
+  for (let i = 0; i < 200; i++){
+    const mid = 0.5 * (lo + hi);
+    if (normCdf(mid) < p) lo = mid; else hi = mid;
+  }
+  return 0.5 * (lo + hi);
+}
+// Cornish-Fisher expansion for the Student-t quantile; verified against an integrated t CDF.
+function tQuantile(p, df){
+  const z = normInv(p);
+  if (!isFinite(df) || df > 1e8) return z;
+  const z2 = z * z, z3 = z2 * z, z5 = z3 * z2, z7 = z5 * z2, z9 = z7 * z2;
+  const g1 = (z3 + z) / 4;
+  const g2 = (5 * z5 + 16 * z3 + 3 * z) / 96;
+  const g3 = (3 * z7 + 19 * z5 + 17 * z3 - 15 * z) / 384;
+  const g4 = (79 * z9 + 776 * z7 + 1482 * z5 - 1920 * z3 - 945 * z) / 92160;
+  return z + g1 / df + g2 / (df * df) + g3 / (df * df * df) + g4 / (df * df * df * df);
+}
+
+const DEFAULTS = {
+  r2: 0.50, lam: 0.70, n: 800, seeds: 25, rho12: 0.70, b2: 0.00,
+  vY: 2, a: 1, covReps: 400, ssReps: 200, boot: 400, folds: 5,
+  lamSS: 0.90, contamN: 40000, lam1: 0.50, b1: 1.00, sigE2c: 1.00
+};
+
+function cfgOf(o){
+  o = o || {};
+  const g = k => (o[k] === undefined ? DEFAULTS[k] : o[k]);
+  const v = g('vY'), r2 = g('r2');
+  const c = Math.sqrt(r2 * v), s = Math.sqrt(v - c * c);
+  const lamMin = (c * c) / v;                 // === r2, asserted
+  const lamRaw = g('lam');
+  const lam = Math.max(lamMin, Math.min(1, lamRaw));
+  return {
+    a: g('a'), v: v, c: c, s: s, r2: r2,
+    lamMin: lamMin, lamRaw: lamRaw, lam: lam, clamped: lamRaw < lamMin - 1e-12,
+    thMax: (s * s) / (c * c),                 // Berkson error variance cannot exceed s^2/c^2
+    betaOls: c, betaMax: v / c,               // the Frisch interval
+    n: g('n'), seeds: g('seeds'), rho12: g('rho12'), b2: g('b2'),
+    covReps: g('covReps'), ssReps: g('ssReps'), boot: g('boot'), folds: g('folds'),
+    lamSS: Math.max(lamMin, g('lamSS')), contamN: g('contamN'),
+    lam1: g('lam1'), b1: g('b1'), sigE2c: g('sigE2c')
+  };
+}
+
+// ---------------------------------------------------------------- the observed dataset
+// Draws w and y and nothing else. It has no lambda argument and no notion of a "world".
+function sampleBase(n, cfg, seed){
+  const rnd = mulberry32(seed >>> 0);
+  const z1 = new Float64Array(n), z2 = new Float64Array(n);
+  const w = new Float64Array(n), y = new Float64Array(n);
+  for (let i = 0; i < n; i++){
+    const g1 = gaussian(rnd), g2 = gaussian(rnd);
+    z1[i] = g1; z2[i] = g2;
+    w[i] = g1;
+    y[i] = cfg.a + cfg.c * g1 + cfg.s * g2;
+  }
+  return { n: n, seed: seed, obs: { n: n, w: w, y: y }, z1: z1, z2: z2, z3cache: null };
+}
+// The third noise direction is LATENT - no observed quantity uses it - so it is drawn lazily and
+// memoised on the base, which keeps every world built from one base sharing it.
+function z3Of(base){
+  if (base.z3cache) return base.z3cache;
+  const rnd = mulberry32((base.seed ^ 0x9E3779B9) >>> 0);
+  const z = new Float64Array(base.n);
+  for (let i = 0; i < base.n; i++) z[i] = gaussian(rnd);
+  base.z3cache = z;
+  return z;
+}
+
+function popOf(k){
+  const A = [k.a1, k.a2, k.a3], B = [k.b1, k.b2, k.b3], C = [k.c1, k.c2, k.c3];
+  const dot = (p, q) => p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+  return {
+    varX: dot(A, A), varU: dot(B, B), varE: dot(C, C),
+    covXU: dot(A, B), covXE: dot(A, C), covUE: dot(B, C),
+    covWU: k.b1, covWX: k.a1                    // w = z1, so <w, .> reads off the first coefficient
+  };
+}
+function buildLatents(base, k){
+  const n = base.n, z3 = z3Of(base);
+  const x = new Float64Array(n), u = new Float64Array(n), e = new Float64Array(n);
+  for (let i = 0; i < n; i++){
+    const p = base.z1[i], q = base.z2[i], r = z3[i];
+    x[i] = k.a1 * p + k.a2 * q + k.a3 * r;
+    u[i] = k.b1 * p + k.b2 * q + k.b3 * r;      // built from its OWN coefficients, never as w - x
+    e[i] = k.c1 * p + k.c2 * q + k.c3 * r;
+  }
+  return { x: x, u: u, e: e };
+}
+
+// classical: w = x + u, u independent of x. beta = c/lambda.
+function classicalWorld(base, cfg, lam){
+  const beta = cfg.c / lam;
+  const a1 = lam;
+  const a2 = cfg.c * (1 - lam) / cfg.s;
+  const a3sq = lam * (1 - lam) - a2 * a2;       // >= 0 exactly when lam >= R^2
+  const a3 = Math.sqrt(Math.max(0, a3sq));
+  const k = {
+    a1: a1, a2: a2, a3: a3,
+    b1: 1 - a1, b2: -a2, b3: -a3,
+    c1: cfg.c - beta * a1, c2: cfg.s - beta * a2, c3: -beta * a3
+  };
+  const L = buildLatents(base, k);
+  return {
+    kind: 'classical', relation: 'w = x + u', lam: lam, theta: null, beta: beta,
+    obs: base.obs, base: base, x: L.x, u: L.u, e: L.e, coef: k, a3sq: a3sq,
+    pop: popOf(k), admissible: a3sq >= -1e-12,
+    target: { varX: lam, varU: 1 - lam, varE: cfg.v - cfg.c * cfg.c / lam,
+              covWU: 1 - lam, covXU: 0 }
+  };
+}
+// Berkson: x = w + u, u independent of w. beta = c exactly - no attenuation.
+function berksonWorld(base, cfg, theta){
+  const beta = cfg.c;
+  const t2 = cfg.c * theta / cfg.s;
+  const t3sq = theta - t2 * t2;                 // >= 0 exactly when theta <= s^2/c^2
+  const t3 = Math.sqrt(Math.max(0, t3sq));
+  const k = {
+    a1: 1, a2: t2, a3: t3,                      // x = w + u
+    b1: 0, b2: t2, b3: t3,                      // u, orthogonal to w by construction
+    c1: cfg.c - beta, c2: cfg.s - beta * t2, c3: -beta * t3
+  };
+  const L = buildLatents(base, k);
+  return {
+    kind: 'berkson', relation: 'x = w + u', lam: null, theta: theta, beta: beta,
+    obs: base.obs, base: base, x: L.x, u: L.u, e: L.e, coef: k, a3sq: t3sq,
+    pop: popOf(k), admissible: t3sq >= -1e-12,
+    target: { varX: 1 + theta, varU: theta, varE: cfg.s * cfg.s - cfg.c * cfg.c * theta,
+              covWU: 0, covXU: theta }
+  };
+}
+// classical rebuilds w as x + u; Berkson as x - u. Both rebuild y as a + beta*x + eps.
+function rebuildError(world, cfg){
+  const o = world.obs, n = o.n;
+  let wErr = 0, yErr = 0;
+  const sgn = world.kind === 'classical' ? 1 : -1;
+  for (let i = 0; i < n; i++){
+    wErr = Math.max(wErr, Math.abs(world.x[i] + sgn * world.u[i] - o.w[i]));
+    yErr = Math.max(yErr, Math.abs(cfg.a + world.beta * world.x[i] + world.e[i] - o.y[i]));
+  }
+  return { w: wErr, y: yErr };
+}
+
+// ---------------------------------------------------------------- ordinary least squares
+function ols(xs, ys, n){
+  let sx = 0, sy = 0;
+  for (let i = 0; i < n; i++){ sx += xs[i]; sy += ys[i]; }
+  const mx = sx / n, my = sy / n;
+  let sxx = 0, sxy = 0, syy = 0;
+  for (let i = 0; i < n; i++){
+    const dx = xs[i] - mx, dy = ys[i] - my;
+    sxx += dx * dx; sxy += dx * dy; syy += dy * dy;
+  }
+  const b = sxy / sxx, a = my - b * mx;
+  let ss = 0;
+  for (let i = 0; i < n; i++){ const r = ys[i] - a - b * xs[i]; ss += r * r; }
+  const s2 = ss / (n - 2);
+  return { a: a, b: b, se: Math.sqrt(s2 / sxx), sigma: Math.sqrt(s2), ss: ss,
+           r2: 1 - ss / syy, sxx: sxx, sxy: sxy, syy: syy, mx: mx, my: my, n: n };
+}
+function ciOf(fit, level){
+  const q = tQuantile(1 - (1 - (level === undefined ? 0.95 : level)) / 2, fit.n - 2);
+  return { lo: fit.b - q * fit.se, hi: fit.b + q * fit.se, q: q };
+}
+function meanOf(v, n){ let s = 0; for (let i = 0; i < n; i++) s += v[i]; return s / n; }
+function corrOf(p, q, n){
+  const mp = meanOf(p, n), mq = meanOf(q, n);
+  let a = 0, b = 0, cc = 0;
+  for (let i = 0; i < n; i++){ const dp = p[i] - mp, dq = q[i] - mq; a += dp * dp; b += dq * dq; cc += dp * dq; }
+  return cc / Math.sqrt(a * b);
+}
+function covOf(p, q, n){
+  const mp = meanOf(p, n), mq = meanOf(q, n);
+  let cc = 0;
+  for (let i = 0; i < n; i++) cc += (p[i] - mp) * (q[i] - mq);
+  return cc / (n - 1);
+}
+// Gaussian elimination with partial pivoting - used for the population normal equations and for
+// the multi-predictor OLS fit.
+function solve(A, bvec){
+  const m = A.length, M = A.map((row, i) => row.slice().concat([bvec[i]]));
+  for (let col = 0; col < m; col++){
+    let piv = col;
+    for (let r = col + 1; r < m; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+    const tmp = M[col]; M[col] = M[piv]; M[piv] = tmp;
+    const d = M[col][col];
+    for (let r = 0; r < m; r++){
+      if (r === col) continue;
+      const f = M[r][col] / d;
+      for (let k = col; k <= m; k++) M[r][k] -= f * M[col][k];
+    }
+  }
+  return M.map((row, i) => row[m] / row[i]);
+}
+// OLS on a design matrix with an intercept prepended. Returns coefficients and standard errors.
+function olsMulti(cols, ys, n){
+  const p = cols.length + 1;
+  const A = [], bv = [];
+  for (let r = 0; r < p; r++){ A.push(new Array(p).fill(0)); bv.push(0); }
+  const xr = new Array(p);
+  for (let i = 0; i < n; i++){                     // accumulate X'X and X'y in one pass
+    xr[0] = 1;
+    for (let j = 1; j < p; j++) xr[j] = cols[j - 1][i];
+    for (let r = 0; r < p; r++){
+      for (let c2 = r; c2 < p; c2++) A[r][c2] += xr[r] * xr[c2];
+      bv[r] += xr[r] * ys[i];
+    }
+  }
+  for (let r = 0; r < p; r++) for (let c2 = 0; c2 < r; c2++) A[r][c2] = A[c2][r];
+  const beta = solve(A, bv);
+  let ss = 0;
+  for (let i = 0; i < n; i++){
+    let f = beta[0];
+    for (let j = 1; j < p; j++) f += beta[j] * cols[j - 1][i];
+    const e = ys[i] - f; ss += e * e;
+  }
+  const s2 = ss / (n - p);
+  // standard errors need (X'X)^-1 diagonals; one solve per unit vector keeps it to the same routine
+  const se = [];
+  for (let j = 0; j < p; j++){
+    const ej = new Array(p).fill(0); ej[j] = 1;
+    se.push(Math.sqrt(s2 * solve(A.map(r => r.slice()), ej)[j]));
+  }
+  return { beta: beta, se: se, sigma: Math.sqrt(s2), ss: ss, n: n, p: p };
+}
+
+// ---------------------------------------------------------------- worlds and their exact truths
+function worldSpecs(cfg){
+  const mid = cfg.lamMin + 0.85 * (1 - cfg.lamMin);
+  const specs = [
+    { kind: 'classical', p: 1, name: 'no error (&lambda; = 1)' },
+    { kind: 'classical', p: mid, name: 'classical, &lambda; = ' + mid.toFixed(3) },
+    { kind: 'classical', p: cfg.lam, name: 'classical, &lambda; = ' + cfg.lam.toFixed(3) + ' (slider)' },
+    { kind: 'classical', p: cfg.lamMin, name: 'classical, &lambda; = &lambda;<sub>min</sub> = ' + cfg.lamMin.toFixed(3) + ' &mdash; the Frisch bound' },
+    { kind: 'berkson', p: 0.5 * cfg.thMax, name: 'Berkson, &sigma;&sup2;<sub>u</sub> = ' + (0.5 * cfg.thMax).toFixed(3) },
+    { kind: 'berkson', p: cfg.thMax, name: 'Berkson, &sigma;&sup2;<sub>u</sub> = ' + cfg.thMax.toFixed(3) + ' (max)' }
+  ];
+  return specs.map(function(s){
+    const t = s.kind === 'classical'
+      ? { beta: cfg.c / s.p, varU: 1 - s.p, varE: cfg.v - cfg.c * cfg.c / s.p, varX: s.p, covWU: 1 - s.p, covXU: 0 }
+      : { beta: cfg.c, varU: s.p, varE: cfg.s * cfg.s - cfg.c * cfg.c * s.p, varX: 1 + s.p, covWU: 0, covXU: s.p };
+    return { kind: s.kind, p: s.p, name: s.name, beta: t.beta, varU: t.varU, varE: t.varE,
+             varX: t.varX, covWU: t.covWU, covXU: t.covXU };
+  });
+}
+function worldOf(base, cfg, spec){
+  return spec.kind === 'classical' ? classicalWorld(base, cfg, spec.p) : berksonWorld(base, cfg, spec.p);
+}
+
+// One loop, one set of intervals, every world scored against the SAME endpoints.
+function coverageStudy(cfg){
+  const specs = worldSpecs(cfg);
+  const hits = specs.map(() => 0);
+  let widthSum = 0, slopeSum = 0, r2Sum = 0;
+  for (let r = 0; r < cfg.covReps; r++){
+    const base = sampleBase(cfg.n, cfg, repSeed(1, r));
+    const f = ols(base.obs.w, base.obs.y, cfg.n);
+    const ci = ciOf(f);
+    widthSum += ci.hi - ci.lo; slopeSum += f.b; r2Sum += f.r2;
+    for (let i = 0; i < specs.length; i++)
+      if (ci.lo <= specs[i].beta && specs[i].beta <= ci.hi) hits[i]++;
+  }
+  // The coverage is PREDICTABLE, not just measurable: the interval is centred on c with
+  // sd(beta-hat) = s/sqrt(n), so covering beta is P(|Z + (beta - c)/sd| <= q). Reporting a measured
+  // number next to its closed form is what turns the table into a check.
+  const sdB = cfg.s / Math.sqrt(cfg.n);
+  const q = tQuantile(0.975, cfg.n - 2);
+  const predicted = specs.map(function(s){
+    const d = (s.beta - cfg.c) / sdB;
+    return normCdf(q - d) - normCdf(-q - d);
+  });
+  return { specs: specs, reps: cfg.covReps,
+           coverage: hits.map(h => h / cfg.covReps), predicted: predicted, sdB: sdB,
+           width: widthSum / cfg.covReps, slope: slopeSum / cfg.covReps, r2: r2Sum / cfg.covReps };
+}
+
+// The averaged fit on the shared observed data - identical for every world by construction.
+function fitStudy(cfg){
+  let b = 0, a = 0, se = 0, r2 = 0, lo = 0, hi = 0;
+  for (let k = 0; k < cfg.seeds; k++){
+    const base = sampleBase(cfg.n, cfg, repSeed(2, k));
+    const f = ols(base.obs.w, base.obs.y, cfg.n), ci = ciOf(f);
+    b += f.b; a += f.a; se += f.se; r2 += f.r2; lo += ci.lo; hi += ci.hi;
+  }
+  const d = cfg.seeds;
+  return { b: b / d, a: a / d, se: se / d, r2: r2 / d, lo: lo / d, hi: hi / d, seeds: d };
+}
+
+// ---------------------------------------------------------------- diagnostics that cannot see it
+function cvMse(w, y, n, folds){
+  let ss = 0, cnt = 0;
+  for (let f = 0; f < folds; f++){
+    const trW = [], trY = [];
+    for (let i = 0; i < n; i++) if (i % folds !== f){ trW.push(w[i]); trY.push(y[i]); }
+    const fit = ols(trW, trY, trW.length);
+    for (let i = 0; i < n; i++) if (i % folds === f){
+      const e = y[i] - fit.a - fit.b * w[i]; ss += e * e; cnt++;
+    }
+  }
+  return ss / cnt;
+}
+function bootSlopeCi(w, y, n, B, seed){
+  const rnd = mulberry32(seed >>> 0);
+  const out = new Float64Array(B);
+  const bw = new Float64Array(n), by = new Float64Array(n);
+  for (let b = 0; b < B; b++){
+    for (let i = 0; i < n; i++){ const j = Math.floor(rnd() * n); bw[i] = w[j]; by[i] = y[j]; }
+    out[b] = ols(bw, by, n).b;
+  }
+  const arr = Array.prototype.slice.call(out).sort((p, q) => p - q);
+  const at = p => arr[Math.min(B - 1, Math.max(0, Math.floor(p * (B - 1))))];
+  return { lo: at(0.025), hi: at(0.975) };
+}
+function diagnostics(obs, cfg){
+  const n = obs.n, w = obs.w, y = obs.y;
+  const f = ols(w, y, n), ci = ciOf(f);
+  const res = new Float64Array(n), sq = new Float64Array(n);
+  for (let i = 0; i < n; i++){ const e = y[i] - f.a - f.b * w[i]; res[i] = e; sq[i] = e * e; }
+  const mr = meanOf(res, n);
+  let m2 = 0, m3 = 0, m4 = 0;
+  for (let i = 0; i < n; i++){ const d = res[i] - mr; m2 += d * d; m3 += d * d * d; m4 += d * d * d * d; }
+  m2 /= n; m3 /= n; m4 /= n;
+  const bp = ols(w, sq, n);                          // Breusch-Pagan in its regression form
+  const rev = ols(y, w, n);                          // reverse regression: w on y
+  return {
+    slope: f.b, intercept: f.a, se: f.se, t: f.b / f.se, r2: f.r2, sigma: f.sigma,
+    lo: ci.lo, hi: ci.hi,
+    skew: m3 / Math.pow(m2, 1.5), kurt: m4 / (m2 * m2) - 3,
+    hetT: bp.b / bp.se,
+    cv: cvMse(w, y, n, cfg.folds),
+    boot: bootSlopeCi(w, y, n, cfg.boot, 5150),
+    revSlope: rev.b, revRecip: 1 / rev.b,
+    corr: corrOf(w, y, n)
+  };
+}
+// Three worlds, one realisation, one diagnostic object each - and they must be the same numbers.
+function diagAudit(cfg, seed){
+  const base = sampleBase(cfg.n, cfg, seed);
+  const A = classicalWorld(base, cfg, 1);
+  const B = classicalWorld(base, cfg, cfg.lamMin);
+  const C = berksonWorld(base, cfg, cfg.thMax);
+  const worlds = [A, B, C];
+  const d = worlds.map(wd => diagnostics(wd.obs, cfg));
+  const rb = worlds.map(wd => rebuildError(wd, cfg));
+  const sameObj = A.obs === base.obs && B.obs === base.obs && C.obs === base.obs;
+  const keys = ['slope', 'intercept', 'se', 't', 'r2', 'sigma', 'skew', 'kurt', 'hetT', 'cv',
+                'revSlope', 'corr', 'lo', 'hi'];
+  const allSame = keys.every(k => d[0][k] === d[1][k] && d[1][k] === d[2][k]) &&
+                  d[0].boot.lo === d[1].boot.lo && d[1].boot.lo === d[2].boot.lo &&
+                  d[0].boot.hi === d[1].boot.hi && d[1].boot.hi === d[2].boot.hi;
+  return { base: base, worlds: worlds, diag: d, rebuild: rb, sameObj: sameObj,
+           allSame: allSame, keys: keys, betas: worlds.map(wd => wd.beta) };
+}
+
+// ---------------------------------------------------------------- prediction risk
+// The fitted line is the best linear predictor of y from w, so its population risk is v - c^2 in
+// EVERY world. Substituting the true structural beta adds exactly (c - beta)^2.
+function predictionStudy(cfg){
+  const specs = worldSpecs(cfg);
+  const nTr = cfg.n, nTe = 4000;
+  let fitSum = 0, cnt = 0;
+  const trueSum = specs.map(() => 0);
+  for (let k = 0; k < cfg.seeds; k++){
+    const tr = sampleBase(nTr, cfg, repSeed(3, k));
+    const te = sampleBase(nTe, cfg, repSeed(4, k));
+    const f = ols(tr.obs.w, tr.obs.y, nTr);
+    let sf = 0;
+    for (let i = 0; i < nTe; i++){ const e = te.obs.y[i] - f.a - f.b * te.obs.w[i]; sf += e * e; }
+    fitSum += sf / nTe;
+    for (let j = 0; j < specs.length; j++){
+      let st = 0;
+      for (let i = 0; i < nTe; i++){
+        const e = te.obs.y[i] - cfg.a - specs[j].beta * te.obs.w[i]; st += e * e;
+      }
+      trueSum[j] += st / nTe;
+    }
+    cnt++;
+  }
+  return {
+    specs: specs, seeds: cnt,
+    exactFit: cfg.v - cfg.c * cfg.c,
+    measFit: fitSum / cnt,
+    exactTrue: specs.map(s => (cfg.c - s.beta) * (cfg.c - s.beta) + cfg.v - cfg.c * cfg.c),
+    measTrue: trueSum.map(v => v / cnt)
+  };
+}
+
+// ---------------------------------------------------------------- more data, worse coverage
+function sampleSizeStudy(cfg){
+  const lam = cfg.lamSS, beta = cfg.c / lam;
+  const ns = [100, 400, 1600, 6400];
+  return {
+    lam: lam, beta: beta, reps: cfg.ssReps,
+    rows: ns.map(function(n){
+      let hits = 0, wid = 0, slope = 0;
+      for (let r = 0; r < cfg.ssReps; r++){
+        const base = sampleBase(n, cfg, repSeed(5 + n, r));
+        const f = ols(base.obs.w, base.obs.y, n), ci = ciOf(f);
+        wid += ci.hi - ci.lo; slope += f.b;
+        if (ci.lo <= beta && beta <= ci.hi) hits++;
+      }
+      const se = (wid / cfg.ssReps) / (2 * tQuantile(0.975, n - 2));
+      return { n: n, coverage: hits / cfg.ssReps, width: wid / cfg.ssReps,
+               slope: slope / cfg.ssReps, biasOverSe: (beta - cfg.c) / se };
+    })
+  };
+}
+
+// ---------------------------------------------------------------- two predictors, one of them clean
+// Population coefficients of y on (w1, x2) where w1 = x1 + u and x2 is recorded perfectly:
+//     b = (Sigma_xx + D)^-1 Sigma_xx beta,     D = diag(su2, 0)
+// With unit variances the 2x2 case has a closed form, and the page asserts the two agree.
+function contamExact(cfg, rho, lam1, b1, b2){
+  const d = (1 - lam1) / lam1;
+  const Sxx = [[1, rho], [rho, 1]];
+  const Sww = [[1 + d, rho], [rho, 1]];
+  const Swy = [Sxx[0][0] * b1 + Sxx[0][1] * b2, Sxx[1][0] * b1 + Sxx[1][1] * b2];
+  const bSolve = solve(Sww, Swy);
+  const det = 1 + d - rho * rho;
+  const closed = [b1 * (1 - rho * rho) / det, b2 + d * rho * b1 / det];
+  return { d: d, solve: bSolve, closed: closed, det: det,
+           gap: Math.max(Math.abs(bSolve[0] - closed[0]), Math.abs(bSolve[1] - closed[1])),
+           flipAt: -d * rho * b1 / det };
+}
+function sampleTwoPred(n, cfg, rho, lam1, b1, b2, seed){
+  const rnd = mulberry32(seed >>> 0);
+  const su = Math.sqrt((1 - lam1) / lam1), se = Math.sqrt(cfg.sigE2c), rr = Math.sqrt(1 - rho * rho);
+  const w1 = new Float64Array(n), x2 = new Float64Array(n), y = new Float64Array(n);
+  for (let i = 0; i < n; i++){
+    const a = gaussian(rnd), b = gaussian(rnd);
+    const x1 = a, xx2 = rho * a + rr * b;
+    w1[i] = x1 + su * gaussian(rnd);
+    x2[i] = xx2;
+    y[i] = cfg.a + b1 * x1 + b2 * xx2 + se * gaussian(rnd);
+  }
+  return { n: n, w1: w1, x2: x2, y: y };
+}
+function contaminationStudy(cfg){
+  const rhos = [0, 0.3, 0.6, cfg.rho12];
+  const lam1 = cfg.lam1, b1 = cfg.b1, b2 = cfg.b2, nSmall = 1000;
+  return {
+    lam1: lam1, b1: b1, b2: b2, n: cfg.contamN, nSmall: nSmall,
+    single: lam1 * b1,
+    rows: rhos.map(function(rho, idx){
+      const ex = contamExact(cfg, rho, lam1, b1, b2);
+      const s = sampleTwoPred(cfg.contamN, cfg, rho, lam1, b1, b2, repSeed(7, idx));
+      const f = olsMulti([s.w1, s.x2], s.y, cfg.contamN);
+      const sm = sampleTwoPred(nSmall, cfg, rho, lam1, b1, b2, repSeed(8, idx));
+      const fm = olsMulti([sm.w1, sm.x2], sm.y, nSmall);
+      return {
+        rho: rho, exact: ex.closed, gap: ex.gap, flipAt: ex.flipAt,
+        meas: [f.beta[1], f.beta[2]], t2: Math.abs(f.beta[2] / f.se[2]),
+        t2small: Math.abs(fm.beta[2] / fm.se[2]),
+        bias: ex.closed[1] - b2,
+        flipped: (ex.closed[1] > 0) !== (b2 > 0) && b2 !== 0,
+        ranked: Math.abs(ex.closed[1]) > Math.abs(ex.closed[0])
+      };
+    })
+  };
+}
+
+// ---------------------------------------------------------------- the repairs
+// A replicate design: two independent readings of the SAME latent x. This is extra DATA, not a
+// cleverer estimator - and it is what makes lambda estimable at all.
+function sampleReplicated(n, cfg, lam, seed){
+  const rnd = mulberry32(seed >>> 0);
+  const sx = Math.sqrt(lam), su = Math.sqrt(1 - lam);
+  const se = Math.sqrt(Math.max(0, cfg.v - cfg.c * cfg.c / lam));
+  const beta = cfg.c / lam;
+  const x = new Float64Array(n), w1 = new Float64Array(n), w2 = new Float64Array(n), y = new Float64Array(n);
+  for (let i = 0; i < n; i++){
+    const xi = sx * gaussian(rnd);
+    x[i] = xi;
+    w1[i] = xi + su * gaussian(rnd);
+    w2[i] = xi + su * gaussian(rnd);
+    y[i] = cfg.a + beta * xi + se * gaussian(rnd);
+  }
+  return { n: n, x: x, w1: w1, w2: w2, y: y, beta: beta, lam: lam };
+}
+function ivFit(w1, w2, y, n){
+  const m1 = meanOf(w1, n), m2 = meanOf(w2, n), my = meanOf(y, n);
+  let s2y = 0, s21 = 0, s22 = 0;
+  for (let i = 0; i < n; i++){
+    const d2 = w2[i] - m2;
+    s2y += d2 * (y[i] - my); s21 += d2 * (w1[i] - m1); s22 += d2 * d2;
+  }
+  const b = s2y / s21, a = my - b * m1;
+  let ss = 0;
+  for (let i = 0; i < n; i++){ const e = y[i] - a - b * w1[i]; ss += e * e; }
+  const s2 = ss / (n - 2);
+  return { b: b, a: a, se: Math.sqrt(s2 * s22 / (s21 * s21)), n: n };
+}
+function repairStudy(cfg){
+  const lam = cfg.lam, n = cfg.n, beta = cfg.c / lam, reps = cfg.covReps;
+  const names = ['naive OLS on w&#8321;', 'method of moments, &lambda; known',
+                 'method of moments, &lambda;&#770; from the replicate',
+                 '2SLS, w&#8322; as an instrument'];
+  const needs = ['nothing', 'a calibration study', 'a second reading', 'a second reading'];
+  const est = [0, 0, 0, 0], wid = [0, 0, 0, 0], hit = [0, 0, 0, 0];
+  let lamHatSum = 0;
+  for (let r = 0; r < reps; r++){
+    const s = sampleReplicated(n, cfg, lam, repSeed(6, r));
+    const f = ols(s.w1, s.y, n), ci = ciOf(f), q = ci.q;
+    const lamHat = corrOf(s.w1, s.w2, n);
+    lamHatSum += lamHat;
+    const iv = ivFit(s.w1, s.w2, s.y, n);
+    // delta method for beta/lamHat, treating the two as independent:
+    //   Var ~= Var(b)/lam^2 + b^2 Var(lam)/lam^4,    Var(corr) ~= (1-lam^2)^2/n
+    const vLam = Math.pow(1 - lamHat * lamHat, 2) / n;
+    const seRep = Math.sqrt(f.se * f.se / (lamHat * lamHat) +
+                            f.b * f.b * vLam / Math.pow(lamHat, 4));
+    const cand = [
+      { b: f.b, lo: ci.lo, hi: ci.hi },
+      { b: f.b / lam, lo: ci.lo / lam, hi: ci.hi / lam },
+      { b: f.b / lamHat, lo: f.b / lamHat - q * seRep, hi: f.b / lamHat + q * seRep },
+      { b: iv.b, lo: iv.b - q * iv.se, hi: iv.b + q * iv.se }
+    ];
+    for (let j = 0; j < 4; j++){
+      est[j] += cand[j].b; wid[j] += cand[j].hi - cand[j].lo;
+      if (cand[j].lo <= beta && beta <= cand[j].hi) hit[j]++;
+    }
+  }
+  return {
+    lam: lam, beta: beta, n: n, reps: reps, lamHat: lamHatSum / reps,
+    rows: names.map(function(nm, j){
+      return { name: nm, needs: needs[j], est: est[j] / reps, bias: est[j] / reps - beta,
+               width: wid[j] / reps, coverage: hit[j] / reps };
+    })
+  };
+}
+
+// ---------------------------------------------------------------- the Frisch bound, both ways
+function frischBound(cfg){
+  const grid = [];
+  for (let i = 0; i <= 200; i++){
+    const lam = 0.01 + (i / 200) * 0.99;
+    const varE = cfg.v - cfg.c * cfg.c / lam;
+    const a2 = cfg.c * (1 - lam) / cfg.s;
+    const a3sq = lam * (1 - lam) - a2 * a2;
+    grid.push({ lam: lam, varE: varE, a3sq: a3sq,
+                agree: (varE >= -1e-12) === (a3sq >= -1e-12) });
+  }
+  return { lamMin: cfg.lamMin, betaLo: cfg.betaOls, betaHi: cfg.betaMax,
+           ratio: cfg.betaMax / cfg.betaOls, grid: grid,
+           disagreements: grid.filter(g => !g.agree).length };
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- UI
+const $ = id => document.getElementById(id);
+function cfgFromUI(){
+  return cfgOf({
+    r2:    +$("sR2").value / 100,
+    lam:   +$("sLam").value / 100,
+    n:     +$("sN").value,
+    seeds: +$("sS").value,
+    rho12: +$("sRho").value / 100,
+    b2:    +$("sB2").value / 100,
+    lam1:  +$("sLam1").value / 100
+  });
+}
+function fmt(v, d){
+  return (v === undefined || v === null || !isFinite(v)) ? "&mdash;" : v.toFixed(d === undefined ? 3 : d);
+}
+const pct = v => (100 * v).toFixed(1) + "%";
+const yes = "<span class='ok'>yes</span>", no = "<span class='bad'>no</span>";
+function sci(v){ return v === 0 ? "0" : v.toExponential(1); }
+
+function render(){
+  const c = cfgFromUI();
+  $("vR2").textContent  = c.r2.toFixed(2);
+  $("vLam").textContent = c.lam.toFixed(2);
+  $("vN").textContent   = c.n;
+  $("vS").textContent   = c.seeds;
+  $("vRho").textContent = c.rho12.toFixed(2);
+  $("vLam1").textContent = c.lam1.toFixed(2);
+  $("vB2").textContent  = c.b2.toFixed(2);
+  $("seedWord").textContent = c.seeds;
+  $("covWord").textContent  = c.covReps;
+  $("covWord2").textContent = c.covReps;
+  $("clampNote").innerHTML = c.clamped
+    ? "<span class='warn'>&lambda; was clamped up to &lambda;<sub>min</sub> = " + fmt(c.lamMin, 3) +
+      " &mdash; below that the world would need a negative residual variance.</span>"
+    : "";
+
+  // ---- worlds table
+  const cov = coverageStudy(c);
+  const fit = fitStudy(c);
+  const tb = [];
+  cov.specs.forEach(function(s, i){
+    const covers = fit.lo <= s.beta && s.beta <= fit.hi;
+    tb.push("<tr class='" + (s.kind === 'berkson' ? "same2" : "same") + "'><td>" + s.name + "</td>" +
+      "<td><strong>" + fmt(s.beta) + "</strong></td><td>" + fmt(s.varU) + "</td><td>" + fmt(s.varE) + "</td>" +
+      "<td>" + fmt(fit.b) + "</td><td>[" + fmt(fit.lo) + ", " + fmt(fit.hi) + "]</td>" +
+      "<td>" + (covers ? yes : no) + "</td><td>" + pct(cov.coverage[i]) + "</td>" +
+      "<td class='dim'>" + pct(cov.predicted[i]) + "</td></tr>");
+  });
+  $("rowsWorlds").innerHTML = tb.join("");
+
+  const iMin = cov.specs.length - 3;                       // classical lamMin row
+  $("headline").innerHTML =
+    "The fitted slope is <strong>" + fmt(fit.b) + "</strong> in every row because every row is the " +
+    "same data. The true slope runs from <strong>" + fmt(c.betaOls) + "</strong> to <strong>" +
+    fmt(c.betaMax) + "</strong> &mdash; a factor of " + fmt(c.betaMax / c.betaOls, 2) +
+    "&times;, which is exactly 1/R&sup2; &mdash; and the same 95% interval covers the truth " +
+    "<strong>" + pct(cov.coverage[0]) + "</strong> in the no-error world and <strong>" +
+    pct(cov.coverage[iMin]) + "</strong> at the Frisch bound. Coverage is fine in exactly the rows " +
+    "where &beta; happens to equal the fitted slope, and the Berkson rows are all of them: those " +
+    "worlds have as much measurement noise as any other &mdash; up to &sigma;&sup2;<sub>u</sub> = " +
+    fmt(c.thMax, 3) + " &mdash; and no attenuation at all. Note the two extreme rows have " +
+    "&sigma;&sup2;<sub>&epsilon;</sub> = 0: the ends of the identified set are attained only by a " +
+    "world with a noiseless outcome, so the honest claim is the <em>open</em> interval, approached " +
+    "as closely as you like.";
+
+  // ---- diagnostics audit
+  const aud = diagAudit(c, 4242);
+  const labels = {
+    slope: "fitted slope &beta;&#770;", intercept: "intercept", se: "SE(&beta;&#770;)",
+    t: "t statistic", r2: "R&sup2;", sigma: "residual sd",
+    skew: "residual skewness", kurt: "residual excess kurtosis",
+    hetT: "Breusch&ndash;Pagan t", cv: "5-fold CV MSE",
+    revSlope: "reverse regression (w on y)", corr: "corr(w, y)"
+  };
+  const dr = [];
+  Object.keys(labels).forEach(function(k){
+    const v = aud.diag.map(d => d[k]);
+    const same = v[0] === v[1] && v[1] === v[2];
+    dr.push("<tr><td>" + labels[k] + "</td><td>" + fmt(v[0], 4) + "</td><td>" + fmt(v[1], 4) +
+            "</td><td>" + fmt(v[2], 4) + "</td><td>" + (same ? yes : no) + "</td></tr>");
+  });
+  const bl = aud.diag.map(d => "[" + fmt(d.boot.lo, 3) + ", " + fmt(d.boot.hi, 3) + "]");
+  const bSame = aud.diag[0].boot.lo === aud.diag[1].boot.lo && aud.diag[1].boot.lo === aud.diag[2].boot.lo &&
+                aud.diag[0].boot.hi === aud.diag[1].boot.hi && aud.diag[1].boot.hi === aud.diag[2].boot.hi;
+  dr.push("<tr><td>bootstrap 95% CI (B = " + c.boot + ")</td><td>" + bl[0] + "</td><td>" + bl[1] +
+          "</td><td>" + bl[2] + "</td><td>" + (bSame ? yes : no) + "</td></tr>");
+  dr.push("<tr class='same'><td><strong>the true slope &beta;</strong></td><td><strong>" +
+          fmt(aud.betas[0]) + "</strong></td><td><strong>" + fmt(aud.betas[1]) +
+          "</strong></td><td><strong>" + fmt(aud.betas[2]) + "</strong></td><td>" +
+          (aud.betas[0] === aud.betas[1] ? yes : no) + "</td></tr>");
+  $("diagRows").innerHTML = dr.join("");
+  $("factorSpan").textContent = fmt(c.betaMax / c.betaOls, 2);
+  $("diagNote").innerHTML =
+    "Every row above the last one is a function of <code>(w, y)</code>, and all three worlds were " +
+    "handed the same <code>(w, y)</code> object (<code>===</code> holds: " +
+    (aud.sameObj ? "<span class='ok'>yes</span>" : "<span class='bad'>no</span>") +
+    "). The last row is a function of the instrument, and nothing above it is a function of the " +
+    "last row.";
+
+  // ---- latent table
+  const lr = aud.worlds.map(function(wd, i){
+    const rb = aud.rebuild[i];
+    return "<tr><td>" + (wd.kind === 'classical'
+              ? "classical, &lambda; = " + fmt(wd.lam, 3)
+              : "Berkson, &sigma;&sup2;<sub>u</sub> = " + fmt(wd.theta, 3)) + "</td>" +
+      "<td><code>" + wd.relation + "</code></td><td>" + fmt(wd.beta) + "</td>" +
+      "<td>" + fmt(wd.pop.varX) + "</td><td>" + fmt(wd.pop.covWU) + "</td><td>" + fmt(wd.pop.covXU) + "</td>" +
+      "<td>" + sci(rb.w) + "</td><td>" + sci(rb.y) + "</td></tr>";
+  });
+  $("latentRows").innerHTML = lr.join("");
+  const worstRb = Math.max.apply(null, aud.rebuild.map(r => Math.max(r.w, r.y)));
+  $("latentNote").innerHTML =
+    "Classical error has <code>Cov(w, u) = &sigma;&sup2;<sub>u</sub></code> and " +
+    "<code>Cov(x, u) = 0</code>; Berkson error has them the other way round. That single swap is " +
+    "the entire difference between &ldquo;your slope is too small by 1/&lambda;&rdquo; and " +
+    "&ldquo;your slope is exactly right&rdquo;, and it is a statement about <code>u</code>, which " +
+    "is never in the dataset. The rebuild columns are the algebra check: every world puts " +
+    "<code>w</code> and <code>y</code> back to within " + sci(worstRb) +
+    ", which is floating point and not slack. These are exact identities and <code>===</code> " +
+    "still fails on them, not because of the ulp in <code>c &minus; (c/&lambda;)&lambda;</code> " +
+    "&mdash; that term is exactly 0 at most &lambda; &mdash; but because summing three products " +
+    "twice and adding the results is not the same binary64 operation as summing the combined " +
+    "coefficients once.";
+
+  // ---- prediction
+  const pr = predictionStudy(c);
+  $("predRows").innerHTML = pr.specs.map(function(s, i){
+    const ratio = pr.exactTrue[i] / pr.exactFit;
+    return "<tr><td>" + s.name + "</td><td>" + fmt(s.beta) + "</td><td>" + fmt(pr.exactFit, 4) +
+      "</td><td>" + fmt(pr.measFit, 4) + "</td><td>" + fmt(pr.exactTrue[i], 4) + "</td><td>" +
+      fmt(pr.measTrue[i], 4) + "</td><td>" + (ratio > 1.001
+        ? "<span class='bad'>" + fmt(ratio, 2) + "&times; worse</span>"
+        : "<span class='ok'>" + fmt(ratio, 2) + "&times;</span>") + "</td></tr>";
+  }).join("");
+  const worstRatio = Math.max.apply(null, pr.exactTrue.map(v => v / pr.exactFit));
+  $("predNote").innerHTML =
+    "The fitted-slope risk column is a single number, <code>v &minus; c&sup2; = " +
+    fmt(pr.exactFit, 4) + "</code>, in every world &mdash; and the measured holdout returns " +
+    fmt(pr.measFit, 4) + " over " + pr.seeds + " seeds. Plugging in the <em>unbiased</em> " +
+    "structural coefficient makes the prediction up to <strong>" + fmt(worstRatio, 2) +
+    "&times;</strong> worse. So the attenuated estimate is not a bug to be fixed before deployment: " +
+    "it is the right coefficient for the question &ldquo;what will y be, given the recording&rdquo;, " +
+    "and the wrong one for &ldquo;how much does x move y&rdquo;. Every validation habit in the " +
+    "field answers the first question.";
+
+  // ---- sample size
+  const ss = sampleSizeStudy(c);
+  $("ssLam").textContent = fmt(ss.lam, 2);
+  $("ssReps").textContent = c.ssReps;
+  $("ssRows").innerHTML = ss.rows.map(function(r){
+    return "<tr><td>" + r.n + "</td><td>" + fmt(ss.beta) + "</td><td>" + fmt(r.slope, 4) +
+      "</td><td>" + fmt(r.width, 4) + "</td><td>" + fmt(r.biasOverSe, 2) + "</td><td>" +
+      (r.coverage < 0.5 ? "<span class='bad'>" : "<span class='warn'>") + pct(r.coverage) +
+      "</span></td><td><div class='bar'><span style='width:" + (100 * r.coverage).toFixed(1) +
+      "%;background:" + (r.coverage < 0.5 ? "#dc2626" : "#f59e0b") + "'></span></div></td></tr>";
+  }).join("");
+  const first = ss.rows[0], last = ss.rows[ss.rows.length - 1];
+  $("ssNote").innerHTML =
+    "&lambda; = " + fmt(ss.lam, 2) + " is a mild, unremarkable instrument, and the true slope is " +
+    fmt(ss.beta, 4) + " against a fitted " + fmt(last.slope, 4) + ". Going from n = " + first.n +
+    " to n = " + last.n + " shrinks the interval " + fmt(first.width / last.width, 1) +
+    "&times; and drops coverage from <strong>" + pct(first.coverage) + "</strong> to <strong>" +
+    pct(last.coverage) + "</strong>. The point estimate does not move, because it is not converging " +
+    "to the wrong answer slowly &mdash; it is converging to a different quantity. Bias is O(1) and " +
+    "the standard error is O(1/&radic;n), so the only thing more data buys is confidence.";
+
+  // ---- contamination
+  const cs = contaminationStudy(c);
+  $("cLam").textContent = fmt(cs.lam1, 2);
+  $("cB2").textContent  = fmt(cs.b2, 2);
+  $("contamRows").innerHTML = cs.rows.map(function(r){
+    return "<tr><td>" + fmt(r.rho, 2) + "</td><td>" + fmt(r.exact[0], 4) + "</td><td>" +
+      fmt(r.meas[0], 4) + "</td><td>" + (Math.abs(r.bias) > 1e-9
+        ? "<span class='bad'>" + fmt(r.exact[1], 4) + "</span>" : fmt(r.exact[1], 4)) +
+      "</td><td>" + fmt(r.meas[1], 4) + "</td><td>" + fmt(r.t2small, 1) + "</td><td>" +
+      fmt(r.t2, 1) + "</td><td>" + fmt(r.bias, 4) + "</td><td>" + (r.ranked
+        ? "<span class='bad'>clean one looks bigger</span>" : "<span class='dim'>correct</span>") +
+      "</td></tr>";
+  }).join("");
+  const worst = cs.rows[cs.rows.length - 1];
+  $("contamNote").innerHTML =
+    "&beta;&#8322; is <strong>" + fmt(cs.b2) + "</strong> and at &rho; = " + fmt(worst.rho, 2) +
+    " it is fitted at <strong>" + fmt(worst.exact[1], 4) + "</strong> with |t| = " +
+    fmt(worst.t2, 1) + " on " + cs.n.toLocaleString() + " rows &mdash; a coefficient on a " +
+    "perfectly measured column, driven entirely by the noise in a <em>different</em> column. " +
+    "The bias is <code>d&rho;&beta;&#8321;/(1 + d &minus; &rho;&sup2;)</code>, which contains no " +
+    "&beta;&#8322; at all. Meanwhile &beta;&#770;&#8321; comes back " + fmt(worst.exact[0], 4) +
+    " against the single-predictor attenuation &lambda;&beta;&#8321; = " + fmt(cs.single, 4) +
+    ", so correlation makes the dilution worse, not better" +
+    (worst.ranked ? ", and the two predictors swap places in any importance ranking" : "") +
+    ". The sign of &beta;&#770;&#8322; flips once &beta;&#8322; drops below " +
+    fmt(worst.flipAt, 4) + ".";
+
+  // ---- repairs
+  const rp = repairStudy(c);
+  $("repN").textContent = rp.n;
+  $("repLam").textContent = fmt(rp.lam, 2);
+  $("repBeta").textContent = fmt(rp.beta, 3);
+  $("repairRows").innerHTML = rp.rows.map(function(r){
+    const good = Math.abs(r.coverage - 0.95) < 0.05;
+    return "<tr><td>" + r.name + "</td><td class='dim'>" + r.needs + "</td><td>" + fmt(r.est, 4) +
+      "</td><td>" + fmt(r.bias, 4) + "</td><td>" + fmt(r.width, 4) + "</td><td>" +
+      (good ? "<span class='ok'>" : "<span class='bad'>") + pct(r.coverage) + "</span></td></tr>";
+  }).join("");
+  $("repairNote").innerHTML =
+    "&lambda;&#770; = corr(w&#8321;, w&#8322;) measures <strong>" + fmt(rp.lamHat, 4) +
+    "</strong> against a true " + fmt(rp.lam, 4) + " over " + rp.reps + " replications, so the " +
+    "parameter that no function of <code>(w, y)</code> could reach is a correlation coefficient " +
+    "once a second reading exists. The naive interval covers " + pct(rp.rows[0].coverage) +
+    " of the time; 2SLS with the replicate as an instrument covers " + pct(rp.rows[3].coverage) +
+    " at " + fmt(rp.rows[3].width / rp.rows[0].width, 1) + "&times; the width. That width is the " +
+    "honest price of the repair, and it is paid in <em>data collection</em>, not in estimator " +
+    "choice. &#128308; The plug-in row is the one that surprised me: I expected the delta method to " +
+    "<em>under</em>-cover, because it drops the covariance between &beta;&#770; and &lambda;&#770;. " +
+    "It measures " + pct(rp.rows[2].coverage) + " instead &mdash; the dropped term is negative here, " +
+    "so ignoring it inflates the standard error and the interval comes out " +
+    fmt(rp.rows[2].width / rp.rows[1].width, 2) + "&times; the oracle's. Conservative rather than " +
+    "wrong, and still the widest interval on the table.";
+
+  // ---------------------------------------------------------------- self-test
+  const checks = [];
+  function T(label, fn){
+    let okv = false;
+    try { okv = !!fn(); } catch (e){ okv = false; }
+    checks.push({ label: label, ok: okv });
+  }
+
+  T("&lambda;<sub>min</sub> = c&sup2;/v = R&sup2; exactly", function(){
+    return Math.abs(c.lamMin - c.r2) < 1e-12;
+  });
+  T("&beta; at &lambda;<sub>min</sub> equals v/c, the reciprocal of the reverse regression &mdash; the Frisch bound", function(){
+    const fb = frischBound(c);
+    return Math.abs(c.c / c.lamMin - c.betaMax) < 1e-12 &&
+           Math.abs(fb.ratio - 1 / c.r2) < 1e-12;
+  });
+  T("&sigma;&sup2;<sub>&epsilon;</sub> &ge; 0 and a&#8323;&sup2; &ge; 0 agree on all 201 grid points", function(){
+    return frischBound(c).disagreements === 0;
+  });
+  T("every world returns the <em>same observed object</em> (<code>===</code>, not equality)", function(){
+    return aud.sameObj;
+  });
+  T("x + u rebuilds w and a + &beta;x + &epsilon; rebuilds y, for 21 values of &lambda;, to 1e-13", function(){
+    const base = sampleBase(300, c, 909);
+    for (let i = 0; i <= 20; i++){
+      const lam = c.lamMin + (i / 20) * (1 - c.lamMin);
+      const wd = classicalWorld(base, c, lam), rb = rebuildError(wd, c);
+      if (!(rb.w < 1e-13 && rb.y < 1e-13)) return false;
+    }
+    return true;
+  });
+  T("the three latent inner products &lt;x,u&gt;, &lt;x,&epsilon;&gt;, &lt;u,&epsilon;&gt; are 0 in the population", function(){
+    const base = sampleBase(50, c, 910);
+    for (let i = 0; i <= 20; i++){
+      const lam = c.lamMin + (i / 20) * (1 - c.lamMin);
+      const p = classicalWorld(base, c, lam).pop;
+      if (Math.abs(p.covXU) > 1e-12 || Math.abs(p.covXE) > 1e-12 || Math.abs(p.covUE) > 1e-12) return false;
+    }
+    return true;
+  });
+  T("Var(x) = &lambda;, Var(u) = 1&minus;&lambda;, Var(&epsilon;) = v&minus;c&sup2;/&lambda; to 1e-12", function(){
+    const base = sampleBase(50, c, 911);
+    for (let i = 0; i <= 20; i++){
+      const lam = c.lamMin + (i / 20) * (1 - c.lamMin);
+      const wd = classicalWorld(base, c, lam);
+      if (Math.abs(wd.pop.varX - wd.target.varX) > 1e-12) return false;
+      if (Math.abs(wd.pop.varU - wd.target.varU) > 1e-12) return false;
+      if (Math.abs(wd.pop.varE - wd.target.varE) > 1e-12) return false;
+    }
+    return true;
+  });
+  T("classical has Cov(w,u) = &sigma;&sup2;<sub>u</sub> and Cov(x,u) = 0; Berkson has them swapped", function(){
+    const base = sampleBase(50, c, 912);
+    const A = classicalWorld(base, c, 0.7 * (1 - c.lamMin) + c.lamMin);
+    const B = berksonWorld(base, c, 0.6 * c.thMax);
+    return Math.abs(A.pop.covWU - A.target.varU) < 1e-12 && Math.abs(A.pop.covXU) < 1e-12 &&
+           Math.abs(B.pop.covWU) < 1e-12 && Math.abs(B.pop.covXU - B.target.varU) < 1e-12;
+  });
+  T("the Berkson family rebuilds the same arrays, and its &beta; is exactly the fitted slope", function(){
+    const base = sampleBase(300, c, 913);
+    for (let i = 0; i <= 10; i++){
+      const wd = berksonWorld(base, c, (i / 10) * c.thMax), rb = rebuildError(wd, c);
+      if (!(rb.w < 1e-13 && rb.y < 1e-13) || wd.beta !== c.c) return false;
+    }
+    return true;
+  });
+  T("classical at &lambda; = 1 and Berkson at &sigma;&sup2;<sub>u</sub> = 0 are the same world", function(){
+    const base = sampleBase(200, c, 914);
+    const A = classicalWorld(base, c, 1), B = berksonWorld(base, c, 0);
+    if (A.beta !== B.beta) return false;
+    for (let i = 0; i < 200; i++)
+      if (Math.abs(A.x[i] - B.x[i]) > 1e-13 || Math.abs(A.u[i] - B.u[i]) > 1e-13) return false;
+    return true;
+  });
+  T("all 12 diagnostics plus the bootstrap interval read identically in all three worlds", function(){
+    return aud.allSame;
+  });
+  T("the fitted slope converges to &lambda;&beta; = c, not to &beta;", function(){
+    const big = sampleBase(40000, c, 915);
+    const f = ols(big.obs.w, big.obs.y, 40000);
+    return Math.abs(f.b - c.c) < 0.02 && Math.abs(f.b - c.c / c.lamMin) > 0.1 * c.c;
+  });
+  T("measured coverage matches the closed form &Phi;(q&minus;&delta;)&minus;&Phi;(&minus;q&minus;&delta;) in all six worlds", function(){
+    return cov.specs.every(function(s, i){
+      return Math.abs(cov.coverage[i] - cov.predicted[i]) < 0.05;
+    });
+  });
+  T("prediction risk of the fitted slope is v &minus; c&sup2; in every world, and the true &beta; is worse", function(){
+    const pr2 = predictionStudy(cfgOf({ r2: c.r2, lam: c.lam, n: 400, seeds: 3 }));
+    if (Math.abs(pr2.exactFit - (c.v - c.c * c.c)) > 1e-12) return false;
+    return pr2.exactTrue.every(function(v, i){
+      return v >= pr2.exactFit - 1e-12 &&
+             Math.abs(v - pr2.exactFit - Math.pow(c.c - pr2.specs[i].beta, 2)) < 1e-12;
+    });
+  });
+  T("the closed form for &beta;&#770;&#8322; agrees with the 2&times;2 population solve on 24 configs to 1e-12", function(){
+    for (const rho of [-0.8, -0.3, 0, 0.3, 0.7, 0.9])
+      for (const lam1 of [0.3, 0.5, 0.8, 1.0])
+        if (contamExact(c, rho, lam1, c.b1, c.b2).gap > 1e-12) return false;
+    return true;
+  });
+  T("the clean coefficient is unbiased at &rho; = 0 and biased for every &rho; &ne; 0", function(){
+    if (c.lam1 >= 1) return true;
+    if (Math.abs(contamExact(c, 0, c.lam1, 1, c.b2).closed[1] - c.b2) > 1e-12) return false;
+    for (const rho of [-0.7, -0.2, 0.2, 0.7])
+      if (Math.abs(contamExact(c, rho, c.lam1, 1, c.b2).closed[1] - c.b2) < 1e-6) return false;
+    return true;
+  });
+  T("the bias on the clean coefficient does not contain &beta;&#8322; &mdash; it is the same for every &beta;&#8322;", function(){
+    const ref = contamExact(c, 0.7, 0.5, 1, 0).closed[1];
+    for (const b2 of [-1.5, -0.4, 0, 0.4, 2.2])
+      if (Math.abs((contamExact(c, 0.7, 0.5, 1, b2).closed[1] - b2) - ref) > 1e-12) return false;
+    return true;
+  });
+  T("perfect measurement (&lambda;&#8321; = 1) leaves both coefficients exact for every &rho;", function(){
+    for (const rho of [-0.9, -0.4, 0, 0.4, 0.9]){
+      const e = contamExact(c, rho, 1, c.b1, c.b2);
+      if (Math.abs(e.closed[0] - c.b1) > 1e-12 || Math.abs(e.closed[1] - c.b2) > 1e-12) return false;
+    }
+    return true;
+  });
+  T("corr(w&#8321;, w&#8322;) recovers &lambda; on a replicate design", function(){
+    const s = sampleReplicated(60000, c, c.lam, 916);
+    return Math.abs(corrOf(s.w1, s.w2, 60000) - c.lam) < 0.02;
+  });
+  T("2SLS with the replicate as an instrument recovers &beta;, and naive OLS does not", function(){
+    const s = sampleReplicated(60000, c, c.lam, 917);
+    const iv = ivFit(s.w1, s.w2, s.y, 60000), na = ols(s.w1, s.y, 60000);
+    return Math.abs(iv.b - s.beta) < 0.05 && Math.abs(na.b - c.c) < 0.03;
+  });
+  T("the replicate design's (w&#8321;, y) margin matches the shared observed law", function(){
+    const s = sampleReplicated(60000, c, c.lam, 918);
+    return Math.abs(covOf(s.w1, s.w1, 60000) - 1) < 0.03 &&
+           Math.abs(covOf(s.w1, s.y, 60000) - c.c) < 0.03 &&
+           Math.abs(covOf(s.y, s.y, 60000) - c.v) < 0.08;
+  });
+  T("coverage of the naive interval falls monotonically as n grows", function(){
+    for (let i = 1; i < ss.rows.length; i++)
+      if (ss.rows[i].coverage > ss.rows[i - 1].coverage + 0.02) return false;
+    return ss.rows[0].coverage > ss.rows[ss.rows.length - 1].coverage + 0.2;
+  });
+  T("both designs cover the POPULATION slope c near 95% &mdash; the guard against a bad seed stream", function(){
+    let hA = 0, hB = 0, R = 300;
+    for (let r = 0; r < R; r++){
+      const b = sampleBase(400, c, repSeed(41, r));
+      const fa = ols(b.obs.w, b.obs.y, 400), ca = ciOf(fa);
+      if (ca.lo <= c.c && c.c <= ca.hi) hA++;
+      const s = sampleReplicated(400, c, c.lam, repSeed(42, r));
+      const fb = ols(s.w1, s.y, 400), cb = ciOf(fb);
+      if (cb.lo <= c.c && c.c <= cb.hi) hB++;
+    }
+    return Math.abs(hA / R - 0.95) < 0.04 && Math.abs(hB / R - 0.95) < 0.04;
+  });
+  T("&Phi;&#8315;&sup1; inverts &Phi; to 1e-9 and the t quantile converges to the normal one", function(){
+    for (const p of [0.05, 0.25, 0.5, 0.9, 0.975])
+      if (Math.abs(normCdf(normInv(p)) - p) > 1e-9) return false;
+    return tQuantile(0.975, 5) > tQuantile(0.975, 500) &&
+           Math.abs(tQuantile(0.975, 1e9) - normInv(0.975)) < 1e-9;
+  });
+
+  const passed = checks.filter(function(k){ return k.ok; }).length;
+  $("selftest").innerHTML =
+    "<p class='mb-2 font-bold " + (passed === checks.length ? "ok" : "bad") + "'>" +
+    passed + " / " + checks.length + " checks passed</p>" +
+    "<ul class='space-y-1 text-slate-600'>" + checks.map(function(k){
+      return "<li>" + (k.ok ? "<span class='ok'>PASS</span>" : "<span class='bad'>FAIL</span>") +
+             " &nbsp;" + k.label + "</li>";
+    }).join("") + "</ul>";
+}
+
+// The full render is ~1s of Monte Carlo, so slider drags are debounced rather than dropped.
+let pendingRender = null;
+function scheduleRender(){
+  if (pendingRender) clearTimeout(pendingRender);
+  pendingRender = setTimeout(function(){ pendingRender = null; render(); }, 120);
+}
+["sR2", "sLam", "sN", "sS", "sRho", "sLam1", "sB2"].forEach(function(id){
+  $(id).addEventListener("input", scheduleRender);
+});
+render();
+</script>
+</body>
+</html>
