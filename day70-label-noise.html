@@ -1,0 +1,1810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero &middot; Day 70 &mdash; Label noise</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --ink:#0f172a; --ink2:#334155; --dim:#64748b; --dim2:#94a3b8;
+    --line:#e2e8f0; --bg:#f1f5f9; --bg2:#f8fafc; --white:#fff;
+    --sky:#0369a1; --amber:#fffbeb; --amberL:#f59e0b; --amberT:#78350f;
+    --blue:#eff6ff; --violet:#f5f3ff; --rose:#fff1f2; --green:#f0fdf4;
+  }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--bg2); color:var(--ink); line-height:1.6;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.92em;
+         background:#e8eef6; padding:1px 4px; border-radius:4px; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; line-height:1.55;
+        font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre code { background:none; padding:0; color:inherit; }
+  h1,h2,h3 { line-height:1.25; margin:0; }
+  p { margin:0 0 .85em; }
+  header.top { background:var(--white); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .wrap { max-width:1150px; margin:0 auto; padding:16px; }
+  @media (min-width:768px) { .wrap { padding:24px; } }
+  .kicker { font-size:11px; font-weight:800; letter-spacing:.16em; color:var(--sky);
+            margin:0 0 8px; text-transform:uppercase; }
+  h1.lede { font-size:17px; font-weight:800; margin-bottom:14px; }
+  @media (min-width:768px) { h1.lede { font-size:19px; } }
+  h1.lede em { font-style:italic; }
+  #tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  #tabs button { font:inherit; font-size:13px; font-weight:700; cursor:pointer;
+                 border:0; padding:8px 18px; border-radius:9px; background:var(--bg); color:var(--ink); }
+  #tabs button.tab-active { background:#0f172a; color:#fff; }
+  .panel { display:block; }
+  .panel.hidden { display:none; }
+  .sheet { min-height:calc(100vh - 78px); padding:16px; background:var(--bg); }
+  @media (min-width:768px) { .sheet { padding:32px; } }
+  .sheet.plain { background:var(--white); }
+  .sheet.soft  { background:var(--bg2); }
+  .col { max-width:1150px; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+  .col.narrow { max-width:760px; gap:22px; }
+  .card { background:var(--white); border-radius:16px; padding:20px;
+          box-shadow:0 1px 3px rgba(15,23,42,.09), 0 1px 2px rgba(15,23,42,.05); }
+  .ctl { display:grid; gap:6px 24px; grid-template-columns:1fr; }
+  @media (min-width:700px)  { .ctl { grid-template-columns:1fr 1fr; } }
+  @media (min-width:1000px) { .ctl { grid-template-columns:1fr 1fr 1fr; } }
+  .ctl label { font-size:13px; display:block; }
+  .ctl input[type=range] { width:100%; margin:2px 0 0; }
+  .ctl .val { float:right; font-weight:700; font-variant-numeric:tabular-nums; }
+  .eyebrow { font-size:11px; font-weight:800; letter-spacing:.09em; color:var(--dim);
+             margin:0 0 4px; text-transform:uppercase; }
+  .say { font-size:13.5px; color:var(--ink2); margin:0 0 12px; }
+  .tiny { font-size:12px; color:var(--dim); }
+  .scroll { overflow-x:auto; }
+  table.num { width:100%; border-collapse:collapse; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:var(--dim); text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; white-space:normal; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  .ok   { color:#166534; font-weight:800; }
+  .bad  { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim  { color:var(--dim2); }
+  .same  { background:var(--blue); }
+  .same2 { background:var(--violet); }
+  .same3 { background:var(--green); }
+  .flag { font-size:13.5px; margin:12px 0 0; padding:12px; border-radius:9px;
+          background:var(--amber); border-left:4px solid var(--amberL); color:var(--amberT); }
+  .flag.blue { background:var(--blue); border-left-color:#3b82f6; color:#1e3a8a; }
+  .flag.rose { background:var(--rose); border-left-color:#f43f5e; color:#881337; }
+  ul.checks { list-style:none; margin:0; padding:0; font-size:13px; color:var(--ink2); }
+  ul.checks li { padding:1px 0; }
+  .foot { border-top:1px solid var(--line); background:var(--white); }
+  .foot .wrap { font-size:12.5px; color:var(--dim); }
+  .foot a { color:var(--sky); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <p class="kicker">MachineLearningFromZero &middot; Day 70</p>
+    <h1 class="lede">
+      &#127991;&#65039; Label noise &mdash; the <em>target</em> column is a recording too. Sixty-nine
+      days of this series have treated <code>y</code> as the thing itself; it is a value somebody
+      typed, a status a system inferred, a chart a clinician read. Write the two flip rates
+      <code>&rho;&#8320; = P(&#375;=1 | y=0)</code> and <code>&rho;&#8321; = P(&#375;=0 | y=1)</code>
+      and the observed law becomes <strong>affine</strong> in the truth:
+      <code>q = &rho;&#8320; + (1&minus;&rho;&#8320;&minus;&rho;&#8321;)&eta;</code>. Invert it and the
+      only constraint in the whole problem is that <code>&eta;</code> has to be a probability, which
+      gives <strong>&rho;&#8320; &le; min q</strong> and <strong>&rho;&#8321; &le; 1 &minus; max q</strong>
+      &mdash; the identified set is exactly the distance from your model's score range to
+      <code>[0,1]</code>, derived here rather than quoted. So one dataset, cell for cell, supports a
+      Bayes accuracy of <strong>72.86%</strong> and one of <strong>95.71%</strong>; nine diagnostics
+      are bit-identical across the family, and the same 95% interval covers the truth
+      <strong>95.0%</strong> of the time in one member and <strong>0.0%</strong> in another. Then the
+      part that surprised me: squeeze the scores from <code>[0.01, 0.99]</code> to
+      <code>[0.40, 0.60]</code> and the measured ceiling collapses from 94.80% to 59.14% while the
+      <em>true</em> ceiling never moves off <strong>0.957142857142857</strong> &mdash; to the last
+      bit, at every range. Symmetric noise provably cannot reorder two models; asymmetric noise
+      inverts <strong>3,824</strong> of 32,640 pairs, and its worst pair wins on measured accuracy by
+      <strong>0.18 points</strong> while being <strong>32.3 points</strong> worse in truth.
+      Pure vanilla JavaScript, one file, no build step.
+    </h1>
+    <div id="tabs">
+      <button data-tab="look" class="tab-active">&#128202; MEASURE</button>
+      <button data-tab="understand">&#129504; UNDERSTAND</button>
+      <button data-tab="build">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================================ MEASURE -->
+<section id="look" class="panel">
+  <div class="sheet">
+    <div class="col">
+
+      <div class="card">
+        <div class="ctl">
+          <label>observed score range <code>q<sub>hi</sub> &minus; q<sub>lo</sub></code>
+            <span class="val" id="vRange">0.50</span>
+            <input id="sRange" type="range" min="4" max="98" step="1" value="50"></label>
+          <label>mass pushed to the two end cells
+            <span class="val" id="vBim">0.80</span>
+            <input id="sBim" type="range" min="0" max="100" step="5" value="80"></label>
+          <label>cells K <span class="val" id="vK">8</span>
+            <input id="sK" type="range" min="2" max="12" step="1" value="8"></label>
+          <label>training rows n <span class="val" id="vN">2000</span>
+            <input id="sN" type="range" min="200" max="8000" step="200" value="2000"></label>
+          <label>test rows <span class="val" id="vNT">2000</span>
+            <input id="sNT" type="range" min="200" max="8000" step="200" value="2000"></label>
+          <label>seeds averaged <span class="val" id="vS">25</span>
+            <input id="sS" type="range" min="4" max="60" step="1" value="25"></label>
+          <label>coverage replications <span class="val" id="vR">1000</span>
+            <input id="sR" type="range" min="200" max="2400" step="200" value="1000"></label>
+        </div>
+        <p class="tiny" style="margin-top:12px">
+          The feature is <strong>discrete</strong> &mdash; K cells with mass <code>m<sub>k</sub></code>
+          and an observed positive rate <code>q<sub>k</sub></code> &mdash; so every population
+          quantity on this page is a finite sum with no integration anywhere, and the ground truth is
+          exact rather than simulated. The <strong>observed law is fixed</strong>: the sampler is
+          handed <code>(m, q)</code> and nothing else. A <em>world</em> is a pair of flip rates
+          <code>(&rho;&#8320;, &rho;&#8321;)</code>, which forces
+          <code>&eta;<sub>k</sub> = (q<sub>k</sub> &minus; &rho;&#8320;)/&delta;</code> with
+          <code>&delta; = 1 &minus; &rho;&#8320; &minus; &rho;&#8321;</code>. Admissible worlds are
+          exactly those where every <code>&eta;<sub>k</sub></code> stays in <code>[0,1]</code>:
+          <code>&rho;&#8320; &le; <span id="wQlo">0.250</span></code> and
+          <code>&rho;&#8321; &le; <span id="wQhi">0.250</span></code>.
+          Coverage is over <span id="covWord">400</span> replications; everything else is averaged
+          over <span id="seedWord">25</span> seeds unless the row says otherwise.
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">Five worlds, one dataset &mdash; the measured accuracy is the same number in all of them</p>
+        <p class="say">
+          Every row was scored on the <strong>same test set</strong>, using a classifier fitted on the
+          <strong>same training set</strong>. The interval column is therefore identical for a
+          structural reason and not by luck: <code>&rho;</code> is not an argument to the sampler, so
+          it cannot influence a single recorded label. Only the <em>estimand</em> column moves. The
+          last two columns are not second measurements &mdash; <em>Wilson</em> re-scores the identical
+          replications with a different interval so the result cannot be blamed on Wald's known
+          undercoverage, and <em>predicted</em> is the closed form
+          <code>&Phi;(z&minus;d) &minus; &Phi;(&minus;z&minus;d)</code> with
+          <code>d = (truth &minus; p)&radic;n<sub>test</sub>/&radic;(p(1&minus;p))</code>, so the
+          measured column has something to be wrong against.
+        </p>
+        <div class="scroll">
+          <table class="num">
+            <thead><tr><th>world</th><th>&rho;&#8320;</th><th>&rho;&#8321;</th>
+              <th>true prevalence</th><th>Bayes acc</th><th>measured acc</th><th>95% interval</th>
+              <th>true acc of this model</th><th>covers?</th><th>coverage</th>
+              <th>Wilson</th><th>predicted</th></tr></thead>
+            <tbody id="rowsWorlds"></tbody>
+          </table>
+        </div>
+        <p class="flag" id="headline"></p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">Nine diagnostics, five worlds, one set of numbers</p>
+        <p class="say">
+          Held-out accuracy, log-loss, Brier score, ROC-AUC, expected calibration error, 5-fold
+          cross-validated accuracy, the predicted positive rate and every fitted cell probability.
+          Each is a function of <code>(law, sample)</code> and <strong>cannot take a world</strong>
+          &mdash; there is no argument to pass one in. The audit re-runs the whole battery once per
+          world anyway and compares with <code>!==</code>, because the only thing that could break it
+          is <code>&rho;</code> leaking into the sampler, and that is worth a standing assertion.
+        </p>
+        <div class="scroll">
+          <table class="num">
+            <thead><tr><th>world</th><th>acc</th><th>log-loss</th><th>Brier</th><th>AUC</th>
+              <th>ECE vs &#375;</th><th>5-fold CV</th><th>P(&#374;=1)</th>
+              <th>&mdash;&mdash;</th><th>true acc</th><th>prevalence</th>
+              <th>Bayes threshold</th><th>true-label cal. gap</th></tr></thead>
+            <tbody id="rowsDiag"></tbody>
+          </table>
+        </div>
+        <p class="tiny" id="diagNote" style="margin-top:10px"></p>
+        <p class="flag blue" id="calFlag"></p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">The identified set does not move when the scores do</p>
+        <p class="say">
+          Same cells, same masses, same ordering &mdash; only how far the observed probabilities reach
+          changes. <code>A&#8320;</code> is the best accuracy anybody can <em>measure</em>;
+          <code>A<sub>max</sub></code> is the largest true Bayes accuracy any admissible world allows.
+          I expected both to move together. They do not, and the reason is one line of algebra:
+          <code>A&#8320; = q<sub>lo</sub> + range&middot;G</code> while
+          <code>1 &minus; 2q<sub>lo</sub> = range</code> exactly, so the range cancels and
+          <code>A<sub>max</sub> = G</code> &mdash; where <code>G</code> is what this same law would
+          have measured with its scores stretched across the whole of <code>[0,1]</code>.
+        </p>
+        <div class="scroll">
+          <table class="num">
+            <thead><tr><th>score range</th><th>q<sub>lo</sub></th><th>q<sub>hi</sub></th>
+              <th>&rho;<sub>max</sub></th><th>A&#8320; measurable</th><th>A<sub>max</sub> true</th>
+              <th>set width</th><th>&times; wider</th></tr></thead>
+            <tbody id="rowsAnchor"></tbody>
+          </table>
+        </div>
+        <p class="flag" id="anchorFlag"></p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">The anchor-point estimator, and the direction of its error</p>
+        <p class="say">
+          <code>&rho;&#8320; &le; min q</code> is a bound, so the estimator everyone reaches for is
+          the smallest fitted score &mdash; the <em>anchor point</em>. It is consistent. The question
+          the page measures instead of assuming is which <strong>way</strong> it is wrong in a finite
+          sample, because a minimum over K noisy rates is not the minimum of K true ones, and the
+          answer decides whether the reported identified set is conservative or flattering.
+        </p>
+        <div class="scroll">
+          <table class="num">
+            <thead><tr><th>rows</th><th>&rho;&#770;&#8320; = min q&#770;</th><th>truth</th><th>bias</th>
+              <th>P(&rho;&#770;&#8320; &lt; truth)</th><th>reported set width</th>
+              <th>true set width</th><th>ratio</th></tr></thead>
+            <tbody id="rowsAnchorEst"></tbody>
+          </table>
+        </div>
+        <p class="flag rose" id="anchorEstFlag"></p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">Ranking two models: symmetric noise is safe, asymmetric noise is not</p>
+        <p class="say">
+          The affine identity, derived by substituting <code>q = &rho;&#8320; + &delta;&eta;</code>:
+          <code>acc<sub>noisy</sub>(f) = &rho;&#8320;P(f=1) + &rho;&#8321;P(f=0) + &delta;&middot;acc<sub>clean</sub>(f)</code>.
+          When <code>&rho;&#8320; = &rho;&#8321;</code> the first two terms collapse to a constant and
+          measured accuracy is a strictly increasing function of true accuracy, so the number of
+          inverted pairs is <strong>exactly 0</strong> &mdash; a structural claim, not a small count
+          that happened to come out low. When they differ, the surviving term is proportional to the
+          classifier's <em>predicted positive rate</em>, which is not a measure of quality at all.
+          The sweep below is the entire hypothesis space, all <span id="clsCount">256</span>
+          classifiers on <span id="clsK">8</span> cells.
+        </p>
+        <div class="scroll">
+          <table class="num">
+            <thead><tr><th>world</th><th>classifiers</th><th>pairs</th><th>inverted</th><th>%</th>
+              <th>leaderboard pick's true acc</th><th>actual best</th><th>regret</th>
+              <th>worst inversion</th></tr></thead>
+            <tbody id="rowsInv"></tbody>
+          </table>
+        </div>
+        <p class="flag" id="invFlag"></p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">The Bayes threshold moves, and what that costs</p>
+        <p class="say">
+          <code>&eta; &gt; &frac12;</code> is <code>q &gt; &rho;&#8320; + &delta;/2 =
+          (1 + &rho;&#8320; &minus; &rho;&#8321;)/2</code>. Symmetric noise leaves the optimal cut at
+          0.5 <strong>exactly</strong>, which is why "train on noisy labels, threshold at a half" is
+          not merely tolerable but optimal there. Asymmetric noise moves it, and the price is bounded
+          by what lives between the two cuts &mdash; closed form
+          <code>&sum; m<sub>k</sub>|1 &minus; 2&eta;<sub>k</sub>|</code> over the cells that switch,
+          checked against the measured difference in the next-to-last column.
+        </p>
+        <div class="scroll">
+          <table class="num">
+            <thead><tr><th>world</th><th>Bayes threshold</th><th>cut chosen by measured acc</th>
+              <th>cut that is actually optimal</th><th>mass between</th>
+              <th>true acc at the measured cut</th><th>true acc at the right cut</th>
+              <th>regret</th><th>closed form</th></tr></thead>
+            <tbody id="rowsThr"></tbody>
+          </table>
+        </div>
+        <p class="say" style="margin:14px 0 8px">
+          The regret is small at the default because the mass sits at the ends and there is nothing
+          between the two cuts to move. Sweeping the mass shape shows that is the whole story, and it
+          runs the other way from the headline: flat mass makes the threshold error expensive and the
+          identified set narrow, end-loaded mass does the reverse.
+        </p>
+        <div class="scroll">
+          <table class="num">
+            <thead><tr><th>mass at ends</th><th>mass between the cuts</th><th>regret</th>
+              <th>closed form</th><th>inverted pairs</th><th>A&#8320;</th><th>A<sub>max</sub></th></tr></thead>
+            <tbody id="rowsThrSweep"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">The correction, and the fact that its two prices are one number</p>
+        <p class="say">
+          Told the true flip rates, you can build a loss on the recorded label whose expectation is
+          the loss on the real one &mdash; a 2&times;2 solve, done here with Cramer's rule. For 0/1
+          loss it comes out as <code id="corrText"></code>: agreeing with the recorded label earns a
+          <strong>negative</strong> loss. Each branch has range exactly <code>1/&delta;</code>, so the
+          variance inflation is exactly <code>1/&delta;&sup2;</code> &mdash; and
+          <code>dA/d&rho;</code> divided by <code>(2A&#8320;&minus;1)</code> is
+          <code>1/&delta;&sup2;</code> as well. The cost of knowing <code>&rho;</code> and the cost of
+          getting it slightly wrong are the same quantity.
+        </p>
+        <div class="scroll">
+          <table class="num">
+            <thead><tr><th>&rho;</th><th>&delta;</th><th>true risk</th><th>corrected estimate</th>
+              <th>bias</th><th>naive estimate</th><th>sd ratio</th><th>exact 1/&delta;</th>
+              <th>rows for the same sd</th><th>P(estimate &lt; 0)</th></tr></thead>
+            <tbody id="rowsCorr"></tbody>
+          </table>
+        </div>
+        <p class="tiny" style="margin-top:10px">
+          The corrected 0/1 risk is a mean of values outside <code>[0,1]</code>, so it can land below
+          zero &mdash; an error rate that is negative. The last column is measured; the row below
+          prices it against the normal approximation
+          <code>&Phi;(&minus;risk&middot;&delta;&radic;n / &radic;(p(1&minus;p)))</code> at three test
+          sizes, so the count has a prediction to miss.
+        </p>
+        <div class="scroll">
+          <table class="num">
+            <thead><tr><th>test rows</th><th>true risk</th><th>mean estimate</th>
+              <th>sd</th><th>P(&lt;0) measured</th><th>P(&lt;0) predicted</th></tr></thead>
+            <tbody id="rowsNeg"></tbody>
+          </table>
+        </div>
+        <p class="say" style="margin:16px 0 8px">
+          And the other direction: what a small error in the assumed rate does to the answer.
+          <code>A(&rho;) = (A&#8320; &minus; &rho;)/(1 &minus; 2&rho;)</code>, so
+          <code>dA/d&rho; = (2A&#8320; &minus; 1)/(1 &minus; 2&rho;)&sup2;</code> &mdash; the whole
+          <code>&rho;</code> dependence is that one factor.
+        </p>
+        <div class="scroll">
+          <table class="num">
+            <thead><tr><th>assumed &rho;</th><th>&delta;</th><th>inferred true accuracy</th>
+              <th>dA/d&rho;</th><th>per 1 point of &rho;</th><th>variance inflation 1/&delta;&sup2;</th>
+              <th>equal?</th></tr></thead>
+            <tbody id="rowsSens"></tbody>
+          </table>
+        </div>
+        <p class="flag" id="sensFlag"></p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">More test data does not rescue it</p>
+        <p class="say">
+          The interval shrinks like <code>1/&radic;n</code> and the measured accuracy converges &mdash;
+          to the right answer for the estimand it has, which is not the one anybody wanted. The
+          left-hand coverage stays at its nominal value forever and the right-hand one is already 0.
+        </p>
+        <div class="scroll">
+          <table class="num">
+            <thead><tr><th>test rows</th><th>interval width</th><th>measured accuracy</th>
+              <th>coverage of the clean-world truth</th>
+              <th>coverage of the truth at the bound</th></tr></thead>
+            <tbody id="rowsSize"></tbody>
+          </table>
+        </div>
+        <p class="tiny" style="margin-top:10px" id="sizeNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">In-page self-test</p>
+        <div id="selftest"></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ UNDERSTAND -->
+<section id="understand" class="panel hidden">
+  <div class="sheet plain">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">The label is a recording too</h2>
+
+      <p>Sixty-nine days of this series have taken <code>y</code> at face value. Day 69 finally
+      admitted that a <em>predictor</em> is a recording of something and not the thing; this page
+      does the same to the target, which is the column everything else is scored against. A fraud
+      flag set by a rules engine that has both kinds of error. A diagnosis code entered under time
+      pressure. "Churned", defined by a 30-day window that some customers straddle. A crowd worker's
+      answer at 94% agreement. A returns label derived from a status field that a warehouse
+      occasionally sets late.</p>
+
+      <p>The standard model of that is two numbers. Write <code>y</code> for the true label,
+      <code>&#375;</code> for the one in your table, and</p>
+
+      <pre>&rho;&#8320; = P(&#375; = 1 | y = 0)     a clean case recorded as positive
+&rho;&#8321; = P(&#375; = 0 | y = 1)     a real case recorded as negative
+&delta;  = 1 &minus; &rho;&#8320; &minus; &rho;&#8321;      how much signal survives</pre>
+
+      <p>It is called <em>class-conditional</em> noise: the flip rate may depend on the class but not
+      on <code>x</code> within a class. Let <code>&eta;(x) = P(y = 1 | x)</code> be the truth and
+      <code>q(x) = P(&#375; = 1 | x)</code> be what your data can show you. Condition on the true
+      label and add up the two ways a recorded 1 can arise:</p>
+
+      <pre>q = (1 &minus; &rho;&#8321;)&eta; + &rho;&#8320;(1 &minus; &eta;)
+  = &rho;&#8320; + (1 &minus; &rho;&#8320; &minus; &rho;&#8321;)&eta;
+  = &rho;&#8320; + &delta;&eta;</pre>
+
+      <p>The observed law is <strong>affine</strong> in the truth. That single line is responsible for
+      everything on the MEASURE tab, and it cuts both ways: it makes the problem tractable, and it
+      makes it unidentifiable.</p>
+
+      <h3 style="font-size:19px; font-weight:800">The identified set, derived</h3>
+
+      <p>Invert it. <code>&eta; = (q &minus; &rho;&#8320;)/&delta;</code>. Now fix the observed law
+      &mdash; the masses <code>m<sub>k</sub></code> and the observed rates <code>q<sub>k</sub></code>
+      &mdash; and ask which worlds could have produced it. The <em>only</em> requirement is that
+      <code>&eta;</code> is a probability:</p>
+
+      <pre>&eta;<sub>k</sub> &ge; 0  for all k   &hArr;   &rho;&#8320; &le; min<sub>k</sub> q<sub>k</sub>
+&eta;<sub>k</sub> &le; 1  for all k   &hArr;   &rho;&#8321; &le; 1 &minus; max<sub>k</sub> q<sub>k</sub></pre>
+
+      <p>That is the whole thing. The identified set for the flip rates is a rectangle whose sides are
+      exactly the <strong>distance from your model's score range to the ends of the unit
+      interval</strong>. It is the same shape of argument as Day 69's Frisch bound &mdash; a variance
+      could not be negative there, a probability cannot leave <code>[0,1]</code> here &mdash; and it
+      has the same uncomfortable direction. A model whose predicted probabilities actually reach 0
+      and 1 somewhere pins the flip rates to zero: those are the <em>anchor points</em>, and their
+      existence is the assumption under which the literature's noise-rate estimators are
+      identified. A model whose scores all sit between 0.4 and 0.6 &mdash; an entirely ordinary
+      model, the kind you would call "not very separable" and move on from &mdash; leaves them
+      almost completely free.</p>
+
+      <p>So the sharper reading is not "label noise adds error". It is: <strong>the amount of label
+      noise you could be suffering from is bounded by how confident your model is, which is not
+      evidence about the labels at all.</strong></p>
+
+      <h3 style="font-size:19px; font-weight:800">What a measured accuracy is measuring</h3>
+
+      <p>Take any classifier <code>f</code>. Its accuracy against the recorded labels &mdash; the
+      number on the dashboard &mdash; and its accuracy against the truth are related by substituting
+      the affine law into the definition. For the cells where <code>f = 1</code> the contribution is
+      <code>q = &rho;&#8320; + &delta;&eta;</code>, and for the cells where <code>f = 0</code> it is
+      <code>1 &minus; q = &rho;&#8321; + &delta;(1 &minus; &eta;)</code>, so</p>
+
+      <pre>acc<sub>noisy</sub>(f) = &rho;&#8320;&middot;P(f=1) + &rho;&#8321;&middot;P(f=0) + &delta;&middot;acc<sub>clean</sub>(f)</pre>
+
+      <p>Two consequences, and they are opposites.</p>
+
+      <p><strong>Symmetric noise is benign for ranking.</strong> If
+      <code>&rho;&#8320; = &rho;&#8321; = &rho;</code> then
+      <code>P(f=1) + P(f=0) = 1</code> collapses the first two terms to the constant
+      <code>&rho;</code>, and</p>
+
+      <pre>acc<sub>noisy</sub> = &rho; + (1 &minus; 2&rho;)&middot;acc<sub>clean</sub></pre>
+
+      <p>which is strictly increasing in <code>acc<sub>clean</sub></code> whenever
+      <code>&rho; &lt; &frac12;</code>. Every pair of classifiers keeps its order, ties stay ties, the
+      argmax is unchanged, and the Bayes threshold stays at 0.5 exactly. Model selection on noisy
+      labels is <em>correct</em> under symmetric noise. The page checks this over all
+      2<sup>K</sup> classifiers rather than asserting it, and the inversion count is 0 because it
+      cannot be anything else.</p>
+
+      <p><strong>Asymmetric noise is not.</strong> The surviving term is
+      <code>(&rho;&#8320; &minus; &rho;&#8321;)&middot;P(f=1)</code>, and the predicted positive rate
+      is not a measure of quality. Subtracting the identity for two classifiers,</p>
+
+      <pre>&Delta;acc<sub>noisy</sub> = &delta;&middot;&Delta;acc<sub>clean</sub> + (&rho;&#8320; &minus; &rho;&#8321;)&middot;&Delta;P(f=1)</pre>
+
+      <p>so a classifier can buy measured accuracy purely by predicting positive more often, and it
+      inverts the ranking whenever the second term outweighs the first. The page finds the worst such
+      pair by brute force and confirms the closed form reproduces its measured gap to 1e-16.</p>
+
+      <h3 style="font-size:19px; font-weight:800">Deconvolution, and the range that cancels</h3>
+
+      <p>Rearranging the symmetric case gives the map everybody wants:</p>
+
+      <pre>acc<sub>clean</sub> = (acc<sub>noisy</sub> &minus; &rho;) / (1 &minus; 2&rho;)</pre>
+
+      <p>Apply it to <code>A&#8320;</code>, the best accuracy anyone can measure, and you get the true
+      Bayes accuracy of the world with flip rate <code>&rho;</code>. Differentiate:</p>
+
+      <pre>dA/d&rho; = (2A&#8320; &minus; 1) / (1 &minus; 2&rho;)&sup2;   &gt; 0  whenever A&#8320; &gt; &frac12;</pre>
+
+      <p>The inferred truth is <em>increasing</em> in the assumed noise rate, so the largest true
+      accuracy consistent with your data sits at the corner <code>&rho; = &rho;<sub>max</sub></code>.
+      A grid search over the whole admissible rectangle &mdash; not just the symmetric diagonal
+      &mdash; confirms the maximum is at that corner, which is the second independent route to the
+      same number.</p>
+
+      <p>Now the part I did not see coming. On this page's law,
+      <code>q<sub>k</sub> = q<sub>lo</sub> + range&middot;g<sub>k</sub></code> with
+      <code>g<sub>k</sub></code> the rank position in <code>[0,1]</code>, and since
+      <code>max(q, 1&minus;q) = q<sub>lo</sub> + range&middot;max(g, 1&minus;g)</code> we get
+      <code>A&#8320; = q<sub>lo</sub> + range&middot;G</code> where
+      <code>G = &sum; m<sub>k</sub>max(g<sub>k</sub>, 1&minus;g<sub>k</sub>)</code>. The bound is
+      <code>&rho;<sub>max</sub> = q<sub>lo</sub></code> and
+      <code>1 &minus; 2q<sub>lo</sub> = range</code>, so</p>
+
+      <pre>A<sub>max</sub> = (A&#8320; &minus; q<sub>lo</sub>)/(1 &minus; 2q<sub>lo</sub>) = (range&middot;G)/range = G</pre>
+
+      <p>The range cancels <strong>exactly</strong>. The top of the identified set does not depend on
+      how far your scores reach at all &mdash; it is a property of the cell ordering and its masses,
+      and it equals what this same law would have measured with its scores stretched over the whole
+      of <code>[0,1]</code>. Which, once seen, is obvious: the un-squeezed version of the observed law
+      <em>is</em> the extreme admissible world. Improving separation does not raise the ceiling on
+      what could be true; it lowers the ceiling on what could be wrong.</p>
+
+      <h3 style="font-size:19px; font-weight:800">Why every diagnostic is blind</h3>
+
+      <p>The sampler on this page is <code>sampleObserved(n, law, seed)</code>. The <code>law</code>
+      is <code>(m, q)</code>. There is no <code>&rho;</code> to pass, so two worlds do not merely
+      produce similar data &mdash; they produce the identical arrays. Held-out accuracy, log-loss,
+      Brier, AUC, the calibration curve, cross-validation, a learning curve, a bootstrap of any of
+      them: all are functions of those arrays, so all are bit-identical. That is not a limitation of
+      the diagnostics. Every one of them is doing its job correctly on the labels it was given.</p>
+
+      <p>Calibration deserves a sentence of its own, because it is the diagnostic that sounds like it
+      should catch this. A model fitted on <code>&#375;</code> is calibrated against
+      <code>&#375;</code>, and the gap to the truth is available in closed form:</p>
+
+      <pre>q &minus; &eta; = (&rho;&#8320; &minus; q(&rho;&#8320; + &rho;&#8321;)) / &delta;
+        = &rho;(1 &minus; 2q)/(1 &minus; 2&rho;)      when &rho;&#8320; = &rho;&#8321; = &rho;</pre>
+
+      <p>which is 0 at <code>q = &frac12;</code> and changes sign either side, so noise pulls every
+      probability towards a half and a perfectly flat reliability diagram is compatible with being
+      wrong by a fifth on both tails. Day 44 built calibration; this page is where it runs out of
+      road, and the reason is that it is calibration <em>against the recorded label</em>.</p>
+
+      <h3 style="font-size:19px; font-weight:800">The correction, and its two prices</h3>
+
+      <p>If someone tells you <code>(&rho;&#8320;, &rho;&#8321;)</code>, you can fix the loss instead
+      of the labels. Ask for a function <code>L</code> of the recorded label whose conditional
+      expectation is the real loss, and write the two conditions down:</p>
+
+      <pre>(1&minus;&rho;&#8321;)L&#8321; + &rho;&#8321;L&#8320;     = l(t, 1)        taking E[&middot; | y = 1]
+&rho;&#8320;L&#8321;     + (1&minus;&rho;&#8320;)L&#8320; = l(t, 0)        taking E[&middot; | y = 0]
+
+determinant = (1&minus;&rho;&#8320;)(1&minus;&rho;&#8321;) &minus; &rho;&#8320;&rho;&#8321; = 1 &minus; &rho;&#8320; &minus; &rho;&#8321; = &delta;</pre>
+
+      <p>Cramer's rule finishes it, and the determinant tells you where the problem is before you have
+      even substituted a loss: everything is divided by <code>&delta;</code>, which goes to zero as
+      the noise approaches a coin flip. For 0/1 loss the four values are</p>
+
+      <pre>predict 1:   on &#375;=1  &minus;&rho;&#8321;/&delta;        on &#375;=0  (1&minus;&rho;&#8321;)/&delta;
+predict 0:   on &#375;=1  (1&minus;&rho;&#8320;)/&delta;   on &#375;=0  &minus;&rho;&#8320;/&delta;</pre>
+
+      <p>Agreeing with the recorded label earns you a negative loss. Each branch has range
+      <code>(1&minus;&rho;)/&delta; + &rho;/&delta; = 1/&delta;</code> exactly, against a range of 1
+      for the uncorrected loss, so the standard error is inflated by exactly
+      <code>1/&delta;</code> and you need <code>1/&delta;&sup2;</code> times as many rows to match
+      the naive estimator's precision. It is also unbounded below, so the estimate of an error rate
+      can be negative, and the page counts how often against a closed-form prediction.</p>
+
+      <p>And that <code>1/&delta;&sup2;</code> is the same number as <code>dA/d&rho;</code> divided by
+      <code>(2A&#8320; &minus; 1)</code>. The price of knowing the flip rates and the price of
+      mis-stating them are one quantity, which is a tidier way to say the thing everybody says
+      loosely: near a coin flip, nothing helps.</p>
+
+      <h3 style="font-size:19px; font-weight:800">What to actually do</h3>
+
+      <p>The honest summary is that no analysis of <code>(x, &#375;)</code> can choose a world, so the
+      choice has to come from outside the data:</p>
+
+      <p><strong>Audit a subsample against a better instrument.</strong> A few hundred rows relabelled
+      by adjudication estimates <code>&rho;&#8320;</code> and <code>&rho;&#8321;</code> directly and
+      turns an unidentified parameter into a measurement &mdash; the same move Day 69 needed a second
+      recording of a predictor for. It is the only one of these that is not an assumption.</p>
+
+      <p><strong>Argue for an anchor point.</strong> If some region of feature space is certainly
+      negative, the flip rate is pinned there. This is an assumption, but it is a checkable,
+      arguable, domain one rather than a statistical convenience.</p>
+
+      <p><strong>Prefer the ranking questions.</strong> AUC and any threshold-free comparison survive
+      symmetric noise cleanly, and under asymmetric noise the damage is proportional to
+      <code>(&rho;&#8320; &minus; &rho;&#8321;)</code> times a difference in positive rates &mdash;
+      which you can at least see, because predicted positive rates are observable.</p>
+
+      <p><strong>Report the set.</strong> "72.9% measured, and anywhere from 72.9% to 95.7% true
+      depending on a flip rate this data cannot bound below 0.25" is a sentence a stakeholder can act
+      on. A single number with a confidence interval on it is not, because the interval is around the
+      wrong quantity and shrinking it makes that worse.</p>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ BUILD -->
+<section id="build" class="panel hidden">
+  <div class="sheet soft">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">&#128296; How it is built</h2>
+
+      <h3 style="font-size:19px; font-weight:800">1. A discrete feature, so the ground truth is a sum</h3>
+      <pre>lawOf(cfg)   -&gt; { m, q, cdf, qLo, qHi, Q, A0, G, rho0Max, rho1Max, Amax, setWidth }
+worldOf(law, rho0, rho1) -&gt; { eta, delta, pi1, bayesClean, fStar, tStar, calGap }</pre>
+      <p>The feature takes K values, so a "population quantity" is a weighted sum over K cells and
+      there is no numerical integration anywhere on the page. The Bayes accuracy, the true prevalence,
+      the accuracy of any classifier in any world, the calibration gap &mdash; all exact to the last
+      bit at the default settings, which means every measured number has something exact to be
+      compared against rather than a second simulation.</p>
+
+      <h3 style="font-size:19px; font-weight:800">2. The sampler is not given a world</h3>
+      <pre>sampleObserved(n, law, seed)   // law is (m, q). There is no rho parameter to pass.</pre>
+      <p>This is the same device as Day 68 and Day 69 and it is the load-bearing part of the page. The
+      claim "these worlds share their observed data" is not a numerical coincidence checked
+      afterwards; it is the only thing that could have happened, because the function that produces
+      the data has no argument that could carry the difference. The audit still re-runs all nine
+      diagnostics once per world and compares them with <code>!==</code>, on the grounds that the one
+      way this could break &mdash; <code>&rho;</code> leaking into the sampler during some later edit
+      &mdash; is exactly the sort of thing an assertion should be standing guard over.</p>
+
+      <p>The reverse direction is checked too: every world rebuilds the observed law it came from,
+      <code>&rho;&#8320; + &delta;&eta;<sub>k</sub></code> against <code>q<sub>k</sub></code>, and
+      lands at <strong id="rebuildTxt">5.6e-17</strong>. Not zero, and for the reason Day 68 and Day 69
+      both ran into: <code>&rho;&#8320; + &delta;((q &minus; &rho;&#8320;)/&delta;)</code> is an exact
+      algebraic identity that binary64 does not honour bit for bit. The tolerance is 1e-15 and it is
+      documented rather than quietly widened.</p>
+
+      <h3 style="font-size:19px; font-weight:800">3. Where <code>===</code> is right</h3>
+      <pre>accClean(law, cleanWorld, f) === accNoisy(law, f)      // asserted with ===, 400/400 reps</pre>
+      <p>In the clean world <code>&eta;<sub>k</sub> = (q<sub>k</sub> &minus; 0)/1</code>, and
+      subtracting zero and dividing by one are exact in binary64, so the two functions execute the
+      identical sequence of operations on identical inputs. This one is a genuine bit-equality and
+      the page asserts it as one. Knowing which identities survive <code>===</code> and which do not
+      is the difference between a tolerance that means something and a tolerance that hides a bug: the
+      three that need one are the law rebuild, the affine identity and the deconvolution, all at
+      2&ndash;3e-16 across 1,536 and 1,280 checked combinations.</p>
+
+      <h3 style="font-size:19px; font-weight:800">4. The whole hypothesis space, not a sample of it</h3>
+      <pre>allClassifiers(law)   // 2^K of them for K &lt;= 12, thresholds above that</pre>
+      <p>The inversion count is over every pair from all 2<sup>K</sup> classifiers &mdash; 32,640 pairs
+      at K = 8 &mdash; and not a sampled subset, because the claim about symmetric noise is that the
+      count is <strong>exactly zero</strong> and a sampled zero would prove nothing. The asymmetric
+      count is then a real census rather than an estimate, and the worst inversion it finds is checked
+      against the closed form <code>&delta;&Delta;acc<sub>clean</sub> + (&rho;&#8320;&minus;&rho;&#8321;)&Delta;P(f{=}1)</code>,
+      which reproduces its measured gap to 8e-17.</p>
+
+      <h3 style="font-size:19px; font-weight:800">5. Two routes to the maximum</h3>
+      <pre>closed form:  Amax = (A0 - rhoMax)/(1 - 2*rhoMax)        along the symmetric diagonal
+brute force:  121 x 121 grid over the admissible rectangle, eta checked cell by cell</pre>
+      <p>The derivation only shows the maximum is at a corner of the <em>symmetric</em> slice. The grid
+      searches the whole rectangle, rejects any point where some <code>&eta;<sub>k</sub></code> leaves
+      <code>[0,1]</code>, and reports where it found the best and worst Bayes accuracy: 14,641 points,
+      0 rejected, maximum at <code>(&rho;<sub>max</sub>, &rho;<sub>max</sub>)</code>, and it agrees
+      with the closed form to <strong>0</strong> &mdash; exactly, not to a tolerance. The invariance
+      <code>A<sub>max</sub> = G</code> is checked at six score ranges and holds to 2.2e-16, which is
+      how I found it: the column simply refused to move.</p>
+
+      <h3 style="font-size:19px; font-weight:800">6. The interval is computed once and scored five times</h3>
+      <pre>for each replication:
+    train = sampleObserved(n, law, repSeed(11, r))       // world-free
+    test  = sampleObserved(nTest, law, repSeed(12, r))   // world-free
+    f     = fitCells(train).f                            // threshold qHat at 0.5
+    ci    = waldCi(accOnSample(test, f), nTest)           // ONE interval
+    for each world:  truth = accClean(law, world, f);  did ci cover it?</pre>
+      <p>Five coverages read off the same intervals, so "95% here and 0% there" cannot be an artefact
+      of five slightly different estimators. Wilson re-scores the same replications for the same
+      reason at the interval level: at n = 2000 it moves the clean-world coverage by about a tenth of
+      a point and leaves the 0.0% exactly where it was, which is the answer to "is this just Wald
+      undercovering".</p>
+
+      <h3 style="font-size:19px; font-weight:800">7. The seed guard, and what it found this time</h3>
+      <pre>hashed:  repSeed(tag, r) = (imul(r+1, 2654435761) ^ imul(tag+1, 0x9E3779B1)) &gt;&gt;&gt; 0
+stride:  44000 + s*131 + r*7907          // the stream that broke Day 69</pre>
+      <p>Day 69 measured 99.2% coverage where the truth was 95.2%, purely because an arithmetic
+      progression of mulberry32 seeds is not a random seed stream. The rule that came out of it was to
+      hash, and to assert the hash. So this page hashes &mdash; and then runs the broken stride
+      alongside it and prints both, because the honest version of "learn the lesson" is to re-measure
+      rather than to assume the same failure repeats. It does not: this sampler is Bernoulli rather
+      than Gaussian, both streams land on <span id="guardTxt">94.0% / 94.0%</span>, and the artefact
+      is specific to Box&ndash;Muller consuming pairs of correlated uniforms. The guard stays in
+      anyway, now as a measurement instead of a warning.</p>
+
+      <h3 style="font-size:19px; font-weight:800">8. Averaging, and the number I nearly shipped</h3>
+      <p>At my first choice of 400 replications the clean-world coverage came back
+      <strong>93.3%</strong>, which is 1.5 standard errors low and reads like a mild finding about
+      Wald intervals. It is not &mdash; at 1,000 replications it is 95.00% and at 4,000 it is 94.83%.
+      The standard error of a coverage estimate over R replications is
+      <code>&radic;(0.95&middot;0.05/R)</code>, which is 1.1 points at R = 400 and 0.7 at R = 1,000,
+      so the default moved up and the slider goes to 2,400 if you want to watch it settle. The
+      auxiliary studies keep their own budgets rather than scaling with it, because they are checks
+      and not the headline &mdash; and the correction table needs almost none, since for symmetric
+      &rho; the corrected loss is the exact affine map <code>(raw &minus; &rho;)/&delta;</code> of the
+      uncorrected one, which makes the sd ratio <code>1/&delta;</code> with no Monte Carlo error in it
+      at all. Every level claim is averaged over the count shown on its row, because Day 66 lost an
+      effect inside a standard error that was larger than it.</p>
+
+      <h3 style="font-size:19px; font-weight:800">9. Verification</h3>
+      <pre>node devanshu/automation/bot10-verify-day70-ml.mjs</pre>
+      <p>The block between <code>ENGINE:BEGIN</code> and <code>ENGINE:END</code> is DOM-free and is
+      extracted by regex and run under Node against assertions written independently of it: a second
+      generator (xorshift32 with the sine branch of Box&ndash;Muller, where the page uses mulberry32
+      and never draws a Gaussian at all), a normal CDF by Simpson integration rather than the page's
+      rational <code>erf</code>, a 2&times;2 solve by Gaussian elimination where the page uses
+      Cramer's rule, the affine identity re-derived from first principles by conditioning on the true
+      label, brute-force enumeration of the classifier space, exact binomial coverage by summing the
+      probability mass function instead of a normal approximation, and forward simulation that
+      actually draws a latent <code>y</code> and flips it &mdash; which the page never does, and which
+      is the real check that the affine law is the model it claims to be.</p>
+
+      <h3 style="font-size:19px; font-weight:800">10. Things I got wrong</h3>
+      <p><strong>I expected the identified set to shrink from both ends as separation improved.</strong>
+      It shrinks from below only. <code>A<sub>max</sub></code> is pinned at
+      <code>0.957142857142857</code> across every score range from 0.20 to 0.98, to within 2.2e-16,
+      and the algebra says it has to be: the range cancels. The table was built to show two columns
+      moving together and instead showed one of them refusing to move, which is a better result than
+      the one I was looking for.</p>
+      <p><strong>I expected the threshold shift to be the expensive failure.</strong> At the default
+      it costs 0.71 accuracy points, because the mass is at the ends and there is nothing between the
+      two cuts to move. It is the <em>ranking</em> inversion that is expensive: a pair whose measured
+      gap is 0.18 points and whose true gap is 32.3, in the same asymmetric world. The threshold
+      sweep is on the page because the small number needed explaining rather than hiding, and the
+      closed form <code>&sum;m<sub>k</sub>|1&minus;2&eta;<sub>k</sub>|</code> over the switching cells
+      reproduces it exactly at every mass shape.</p>
+      <p><strong>My first negative-risk count was 0 out of 200 and I read it as "does not happen".</strong>
+      The normal approximation says 1.6% at 2,000 test rows, so 0 of 200 replications is the expected
+      outcome and not evidence of anything. Adding the predicted column turned a null result into a
+      real one: at 200 test rows it is 23.0% measured against 24.8% predicted, and an error rate below
+      zero is a thing that happens to roughly one run in four.</p>
+
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    MachineLearningFromZero &middot; Day 70 &middot; label noise, the identified set and what a
+    reported accuracy is actually reporting. One file, vanilla JavaScript, no build step and no
+    libraries. Previous: <a href="day69-measurement-error.html">Day 69 &mdash; measurement error in a
+    predictor</a>.
+  </div>
+</footer>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => x.classList.remove("tab-active"));
+  t.classList.add("tab-active");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Label noise - the TARGET column is a recording too.
+//
+// A cell k has mass m[k] and an OBSERVED positive rate q[k] = P(y~ = 1 | cell k). That pair is the
+// whole observed law, and the sampler is handed nothing else: no flip rates, no latent label. A
+// "world" is a pair of flip rates (rho0, rho1) = (P(y~=1 | y=0), P(y~=0 | y=1)) plus the true label
+// probability eta it implies. The observed law is AFFINE in the truth:
+//
+//     q   = rho0 + delta * eta,      delta = 1 - rho0 - rho1
+//     eta = (q - rho0) / delta
+//
+// eta has to be a probability, and that is the entire constraint of the problem:
+//
+//     eta >= 0 everywhere  <=>  rho0 <= min(q)
+//     eta <= 1 everywhere  <=>  rho1 <= 1 - max(q)
+//
+// So the identified set for the flip rates is exactly the distance from the observed score range to
+// [0, 1]. A model whose predicted probabilities reach 0 and 1 - an ANCHOR POINT - pins the flip
+// rates to zero; a model whose scores hug 0.5 leaves them entirely free. Every world in that
+// rectangle reproduces the SAME observed data, cell for cell and label for label, because rho never
+// enters sampleObserved at all.
+
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Replication seeds by multiplicative hashing, not by an arithmetic stride. Day 69 measured 99.2%
+// coverage where the truth was 95.2% purely because 44000 + r*7907 fed to mulberry32 is a
+// correlated seed stream. seedGuard() below runs both streams here and reports the comparison
+// rather than assuming the same failure repeats.
+function repSeed(tag, r){
+  return (Math.imul(r + 1, 2654435761) ^ Math.imul(tag + 1, 0x9E3779B1)) >>> 0;
+}
+
+// Abramowitz & Stegun 7.1.26, |error| < 1.5e-7 - enough for every tolerance used here.
+function erf(x){
+  const s = x < 0 ? -1 : 1, z = Math.abs(x);
+  const t = 1 / (1 + 0.3275911 * z);
+  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t +
+                 0.254829592) * t * Math.exp(-z * z);
+  return s * y;
+}
+const normCdf = z => 0.5 * (1 + erf(z / Math.SQRT2));
+// Bisection on the page's OWN normCdf, so normCdf(normInv(p)) reproduces p to machine precision.
+function normInv(p){
+  let lo = -12, hi = 12;
+  for (let i = 0; i < 200; i++){
+    const mid = 0.5 * (lo + hi);
+    if (normCdf(mid) < p) lo = mid; else hi = mid;
+  }
+  return 0.5 * (lo + hi);
+}
+const Z95 = 1.959963984540054;
+
+const DEFAULTS = {
+  K: 8,             // cells - the feature is discrete, so every population quantity is a finite sum
+  range: 0.50,      // qHi - qLo: the width of the observed score range
+  bim: 0.80,        // 0 = mass uniform over cells, 1 = all mass on the two end cells
+  n: 2000,          // training rows
+  nTest: 2000,      // test rows
+  seeds: 25,
+  covReps: 1000     // the headline coverage; 400 lands 1.7 points low on pure Monte Carlo noise
+};
+
+function cfgOf(o){
+  const c = Object.assign({}, DEFAULTS, o || {});
+  c.K       = Math.max(2, Math.min(14, Math.round(c.K)));
+  c.range   = Math.max(0.04, Math.min(0.98, c.range));
+  c.bim     = Math.max(0, Math.min(1, c.bim));
+  c.n       = Math.max(50, Math.round(c.n));
+  c.nTest   = Math.max(50, Math.round(c.nTest));
+  c.seeds   = Math.max(2, Math.round(c.seeds));
+  c.covReps = Math.max(20, Math.round(c.covReps));
+  c.law     = lawOf(c);
+  return c;
+}
+
+// ---------------------------------------------------------------- the observed law
+function lawOf(cfg){
+  const K = cfg.K, qLo = 0.5 - cfg.range / 2, qHi = 0.5 + cfg.range / 2;
+  const q = new Float64Array(K), m = new Float64Array(K), g = new Float64Array(K);
+  for (let k = 0; k < K; k++){
+    g[k] = K === 1 ? 0.5 : k / (K - 1);
+    q[k] = qLo + cfg.range * g[k];
+    const flat = 1 / K, ends = (k === 0 || k === K - 1) ? 0.5 : 0;
+    m[k] = (1 - cfg.bim) * flat + cfg.bim * ends;
+  }
+  let Q = 0, A0 = 0, G = 0, acc = 0;
+  const cdf = new Float64Array(K);
+  for (let k = 0; k < K; k++){
+    Q  += m[k] * q[k];
+    A0 += m[k] * Math.max(q[k], 1 - q[k]);          // the best accuracy anyone can MEASURE
+    G  += m[k] * Math.max(g[k], 1 - g[k]);          // the same law with the scores un-squeezed
+    acc += m[k]; cdf[k] = acc;
+  }
+  cdf[K - 1] = 1;
+  const rho0Max = qLo, rho1Max = 1 - qHi, rhoMax = Math.min(rho0Max, rho1Max);
+  // A(rho) = (A0 - rho)/(1 - 2rho) for a symmetric world; dA/drho = (2A0 - 1)/(1 - 2rho)^2 > 0
+  // whenever A0 > 1/2, so the maximum sits at the corner rho = rhoMax. And because A0 = qLo +
+  // range*G while 1 - 2*qLo = range EXACTLY, the range cancels:  Amax = G.  The upper end of the
+  // identified set does not depend on how far the observed scores spread at all.
+  const Amax = (A0 - rhoMax) / (1 - 2 * rhoMax);
+  return { K, q, m, g, cdf, qLo, qHi, Q, A0, G, rho0Max, rho1Max, rhoMax, Amax,
+           setWidth: rhoMax * (2 * A0 - 1) / (1 - 2 * rhoMax),   // = Amax - A0
+           setWidthAlt: qLo * (2 * G - 1) };                      // the same number a second way
+}
+
+function admissible(law, r0, r1){
+  return r0 >= -1e-12 && r1 >= -1e-12 &&
+         r0 <= law.rho0Max + 1e-12 && r1 <= law.rho1Max + 1e-12 && r0 + r1 < 1;
+}
+
+// A world: flip rates plus every structural quantity they force. Nothing here touches a sample.
+function worldOf(law, r0, r1){
+  const delta = 1 - r0 - r1, K = law.K;
+  const eta = new Float64Array(K), fStar = new Uint8Array(K);
+  let pi1 = 0, bayesClean = 0, calGap = 0, worstRebuild = 0;
+  for (let k = 0; k < K; k++){
+    eta[k] = (law.q[k] - r0) / delta;
+    pi1 += law.m[k] * eta[k];
+    bayesClean += law.m[k] * Math.max(eta[k], 1 - eta[k]);
+    fStar[k] = eta[k] > 0.5 ? 1 : 0;
+    // Calibration against the labels you WANT: q - eta = (rho0 - q(rho0+rho1))/delta, exactly.
+    calGap += law.m[k] * Math.abs((r0 - law.q[k] * (r0 + r1)) / delta);
+    const back = r0 + delta * eta[k];
+    if (Math.abs(back - law.q[k]) > worstRebuild) worstRebuild = Math.abs(back - law.q[k]);
+  }
+  // The Bayes threshold on the OBSERVED score, not on eta: eta > 1/2 <=> q > rho0 + delta/2.
+  return { rho0: r0, rho1: r1, delta, eta, pi1, bayesClean, fStar,
+           tStar: r0 + delta / 2, calGap, worstRebuild, admissible: admissible(law, r0, r1) };
+}
+
+function worldSpecs(cfg){
+  const law = cfg.law, half = law.rhoMax / 2;
+  return [
+    { name: "clean labels", r0: 0, r1: 0 },
+    { name: "symmetric &rho; = " + half.toFixed(3), r0: half, r1: half },
+    { name: "symmetric &rho; = " + law.rhoMax.toFixed(3) + " &mdash; the bound", r0: law.rhoMax, r1: law.rhoMax },
+    { name: "asymmetric &rho;&#8320; at the bound", r0: law.rho0Max, r1: 0 },
+    { name: "asymmetric &rho;&#8321; at the bound", r0: 0, r1: law.rho1Max }
+  ].map(s => Object.assign({ name: s.name }, worldOf(law, s.r0, s.r1)));
+}
+
+// ---------------------------------------------------------------- population accuracies
+// A classifier is a Uint8Array of length K. Every quantity below is an exact finite sum.
+function posRate(law, f){ let s = 0; for (let k = 0; k < law.K; k++) s += law.m[k] * f[k]; return s; }
+function accNoisy(law, f){
+  let s = 0;
+  for (let k = 0; k < law.K; k++) s += law.m[k] * (f[k] ? law.q[k] : 1 - law.q[k]);
+  return s;
+}
+function accClean(law, w, f){
+  let s = 0;
+  for (let k = 0; k < law.K; k++) s += law.m[k] * (f[k] ? w.eta[k] : 1 - w.eta[k]);
+  return s;
+}
+// The affine identity, derived on the page by substituting q = rho0 + delta*eta:
+//     accNoisy(f) = rho0*P(f=1) + rho1*P(f=0) + delta*accClean(f)
+// The flip-rate term depends on the classifier's PREDICTED POSITIVE RATE, which is exactly why
+// asymmetric noise can reorder two classifiers and symmetric noise provably cannot.
+function affinePredict(law, w, f){
+  const p1 = posRate(law, f);
+  return w.rho0 * p1 + w.rho1 * (1 - p1) + w.delta * accClean(law, w, f);
+}
+// Symmetric special case: accNoisy = rho + (1-2rho)*accClean, so accClean = (accNoisy - rho)/(1-2rho).
+function deconvolve(a, rho){ return (a - rho) / (1 - 2 * rho); }
+
+function thresholdFamily(law){
+  const out = [];
+  for (let j = 0; j <= law.K; j++){
+    const f = new Uint8Array(law.K);
+    for (let k = j; k < law.K; k++) f[k] = 1;
+    out.push(f);
+  }
+  return out;
+}
+function allClassifiers(law){
+  if (law.K > 12) return thresholdFamily(law);
+  const N = 1 << law.K, out = [];
+  for (let b = 0; b < N; b++){
+    const f = new Uint8Array(law.K);
+    for (let k = 0; k < law.K; k++) f[k] = (b >> k) & 1;
+    out.push(f);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- ranking under noise
+// An INVERSION is a pair the measured accuracy ranks one way and the true accuracy the other.
+// Under symmetric noise accNoisy is a strictly increasing affine function of accClean, so the count
+// has to be exactly 0 - a structural claim, not a small number that happened to come out low.
+function inversionStudy(cfg, w, family){
+  const law = cfg.law, fs = family || allClassifiers(law);
+  const an = fs.map(f => accNoisy(law, f)), ac = fs.map(f => accClean(law, w, f));
+  const pr = fs.map(f => posRate(law, f));
+  let inv = 0, pairs = 0, worst = null;
+  for (let i = 0; i < fs.length; i++) for (let j = i + 1; j < fs.length; j++){
+    pairs++;
+    let a = i, b = j;
+    if (an[a] < an[b]){ a = j; b = i; }              // a is the one the leaderboard prefers
+    if (an[a] - an[b] > 1e-12 && ac[b] - ac[a] > 1e-12){
+      inv++;
+      if (!worst || ac[b] - ac[a] > worst.gapClean)
+        worst = { win: a, lose: b, gapNoisy: an[a] - an[b], gapClean: ac[b] - ac[a],
+                  nWin: an[a], nLose: an[b], cWin: ac[a], cLose: ac[b],
+                  pWin: pr[a], pLose: pr[b] };
+    }
+  }
+  let bn = 0, bc = 0;
+  for (let i = 1; i < fs.length; i++){ if (an[i] > an[bn]) bn = i; if (ac[i] > ac[bc]) bc = i; }
+  return { n: fs.length, pairs, inversions: inv, worst, bestByNoisy: bn, bestByClean: bc,
+           cleanOfNoisyPick: ac[bn], cleanOfCleanPick: ac[bc], regret: ac[bc] - ac[bn], fs, an, ac };
+}
+// The closed form for an inversion's measured gap, as a residual against the brute-force pair.
+function inversionResidual(law, w, worst){
+  if (!worst) return 0;
+  const pred = w.delta * (-worst.gapClean) + (w.rho0 - w.rho1) * (worst.pWin - worst.pLose);
+  return Math.abs(pred - worst.gapNoisy);
+}
+
+// ---------------------------------------------------------------- sampling (rho-free)
+function sampleObserved(n, law, seed){
+  const rnd = mulberry32(seed);
+  const cell = new Int32Array(n), yt = new Uint8Array(n);
+  for (let i = 0; i < n; i++){
+    const u = rnd();
+    let k = 0; while (k < law.K - 1 && u > law.cdf[k]) k++;
+    cell[i] = k;
+    yt[i] = rnd() < law.q[k] ? 1 : 0;
+  }
+  return { n, cell, yTilde: yt };
+}
+function fitCells(s, law){
+  const cnt = new Float64Array(law.K), pos = new Float64Array(law.K);
+  for (let i = 0; i < s.n; i++){ cnt[s.cell[i]]++; pos[s.cell[i]] += s.yTilde[i]; }
+  const qHat = new Float64Array(law.K), f = new Uint8Array(law.K);
+  for (let k = 0; k < law.K; k++){
+    qHat[k] = cnt[k] > 0 ? pos[k] / cnt[k] : 0.5;
+    f[k] = qHat[k] > 0.5 ? 1 : 0;
+  }
+  return { qHat, f, cnt, pos };
+}
+function accOnSample(s, f){
+  let h = 0;
+  for (let i = 0; i < s.n; i++) if (f[s.cell[i]] === s.yTilde[i]) h++;
+  return h / s.n;
+}
+function waldCi(a, n){
+  const se = Math.sqrt(a * (1 - a) / n);
+  return { a, se, lo: a - Z95 * se, hi: a + Z95 * se };
+}
+// Wilson, so the headline cannot be blamed on the Wald interval's own well-known undercoverage.
+function wilsonCi(a, n){
+  const z2 = Z95 * Z95, d = 1 + z2 / n, c = a + z2 / (2 * n);
+  const h = Z95 * Math.sqrt(a * (1 - a) / n + z2 / (4 * n * n));
+  return { a, lo: (c - h) / d, hi: (c + h) / d };
+}
+
+// ---------------------------------------------------------------- the twin-worlds coverage study
+// One interval per replication, scored against every world's truth. The interval is a function of
+// the data alone, so "it covers here and not there" is a statement about the ESTIMAND, never about
+// the estimator.
+function coverageStudy(cfg){
+  const law = cfg.law, specs = worldSpecs(cfg), R = cfg.covReps;
+  const hits = specs.map(() => 0), hitsW = specs.map(() => 0), pred = specs.map(() => 0);
+  const truthSum = specs.map(() => 0);
+  let widthSum = 0, aSum = 0, bitEq = 0;
+  for (let r = 0; r < R; r++){
+    const tr = sampleObserved(cfg.n, law, repSeed(11, r));
+    const te = sampleObserved(cfg.nTest, law, repSeed(12, r));
+    const fit = fitCells(tr, law);
+    const a = accOnSample(te, fit.f);
+    const ci = waldCi(a, cfg.nTest), cw = wilsonCi(a, cfg.nTest);
+    widthSum += ci.hi - ci.lo; aSum += a;
+    const p = accNoisy(law, fit.f);                       // what the test accuracy estimates
+    const sd = Math.sqrt(p * (1 - p) / cfg.nTest);
+    specs.forEach((w, i) => {
+      const truth = accClean(law, w, fit.f);
+      truthSum[i] += truth;
+      if (ci.lo <= truth && truth <= ci.hi) hits[i]++;
+      if (cw.lo <= truth && truth <= cw.hi) hitsW[i]++;
+      const d = (truth - p) / sd;
+      pred[i] += normCdf(Z95 - d) - normCdf(-Z95 - d);     // closed form, not a second simulation
+    });
+    // In the clean world eta[k] = (q[k]-0)/1, and division by 1 is exact, so the two sums are the
+    // identical sequence of operations: this one really is a === and not a tolerance.
+    if (accClean(law, specs[0], fit.f) === p) bitEq++;
+  }
+  return { specs, R, coverage: hits.map(h => h / R), wilson: hitsW.map(h => h / R),
+           predicted: pred.map(p => p / R), width: widthSum / R, accMean: aSum / R,
+           truth: truthSum.map(t => t / R), bitEq, bitEqAll: bitEq === R };
+}
+
+// ---------------------------------------------------------------- observed-data diagnostics
+// Every statistic here is a function of (law, sample) and CANNOT take a world. That is the point.
+function diagnostics(law, tr, te){
+  const fit = fitCells(tr, law);
+  const acc = accOnSample(te, fit.f);
+  let ll = 0, br = 0;
+  for (let i = 0; i < te.n; i++){
+    const p = Math.min(1 - 1e-12, Math.max(1e-12, fit.qHat[te.cell[i]]));
+    ll -= te.yTilde[i] ? Math.log(p) : Math.log(1 - p);
+    br += (p - te.yTilde[i]) * (p - te.yTilde[i]);
+  }
+  const nP = new Float64Array(law.K), nN = new Float64Array(law.K);
+  for (let i = 0; i < te.n; i++){ if (te.yTilde[i]) nP[te.cell[i]]++; else nN[te.cell[i]]++; }
+  const order = Array.from({ length: law.K }, (_, k) => k).sort((a, b) => fit.qHat[a] - fit.qHat[b]);
+  let below = 0, num = 0, P = 0, N = 0;
+  for (const k of order){                              // AUC by the rank identity, ties at half
+    num += nP[k] * (below + 0.5 * nN[k]);
+    below += nN[k]; P += nP[k]; N += nN[k];
+  }
+  const auc = P > 0 && N > 0 ? num / (P * N) : 0.5;
+  let ece = 0;                                         // calibration against the labels we HAVE
+  const cCnt = new Float64Array(law.K), cPos = new Float64Array(law.K);
+  for (let i = 0; i < te.n; i++){ cCnt[te.cell[i]]++; cPos[te.cell[i]] += te.yTilde[i]; }
+  for (let k = 0; k < law.K; k++)
+    if (cCnt[k]) ece += (cCnt[k] / te.n) * Math.abs(cPos[k] / cCnt[k] - fit.qHat[k]);
+  let cvHit = 0;                                       // 5-fold CV on the training rows
+  const F = 5;
+  for (let fo = 0; fo < F; fo++){
+    const lo = Math.floor(fo * tr.n / F), hi = Math.floor((fo + 1) * tr.n / F);
+    const cnt = new Float64Array(law.K), pos = new Float64Array(law.K);
+    for (let i = 0; i < tr.n; i++) if (i < lo || i >= hi){ cnt[tr.cell[i]]++; pos[tr.cell[i]] += tr.yTilde[i]; }
+    const g = new Uint8Array(law.K);
+    for (let k = 0; k < law.K; k++) g[k] = (cnt[k] > 0 ? pos[k] / cnt[k] : 0.5) > 0.5 ? 1 : 0;
+    for (let i = lo; i < hi; i++) if (g[tr.cell[i]] === tr.yTilde[i]) cvHit++;
+  }
+  return { acc, logloss: ll / te.n, brier: br / te.n, auc, ece, cv: cvHit / tr.n,
+           posRate: posRate(law, fit.f), qHat: Array.from(fit.qHat) };
+}
+const DIAG_KEYS = ["acc", "logloss", "brier", "auc", "ece", "cv", "posRate"];
+
+// Sweep every (world, seed) pair. The observed side has to be bit-identical and the estimand has to
+// move; the assertion exists to catch a leak of rho into the sampler, which is the only way it
+// could come out otherwise.
+function diagAudit(cfg){
+  const law = cfg.law, specs = worldSpecs(cfg);
+  let comparisons = 0, diffs = 0, sameObj = true, worstRebuild = 0;
+  const S = Math.max(2, Math.min(cfg.seeds, 8));
+  let base = null, rows = [];
+  for (let s = 0; s < S; s++){
+    const tr = sampleObserved(cfg.n, law, repSeed(21, s));
+    const te = sampleObserved(cfg.nTest, law, repSeed(22, s));
+    const d0 = diagnostics(law, tr, te);
+    const trRef = tr, teRef = te, ytRef = tr.yTilde;
+    specs.forEach(w => {
+      const d = diagnostics(law, tr, te);              // the world is not an argument
+      DIAG_KEYS.forEach(key => { comparisons++; if (d[key] !== d0[key]) diffs++; });
+      for (let k = 0; k < law.K; k++){ comparisons++; if (d.qHat[k] !== d0.qHat[k]) diffs++; }
+      if (tr !== trRef || te !== teRef || tr.yTilde !== ytRef) sameObj = false;
+      if (w.worstRebuild > worstRebuild) worstRebuild = w.worstRebuild;
+    });
+    if (base === null){
+      base = d0;
+      const f = fitCells(tr, law).f;
+      rows = specs.map(w => ({ name: w.name, rho0: w.rho0, rho1: w.rho1,
+        truth: accClean(law, w, f), pi1: w.pi1, bayes: w.bayesClean,
+        tStar: w.tStar, calGap: w.calGap }));
+    }
+  }
+  return { comparisons, diffs, sameObj, base, rows, seeds: S, worlds: specs.length, worstRebuild };
+}
+
+// Both algebraic identities, swept over every (world, classifier) pair rather than spot-checked.
+function identityAudit(cfg){
+  const law = cfg.law, fs = allClassifiers(law);
+  let nAff = 0, wAff = 0, nDec = 0, wDec = 0;
+  const asym = [[0, 0], [0.1 * law.rho0Max, 0.6 * law.rho1Max], [law.rho0Max, law.rho1Max],
+                [law.rho0Max, 0], [0, law.rho1Max], [0.8 * law.rho0Max, 0.5 * law.rho1Max]];
+  for (const pair of asym){
+    const w = worldOf(law, pair[0], pair[1]);
+    for (const f of fs){
+      nAff++;
+      const e = Math.abs(affinePredict(law, w, f) - accNoisy(law, f));
+      if (e > wAff) wAff = e;
+    }
+  }
+  for (const t of [0, 0.2, 0.5, 0.8, 1]){
+    const rho = law.rhoMax * t, w = worldOf(law, rho, rho);
+    for (const f of fs){
+      nDec++;
+      const e = Math.abs(deconvolve(accNoisy(law, f), rho) - accClean(law, w, f));
+      if (e > wDec) wDec = e;
+    }
+  }
+  return { affineChecks: nAff, affineWorst: wAff, deconvChecks: nDec, deconvWorst: wDec };
+}
+
+// ---------------------------------------------------------------- backward loss correction
+// Find a loss on the NOISY label whose expectation is the loss on the true one:
+//     (1-rho1) L1 + rho1     L0 = l(t, 1)        taking E[ . | y = 1 ]
+//     rho0     L1 + (1-rho0) L0 = l(t, 0)        taking E[ . | y = 0 ]
+// determinant = (1-rho0)(1-rho1) - rho0*rho1 = 1 - rho0 - rho1 = delta.  Cramer's rule gives:
+function correctedLoss(r0, r1, l1, l0){
+  const delta = 1 - r0 - r1;
+  return { L1: ((1 - r0) * l1 - r1 * l0) / delta,
+           L0: ((1 - r1) * l0 - r0 * l1) / delta, delta };
+}
+// For 0/1 loss the branches are (-rho1/delta, (1-rho1)/delta) and ((1-rho0)/delta, -rho0/delta):
+// agreeing with the recorded label earns a NEGATIVE loss, and each branch has range exactly
+// 1/delta, so the variance inflation is exactly 1/delta^2 - the same factor as the sensitivity
+// dA/drho divided by (2A0 - 1). Those two prices are one number.
+function zeroOneCorrection(r0, r1){
+  const a = correctedLoss(r0, r1, 0, 1);   // predict 1: loss 0 if y = 1, loss 1 if y = 0
+  const b = correctedLoss(r0, r1, 1, 0);   // predict 0: loss 1 if y = 1, loss 0 if y = 0
+  return { pred1: { onYt1: a.L1, onYt0: a.L0 }, pred0: { onYt1: b.L1, onYt0: b.L0 },
+           range1: a.L0 - a.L1, range0: b.L1 - b.L0, delta: a.delta,
+           inflation: 1 / (a.delta * a.delta) };
+}
+// The defining property, checked directly rather than trusted: E[Ltilde | y] = l(t, y).
+function correctionResidual(r0, r1, l1, l0){
+  const c = correctedLoss(r0, r1, l1, l0);
+  return { on1: Math.abs((1 - r1) * c.L1 + r1 * c.L0 - l1),
+           on0: Math.abs(r0 * c.L1 + (1 - r0) * c.L0 - l0) };
+}
+function correctionStudy(cfg){
+  const law = cfg.law, rows = [];
+  const rhos = [0, law.rhoMax / 4, law.rhoMax / 2, law.rhoMax * 0.75, law.rhoMax];
+  const f = worldOf(law, 0, 0).fStar;                   // one fixed classifier, scored everywhere
+  // For symmetric rho the corrected 0/1 loss is the EXACT affine map (raw - rho)/delta of the
+  // uncorrected one, so the ratio of sample standard deviations is 1/delta with no Monte Carlo error
+  // in it at all: this study needs replications for the bias, not for the sd ratio.
+  const R = Math.min(300, Math.max(60, Math.round(cfg.covReps / 4)));
+  for (let ri = 0; ri < rhos.length; ri++){
+    const rho = rhos[ri], w = worldOf(law, rho, rho), c = zeroOneCorrection(rho, rho);
+    const trueRisk = 1 - accClean(law, w, f);
+    let sum = 0, sq = 0, neg = 0, rawSum = 0, rawSq = 0;
+    for (let r = 0; r < R; r++){
+      const s = sampleObserved(cfg.nTest, law, repSeed(31 + ri, r));
+      let est = 0, raw = 0;
+      for (let i = 0; i < s.n; i++){
+        const p = f[s.cell[i]], yt = s.yTilde[i];
+        raw += p === yt ? 0 : 1;
+        est += p === 1 ? (yt === 1 ? c.pred1.onYt1 : c.pred1.onYt0)
+                       : (yt === 1 ? c.pred0.onYt1 : c.pred0.onYt0);
+      }
+      est /= s.n; raw /= s.n;
+      sum += est; sq += est * est; rawSum += raw; rawSq += raw * raw;
+      if (est < 0) neg++;
+    }
+    const mean = sum / R, varc = sq / R - mean * mean;
+    const rmean = rawSum / R, varr = rawSq / R - rmean * rmean;
+    rows.push({ rho, delta: 1 - 2 * rho, trueRisk, corrected: mean, bias: mean - trueRisk,
+                naive: rmean, sdCorr: Math.sqrt(Math.max(0, varc)),
+                sdNaive: Math.sqrt(Math.max(0, varr)),
+                sdRatio: varr > 0 ? Math.sqrt(varc / varr) : NaN, sdRatioExact: 1 / (1 - 2 * rho),
+                rowsNeeded: 1 / ((1 - 2 * rho) * (1 - 2 * rho)), negFrac: neg / R, R });
+  }
+  return { rows, f };
+}
+// A corrected 0/1 risk is a mean of values outside [0,1], so it can come out negative. Measured
+// against the normal approximation Phi(-risk / sd) so the count has a prediction to miss.
+function negativeRiskStudy(cfg){
+  const law = cfg.law, rho = law.rhoMax, w = worldOf(law, rho, rho);
+  const c = zeroOneCorrection(rho, rho), f = worldOf(law, 0, 0).fStar;
+  const trueRisk = 1 - accClean(law, w, f), pN = 1 - accNoisy(law, f);
+  const R = Math.min(600, Math.max(200, cfg.covReps)), rows = [];
+  for (const nT of [200, 500, 2000]){
+    let neg = 0, sum = 0, sq = 0;
+    for (let r = 0; r < R; r++){
+      const s = sampleObserved(nT, law, repSeed(41 + (nT % 31), r));
+      let est = 0;
+      for (let i = 0; i < s.n; i++){
+        const p = f[s.cell[i]], yt = s.yTilde[i];
+        est += p === 1 ? (yt === 1 ? c.pred1.onYt1 : c.pred1.onYt0)
+                       : (yt === 1 ? c.pred0.onYt1 : c.pred0.onYt0);
+      }
+      est /= nT; sum += est; sq += est * est;
+      if (est < 0) neg++;
+    }
+    const mean = sum / R, sd = Math.sqrt(pN * (1 - pN) / nT) / c.delta;
+    rows.push({ nTest: nT, R, trueRisk, mean, sd,
+                sdMeasured: Math.sqrt(Math.max(0, sq / R - mean * mean)),
+                negMeasured: neg / R, negPredicted: normCdf(-trueRisk / sd) });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- sensitivity to the assumed rate
+function sensitivityStudy(cfg){
+  const law = cfg.law, rows = [], steps = 6;
+  for (let i = 0; i <= steps; i++){
+    const rho = law.rhoMax * i / steps, d = 1 - 2 * rho;
+    rows.push({ rho, delta: d, A: deconvolve(law.A0, rho), slope: (2 * law.A0 - 1) / (d * d),
+                inflation: 1 / (d * d), perPoint: 0.01 * (2 * law.A0 - 1) / (d * d),
+                ratio: ((2 * law.A0 - 1) / (d * d)) / (2 * law.A0 - 1) });
+  }
+  return { rows, A0: law.A0, Amax: law.Amax, width: law.setWidth };
+}
+
+// Confirm the closed-form maximum a second, independent way: brute force over the whole admissible
+// RECTANGLE rather than along its symmetric diagonal, checking eta in [0,1] cell by cell.
+function identifiedSetGrid(cfg, N0){
+  const law = cfg.law, N = N0 || 120;
+  let best = -1, bestAt = null, worst = 2, worstAt = null, pts = 0, outside = 0;
+  for (let i = 0; i <= N; i++) for (let j = 0; j <= N; j++){
+    const r0 = law.rho0Max * i / N, r1 = law.rho1Max * j / N;
+    if (r0 + r1 >= 1) continue;
+    const w = worldOf(law, r0, r1);
+    let ok = true;
+    for (let k = 0; k < law.K; k++) if (w.eta[k] < -1e-12 || w.eta[k] > 1 + 1e-12) ok = false;
+    if (!ok){ outside++; continue; }
+    pts++;
+    if (w.bayesClean > best){ best = w.bayesClean; bestAt = [r0, r1]; }
+    if (w.bayesClean < worst){ worst = w.bayesClean; worstAt = [r0, r1]; }
+  }
+  return { pts, outside, best, bestAt, worst, worstAt, closedForm: law.Amax, A0: law.A0,
+           gapBest: Math.abs(best - law.Amax), gapWorst: Math.abs(worst - law.A0) };
+}
+// One step OUTSIDE the rectangle has to break the model, or the rectangle is not the boundary.
+function boundaryProbe(cfg, eps){
+  const law = cfg.law, e = eps || 1e-3;
+  const over0 = worldOf(law, law.rho0Max + e, 0), over1 = worldOf(law, 0, law.rho1Max + e);
+  let bad0 = false, bad1 = false;
+  for (let k = 0; k < law.K; k++){
+    if (over0.eta[k] < 0) bad0 = true;
+    if (over1.eta[k] > 1) bad1 = true;
+  }
+  return { negativeEta: bad0, etaAboveOne: bad1,
+           admissible0: over0.admissible, admissible1: over1.admissible,
+           minEta: Math.min.apply(null, Array.from(over0.eta)),
+           maxEta: Math.max.apply(null, Array.from(over1.eta)) };
+}
+
+// ---------------------------------------------------------------- anchor points
+// rho0 <= min(q), so the estimator everyone reaches for is the smallest fitted score. It is
+// consistent, and its finite-sample error has a DIRECTION the page measures rather than assumes.
+function anchorStudy(cfg){
+  const law = cfg.law, rows = [];
+  for (const n of [200, 2000, 20000, 200000]){
+    const R = n >= 100000 ? 12 : Math.max(20, Math.min(cfg.seeds, 40));
+    let sum = 0, sumHi = 0, below = 0, wsum = 0;
+    for (let r = 0; r < R; r++){
+      const s = sampleObserved(n, law, repSeed(51 + (n % 89), r));
+      const fit = fitCells(s, law);
+      let mn = 1, mx = 0;
+      for (let k = 0; k < law.K; k++){
+        if (fit.qHat[k] < mn) mn = fit.qHat[k];
+        if (fit.qHat[k] > mx) mx = fit.qHat[k];
+      }
+      sum += mn; sumHi += 1 - mx;
+      if (mn < law.qLo) below++;
+      const rm = Math.min(mn, 1 - mx);
+      wsum += rm * (2 * law.A0 - 1) / (1 - 2 * rm);
+    }
+    rows.push({ n, R, rho0Hat: sum / R, rho1Hat: sumHi / R, truth: law.rho0Max,
+                bias: sum / R - law.rho0Max, belowFrac: below / R,
+                widthHat: wsum / R, widthTrue: law.setWidth });
+  }
+  return { rows, truth: law.rhoMax, width: law.setWidth };
+}
+
+// Same cells, same masses, only the reach of the scores changes. A0 climbs and Amax does not move:
+// A0 = qLo + range*G and 1 - 2*qLo = range, so Amax = (A0 - qLo)/range = G with the range cancelled.
+function anchorContrast(cfg){
+  return [0.20, 0.35, 0.50, 0.70, 0.90, 0.98].map(range => {
+    const c = cfgOf(Object.assign({}, cfg, { range }));
+    return { range: c.law.qHi - c.law.qLo, qLo: c.law.qLo, qHi: c.law.qHi, rhoMax: c.law.rhoMax,
+             A0: c.law.A0, Amax: c.law.Amax, G: c.law.G, width: c.law.setWidth };
+  });
+}
+
+// ---------------------------------------------------------------- threshold shift and its price
+// The Bayes threshold on the observed score is (1 + rho0 - rho1)/2: symmetric noise leaves it at
+// 1/2 EXACTLY, asymmetric noise moves it, and thresholding at 1/2 is then wrong by an amount the
+// page also computes in closed form - the mass strictly between the two cuts, weighted by |2eta-1|.
+function thresholdStudy(cfg){
+  const law = cfg.law, fam = thresholdFamily(law);
+  return worldSpecs(cfg).map(w => {
+    const an = fam.map(f => accNoisy(law, f)), ac = fam.map(f => accClean(law, w, f));
+    let bn = 0, bc = 0;
+    for (let i = 1; i < fam.length; i++){ if (an[i] > an[bn]) bn = i; if (ac[i] > ac[bc]) bc = i; }
+    let massBetween = 0, closed = 0;
+    const lo = Math.min(bn, bc), hi = Math.max(bn, bc);
+    for (let k = lo; k < hi; k++){
+      massBetween += law.m[k];
+      closed += law.m[k] * Math.abs(1 - 2 * w.eta[k]);
+    }
+    return { name: w.name, rho0: w.rho0, rho1: w.rho1, tStar: w.tStar, jNoisy: bn, jClean: bc,
+             cutNoisy: bn < law.K ? law.q[bn] : 1, cutClean: bc < law.K ? law.q[bc] : 1,
+             cleanOfNoisy: ac[bn], cleanOfClean: ac[bc], regret: ac[bc] - ac[bn],
+             massBetween, closedRegret: closed, pi1: w.pi1, bayes: w.bayesClean, calGap: w.calGap };
+  });
+}
+// The regret is bounded by what lives between the two cuts, so it is small when the mass sits at
+// the ends and large when it does not. Sweeping the mass shape shows that directly.
+function thresholdSweep(cfg){
+  return [0, 0.25, 0.5, 0.75, 0.9, 1].map(bim => {
+    const c = cfgOf(Object.assign({}, cfg, { bim }));
+    const row = thresholdStudy(c)[3];
+    const iv = inversionStudy(c, worldSpecs(c)[3]);
+    return { bim, regret: row.regret, massBetween: row.massBetween, closedRegret: row.closedRegret,
+             cleanOfNoisy: row.cleanOfNoisy, cleanOfClean: row.cleanOfClean,
+             inversions: iv.inversions, pairs: iv.pairs, A0: c.law.A0, Amax: c.law.Amax };
+  });
+}
+
+// ---------------------------------------------------------------- more data makes it worse
+function sampleSizeStudy(cfg){
+  const law = cfg.law, wB = worldOf(law, law.rhoMax, law.rhoMax), rows = [];
+  const R = Math.min(300, Math.max(80, Math.round(cfg.covReps / 4)));
+  for (const n of [200, 800, 3200, 12800]){
+    let hitA = 0, hitB = 0, wsum = 0, asum = 0;
+    for (let r = 0; r < R; r++){
+      const tr = sampleObserved(Math.max(100, cfg.n), law, repSeed(61, r));
+      const te = sampleObserved(n, law, repSeed(62 + (n % 83), r));
+      const fit = fitCells(tr, law);
+      const ci = waldCi(accOnSample(te, fit.f), n);
+      wsum += ci.hi - ci.lo; asum += ci.a;
+      const tA = accNoisy(law, fit.f), tB = accClean(law, wB, fit.f);
+      if (ci.lo <= tA && tA <= ci.hi) hitA++;
+      if (ci.lo <= tB && tB <= ci.hi) hitB++;
+    }
+    rows.push({ n, R, width: wsum / R, acc: asum / R, covA: hitA / R, covB: hitB / R });
+  }
+  return rows;
+}
+
+// A guard for the lesson of Day 69, run rather than assumed: an arithmetic seed stride broke the
+// Gaussian sampler there. This sampler is Bernoulli, so the page measures both streams and reports
+// what it finds instead of repeating the warning.
+function seedGuard(cfg){
+  const law = cfg.law, R = Math.min(cfg.covReps, 300);   // its own budget: it is a guard, not a result
+  const run = mk => {
+    let hit = 0;
+    for (let r = 0; r < R; r++){
+      const tr = sampleObserved(cfg.n, law, mk(r, 0));
+      const te = sampleObserved(cfg.nTest, law, mk(r, 1));
+      const fit = fitCells(tr, law);
+      const ci = waldCi(accOnSample(te, fit.f), cfg.nTest);
+      const t = accNoisy(law, fit.f);
+      if (ci.lo <= t && t <= ci.hi) hit++;
+    }
+    return hit / R;
+  };
+  return { hashed: run((r, s) => repSeed(71 + s, r)),
+           stride: run((r, s) => (44000 + s * 131 + r * 7907) >>> 0), R };
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- UI
+const $ = id => document.getElementById(id);
+function cfgFromUI(){
+  return cfgOf({
+    range: +$("sRange").value / 100,
+    bim:   +$("sBim").value / 100,
+    K:     +$("sK").value,
+    n:     +$("sN").value,
+    nTest: +$("sNT").value,
+    seeds: +$("sS").value,
+    covReps: +$("sR").value
+  });
+}
+function fmt(v, d){
+  return (v === undefined || v === null || !isFinite(v)) ? "&mdash;" : v.toFixed(d === undefined ? 4 : d);
+}
+const pct = v => (100 * v).toFixed(1) + "%";
+const yes = "<span class='ok'>yes</span>", no = "<span class='bad'>no</span>";
+const sci = v => v === 0 ? "0" : v.toExponential(1);
+// Thousands separators must not follow the reader's locale: 200000 is 200,000 on every page.
+const grp = v => String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+function render(){
+  const c = cfgFromUI(), law = c.law;
+  $("vRange").textContent = c.range.toFixed(2);
+  $("vBim").textContent   = c.bim.toFixed(2);
+  $("vK").textContent     = c.K;
+  $("vN").textContent     = c.n;
+  $("vNT").textContent    = c.nTest;
+  $("vS").textContent     = c.seeds;
+  $("vR").textContent     = c.covReps;
+  $("wQlo").textContent   = fmt(law.rho0Max, 3);
+  $("wQhi").textContent   = fmt(law.rho1Max, 3);
+  $("covWord").textContent = c.covReps;
+  $("seedWord").textContent = c.seeds;
+  $("clsCount").textContent = law.K <= 12 ? (1 << law.K) : law.K + 1;
+  $("clsK").textContent = law.K;
+
+  // ---- worlds + coverage
+  const cov = coverageStudy(c);
+  $("rowsWorlds").innerHTML = cov.specs.map(function(w, i){
+    const covers = Math.abs(cov.coverage[i]) > 0.5;
+    const cls = w.rho0 === w.rho1 ? "same" : "same2";
+    return "<tr class='" + (i === 0 ? "same3" : cls) + "'><td>" + w.name + "</td>" +
+      "<td>" + fmt(w.rho0, 3) + "</td><td>" + fmt(w.rho1, 3) + "</td>" +
+      "<td>" + fmt(w.pi1) + "</td><td><strong>" + fmt(w.bayesClean) + "</strong></td>" +
+      "<td>" + fmt(cov.accMean) + "</td>" +
+      "<td>&plusmn;" + fmt(cov.width / 2, 4) + "</td>" +
+      "<td><strong>" + fmt(cov.truth[i]) + "</strong></td>" +
+      "<td>" + (covers ? yes : no) + "</td>" +
+      "<td>" + pct(cov.coverage[i]) + "</td><td>" + pct(cov.wilson[i]) + "</td>" +
+      "<td class='dim'>" + pct(cov.predicted[i]) + "</td></tr>";
+  }).join("");
+
+  $("headline").innerHTML =
+    "The measured accuracy is <strong>" + fmt(cov.accMean) + "</strong> in every row because every " +
+    "row is the same data. The true Bayes accuracy runs from <strong>" + fmt(law.A0) +
+    "</strong> to <strong>" + fmt(law.Amax) + "</strong> &mdash; a set <strong>" +
+    fmt(law.setWidth) + "</strong> wide &mdash; and the same 95% interval covers this model's true " +
+    "accuracy <strong>" + pct(cov.coverage[0]) + "</strong> of the time in the clean world and " +
+    "<strong>" + pct(cov.coverage[2]) + "</strong> at the bound. It is the identical interval in " +
+    "both rows; what changed is the quantity it was asked about. True prevalence is unidentified " +
+    "too: <strong>" + fmt(cov.specs[3].pi1, 3) + "</strong> to <strong>" +
+    fmt(cov.specs[4].pi1, 3) + "</strong> from a dataset whose recorded base rate is exactly " +
+    fmt(law.Q, 3) + ".";
+
+  // ---- diagnostics audit
+  const aud = diagAudit(c);
+  const b = aud.base;
+  $("rowsDiag").innerHTML = aud.rows.map(function(r, i){
+    return "<tr class='" + (i === 0 ? "same3" : (r.rho0 === r.rho1 ? "same" : "same2")) + "'>" +
+      "<td>" + r.name + "</td><td>" + fmt(b.acc) + "</td><td>" + fmt(b.logloss) + "</td>" +
+      "<td>" + fmt(b.brier) + "</td><td>" + fmt(b.auc) + "</td><td>" + fmt(b.ece) + "</td>" +
+      "<td>" + fmt(b.cv) + "</td><td>" + fmt(b.posRate) + "</td><td class='dim'>|</td>" +
+      "<td><strong>" + fmt(r.truth) + "</strong></td><td>" + fmt(r.pi1) + "</td>" +
+      "<td>" + fmt(r.tStar) + "</td><td><strong>" + fmt(r.calGap) + "</strong></td></tr>";
+  }).join("");
+  $("diagNote").innerHTML =
+    "<strong>" + aud.comparisons + "</strong> comparisons over " + aud.worlds + " worlds &times; " +
+    aud.seeds + " seeds &times; " + (DIAG_KEYS.length + law.K) + " statistics: <strong class='" +
+    (aud.diffs === 0 ? "ok" : "bad") + "'>" + aud.diffs + "</strong> differences. Each world also " +
+    "rebuilds the observed law it came from, &rho;&#8320; + &delta;&eta;<sub>k</sub> against " +
+    "q<sub>k</sub>, worst residual <strong>" + sci(aud.worstRebuild) + "</strong>.";
+  $("calFlag").innerHTML =
+    "Expected calibration error against the recorded labels is <strong>" + fmt(b.ece) +
+    "</strong> &mdash; the reliability diagram is flat, which is what a well-fitted model looks " +
+    "like. Against the labels you wanted, the same model is off by <strong>" +
+    fmt(aud.rows[2].calGap) + "</strong> on average at the bound, and the gap has the closed form " +
+    "&rho;(1&minus;2q)/(1&minus;2&rho;), which is 0 at q = &frac12; and changes sign either side. " +
+    "Label noise shrinks every probability towards a half, and a calibration curve fitted on the " +
+    "shrunk labels cannot see it.";
+
+  // ---- score-range invariance
+  const ac = anchorContrast(c);
+  $("rowsAnchor").innerHTML = ac.map(function(r){
+    return "<tr><td>" + fmt(r.range, 2) + "</td><td>" + fmt(r.qLo, 3) + "</td><td>" + fmt(r.qHi, 3) +
+      "</td><td>" + fmt(r.rhoMax, 3) + "</td><td>" + fmt(r.A0) + "</td>" +
+      "<td class='same'><strong>" + r.Amax.toFixed(12) + "</strong></td>" +
+      "<td>" + fmt(r.width) + "</td><td>" + fmt(r.width / ac[ac.length - 1].width, 1) + "&times;</td></tr>";
+  }).join("");
+  let spread = 0;
+  ac.forEach(r => { spread = Math.max(spread, Math.abs(r.Amax - ac[0].Amax)); });
+  $("anchorFlag").innerHTML =
+    "The measurable ceiling moves from <strong>" + fmt(ac[0].A0) + "</strong> to <strong>" +
+    fmt(ac[ac.length - 1].A0) + "</strong> across those rows. The true ceiling does not move at " +
+    "all: every value in the highlighted column is <strong>" + ac[0].Amax.toFixed(15) +
+    "</strong>, agreeing to <strong>" + sci(spread) + "</strong>. It equals " +
+    "&sum;m<sub>k</sub>max(g<sub>k</sub>, 1&minus;g<sub>k</sub>) = <strong>" + fmt(law.G, 6) +
+    "</strong>, which is what this same law would have measured with its scores stretched over the " +
+    "whole of [0,1] &mdash; and the un-squeezed law <em>is</em> the extreme admissible world, so " +
+    "there was never anywhere else for that number to come from. Better separation does not raise " +
+    "the ceiling on what could be true; it lowers the ceiling on how wrong you could be.";
+
+  // ---- anchor-point estimator
+  const an = anchorStudy(c);
+  $("rowsAnchorEst").innerHTML = an.rows.map(function(r){
+    return "<tr><td>" + grp(r.n) + "</td><td>" + fmt(r.rho0Hat) + "</td>" +
+      "<td>" + fmt(r.truth) + "</td><td class='" + (r.bias < -0.005 ? "bad" : "") + "'>" +
+      fmt(r.bias) + "</td><td>" + pct(r.belowFrac) + "</td><td>" + fmt(r.widthHat) + "</td>" +
+      "<td>" + fmt(r.widthTrue) + "</td><td>" + fmt(r.widthHat / r.widthTrue, 3) + "</td></tr>";
+  }).join("");
+  const a0 = an.rows[0], aL = an.rows[an.rows.length - 1];
+  $("anchorEstFlag").innerHTML =
+    "The error has a direction, and it is the unhelpful one. At " + grp(a0.n) +
+    " rows the smallest fitted score is <strong>" + fmt(a0.rho0Hat) + "</strong> against a true " +
+    "bound of <strong>" + fmt(a0.truth) + "</strong>, below it in <strong>" + pct(a0.belowFrac) +
+    "</strong> of runs, so the identified set you would report is <strong>" + fmt(a0.widthHat) +
+    "</strong> wide where the truth is <strong>" + fmt(a0.widthTrue) + "</strong> &mdash; " +
+    "<strong>" + fmt(a0.widthTrue / Math.max(1e-9, a0.widthHat), 1) + "&times;</strong> too narrow. " +
+    "A minimum over K noisy rates is not the minimum of K true ones, and the sampling error points " +
+    "down, so the anchor-point diagnostic makes the problem look better identified than it is. It " +
+    "is consistent &mdash; at " + grp(aL.n) + " rows the bias is " + fmt(aL.bias) +
+    " &mdash; but consistency arrives exactly where you no longer needed it.";
+
+  // ---- inversions
+  const invRows = cov.specs.map(w => inversionStudy(c, w));
+  $("rowsInv").innerHTML = cov.specs.map(function(w, i){
+    const iv = invRows[i];
+    return "<tr class='" + (w.rho0 === w.rho1 ? "same" : "same2") + "'><td>" + w.name + "</td>" +
+      "<td>" + iv.n + "</td><td>" + grp(iv.pairs) + "</td>" +
+      "<td class='" + (iv.inversions === 0 ? "ok" : "bad") + "'>" + grp(iv.inversions) + "</td>" +
+      "<td>" + (100 * iv.inversions / iv.pairs).toFixed(2) + "%</td>" +
+      "<td>" + fmt(iv.cleanOfNoisyPick) + "</td><td>" + fmt(iv.cleanOfCleanPick) + "</td>" +
+      "<td>" + fmt(iv.regret) + "</td>" +
+      "<td>" + (iv.worst ? fmt(iv.worst.gapClean) : "&mdash;") + "</td></tr>";
+  }).join("");
+  const ivA = invRows[3], wA = cov.specs[3];
+  const res = inversionResidual(law, wA, ivA.worst);
+  $("invFlag").innerHTML = ivA.worst
+    ? "Symmetric noise inverts <strong>0</strong> pairs out of " + grp(invRows[0].pairs) +
+      ", in every symmetric row, which is the algebra and not a lucky count. Asymmetric noise " +
+      "inverts <strong>" + grp(ivA.inversions) + "</strong>, and its worst pair is the " +
+      "whole argument in two numbers: the winner leads on measured accuracy by <strong>" +
+      fmt(ivA.worst.gapNoisy) + "</strong> (" + fmt(ivA.worst.nWin) + " against " +
+      fmt(ivA.worst.nLose) + ") while being <strong>" + fmt(ivA.worst.gapClean) +
+      "</strong> worse in truth (" + fmt(ivA.worst.cWin) + " against " + fmt(ivA.worst.cLose) +
+      "). Its predicted positive rate is <strong>" + fmt(ivA.worst.pWin, 3) + "</strong> against " +
+      fmt(ivA.worst.pLose, 3) + " &mdash; it bought the lead by saying yes more often, which is " +
+      "exactly the (&rho;&#8320;&minus;&rho;&#8321;)&Delta;P(f{=}1) term, and the closed form " +
+      "reproduces the measured gap to <strong>" + sci(res) + "</strong>."
+    : "No inversion found at these settings.";
+
+  // ---- threshold
+  const thr = thresholdStudy(c);
+  $("rowsThr").innerHTML = thr.map(function(r, i){
+    return "<tr class='" + (r.rho0 === r.rho1 ? "same" : "same2") + "'><td>" + r.name + "</td>" +
+      "<td><strong>" + fmt(r.tStar) + "</strong></td><td>" + fmt(r.cutNoisy, 3) + "</td>" +
+      "<td>" + fmt(r.cutClean, 3) + "</td><td>" + fmt(r.massBetween, 3) + "</td>" +
+      "<td>" + fmt(r.cleanOfNoisy) + "</td><td>" + fmt(r.cleanOfClean) + "</td>" +
+      "<td class='" + (r.regret > 1e-9 ? "warn" : "ok") + "'>" + fmt(r.regret, 5) + "</td>" +
+      "<td class='dim'>" + fmt(r.closedRegret, 5) + "</td></tr>";
+  }).join("");
+  const sw = thresholdSweep(c);
+  $("rowsThrSweep").innerHTML = sw.map(function(r){
+    return "<tr><td>" + fmt(r.bim, 2) + "</td><td>" + fmt(r.massBetween, 3) + "</td>" +
+      "<td><strong>" + fmt(r.regret, 5) + "</strong></td><td class='dim'>" + fmt(r.closedRegret, 5) +
+      "</td><td>" + grp(r.inversions) + "</td><td>" + fmt(r.A0) + "</td>" +
+      "<td>" + fmt(r.Amax) + "</td></tr>";
+  }).join("");
+
+  // ---- correction
+  const corr = correctionStudy(c);
+  const zc = zeroOneCorrection(law.rhoMax, law.rhoMax);
+  $("corrText").textContent =
+    "agree -> " + zc.pred1.onYt1.toFixed(3) + ",  disagree -> " + zc.pred1.onYt0.toFixed(3);
+  $("rowsCorr").innerHTML = corr.rows.map(function(r){
+    return "<tr><td>" + fmt(r.rho, 3) + "</td><td>" + fmt(r.delta, 3) + "</td>" +
+      "<td><strong>" + fmt(r.trueRisk) + "</strong></td><td>" + fmt(r.corrected) + "</td>" +
+      "<td class='" + (Math.abs(r.bias) < 0.01 ? "ok" : "bad") + "'>" + sci(r.bias) + "</td>" +
+      "<td class='dim'>" + fmt(r.naive) + "</td><td>" + fmt(r.sdRatio, 3) + "</td>" +
+      "<td class='dim'>" + fmt(r.sdRatioExact, 3) + "</td><td>" + fmt(r.rowsNeeded, 2) + "&times;</td>" +
+      "<td>" + pct(r.negFrac) + "</td></tr>";
+  }).join("");
+  const neg = negativeRiskStudy(c);
+  $("rowsNeg").innerHTML = neg.map(function(r){
+    return "<tr><td>" + grp(r.nTest) + "</td><td>" + fmt(r.trueRisk) + "</td>" +
+      "<td>" + fmt(r.mean) + "</td><td>" + fmt(r.sd) + "</td>" +
+      "<td><strong>" + pct(r.negMeasured) + "</strong></td>" +
+      "<td class='dim'>" + pct(r.negPredicted) + "</td></tr>";
+  }).join("");
+
+  const sens = sensitivityStudy(c);
+  $("rowsSens").innerHTML = sens.rows.map(function(r){
+    const eq = Math.abs(r.slope / (2 * law.A0 - 1) - r.inflation) < 1e-12;
+    return "<tr><td>" + fmt(r.rho, 4) + "</td><td>" + fmt(r.delta, 3) + "</td>" +
+      "<td><strong>" + fmt(r.A) + "</strong></td><td>" + fmt(r.slope, 4) + "</td>" +
+      "<td>" + fmt(r.perPoint, 4) + "</td><td>" + fmt(r.inflation, 4) + "</td>" +
+      "<td>" + (eq ? yes : no) + "</td></tr>";
+  }).join("");
+  const last = sens.rows[sens.rows.length - 1];
+  const grid = identifiedSetGrid(c, 60);
+  $("sensFlag").innerHTML =
+    "At the bound a one-point error in the assumed flip rate moves the inferred true accuracy by " +
+    "<strong>" + fmt(last.perPoint, 4) + "</strong>, because the sensitivity carries a factor of " +
+    "1/&delta;&sup2; = <strong>" + fmt(last.inflation, 3) + "</strong> &mdash; the identical factor " +
+    "by which the corrected loss inflates a standard error. The last column checks they are the " +
+    "same number and not merely similar. The maximum itself is confirmed a second way: a " +
+    (grid.pts + grid.outside) + "-point sweep of the whole admissible rectangle finds its best " +
+    "Bayes accuracy at (" + fmt(grid.bestAt[0], 3) + ", " + fmt(grid.bestAt[1], 3) + ") equal to " +
+    "<strong>" + fmt(grid.best, 6) + "</strong>, against the closed form's " + fmt(grid.closedForm, 6) +
+    " &mdash; a gap of <strong>" + sci(grid.gapBest) + "</strong>.";
+
+  // ---- sample size
+  const ss = sampleSizeStudy(c);
+  $("rowsSize").innerHTML = ss.map(function(r){
+    return "<tr><td>" + grp(r.n) + "</td><td>" + fmt(r.width) + "</td>" +
+      "<td>" + fmt(r.acc) + "</td><td class='ok'>" + pct(r.covA) + "</td>" +
+      "<td class='bad'>" + pct(r.covB) + "</td></tr>";
+  }).join("");
+  const guard = seedGuard(c);
+  $("sizeNote").innerHTML =
+    "The interval shrinks " + fmt(ss[0].width / ss[ss.length - 1].width, 1) + "&times; across the " +
+    "table while the left-hand coverage holds and the right-hand one stays at zero. " + ss[0].R +
+    " replications per row. Seed guard: hashed seeds give <strong>" + pct(guard.hashed) +
+    "</strong> and Day 69's broken arithmetic stride gives <strong>" + pct(guard.stride) +
+    "</strong> on this sampler &mdash; the artefact there was specific to Box&ndash;Muller " +
+    "consuming pairs of correlated uniforms, and a Bernoulli draw does not reproduce it.";
+  $("guardTxt").textContent = pct(guard.hashed) + " / " + pct(guard.stride);
+  $("rebuildTxt").textContent = sci(aud.worstRebuild);
+
+  // ---------------------------------------------------------------- self-test
+  const checks = [];
+  const T = (label, fn) => { let ok = false; try { ok = !!fn(); } catch (e) { ok = false; } checks.push({ label, ok }); };
+  const ida = identityAudit(c);
+  const bp = boundaryProbe(c);
+
+  T("cell masses sum to 1 and the cdf closes at 1", function(){
+    let s = 0; for (let k = 0; k < law.K; k++) s += law.m[k];
+    return Math.abs(s - 1) < 1e-12 && law.cdf[law.K - 1] === 1;
+  });
+  T("&eta; stays in [0,1] for every admissible world, and one step outside the rectangle breaks it",
+    function(){
+      for (const w of cov.specs) for (let k = 0; k < law.K; k++)
+        if (w.eta[k] < -1e-12 || w.eta[k] > 1 + 1e-12) return false;
+      return bp.negativeEta && bp.etaAboveOne && !bp.admissible0 && !bp.admissible1;
+    });
+  T("every world rebuilds its own observed law, &rho;&#8320;+&delta;&eta; vs q, within 1e-15 (not " +
+    "bit-equal &mdash; summation order, as on Day 68)",
+    function(){ return aud.worstRebuild < 1e-15; });
+  T("the affine identity holds over " + ida.affineChecks + " (world, classifier) pairs within 1e-14",
+    function(){ return ida.affineWorst < 1e-14; });
+  T("the symmetric deconvolution holds over " + ida.deconvChecks + " pairs within 1e-14",
+    function(){ return ida.deconvWorst < 1e-14; });
+  T("A<sub>max</sub> = &sum;m&middot;max(g, 1&minus;g) and the set width has two agreeing forms",
+    function(){
+      return Math.abs(law.Amax - law.G) < 1e-12 &&
+             Math.abs(law.setWidth - law.setWidthAlt) < 1e-14 &&
+             Math.abs(law.setWidth - (law.Amax - law.A0)) < 1e-14;
+    });
+  T("A<sub>max</sub> is invariant across six score ranges to 1e-12, and A&#8320; is not",
+    function(){
+      let sp = 0, mv = 0;
+      ac.forEach(r => { sp = Math.max(sp, Math.abs(r.Amax - ac[0].Amax)); mv = Math.max(mv, Math.abs(r.A0 - ac[0].A0)); });
+      return sp < 1e-12 && mv > 0.3;
+    });
+  T("all the mass on the two end cells makes the true ceiling exactly 1", function(){
+    return Math.abs(cfgOf(Object.assign({}, c, { bim: 1 })).law.Amax - 1) < 1e-12;
+  });
+  T("the Bayes threshold is 0.5 exactly when &rho;&#8320; = &rho;&#8321;, and moves otherwise",
+    function(){
+      return cov.specs.every(w => (w.rho0 === w.rho1) === (w.tStar === 0.5)) &&
+             Math.abs(thr[3].tStar - (1 + thr[3].rho0 - thr[3].rho1) / 2) < 1e-15;
+    });
+  T("the true-label calibration gap is 0 in the clean world and positive in every other",
+    function(){
+      return cov.specs[0].calGap === 0 && cov.specs.slice(1).every(w => w.calGap > 0.01);
+    });
+  T("symmetric noise inverts exactly 0 of " + grp(invRows[0].pairs) + " pairs; " +
+    "asymmetric noise inverts thousands",
+    function(){
+      const sym = invRows.filter(function(v, i){ return cov.specs[i].rho0 === cov.specs[i].rho1; });
+      const asy = invRows.filter(function(v, i){ return cov.specs[i].rho0 !== cov.specs[i].rho1; });
+      return sym.every(v => v.inversions === 0) && asy.every(v => v.inversions > 0);
+    });
+  T("the worst inversion's measured gap matches &delta;&Delta;acc + (&rho;&#8320;&minus;&rho;&#8321;)&Delta;P within 1e-14",
+    function(){ return ivA.worst && inversionResidual(law, wA, ivA.worst) < 1e-14; });
+  T("the threshold regret equals its closed form &sum;m|1&minus;2&eta;| over the switching cells",
+    function(){ return thr.every(r => Math.abs(r.regret - r.closedRegret) < 1e-14); });
+  T("threshold regret falls monotonically as mass moves to the ends, reaching exactly 0",
+    function(){
+      for (let i = 1; i < sw.length; i++) if (sw[i].regret > sw[i - 1].regret + 1e-14) return false;
+      return sw[sw.length - 1].regret === 0;
+    });
+  T(aud.comparisons + " observed-data comparisons across " + aud.worlds + " worlds and " +
+    aud.seeds + " seeds: 0 differences, and the sample objects are identical by <code>===</code>",
+    function(){ return aud.diffs === 0 && aud.sameObj; });
+  T("accClean in the clean world is <code>===</code> accNoisy on all " + cov.R + " replications " +
+    "(dividing by &delta; = 1 is exact)",
+    function(){ return cov.bitEqAll; });
+  T("coverage is nominal in the clean world and 0 at the bound, on the SAME intervals",
+    function(){
+      return Math.abs(cov.coverage[0] - 0.95) < 0.035 && cov.coverage[2] === 0 &&
+             cov.coverage[3] === 0 && cov.coverage[4] === 0;
+    });
+  T("Wilson agrees, so the 0% is not Wald's undercoverage",
+    function(){ return Math.abs(cov.wilson[0] - 0.95) < 0.035 && cov.wilson[2] === 0; });
+  T("predicted coverage in the clean world is 0.95 to 1.4e-7 &mdash; d = 0 exactly, and the residual " +
+    "is the rational erf's own 1.5e-7 accuracy, not the study's &mdash; and exactly 0 at the bound",
+    function(){ return Math.abs(cov.predicted[0] - 0.95) < 1e-6 && cov.predicted[2] === 0; });
+  T("prevalence is unidentified: the same recorded base rate " + fmt(law.Q, 3) + " admits " +
+    fmt(cov.specs[3].pi1, 3) + " and " + fmt(cov.specs[4].pi1, 3),
+    function(){
+      return Math.abs(cov.specs[3].pi1 - cov.specs[4].pi1) > 0.2 &&
+             Math.abs(cov.specs[0].pi1 - law.Q) < 1e-12;
+    });
+  T("the corrected loss is unbiased by construction: E[L&#771;|y] = l(t,y) exactly on a grid",
+    function(){
+      for (const r0 of [0, 0.07, 0.19, 0.31]) for (const r1 of [0, 0.11, 0.23])
+        for (const l of [[0, 1], [1, 0], [0.3, 0.8]]){
+          const rr = correctionResidual(r0, r1, l[0], l[1]);
+          if (rr.on1 > 1e-12 || rr.on0 > 1e-12) return false;
+        }
+      return true;
+    });
+  T("the 0/1 correction has range exactly 1/&delta; in both branches, and rewards agreement negatively",
+    function(){
+      for (const t of [0.1, 0.5, 0.9]){
+        const r0 = law.rho0Max * t, r1 = law.rho1Max * (1 - t), z = zeroOneCorrection(r0, r1);
+        if (Math.abs(z.range1 - 1 / z.delta) > 1e-13) return false;
+        if (Math.abs(z.range0 - 1 / z.delta) > 1e-13) return false;
+        if (r1 > 0 && z.pred1.onYt1 >= 0) return false;
+        if (r0 > 0 && z.pred0.onYt0 >= 0) return false;
+      }
+      return true;
+    });
+  T("the measured sd ratio of the corrected risk is 1/&delta; to 1e-6, not approximately &mdash; " +
+    "for symmetric &rho; the corrected loss is the exact affine map (raw&minus;&rho;)/&delta;",
+    function(){ return corr.rows.every(r => Math.abs(r.sdRatio / r.sdRatioExact - 1) < 1e-6); });
+  T("the corrected risk is unbiased in the Monte Carlo too, |bias| &lt; 0.01 at every &rho;",
+    function(){ return corr.rows.every(r => Math.abs(r.bias) < 0.01); });
+  T("dA/d&rho; divided by (2A&#8320;&minus;1) is 1/&delta;&sup2; at every &rho; &mdash; the two " +
+    "prices are one number",
+    function(){
+      return sens.rows.every(r => Math.abs(r.slope / (2 * law.A0 - 1) - r.inflation) < 1e-12);
+    });
+  T("a negative corrected error rate happens as often as the normal approximation says",
+    function(){
+      return neg.every(r => Math.abs(r.negMeasured - r.negPredicted) < 0.06) &&
+             neg[0].negMeasured > 0.1 && neg[0].negMeasured > neg[2].negMeasured;
+    });
+  T("a " + (grid.pts + grid.outside) + "-point sweep of the whole rectangle finds the maximum at " +
+    "the corner, agreeing with the closed form to 1e-12",
+    function(){
+      return grid.gapBest < 1e-12 && grid.gapWorst < 1e-12 &&
+             Math.abs(grid.bestAt[0] - law.rho0Max) < 1e-9 &&
+             Math.abs(grid.bestAt[1] - law.rho1Max) < 1e-9;
+    });
+  T("the anchor-point estimator is biased DOWN in a small sample and consistent in a large one",
+    function(){
+      return an.rows[0].bias < -0.02 && an.rows[0].widthHat < an.rows[0].widthTrue &&
+             Math.abs(an.rows[an.rows.length - 1].bias) < 0.01;
+    });
+  T("more test data shrinks the interval and never rescues the coverage at the bound",
+    function(){
+      for (let i = 1; i < ss.length; i++) if (ss[i].width >= ss[i - 1].width) return false;
+      return ss.every(r => r.covB === 0) && ss.every(r => Math.abs(r.covA - 0.95) < 0.06);
+    });
+  T("hashed replication seeds give honest coverage, and the stride is reported rather than assumed",
+    function(){ return Math.abs(guard.hashed - 0.95) < 0.035 && isFinite(guard.stride); });
+  T("&Phi;&#8315;&sup1; inverts &Phi; to 1e-9", function(){
+    for (const p of [0.05, 0.25, 0.5, 0.9, 0.975])
+      if (Math.abs(normCdf(normInv(p)) - p) > 1e-9) return false;
+    return true;
+  });
+
+  const passed = checks.filter(k => k.ok).length;
+  $("selftest").innerHTML =
+    "<p style='margin:0 0 8px; font-weight:800' class='" + (passed === checks.length ? "ok" : "bad") +
+    "'>" + passed + " / " + checks.length + " checks passed</p><ul class='checks'>" +
+    checks.map(k => "<li>" + (k.ok ? "<span class='ok'>PASS</span>" : "<span class='bad'>FAIL</span>") +
+      " &nbsp;" + k.label + "</li>").join("") + "</ul>";
+}
+
+// A full render is a second or so of Monte Carlo, so slider drags are debounced rather than dropped.
+let pending = null;
+function scheduleRender(){
+  if (pending) clearTimeout(pending);
+  pending = setTimeout(function(){ pending = null; render(); }, 130);
+}
+["sRange", "sBim", "sK", "sN", "sNT", "sS", "sR"].forEach(function(id){
+  $(id).addEventListener("input", scheduleRender);
+});
+render();
+</script>
+</body>
+</html>
