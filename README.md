@@ -74,6 +74,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 68 — Missing data: MCAR, MAR, MNAR](https://dev48.infy.uk/ml/day68-missing-data.html) — `day68-missing-data.html`
 - [MachineLearningFromZero · Day 69 — Measurement error in a predictor](https://dev48.infy.uk/ml/day69-measurement-error.html) — `day69-measurement-error.html`
 - [MachineLearningFromZero · Day 70 — Label noise](https://dev48.infy.uk/ml/day70-label-noise.html) — `day70-label-noise.html`
+- [MachineLearningFromZero · Day 71 — Selection on the outcome](https://dev48.infy.uk/ml/day71-outcome-dependent-sampling.html) — `day71-outcome-dependent-sampling.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

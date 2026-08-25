@@ -1,0 +1,2222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero &middot; Day 71 &mdash; Selection on the outcome</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --ink:#0f172a; --ink2:#334155; --dim:#64748b; --dim2:#94a3b8;
+    --line:#e2e8f0; --bg:#f1f5f9; --bg2:#f8fafc; --white:#fff;
+    --sky:#0369a1; --amber:#fffbeb; --amberL:#f59e0b; --amberT:#78350f;
+    --blue:#eff6ff; --violet:#f5f3ff; --rose:#fff1f2; --green:#f0fdf4;
+  }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--bg2); color:var(--ink); line-height:1.6;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.92em;
+         background:#e8eef6; padding:1px 4px; border-radius:4px; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; line-height:1.55;
+        font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre code { background:none; padding:0; color:inherit; }
+  h1,h2,h3 { line-height:1.25; margin:0; }
+  p { margin:0 0 .85em; }
+  header.top { background:var(--white); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .wrap { max-width:1150px; margin:0 auto; padding:16px; }
+  @media (min-width:768px) { .wrap { padding:24px; } }
+  .kicker { font-size:11px; font-weight:800; letter-spacing:.16em; color:var(--sky);
+            margin:0 0 8px; text-transform:uppercase; }
+  h1.lede { font-size:17px; font-weight:800; margin-bottom:14px; }
+  @media (min-width:768px) { h1.lede { font-size:19px; } }
+  h1.lede em { font-style:italic; }
+  #tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  #tabs button { font:inherit; font-size:13px; font-weight:700; cursor:pointer;
+                 border:0; padding:8px 18px; border-radius:9px; background:var(--bg); color:var(--ink); }
+  #tabs button.tab-active { background:#0f172a; color:#fff; }
+  .panel { display:block; }
+  .panel.hidden { display:none; }
+  .sheet { min-height:calc(100vh - 78px); padding:16px; background:var(--bg); }
+  @media (min-width:768px) { .sheet { padding:32px; } }
+  .sheet.plain { background:var(--white); }
+  .sheet.soft  { background:var(--bg2); }
+  .col { max-width:1150px; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+  .col.narrow { max-width:760px; gap:22px; }
+  .card { background:var(--white); border-radius:16px; padding:20px;
+          box-shadow:0 1px 3px rgba(15,23,42,.09), 0 1px 2px rgba(15,23,42,.05); }
+  .ctl { display:grid; gap:6px 24px; grid-template-columns:1fr; }
+  @media (min-width:700px)  { .ctl { grid-template-columns:1fr 1fr; } }
+  @media (min-width:1000px) { .ctl { grid-template-columns:1fr 1fr 1fr; } }
+  .ctl label { font-size:13px; display:block; }
+  .ctl input[type=range] { width:100%; margin:2px 0 0; }
+  .ctl .val { float:right; font-weight:700; font-variant-numeric:tabular-nums; }
+  .eyebrow { font-size:11px; font-weight:800; letter-spacing:.09em; color:var(--dim);
+             margin:0 0 4px; text-transform:uppercase; }
+  .say { font-size:13.5px; color:var(--ink2); margin:0 0 12px; }
+  .tiny { font-size:12px; color:var(--dim); }
+  .scroll { overflow-x:auto; }
+  table.num { width:100%; border-collapse:collapse; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:var(--dim); text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; white-space:normal; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  .ok   { color:#166534; font-weight:800; }
+  .bad  { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim  { color:var(--dim2); }
+  .same  { background:var(--blue); }
+  .same2 { background:var(--violet); }
+  .same3 { background:var(--green); }
+  .flag { font-size:13.5px; margin:12px 0 0; padding:12px; border-radius:9px;
+          background:var(--amber); border-left:4px solid var(--amberL); color:var(--amberT); }
+  .flag.blue { background:var(--blue); border-left-color:#3b82f6; color:#1e3a8a; }
+  .flag.rose { background:var(--rose); border-left-color:#f43f5e; color:#881337; }
+  ul.checks { list-style:none; margin:0; padding:0; font-size:13px; color:var(--ink2); }
+  ul.checks li { padding:1px 0; }
+  .foot { border-top:1px solid var(--line); background:var(--white); }
+  .foot .wrap { font-size:12.5px; color:var(--dim); }
+  .foot a { color:var(--sky); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <p class="kicker">MachineLearningFromZero &middot; Day 71</p>
+    <h1 class="lede">
+      &#127919; Selection on the outcome &mdash; days 68 to 70 asked what a <em>column</em> was
+      hiding. This one asks why the <strong>row</strong> is in the file at all. Let
+      <code>s&#8321; = P(recorded | y=1)</code> and <code>s&#8320; = P(recorded | y=0)</code>; condition on
+      being recorded and the odds simply multiply, so
+      <code>logit q = logit &eta; + log &kappa;</code> with <code>&kappa; = s&#8321;/s&#8320;</code> &mdash; a
+      <strong>constant shift</strong>, identical in every cell. Then the part that breaks the arc:
+      Day 69 and Day 70 got their bounds out of &ldquo;this has to be a probability&rdquo;, and here
+      that constraint is <strong>vacuous</strong> &mdash; <code>expit</code> lands in <code>(0,1)</code>
+      whatever <code>&kappa;</code> is, so a sweep of <strong>20,001</strong> worlds across twelve
+      orders of magnitude rejects <strong>0</strong>. Nothing in the dataset bounds it. The bound has
+      to come from the <em>design</em>, and it does: <code>s &le; 1</code> gives
+      <code>f&pi;' &le; &pi; &le; 1 &minus; f(1&minus;&pi;')</code>, an interval of width exactly
+      <strong>1 &minus; f</strong> &mdash; one minus the <em>sampling fraction</em>, not the sample
+      size, and independent of the recorded base rate to <strong>0e+0</strong>. So one file, row for
+      row, supports a prevalence of 0.0250 or 0.9750; sensitivity, specificity, both likelihood
+      ratios and ROC-AUC come back identical to <strong>1.3e-15</strong> across every world while
+      precision reads <strong>0.6896</strong> and is truly <strong>0.1000</strong>; the fitted slope
+      is 2.2000 everywhere and the intercept moves by exactly <code>log &kappa;</code> to
+      <strong>1.3e-15</strong>; and the same 95% interval covers precision <strong>94.95%</strong> of
+      the time in one world and <strong>0.00%</strong> in the other four &mdash; a figure computed by
+      summing binomial probabilities, not simulated. Calibration is <em>perfect</em> on the sample
+      (ECE exactly 0) and off by 0.3067 in truth. You type a threshold of 0.20 and the machine runs
+      <strong>0.0123</strong>. Accuracy inverts <strong>9,930</strong> of 32,640 model pairs;
+      balanced accuracy inverts <strong>0</strong>, structurally. And selecting on a continuous
+      <code>y</code> attenuates the slope to <strong>0.4102</strong> while selecting on <code>x</code>
+      at the same standardised cut leaves it at <strong>1.0000</strong> &mdash; same retention rate,
+      same R&sup2;, and the sample with the <em>narrower</em> range is the unbiased one.
+      Pure vanilla JavaScript, one file, no build step.
+    </h1>
+    <div id="tabs">
+      <button data-tab="look" class="tab-active">&#128202; MEASURE</button>
+      <button data-tab="understand">&#129504; UNDERSTAND</button>
+      <button data-tab="build">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================================ MEASURE -->
+<section id="look" class="panel">
+  <div class="sheet">
+    <div class="col">
+
+      <div class="card">
+        <div class="ctl">
+          <label>separation of the observed law <code>a&#8321;</code>
+            <span class="val" id="vSep">2.20</span>
+            <input id="sSep" type="range" min="0.2" max="6" step="0.1" value="2.2"></label>
+          <label>recorded base rate shift <code>a&#8320;</code>
+            <span class="val" id="vBase">0.00</span>
+            <input id="sBase" type="range" min="-2" max="2" step="0.1" value="0"></label>
+          <label>cells K <span class="val" id="vK">8</span>
+            <input id="sK" type="range" min="2" max="12" step="1" value="8"></label>
+          <label>world on display <code>&kappa; = s&#8321;/s&#8320;</code>
+            <span class="val" id="vKap">20</span>
+            <input id="sKap" type="range" min="1.05" max="60" step="0.05" value="20"></label>
+          <label>decision threshold <span class="val" id="vThr">0.35</span>
+            <input id="sThr" type="range" min="0.05" max="0.95" step="0.01" value="0.35"></label>
+          <label>a false negative costs <span class="val" id="vCost">4</span>
+            <input id="sCost" type="range" min="1" max="20" step="1" value="4"></label>
+          <label>sampling fraction <code>f = n/N</code>
+            <span class="val" id="vFrac">0.05</span>
+            <input id="sFrac" type="range" min="0.01" max="1" step="0.01" value="0.05"></label>
+          <label>rows n <span class="val" id="vN">2000</span>
+            <input id="sN" type="range" min="200" max="8000" step="200" value="2000"></label>
+          <label>external prevalence sample <span class="val" id="vNE">400</span>
+            <input id="sNE" type="range" min="25" max="6400" step="25" value="400"></label>
+          <label>seeds averaged <span class="val" id="vS">25</span>
+            <input id="sS" type="range" min="4" max="60" step="1" value="25"></label>
+          <label>coverage replications <span class="val" id="vR">1000</span>
+            <input id="sR" type="range" min="200" max="4000" step="200" value="1000"></label>
+        </div>
+        <p class="tiny" style="margin-top:12px">
+          The feature is <strong>discrete</strong> &mdash; K cells, each with a mass and a recorded
+          positive rate &mdash; so every population quantity here is a finite sum and the ground
+          truth is arithmetic rather than simulation. The <strong>observed law is fixed</strong>: the
+          sampler is handed <code>(m<sub>S</sub>, q)</code> and there is no third argument. A
+          <em>world</em> is one number, <code>&kappa; = s&#8321;/s&#8320;</code>, which forces
+          <code>&eta;<sub>k</sub> = expit(logit q<sub>k</sub> &minus; log &kappa;)</code> and
+          <code>m<sub>k</sub> &prop; m<sub>S,k</sub> / (&kappa;&eta;<sub>k</sub> + 1 &minus; &eta;<sub>k</sub>)</code>.
+          The recorded base rate is <code id="wPiObs">0.500</code>; the design bound puts the true
+          prevalence in <code id="wBound">[0.025, 0.975]</code>, width
+          <strong id="wWidth">0.950</strong>. Coverage is over
+          <span id="covWord">1000</span> replications and everything else is averaged over
+          <span id="seedWord">25</span> seeds unless the row says otherwise.
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the worlds</p>
+        <p class="say" id="headline">&nbsp;</p>
+        <div class="scroll"><table class="num">
+          <thead><tr>
+            <th>world</th><th>&kappa;</th><th>s&#8321;</th><th>s&#8320;</th><th>true &pi;</th>
+            <th>Bayes acc</th><th>measured precision</th><th>&plusmn; half-width</th>
+            <th>true precision</th><th>covers?</th><th>measured cov</th><th>Wilson</th><th>exact cov</th>
+          </tr></thead>
+          <tbody id="rowsWorlds"></tbody>
+        </table></div>
+        <p class="flag" id="flagWorlds">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the file does not move</p>
+        <p class="say">Every world above was constructed, and then the sample was drawn with the
+          same seed. <code>sampleObserved(law, n, seed)</code> has no &kappa; parameter, so the
+          claim is not that the datasets are similar &mdash; it is that they are the same rows.</p>
+        <div class="scroll"><table class="num" id="tblIdentity"></table></div>
+        <p class="tiny" id="sayIdentity">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">what survives selection and what does not</p>
+        <p class="say" id="sayLedger">&nbsp;</p>
+        <div class="scroll"><table class="num">
+          <thead><tr><th>quantity</th><th>on the sample</th><th>in the population</th>
+            <th>difference</th><th>identified?</th><th>why</th></tr></thead>
+          <tbody id="rowsLedger"></tbody>
+        </table></div>
+        <p class="flag blue" id="flagLedger">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the constraint that does nothing, and the one that does</p>
+        <p class="say">Day 69 bounded <code>&lambda;</code> by <code>&lambda; &ge; R&sup2;</code> and
+          Day 70 bounded the flip rates by <code>&rho;&#8320; &le; min q</code>, both out of the single
+          requirement that a derived probability stay inside <code>[0,1]</code>. Run the same move
+          here.</p>
+        <div class="scroll"><table class="num" id="tblAdmit"></table></div>
+        <p class="say" style="margin-top:14px">So the identified set comes from the design instead.
+          <code>s&#8321; = f&pi;'/&pi; &le; 1</code> and <code>s&#8320; = f(1&minus;&pi;')/(1&minus;&pi;) &le; 1</code>:</p>
+        <div class="scroll"><table class="num">
+          <thead><tr><th>sampling fraction f</th><th>&pi; identified set</th><th>width</th>
+            <th>closed form 1 &minus; f</th><th>gap</th><th>&kappa; range</th></tr></thead>
+          <tbody id="rowsBound"></tbody>
+        </table></div>
+        <p class="flag" id="flagBound">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the coefficients</p>
+        <p class="say">One logistic fit on the recorded data, compared against the true coefficients
+          of every world. Nothing here is a Monte Carlo &mdash; both fits are IRLS run to
+          convergence on the exact cell counts.</p>
+        <div class="scroll"><table class="num">
+          <thead><tr><th>world</th><th>fitted &beta;&#8321;</th><th>true &beta;&#8321;</th><th>slope gap</th>
+            <th>fitted &minus; true &beta;&#8320;</th><th>log &kappa;</th><th>gap</th></tr></thead>
+          <tbody id="rowsCoef"></tbody>
+        </table></div>
+        <p class="flag blue" id="flagCoef">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">calibration is at its best where it is most wrong</p>
+        <p class="say" id="sayCal">&nbsp;</p>
+        <div class="scroll"><table class="num">
+          <thead><tr><th>cell</th><th>recorded q</th><th>true &eta;</th><th>gap</th>
+            <th>sample mass</th><th>population mass</th></tr></thead>
+          <tbody id="rowsCal"></tbody>
+        </table></div>
+        <p class="flag rose" id="flagCal">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the threshold you typed and the threshold you got</p>
+        <p class="say">A false negative costs <span id="costWord">4</span> false positives, so the
+          decision that minimises true expected cost is <code>&eta; &gt; 1/(1+c)</code>. Applying that
+          number to the recorded probability instead is not an approximation of it &mdash; it is the
+          same rule run at a threshold shifted by <code>log &kappa;</code> on the logit scale.</p>
+        <div class="scroll"><table class="num">
+          <thead><tr><th>world</th><th>threshold typed</th><th>threshold in force</th>
+            <th>cells decided differently</th><th>predicted positive: naive / optimal</th>
+            <th>optimal cost</th><th>naive cost</th><th>regret</th><th>corrected regret</th></tr></thead>
+          <tbody id="rowsThr"></tbody>
+        </table></div>
+        <p class="flag" id="flagThr">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">picking a model on a selected sample</p>
+        <p class="say" id="saySel">&nbsp;</p>
+        <div class="scroll"><table class="num">
+          <thead><tr><th>&kappa;</th><th>accuracy inversions</th><th>F&#8321; inversions</th>
+            <th>balanced-accuracy inversions</th><th>exact ties skipped</th>
+            <th>balanced acc: |sample &minus; truth|</th><th>top-10 shortlist regret</th></tr></thead>
+          <tbody id="rowsSel"></tbody>
+        </table></div>
+        <p class="flag rose" id="flagSel">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">why accuracy moves at all, and the threshold where it does not</p>
+        <p class="say">Accuracy is <code>spec + &pi;(sens &minus; spec)</code>, so the gap between the
+          two accuracies is <code>(&pi;' &minus; &pi;)(sens &minus; spec)</code> and nothing else. It is
+          zero exactly when sensitivity equals specificity &mdash; which the tidiest possible
+          configuration satisfies by accident.</p>
+        <div class="scroll"><table class="num">
+          <thead><tr><th>threshold</th><th>sens</th><th>spec</th><th>sens &minus; spec</th>
+            <th>sample accuracy</th><th>true accuracy</th><th>gap</th>
+            <th>(&pi;'&minus;&pi;)(sens&minus;spec)</th><th>error</th></tr></thead>
+          <tbody id="rowsKnife"></tbody>
+        </table></div>
+        <p class="flag" id="flagKnife">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the correction, and what it costs</p>
+        <p class="say" id="sayCorr">&nbsp;</p>
+        <div class="scroll"><table class="num">
+          <thead><tr><th>external prevalence sample</th><th>RMSE of corrected precision</th>
+            <th>bias</th><th>naive error &divide; RMSE</th><th>replications</th></tr></thead>
+          <tbody id="rowsCorr"></tbody>
+        </table></div>
+        <p class="flag blue" id="flagCorr">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">and now the case for doing it on purpose</p>
+        <p class="say">Outcome-dependent sampling is usually a design, not an accident. The
+          information about a slope lives in the minority class, so for the same total n a balanced
+          case-control draw beats a random one &mdash; and it breaks exactly one thing, the
+          intercept, which is the one thing an external prevalence figure can restore.</p>
+        <div class="scroll"><table class="num">
+          <thead><tr><th>&kappa;</th><th>true &pi;</th><th>expected positives in a random draw</th>
+            <th>sd(&beta;&#8321;) random</th><th>sd(&beta;&#8321;) balanced</th><th>ratio</th>
+            <th>bias random</th><th>bias balanced</th></tr></thead>
+          <tbody id="rowsEff"></tbody>
+        </table></div>
+        <p class="flag" id="flagEff">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the same mechanism without logits</p>
+        <p class="say">Latent <code>x ~ N(0,1)</code>, <code>y = bx + &sigma;e</code>, and the row is
+          kept only when <code>y &gt; cut</code>. The truncated bivariate normal has elementary
+          moments, so the OLS slope on what survives is a closed form:
+          <code>b(1&minus;&delta;)/(1&minus;&rho;&sup2;&delta;)</code> with
+          <code>&delta; = &lambda;(&lambda;&minus;&alpha;)</code>. Truncating on <code>x</code> at the same
+          <em>standardised</em> cut is the control &mdash; and it is an exact control, because
+          substituting <code>&delta;<sub>x</sub> = &delta;</code> reproduces the y-truncated
+          R&sup2; identically.</p>
+        <div class="scroll"><table class="num">
+          <thead><tr><th>cut on y</th><th>kept</th><th>matched cut on x</th><th>kept</th>
+            <th>slope, y-truncated</th><th>slope, x-truncated</th><th>R&sup2; both</th>
+            <th>Var(x) y-trunc</th><th>Var(x) x-trunc</th></tr></thead>
+          <tbody id="rowsTrunc"></tbody>
+        </table></div>
+        <p class="tiny" id="sayTrunc" style="margin-top:10px">&nbsp;</p>
+        <p class="flag rose" id="flagTrunc">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">scale, seeds and the number I nearly reported</p>
+        <div class="scroll"><table class="num" id="tblScale"></table></div>
+        <p class="flag" id="flagGuard">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">in-page checks</p>
+        <div id="selftest"></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ UNDERSTAND -->
+<section id="understand" class="panel hidden">
+  <div class="sheet plain">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">Why is this row in the file?</h2>
+
+      <p>Three days of this series have been about what a column is hiding. Day 68 asked what the
+      blank cells were doing, Day 69 treated a predictor as a recording of something else, Day 70
+      did the same to the target. Each time the question was: given that this row exists, how much
+      of what it says can I trust?</p>
+
+      <p>This is the level above. A row is in your file because something put it there &mdash; a
+      claim was filed, a test was ordered, a customer complained, a case was reviewed, a patient
+      presented. If the thing that put it there also depends on the outcome you are trying to
+      predict, then your sample is not a shrunken copy of the population. It is a different
+      population, and it differs in exactly one way that is worth knowing precisely.</p>
+
+      <p>Write <code>s&#8321; = P(recorded | y=1)</code> and <code>s&#8320; = P(recorded | y=0)</code>.
+      Selection is allowed to look at <code>y</code> and nothing else &mdash; not at <code>x</code>,
+      not at anything unobserved. That is a real restriction and it is what makes the whole page
+      exact. Condition on being recorded, in a cell where the true positive rate is
+      <code>&eta;</code>:</p>
+
+      <pre><code>P(y=1 | cell, recorded)     m &eta; s&#8321;             q            &eta;
+------------------------ = ---------------  =&gt;  ----- = &kappa; -------
+P(y=0 | cell, recorded)     m (1-&eta;) s&#8320;         1-q          1-&eta;
+
+                logit q = logit &eta; + log &kappa;,    &kappa; = s&#8321;/s&#8320;</code></pre>
+
+      <p>The cell mass cancels. The result does not depend on which cell you are in. Selection on
+      the outcome adds one constant to every log-odds and does nothing else at all &mdash; and the
+      rest of this page is what falls out of that single sentence.</p>
+
+      <h3 style="font-size:19px; font-weight:800">The bound that is not there</h3>
+
+      <p>Day 69 and Day 70 both got a real bound out of a very cheap fact. Invert the observed law
+      to recover the truth, insist that the recovered quantity is a legal probability or a legal
+      variance, and the inequality writes itself. Day 69 got <code>&lambda; &ge; R&sup2;</code>, the
+      Frisch bound. Day 70 got <code>&rho;&#8320; &le; min q</code> and
+      <code>&rho;&#8321; &le; 1 &minus; max q</code>.</p>
+
+      <p>Run the move here and it produces nothing. The inverse is
+      <code>&eta; = expit(logit q &minus; log &kappa;)</code>, and <code>expit</code> maps the entire
+      real line into <code>(0,1)</code>. Every <code>&kappa;</code> in
+      <code>(0, &infin;)</code> gives legal probabilities. The population masses,
+      <code>m &prop; m<sub>S</sub>/(&kappa;&eta; + 1 &minus; &eta;)</code>, are positive for every
+      <code>&kappa;</code> too. The page sweeps twelve orders of magnitude and rejects nothing,
+      because there is nothing to reject.</p>
+
+      <p>This is worth sitting with, because it is a sharper failure than the two before it. On
+      Day 69 a strong fit bought you a tight identified set. On Day 70 a confident model bought you
+      one. Here <em>no property of the data buys you anything</em>. The recorded base rate is
+      compatible with every prevalence in <code>(0,1)</code>, and no amount of extra rows, extra
+      features or better separation changes that by a hair.</p>
+
+      <h3 style="font-size:19px; font-weight:800">One minus the sampling fraction</h3>
+
+      <p>What does bound it is a fact about the study rather than about the data. If the sample is
+      a fraction <code>f = n/N</code> of the population, then the two selection probabilities are
+      pinned to the prevalence:</p>
+
+      <pre><code>s&#8321; = f&pi;'/&pi;         s&#8320; = f(1-&pi;')/(1-&pi;)
+
+s&#8321; &le; 1   =&gt;   &pi; &ge; f&pi;'
+s&#8320; &le; 1   =&gt;   &pi; &le; 1 - f(1-&pi;')
+
+width = 1 - f&pi;' - f(1-&pi;') = 1 - f</code></pre>
+
+      <p>The recorded base rate cancels out of the width completely. A hundred thousand rows drawn
+      from a hundred million pin the prevalence to within 0.999 &mdash; the same interval you would
+      get from a hundred rows out of a hundred thousand. It is not the sample size that identifies
+      anything, it is the fraction. This is why a case-control study reports odds ratios and stops:
+      the design deliberately throws away the only quantity that could have told you the prevalence,
+      and it does so on purpose, because that is what buys the precision.</p>
+
+      <h3 style="font-size:19px; font-weight:800">The half of your report that is still true</h3>
+
+      <p>Selection on the outcome does something very specific to the joint distribution. Positives
+      are kept with probability <code>s&#8321;</code> whatever their features, negatives with
+      <code>s&#8320;</code> whatever theirs. So within a class, the mix of features is untouched:</p>
+
+      <pre><code>p(x | y=1, recorded) = p(x | y=1)        p(x | y=0, recorded) = p(x | y=0)</code></pre>
+
+      <p>Everything built <em>only</em> out of those two conditionals is therefore exactly right on
+      a selected sample. Sensitivity. Specificity. Both likelihood ratios. The whole ROC curve and
+      its area. The slope of a logistic fit &mdash; because
+      <code>logit q = (&beta;&#8320; + log &kappa;) + &beta;&#8321;x</code> and the shift lands entirely on
+      the intercept. That last one is Prentice and Pyke's result, and it is the reason case-control
+      studies work at all.</p>
+
+      <p>Everything that mixes the two classes together is wrong, and wrong by a factor you cannot
+      estimate: prevalence, precision, negative predictive value, F&#8321;, lift, expected cost,
+      calibration, and accuracy. The page prints both blocks side by side. The invariant block
+      agrees to the last bit; the other block is off by up to 0.62.</p>
+
+      <h3 style="font-size:19px; font-weight:800">Calibration cannot see it</h3>
+
+      <p>The natural instinct is that a calibration plot would catch this. It cannot, and the reason
+      is structural rather than statistical: the model was fitted to the labels the sample
+      <em>has</em>. Its predicted probabilities match the observed frequencies because that is what
+      fitting means. Expected calibration error on the sample is not small, it is exactly zero.</p>
+
+      <p>Against the population the error is <code>q &minus; &eta;</code> in every cell, all of one
+      sign, and the largest it can ever be has a closed form. Maximise
+      <code>expit(u + a) &minus; expit(u)</code> over <code>u</code>: the derivative
+      <code>&sigma;'(u+a) = &sigma;'(u)</code> forces <code>u = &minus;a/2</code> by symmetry, and the
+      value there is <code>&sigma;(a/2) &minus; &sigma;(&minus;a/2) = tanh(a/4)</code>. So a
+      twentyfold oversampling of cases can push a single probability out by
+      <code>tanh(log 20 / 4) = 0.6345</code>, and the page finds that supremum twice &mdash; once from
+      the formula and once from a dense scan.</p>
+
+      <h3 style="font-size:19px; font-weight:800">The threshold in force</h3>
+
+      <p>The practical consequence is not that the probabilities are decorative. It is that they are
+      still <em>used</em>. Set a threshold <code>t</code> on the recorded probability and you have
+      set a different threshold on the truth:</p>
+
+      <pre><code>q &ge; t   &lt;=&gt;   &eta; &ge; expit(logit t - log &kappa;)</code></pre>
+
+      <p>At the default settings you type 0.20 and the machine runs 0.0123. That is not a mild
+      mis-tuning, it is a sixteenfold change in the odds you are willing to act on, and it survives
+      every review, because the number in the config file says 0.20. The cost is measured rather
+      than described: the naive rule spends 3.2 times the optimal cost, and it is not a fragile
+      configuration &mdash; the rules disagree on five of eight cells.</p>
+
+      <h3 style="font-size:19px; font-weight:800">What to actually do</h3>
+
+      <p>None of this argues against outcome-dependent sampling. The last table on the MEASURE tab
+      is the case for it: at a prevalence of 0.025 a balanced case-control draw estimates the slope
+      three times more precisely than a random draw of the same size, and the reason is simply that
+      a random draw of two thousand rows contains fifty positives. Deliberate selection on the
+      outcome is often the best design available.</p>
+
+      <p>What follows is narrower, and worth stating as rules:</p>
+
+      <ul style="font-size:14px; color:var(--ink2)">
+        <li><strong>Report sensitivity, specificity and AUC.</strong> They are exactly right and they
+          need no assumptions at all.</li>
+        <li><strong>Never report precision, F&#8321;, accuracy or a calibration curve</strong> from a
+          selected sample without an external prevalence. They are not noisy, they are answering a
+          different question.</li>
+        <li><strong>Rank models on balanced accuracy</strong>, not accuracy. The page shows the
+          difference is not academic: 9,930 of 32,640 pairs swap order under accuracy and zero swap
+          under balanced accuracy.</li>
+        <li><strong>The correction is one subtraction</strong>, <code>logit p &minus; log &kappa;</code>,
+          and it is exact once you know the prevalence. An external estimate from four hundred rows
+          already beats the uncorrected number by 29 times.</li>
+        <li><strong>Write down the sampling fraction.</strong> It is the only quantity that turns the
+          prevalence from unidentified into bounded, and it is usually knowable and rarely
+          recorded.</li>
+      </ul>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ BUILD -->
+<section id="build" class="panel hidden">
+  <div class="sheet soft">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">&#128296; How it is built</h2>
+
+      <h3 style="font-size:19px; font-weight:800">1. A discrete feature, so the truth is a sum</h3>
+      <p>The feature is K cells, each with a mass and a recorded positive rate. That single choice
+      removes every integral from the binary half of the page: prevalence, precision, Bayes
+      accuracy, expected cost and AUC are all finite sums, computed in exact arithmetic rather than
+      estimated from a held-out split. Nothing on the MEASURE tab is scored against a simulation
+      except the things that are explicitly Monte Carlo, and those are labelled.</p>
+
+      <h3 style="font-size:19px; font-weight:800">2. The sampler is not given a world</h3>
+      <p><code>sampleObserved(law, n, seed)</code> takes three arguments and none of them is
+      <code>&kappa;</code>. There is nowhere to put one. That is the structural version of the
+      claim, and the page still counts it rather than resting on it: eight seeds, four world pairs,
+      1,500 rows each, comparing the cell index and the label of every row. 48,000 comparisons, zero
+      differences, and twelve derived diagnostics compared per pair for good measure.</p>
+
+      <h3 style="font-size:19px; font-weight:800">3. A second, harder identity</h3>
+      <p>The stronger statement is the one about balanced draws. Because
+      <code>p(x|y)</code> is invariant, a case-control sample taken from world A and one taken from
+      world B are not merely similar &mdash; they are the same rows, drawn from class-conditional
+      distributions that agree to 2.2e-16. The page draws them from five genuinely different
+      populations and compares the fitted coefficients: identical, to zero. Two different worlds,
+      two different prevalences, one dataset.</p>
+
+      <h3 style="font-size:19px; font-weight:800">4. Where <code>===</code> is right and where it is not</h3>
+      <p>Row indices and labels are integers, so the identity audit uses <code>!==</code> and
+      expects an exact zero. Algebra does not get that treatment. Day 68 shipped a bit-equality
+      assertion on a true algebraic identity and it failed at 1.6e-15 purely on summation order, so
+      every identity here is checked with a tolerance and the tolerance is chosen against what the
+      arithmetic can deliver: 1e-12 for sums over cells, 1e-6 where the normal CDF is involved,
+      because the tail approximation in use is good to 1.2e-7 and no assertion should pretend
+      otherwise.</p>
+      <p>The model-selection counts needed the same care in reverse. Two rules whose balanced
+      accuracies are <em>equal</em> can still come out with opposite signs at 1e-16, and counting
+      those as inversions produced 22 phantom ones. The fix is a tie tolerance &mdash; and the number
+      of pairs it skips is printed, because a silent tolerance is exactly how a structural zero gets
+      manufactured.</p>
+
+      <h3 style="font-size:19px; font-weight:800">5. The whole hypothesis space, not a sample of it</h3>
+      <p>Model selection enumerates every rule in <code>{0,1}<sup>K</sup></code> &mdash; 256 of them
+      at the default K, and all 32,640 pairs &mdash; rather than fitting a handful of models and
+      hoping they are representative. The zero for balanced accuracy is then a statement about the
+      whole space, and the 9,930 for accuracy is a count rather than an estimate. The admissible
+      worlds get the same treatment: 20,001 values of <code>&kappa;</code> across twelve orders of
+      magnitude, every cell checked, rather than an argument that the constraint is vacuous.</p>
+
+      <h3 style="font-size:19px; font-weight:800">6. Two routes to every closed form</h3>
+      <p>The calibration supremum <code>tanh(a/4)</code> is derived and then found again by a
+      40,000-point scan. The matched x-truncation cut is derived algebraically and then found again
+      by bisection on the numerical R&sup2;, agreeing to 4.4e-16. The Mills ratio is computed from
+      the complementary error function and then again from its continued fraction, agreeing to
+      1.0e-7. When a number on this page has a formula, the formula is confirmed by something that
+      does not use it.</p>
+
+      <h3 style="font-size:19px; font-weight:800">7. A tail approximation that is fit for a tail</h3>
+      <p>The usual Abramowitz &amp; Stegun 7.1.26 rational bounds its <em>absolute</em> error at
+      1.5e-7, which is worthless when the quantity you want is a tail worth 1e-30 &mdash; and the
+      Mills ratio is a ratio of two tail quantities. The first version of the truncation module used
+      it and produced <code>&delta; &gt; 1</code>, hence a <em>negative</em> attenuation factor, at
+      cuts past about three standard deviations. Numerical Recipes' <code>erfcc</code> bounds the
+      <em>fractional</em> error at 1.2e-7 instead, and with it the two exponentials in
+      <code>&phi;(&alpha;)/(1&minus;&Phi;(&alpha;))</code> cancel exactly. An 8,000-point sweep of
+      <code>(b, &sigma;, cut)</code> now finds zero violations of
+      <code>&delta; &lt; 1</code>.</p>
+
+      <h3 style="font-size:19px; font-weight:800">8. Coverage against an exact number, not a bigger simulation</h3>
+      <p>The interval on the MEASURE tab is a Wald interval for precision, and conditional on
+      landing in the predicted-positive set a row is Bernoulli with a fixed probability, so the
+      count of true positives given the denominator is exactly Binomial. That means the coverage has
+      a closed form: sum the binomial pmf over both the denominator and the numerator. It comes to
+      <strong>94.950%</strong>.</p>
+      <p>This mattered. At 1,000 replications the simulation read 96.0%, which looks like a finding
+      about Wald intervals. At 2,000 it read 95.75%, at 4,000 95.88%. Against the exact 94.950% and
+      a standard error of 0.35 points that is a two-and-a-half sigma discrepancy, so the page ran
+      100,000 replications with three different seed streams. Sequential seeds gave 94.951%. The
+      multiplicative hash gave 95.041%. There was no artefact &mdash; the first 20,000 draws of that
+      particular hash stream were simply an unlucky stretch, and the whole thing was Monte Carlo
+      noise wearing a suit. The exact column is on the page permanently so the question cannot come
+      back.</p>
+
+      <h3 style="font-size:19px; font-weight:800">9. The seed guard, run against a known answer</h3>
+      <p>Day 69 measured a 99.2% coverage that turned out to be an arithmetic seed stride feeding
+      Box&ndash;Muller; Day 70 re-measured it for a uniform-only sampler and found it did not
+      reproduce. This page has both kinds of sampler, so it runs both streams through both, and it
+      can do something neither previous day could: compare them to an exact target rather than to
+      each other. Neither stream is distinguishable from the truth at the replication counts used,
+      and the numbers are printed rather than summarised, including the standard error, so a reader
+      can see how much the comparison is worth.</p>
+
+      <h3 style="font-size:19px; font-weight:800">10. Verification</h3>
+      <p>The block between <code>ENGINE:BEGIN</code> and <code>ENGINE:END</code> is DOM-free and is
+      extracted by regex and run under Node against assertions written independently of it: a
+      different generator (xorshift32 with the sine branch of Box&ndash;Muller against the page's
+      mulberry32 and cosine), a normal CDF by Simpson integration of the density against the page's
+      rational tail, binomial probabilities by a multiplicative recurrence against the page's
+      log-gamma, and &mdash; the one that matters &mdash; a <strong>forward selection simulator</strong>
+      that draws a row from the population and then accepts or rejects it with probability
+      <code>s&#8321;</code> or <code>s&#8320;</code>. The page never does that. It never draws a
+      population row at all; it starts from the recorded law. If the odds-multiplication argument
+      were wrong, the accepted sample from the forward simulator would not match the recorded law,
+      and that is the check.</p>
+
+      <h3 style="font-size:19px; font-weight:800">11. Things I got wrong</h3>
+      <p>Three, and the first one nearly shipped as a headline. The default configuration was a
+      symmetric observed law read at a threshold of 0.5, and in that configuration
+      <em>accuracy came back invariant</em> &mdash; sample and population agreeing to 1.1e-16, sitting
+      in a table of quantities that are genuinely invariant. It is not invariant. Accuracy is
+      <code>spec + &pi;(sens &minus; spec)</code>, and at that exact threshold the symmetric law makes
+      sensitivity equal specificity, so the prevalence weight has nothing to weight. Moving the
+      threshold one notch breaks it. The default threshold is now 0.35, and the coincidence has its
+      own table on the MEASURE tab, because a knife-edge that looks like a law is worth more than
+      the law would have been.</p>
+      <p>Second: the AUC was computed the wrong way round and read 0.176 for a model that separates
+      well. It was still perfectly invariant across worlds, which is the uncomfortable part &mdash;
+      an invariance check passes just as happily on a broken statistic. Third: the negative
+      attenuation factor described in section 7, which the sweep caught rather than the eye.</p>
+
+      <h3 style="font-size:19px; font-weight:800">12. What this is not</h3>
+      <p>Selection here is allowed to depend on <code>y</code> and only on <code>y</code>. That is
+      what makes <code>p(x|y)</code> invariant and everything else exact. If selection also depends
+      on <code>x</code> &mdash; if reviewers looked at the features before deciding what to file
+      &mdash; then the class-conditional distributions move too, sensitivity and AUC stop being
+      identified, and none of the reassuring half of this page survives. The continuous module is
+      the honest illustration: truncating on <code>y</code> and truncating on <code>x</code> are
+      genuinely different mechanisms, and the page shows they can produce the same retention rate
+      and the same R&sup2; while one leaves the slope alone and the other does not.</p>
+
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    MachineLearningFromZero &middot; Day 71 &middot; selection on the outcome &mdash; what a
+    recorded sample can and cannot tell you about the population it came from. One file, vanilla
+    JavaScript, no build step and no libraries. Previous:
+    <a href="day70-label-noise.html">Day 70 &mdash; label noise</a>.
+  </div>
+</footer>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => x.classList.remove("tab-active"));
+  t.classList.add("tab-active");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Outcome-dependent sampling - the ROW is a recording too.
+//
+// Days 68-70 asked what a column is hiding: a missing cell, a mismeasured x, a flipped y. This one
+// asks a question one level up - why is this row in the file at all? If the probability that a row
+// is RECORDED depends on its outcome, then the sample is not a shrunken copy of the population, and
+// the distortion has exactly one shape.
+//
+// A cell k has an OBSERVED mass mS[k] and an OBSERVED positive rate q[k] = P(y=1 | cell k, in the
+// sample). That pair is the whole observed law and the sampler is handed nothing else. A "world" is
+// one number: kappa = s1/s0, the ratio of the two selection probabilities s1 = P(recorded | y=1)
+// and s0 = P(recorded | y=0). Condition on being recorded and the odds multiply:
+//
+//     P(y=1 | k, sel)   m[k] eta[k] s1              q[k]            eta[k]
+//     --------------- = ------------------   =>   -------- = kappa -----------
+//     P(y=0 | k, sel)   m[k](1-eta[k]) s0          1 - q[k]        1 - eta[k]
+//
+//     logit q[k] = logit eta[k] + log kappa          (a CONSTANT shift, the same in every cell)
+//
+// Inverting: eta[k] = expit(logit q[k] - log kappa), and the population masses follow from the fact
+// that a cell full of positives was sampled harder than a cell full of negatives:
+//
+//     m[k] proportional to mS[k] / (kappa*eta[k] + 1 - eta[k])
+//
+// Now the point that separates this day from Day 69 and Day 70. There the world had to keep a
+// probability inside [0,1] and that single constraint produced a bound - the Frisch bound, the
+// label-noise rectangle. Here expit maps the whole real line into (0,1), so eta[k] is a legal
+// probability for EVERY kappa in (0, infinity), and m[k] is positive for every kappa too. The
+// constraint is vacuous. Nothing in the dataset bounds the world at all.
+//
+// The bound has to come from the DESIGN instead, and it does. If the sample is a fraction f of the
+// population then s1 = f*piObs/pi and s0 = f*(1-piObs)/(1-pi), and s1 <= 1, s0 <= 1 give
+//
+//     f*piObs <= pi <= 1 - f*(1 - piObs)     width = 1 - f, exactly, for every piObs
+//
+// The identified interval for prevalence is one minus the sampling fraction. Not the sample size -
+// the fraction. A million rows drawn from a billion pins prevalence to within 0.999.
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// Replication seeds by multiplicative hashing. Day 69 measured a 99.2% coverage that read like a
+// finding and was an arithmetic seed stride; Day 70 re-measured it and found it did not reproduce
+// for a uniform-only sampler. seedGuard() below runs both streams for BOTH of this page's samplers
+// - the uniform one and the Box-Muller one - and reports rather than assumes.
+function repSeed(tag, r){
+  return (Math.imul(r + 1, 2654435761) ^ Math.imul(tag + 1, 0x9E3779B1)) >>> 0;
+}
+function strideSeed(tag, r){ return (44000 + 1000 * tag + 7907 * r) >>> 0; }
+
+// Numerical Recipes 6.2 erfcc. The usual A&S 7.1.26 rational bounds its ABSOLUTE error at 1.5e-7,
+// which is worthless in a tail worth 1e-30; this one bounds the FRACTIONAL error at 1.2e-7
+// everywhere, and the Mills ratio this page needs is a ratio of two tail quantities.
+function erfc(x){
+  const z = Math.abs(x), t = 2 / (2 + z);
+  const ans = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 +
+    t * (0.09678418 + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 +
+    t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
+  return x >= 0 ? ans : 2 - ans;
+}
+function erf(x){ return 1 - erfc(x); }
+function normCdf(z){ return 0.5 * erfc(-z / Math.SQRT2); }
+function normPdf(z){ return Math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI); }
+// Acklam's rational inverse normal plus one Halley step against an exact-enough erf.
+function normInv(p){
+  if (p <= 0) return -Infinity;
+  if (p >= 1) return Infinity;
+  const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+             1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+  const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+             6.680131188771972e+01, -1.328068155288572e+01];
+  const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+             -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+  const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
+             3.754408661907416e+00];
+  const pl = 0.02425;
+  let x;
+  if (p < pl){
+    const t = Math.sqrt(-2 * Math.log(p));
+    x = (((((c[0]*t+c[1])*t+c[2])*t+c[3])*t+c[4])*t+c[5]) / ((((d[0]*t+d[1])*t+d[2])*t+d[3])*t+1);
+  } else if (p <= 1 - pl){
+    const t = p - 0.5, r = t * t;
+    x = (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5]) * t /
+        (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+  } else {
+    const t = Math.sqrt(-2 * Math.log(1 - p));
+    x = -(((((c[0]*t+c[1])*t+c[2])*t+c[3])*t+c[4])*t+c[5]) / ((((d[0]*t+d[1])*t+d[2])*t+d[3])*t+1);
+  }
+  for (let i = 0; i < 2; i++){
+    const e = normCdf(x) - p, u = e / normPdf(x);
+    x = x - u / (1 + 0.5 * x * u);
+  }
+  return x;
+}
+const Z95 = 1.959963984540054;
+
+function expit(u){ return u >= 0 ? 1 / (1 + Math.exp(-u)) : Math.exp(u) / (1 + Math.exp(u)); }
+function logit(p){ return Math.log(p / (1 - p)); }
+function odds(p){ return p / (1 - p); }
+function clamp(v, lo, hi){ return v < lo ? lo : (v > hi ? hi : v); }
+
+const DEFAULTS = {
+  sep: 2.2,      // logistic slope of the OBSERVED law in the cell score z
+  base: 0,       // observed intercept; 0 makes the recorded base rate exactly 1/2
+  K: 8,          // cells
+  kappa: 20,     // the world on display: how much harder a positive was sampled
+  thr: 0.35,     // decision threshold - deliberately NOT 0.5, for a reason measured below
+  cost: 4,       // cost of a false negative in units of a false positive
+  frac: 0.05,    // sampling fraction f = n / N, the only thing that bounds anything
+  n: 2000,       // rows per replication
+  nExt: 400,     // external prevalence sample used by the correction
+  seeds: 25,
+  covReps: 1000
+};
+function cfgOf(o){
+  const c = Object.assign({}, DEFAULTS, o || {});
+  c.sep   = clamp(+c.sep || 0, 0.2, 6);
+  c.base  = clamp(+c.base || 0, -2, 2);
+  c.K     = Math.round(clamp(+c.K || 8, 2, 12));
+  c.kappa = clamp(+c.kappa || 1, 1.05, 60);
+  c.thr   = clamp(+c.thr || 0.5, 0.05, 0.95);
+  c.cost  = clamp(+c.cost || 1, 1, 20);
+  c.frac  = clamp(+c.frac || 0.05, 0.01, 1);
+  c.n     = Math.round(clamp(+c.n || 2000, 100, 20000));
+  c.nExt  = Math.round(clamp(+c.nExt || 400, 25, 20000));
+  c.seeds = Math.round(clamp(+c.seeds || 25, 2, 80));
+  c.covReps = Math.round(clamp(+c.covReps || 1000, 20, 4000));
+  c.law = lawOf(c);
+  return c;
+}
+
+// The OBSERVED law. mS and q are what a file on disk would give you; there is no kappa in here.
+function lawOf(c){
+  const K = c.K, z = new Float64Array(K), q = new Float64Array(K), mS = new Float64Array(K);
+  for (let k = 0; k < K; k++){
+    z[k] = K === 1 ? 0 : -1 + 2 * k / (K - 1);
+    q[k] = expit(c.base + c.sep * z[k]);
+    mS[k] = 1 / K;
+  }
+  const cdf = new Float64Array(K);
+  let acc = 0;
+  for (let k = 0; k < K; k++){ acc += mS[k]; cdf[k] = acc; }
+  let piObs = 0;
+  for (let k = 0; k < K; k++) piObs += mS[k] * q[k];
+  const f = c.frac;
+  const piLo = f * piObs, piHi = 1 - f * (1 - piObs);
+  return {
+    K, z, q, mS, cdf, piObs,
+    piLo, piHi, setWidth: piHi - piLo,
+    kappaMax: odds(piObs) / odds(piLo),
+    kappaMin: odds(piObs) / odds(piHi),
+    frac: f
+  };
+}
+
+// A world is one number. eta and m are DERIVED; the observed law does not move.
+function worldOf(law, kappa){
+  const K = law.K, eta = new Float64Array(K), m = new Float64Array(K);
+  const lk = Math.log(kappa);
+  let tot = 0;
+  for (let k = 0; k < K; k++){
+    eta[k] = expit(logit(law.q[k]) - lk);
+    const w = kappa * eta[k] + 1 - eta[k];   // P(recorded | cell k) / s0
+    m[k] = law.mS[k] / w;
+    tot += m[k];
+  }
+  let pi = 0;
+  for (let k = 0; k < K; k++){ m[k] /= tot; pi += m[k] * eta[k]; }
+  const s1 = law.frac * law.piObs / pi, s0 = law.frac * (1 - law.piObs) / (1 - pi);
+  return { kappa, logKappa: lk, eta, m, pi, s1, s0, admissible: s1 <= 1 + 1e-12 && s0 <= 1 + 1e-12 };
+}
+function worldSpecs(c){
+  const law = c.law;
+  return [
+    { name: "no selection (&kappa; = 1)",        kappa: 1 },
+    { name: "cases &times;" + c.kappa.toFixed(0), kappa: c.kappa },
+    { name: "cases &times;5",                    kappa: 5 },
+    { name: "controls oversampled",              kappa: 1 / c.kappa },
+    { name: "at the design bound",               kappa: law.kappaMax }
+  ];
+}
+
+// ---------------------------------------------------------------- exact population functionals
+// Everything below is a finite sum over K cells, so the ground truth is arithmetic, not simulation.
+function ruleFromThreshold(law, thr){
+  const f = new Uint8Array(law.K);
+  for (let k = 0; k < law.K; k++) f[k] = law.q[k] >= thr ? 1 : 0;
+  return f;
+}
+function confusion(mass, rate, f){
+  let tp = 0, fp = 0, fn = 0, tn = 0;
+  for (let k = 0; k < mass.length; k++){
+    const p = mass[k] * rate[k], n = mass[k] * (1 - rate[k]);
+    if (f[k]) { tp += p; fp += n; } else { fn += p; tn += n; }
+  }
+  return { tp, fp, fn, tn };
+}
+function metricsOf(mass, rate, f){
+  const c = confusion(mass, rate, f);
+  const pos = c.tp + c.fn, neg = c.fp + c.tn, pred = c.tp + c.fp;
+  const sens = pos > 0 ? c.tp / pos : 0;
+  const spec = neg > 0 ? c.tn / neg : 0;
+  const ppv = pred > 0 ? c.tp / pred : NaN;
+  const npv = (c.tn + c.fn) > 0 ? c.tn / (c.tn + c.fn) : NaN;
+  const acc = c.tp + c.tn;
+  const f1 = (2 * ppv * sens) / (ppv + sens);
+  return {
+    prev: pos, sens, spec, ppv, npv, acc, f1,
+    bal: 0.5 * (sens + spec),
+    lrPos: (1 - spec) > 0 ? sens / (1 - spec) : Infinity,
+    lrNeg: spec > 0 ? (1 - sens) / spec : Infinity,
+    predPos: pred
+  };
+}
+// AUC over cells with the half-credit tie rule, computed from the CLASS-CONDITIONAL cell
+// distributions. Those are invariant under outcome-dependent selection, which is the whole reason
+// this number cannot move; the page measures it rather than assuming it.
+function aucOf(mass, rate){
+  const K = mass.length;
+  const idx = Array.from({ length: K }, (_, k) => k).sort((a, b) => rate[a] - rate[b]);
+  let P = 0, N = 0;
+  for (let k = 0; k < K; k++){ P += mass[k] * rate[k]; N += mass[k] * (1 - rate[k]); }
+  if (P <= 0 || N <= 0) return NaN;
+  let lowerPos = 0, auc = 0;
+  for (const k of idx){
+    const nk = mass[k] * (1 - rate[k]) / N, pk = mass[k] * rate[k] / P;
+    auc += nk * ((1 - lowerPos - pk) + 0.5 * pk);   // positives ABOVE this cell, ties at half
+    lowerPos += pk;
+  }
+  return auc;
+}
+// Expected cost of a rule when a false negative costs `cost` false positives.
+function costOf(mass, rate, f, cost){
+  let s = 0;
+  for (let k = 0; k < mass.length; k++)
+    s += f[k] ? mass[k] * (1 - rate[k]) : cost * mass[k] * rate[k];
+  return s;
+}
+// The best accuracy any rule could reach in a world - a finite sum, not a fitted number.
+function bayesAccuracy(mass, rate){
+  let s = 0;
+  for (let k = 0; k < mass.length; k++) s += mass[k] * Math.max(rate[k], 1 - rate[k]);
+  return s;
+}
+function optimalRule(rate, cost){
+  const f = new Uint8Array(rate.length), t = 1 / (1 + cost);
+  for (let k = 0; k < rate.length; k++) f[k] = rate[k] > t ? 1 : 0;
+  return f;
+}
+
+// ---------------------------------------------------------------- the invariance ledger
+// Which numbers a selected sample still tells the truth about, and which it does not - measured
+// side by side rather than recited.
+const INVARIANT_KEYS = ["sens", "spec", "bal", "lrPos", "lrNeg", "auc"];
+const SHIFTED_KEYS   = ["prev", "ppv", "npv", "acc", "f1", "predPos"];
+function invarianceLedger(c, kappa){
+  const law = c.law, w = worldOf(law, kappa), f = ruleFromThreshold(law, c.thr);
+  const S = metricsOf(law.mS, law.q, f), T = metricsOf(w.m, w.eta, f);
+  S.auc = aucOf(law.mS, law.q); T.auc = aucOf(w.m, w.eta);
+  const rows = [];
+  for (const key of INVARIANT_KEYS.concat(SHIFTED_KEYS))
+    rows.push({ key, sample: S[key], truth: T[key], diff: Math.abs(S[key] - T[key]),
+                invariant: INVARIANT_KEYS.indexOf(key) >= 0 });
+  const invWorst = rows.filter(r => r.invariant).reduce((a, r) => Math.max(a, r.diff), 0);
+  const shiftBest = rows.filter(r => !r.invariant).reduce((a, r) => Math.min(a, r.diff), Infinity);
+  return { rows, invWorst, shiftBest, S, T, world: w };
+}
+// The same ledger across every world, to show the invariant block never moves at all.
+// A rule that predicts nothing (or everything) leaves a likelihood ratio genuinely undefined -
+// sens/(1-spec) is 0/0 when the rule fires on no cell - so those comparisons are SKIPPED and
+// counted rather than folded in as a NaN that a max() would swallow.
+function invarianceAudit(c){
+  const specs = worldSpecs(c);
+  let worst = 0, checks = 0, skipped = 0;
+  const perKey = {};
+  for (const key of INVARIANT_KEYS) perKey[key] = 0;
+  for (const s of specs){
+    const L = invarianceLedger(c, s.kappa);
+    for (const r of L.rows){
+      if (!r.invariant) continue;
+      if (!isFinite(r.sample) || !isFinite(r.truth)){ skipped++; continue; }
+      worst = Math.max(worst, r.diff);
+      perKey[r.key] = Math.max(perKey[r.key], r.diff);
+      checks++;
+    }
+  }
+  return { worst, checks, skipped, perKey, worlds: specs.length };
+}
+
+// ---------------------------------------------------------------- the vacuous constraint
+// Day 69 and Day 70 got their bounds out of "this has to be a probability". Sweep kappa over twelve
+// orders of magnitude and count how many worlds that rule rejects. The answer is the finding.
+function admissibilityGrid(c, pts){
+  const law = c.law;
+  pts = pts || 2001;
+  let legal = 0, illegal = 0, etaLo = 1, etaHi = 0, massLo = 1;
+  for (let i = 0; i < pts; i++){
+    const lk = -13.8 + 27.6 * i / (pts - 1);           // kappa from 1e-6 to 1e6
+    const w = worldOf(law, Math.exp(lk));
+    let bad = false;
+    for (let k = 0; k < law.K; k++){
+      if (!(w.eta[k] > 0 && w.eta[k] < 1)) bad = true;
+      if (!(w.m[k] > 0)) bad = true;
+      etaLo = Math.min(etaLo, w.eta[k]); etaHi = Math.max(etaHi, w.eta[k]);
+      massLo = Math.min(massLo, w.m[k]);
+    }
+    if (bad) illegal++; else legal++;
+  }
+  return { pts, legal, illegal, etaLo, etaHi, massLo, checks: pts * law.K };
+}
+// The design bound, and the claim that its width is exactly 1 - f whatever the recorded base rate.
+function designBoundStudy(c){
+  const rows = [];
+  for (const f of [1, 0.5, 0.2, 0.05, 0.01]){
+    const law = lawOf(Object.assign({}, c, { frac: f, law: null }));
+    rows.push({ f, piLo: law.piLo, piHi: law.piHi, width: law.piHi - law.piLo,
+                closed: 1 - f, kappaMin: law.kappaMin, kappaMax: law.kappaMax });
+  }
+  let worst = 0;
+  for (const r of rows) worst = Math.max(worst, Math.abs(r.width - r.closed));
+  // ...and independent of the recorded base rate, which is the part that reads like a coincidence.
+  let baseWorst = 0;
+  for (const base of [-1.8, -0.9, 0, 0.7, 1.6]){
+    const law = lawOf(Object.assign({}, c, { base, law: null }));
+    baseWorst = Math.max(baseWorst, Math.abs((law.piHi - law.piLo) - (1 - c.frac)));
+  }
+  return { rows, worst, baseWorst };
+}
+
+// ---------------------------------------------------------------- sampling + coverage
+// The sampler is handed (mS, q). There is no kappa argument to pass, so every world sees the same
+// bytes - that is the point, and identityAudit() below proves it instead of asserting it.
+function sampleObserved(law, n, seed){
+  const rnd = mulberry32(seed);
+  const cell = new Int32Array(n), y = new Uint8Array(n);
+  for (let i = 0; i < n; i++){
+    const u = rnd();
+    let k = 0; while (k < law.K - 1 && u > law.cdf[k]) k++;
+    cell[i] = k;
+    y[i] = rnd() < law.q[k] ? 1 : 0;
+  }
+  return { n, cell, y };
+}
+function fitCells(law, s){
+  const cnt = new Float64Array(law.K), pos = new Float64Array(law.K);
+  for (let i = 0; i < s.n; i++){ cnt[s.cell[i]]++; pos[s.cell[i]] += s.y[i]; }
+  const qHat = new Float64Array(law.K), mHat = new Float64Array(law.K);
+  for (let k = 0; k < law.K; k++){
+    qHat[k] = cnt[k] > 0 ? pos[k] / cnt[k] : 0.5;
+    mHat[k] = cnt[k] / s.n;
+  }
+  return { qHat, mHat, cnt, pos };
+}
+function ppvOnSample(law, s, f){
+  let pred = 0, tp = 0;
+  for (let i = 0; i < s.n; i++) if (f[s.cell[i]]){ pred++; tp += s.y[i]; }
+  return { pred, tp, ppv: pred > 0 ? tp / pred : NaN };
+}
+function waldCi(p, n){
+  const se = Math.sqrt(p * (1 - p) / n);
+  return { lo: p - Z95 * se, hi: p + Z95 * se, width: 2 * Z95 * se };
+}
+function wilsonCi(k, n){
+  const z = Z95, p = k / n, d = 1 + z * z / n;
+  const c = (p + z * z / (2 * n)) / d;
+  const h = z * Math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d;
+  return { lo: c - h, hi: c + h, width: 2 * h };
+}
+// Log-gamma (Lanczos) so the binomial pmf can be summed exactly instead of approximated. The
+// measured coverage in the reference world comes out near 96%, not 95%, and that is neither noise
+// nor a bug: it is what the Wald interval actually delivers at this (n, p), and the only way to say
+// so is to compute it.
+function lgamma(x){
+  const g = [76.18009172947146, -86.50532032941677, 24.01409824083091,
+             -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+  let y = x, tmp = x + 5.5;
+  tmp -= (x + 0.5) * Math.log(tmp);
+  let ser = 1.000000000190015;
+  for (let j = 0; j < 6; j++) ser += g[j] / ++y;
+  return -tmp + Math.log(2.5066282746310005 * ser / x);
+}
+function binomPmf(k, n, p){
+  if (p <= 0) return k === 0 ? 1 : 0;
+  if (p >= 1) return k === n ? 1 : 0;
+  return Math.exp(lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1) +
+                  k * Math.log(p) + Math.log1p(-p) * (n - k));
+}
+// Conditional on landing in the predicted-positive set a row is Bernoulli(ppv) and the rows are
+// independent, so tp | pred is exactly Binomial(pred, ppv). Sum over both.
+function exactCoverage(c, target){
+  const law = c.law, f = ruleFromThreshold(law, c.thr);
+  let predMass = 0, tp = 0;
+  for (let k = 0; k < law.K; k++) if (f[k]){ predMass += law.mS[k]; tp += law.mS[k] * law.q[k]; }
+  const ppv = tp / predMass;
+  const mu = c.n * predMass, sd = Math.sqrt(c.n * predMass * (1 - predMass));
+  const lo = Math.max(1, Math.floor(mu - 6 * sd)), hi = Math.min(c.n, Math.ceil(mu + 6 * sd));
+  // A target further away than eight standard errors plus the widest half-width the interval can
+  // ever have is not covered by any realisable sample, so the double sum is skipped rather than
+  // spent. reachOf() is checked against the full sum near the boundary in the verifier.
+  const sdP = Math.sqrt(ppv * (1 - ppv) / mu);
+  const reach = 8 * sdP + Z95 * 0.5 / Math.sqrt(Math.max(1, lo));
+  if (Math.abs(target - ppv) > reach)
+    return { coverage: 0, ppv, predMass, mass: 1, span: 0, reach, skipped: true };
+  let tot = 0, mass = 0;
+  for (let d = lo; d <= hi; d++){
+    const wd = binomPmf(d, c.n, predMass);
+    if (wd < 1e-14) continue;
+    mass += wd;
+    let inside = 0;
+    for (let k = 0; k <= d; k++){
+      const a = k / d, se = Z95 * Math.sqrt(a * (1 - a) / d);
+      if (a - se <= target && target <= a + se) inside += binomPmf(k, d, ppv);
+    }
+    tot += wd * inside;
+  }
+  return { coverage: tot / mass, ppv, predMass, mass, span: hi - lo, reach, skipped: false };
+}
+function exactCoverageAll(c, truth){ return truth.map(t => exactCoverage(c, t).coverage); }
+// One draw, scored against every world. That is only legitimate because the draw does not depend
+// on the world, which is exactly the claim under test.
+function coverageStudy(c, seedFn){
+  const law = c.law, specs = worldSpecs(c), f = ruleFromThreshold(law, c.thr);
+  seedFn = seedFn || repSeed;
+  const ws = specs.map(s => worldOf(law, s.kappa));
+  const truth = ws.map(w => metricsOf(w.m, w.eta, f).ppv);
+  const cov = new Array(specs.length).fill(0), covW = new Array(specs.length).fill(0);
+  let widthSum = 0, ppvSum = 0;
+  for (let r = 0; r < c.covReps; r++){
+    const s = sampleObserved(law, c.n, seedFn(1, r));
+    const e = ppvOnSample(law, s, f);
+    const ci = waldCi(e.ppv, e.pred), wi = wilsonCi(e.tp, e.pred);
+    widthSum += ci.width; ppvSum += e.ppv;
+    for (let i = 0; i < specs.length; i++){
+      if (ci.lo <= truth[i] && truth[i] <= ci.hi) cov[i]++;
+      if (wi.lo <= truth[i] && truth[i] <= wi.hi) covW[i]++;
+    }
+  }
+  return {
+    specs, truth, f,
+    coverage: cov.map(v => v / c.covReps),
+    wilson: covW.map(v => v / c.covReps),
+    width: widthSum / c.covReps,
+    ppvMean: ppvSum / c.covReps,
+    worlds: ws.map((w, i) => ({ name: specs[i].name, kappa: w.kappa, pi: w.pi, s1: w.s1, s0: w.s0,
+                                admissible: w.admissible, bayes: bayesAccuracy(w.m, w.eta) }))
+  };
+}
+// Every statistic an analyst can compute from the file, across worlds and seeds, compared bit for
+// bit. There is no kappa in the sampler, so a single difference here would be a bug in the page.
+const DIAG_KEYS = ["recordedRate", "ppv", "sens", "acc", "auc", "logloss", "brier", "ece", "q0", "qK", "beta1", "beta0"];
+function diagnostics(law, s){
+  const fit = fitCells(law, s);
+  const f = ruleFromThreshold(law, 0.5);
+  let pos = 0, ll = 0, br = 0, ece = 0, tp = 0, pred = 0;
+  for (let i = 0; i < s.n; i++){
+    const p = clamp(fit.qHat[s.cell[i]], 1e-9, 1 - 1e-9);
+    pos += s.y[i];
+    ll += -(s.y[i] ? Math.log(p) : Math.log(1 - p));
+    br += (p - s.y[i]) * (p - s.y[i]);
+    if (f[s.cell[i]]){ pred++; tp += s.y[i]; }
+  }
+  // A real 10-bin reliability gap, not a tautology - it comes out at the floor because the model
+  // was fitted to the labels the sample HAS, which is exactly the complaint.
+  const bs = new Float64Array(10), bp = new Float64Array(10), by = new Float64Array(10);
+  for (let i = 0; i < s.n; i++){
+    const p = fit.qHat[s.cell[i]], b = Math.min(9, Math.floor(p * 10));
+    bs[b]++; bp[b] += p; by[b] += s.y[i];
+  }
+  for (let b = 0; b < 10; b++) if (bs[b] > 0) ece += (bs[b] / s.n) * Math.abs(bp[b] / bs[b] - by[b] / bs[b]);
+  const g = irlsLogistic(law.z, fit, s.n);
+  const met = metricsOf(fit.mHat, fit.qHat, f);
+  return {
+    recordedRate: pos / s.n, ppv: pred > 0 ? tp / pred : 0, sens: met.sens, acc: met.acc,
+    auc: aucOf(fit.mHat, fit.qHat), logloss: ll / s.n, brier: br / s.n, ece,
+    q0: fit.qHat[0], qK: fit.qHat[law.K - 1], beta1: g.b1, beta0: g.b0
+  };
+}
+function identityAudit(c){
+  const law = c.law, specs = worldSpecs(c);
+  let diffs = 0, comps = 0, worst = 0, cellDiffs = 0, labelDiffs = 0, cells = 0;
+  const nn = Math.min(c.n, 1500);
+  for (let sd = 0; sd < 8; sd++){
+    const base = sampleObserved(law, nn, repSeed(7, sd));
+    const baseDiag = diagnostics(law, base);
+    for (let i = 1; i < specs.length; i++){
+      // Derive the world first, then draw. sampleObserved takes (law, n, seed) - there is no third
+      // argument to put a kappa in - so the two arrays have to agree row for row, and this counts.
+      worldOf(law, specs[i].kappa);
+      const s = sampleObserved(law, nn, repSeed(7, sd));
+      for (let r = 0; r < nn; r++){
+        cells++;
+        if (s.cell[r] !== base.cell[r]) cellDiffs++;
+        if (s.y[r] !== base.y[r]) labelDiffs++;
+      }
+      const d = diagnostics(law, s);
+      for (const key of DIAG_KEYS){
+        comps++;
+        const dd = Math.abs(d[key] - baseDiag[key]);
+        if (d[key] !== baseDiag[key]) diffs++;
+        worst = Math.max(worst, dd);
+      }
+    }
+  }
+  return { diffs, comps, worst, cellDiffs, labelDiffs, cells, seeds: 8, worlds: specs.length };
+}
+
+// ---------------------------------------------------------------- logistic fit (IRLS)
+// Two parameters on the cell score z. Under outcome-dependent sampling the slope is untouched and
+// the intercept absorbs log kappa - Prentice & Pyke, but derived here from logit q = logit eta + c.
+function irlsLogistic(z, fit, n){
+  let b0 = 0, b1 = 0;
+  for (let it = 0; it < 60; it++){
+    let g0 = 0, g1 = 0, h00 = 0, h01 = 0, h11 = 0;
+    for (let k = 0; k < z.length; k++){
+      const nk = fit.cnt ? fit.cnt[k] : fit.mHat[k] * n;
+      if (nk <= 0) continue;
+      const yk = fit.pos ? fit.pos[k] : fit.qHat[k] * nk;
+      const p = expit(b0 + b1 * z[k]), wgt = nk * p * (1 - p) + 1e-12;
+      const res = yk - nk * p;
+      g0 += res; g1 += res * z[k];
+      h00 += wgt; h01 += wgt * z[k]; h11 += wgt * z[k] * z[k];
+    }
+    h00 += 1e-8; h11 += 1e-8;
+    const det = h00 * h11 - h01 * h01;
+    if (!(Math.abs(det) > 1e-14)) break;
+    const d0 = (h11 * g0 - h01 * g1) / det, d1 = (h00 * g1 - h01 * g0) / det;
+    b0 += d0; b1 += d1;
+    if (Math.abs(d0) + Math.abs(d1) < 1e-13) break;
+  }
+  return { b0, b1 };
+}
+function coefficientStudy(c){
+  const law = c.law, specs = worldSpecs(c);
+  const cnt = new Float64Array(law.K), pos = new Float64Array(law.K);
+  for (let k = 0; k < law.K; k++){ cnt[k] = law.mS[k] * 1e7; pos[k] = cnt[k] * law.q[k]; }
+  const obs = irlsLogistic(law.z, { cnt, pos }, 1e7);
+  const rows = specs.map(function(s){
+    const w = worldOf(law, s.kappa);
+    const cnt2 = new Float64Array(law.K), pos2 = new Float64Array(law.K);
+    for (let k = 0; k < law.K; k++){ cnt2[k] = w.m[k] * 1e7; pos2[k] = cnt2[k] * w.eta[k]; }
+    const t = irlsLogistic(law.z, { cnt: cnt2, pos: pos2 }, 1e7);
+    return { name: s.name, kappa: s.kappa, b1Obs: obs.b1, b1True: t.b1, b0Obs: obs.b0, b0True: t.b0,
+             slopeGap: Math.abs(obs.b1 - t.b1),
+             interceptGap: obs.b0 - t.b0, predicted: Math.log(s.kappa) };
+  });
+  return { obs, rows,
+           slopeWorst: rows.reduce((a, r) => Math.max(a, r.slopeGap), 0),
+           shiftWorst: rows.reduce((a, r) => Math.max(a, Math.abs(r.interceptGap - r.predicted)), 0) };
+}
+
+// ---------------------------------------------------------------- calibration
+// The model is fitted to the labels it has, so on the sample it is perfectly calibrated by
+// construction. Against the population it is off by q - eta in every cell, and the largest that
+// gap can ever get is a closed form: sup_eta [expit(u + a) - expit(u)] = tanh(a/4), at u = -a/2.
+function calibrationStudy(c, kappa){
+  const law = c.law, w = worldOf(law, kappa), a = Math.abs(Math.log(kappa));
+  let eceSample = 0, eceTrue = 0, maxGap = 0;
+  const rows = [];
+  for (let k = 0; k < law.K; k++){
+    const gap = law.q[k] - w.eta[k];
+    eceSample += law.mS[k] * Math.abs(law.q[k] - law.q[k]);
+    eceTrue += w.m[k] * Math.abs(gap);
+    maxGap = Math.max(maxGap, Math.abs(gap));
+    rows.push({ k, z: law.z[k], q: law.q[k], eta: w.eta[k], gap, mS: law.mS[k], m: w.m[k] });
+  }
+  // The supremum over all possible cells, found two ways: closed form and a dense scan.
+  const closed = Math.tanh(a / 4);
+  let scan = 0, scanAt = 0;
+  for (let i = 0; i <= 40000; i++){
+    const u = -12 + 24 * i / 40000;
+    const g = Math.abs(expit(u + Math.log(kappa)) - expit(u));
+    if (g > scan){ scan = g; scanAt = expit(u); }
+  }
+  return { rows, eceSample, eceTrue, maxGap, closed, scan, scanAt,
+           argAt: expit(-Math.log(kappa) / 2), gapClosed: Math.abs(scan - closed) };
+}
+
+// ---------------------------------------------------------------- thresholds and cost
+function thresholdStudy(c){
+  const law = c.law, rows = [];
+  for (const kappa of worldSpecs(c).map(s => s.kappa)){
+    const w = worldOf(law, kappa);
+    const tOpt = 1 / (1 + c.cost);
+    const naive = new Uint8Array(law.K), corrected = new Uint8Array(law.K);
+    for (let k = 0; k < law.K; k++){
+      naive[k] = law.q[k] > tOpt ? 1 : 0;
+      corrected[k] = expit(logit(law.q[k]) - Math.log(kappa)) > tOpt ? 1 : 0;
+    }
+    const opt = optimalRule(w.eta, c.cost);
+    const cOpt = costOf(w.m, w.eta, opt, c.cost);
+    const cNaive = costOf(w.m, w.eta, naive, c.cost);
+    const cCorr = costOf(w.m, w.eta, corrected, c.cost);
+    let disagree = 0;
+    for (let k = 0; k < law.K; k++) if (naive[k] !== opt[k]) disagree++;
+    // The naive rule is exactly the optimal rule run at a different threshold - a threshold that
+    // moved by log kappa on the logit scale and by nothing at all on the page you were reading.
+    const effective = expit(logit(tOpt) - Math.log(kappa));
+    rows.push({ kappa, tOpt, effective, regret: cNaive - cOpt, corrRegret: cCorr - cOpt,
+                cOpt, cNaive, disagree,
+                predPosNaive: naive.reduce((a, v, k) => a + v * w.m[k], 0),
+                predPosOpt: opt.reduce((a, v, k) => a + v * w.m[k], 0) });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- model selection
+// Every rule in {0,1}^K, scored on the sample and in truth. Balanced accuracy is built only out of
+// sensitivity and specificity, both of which are invariant, so it cannot reorder anything - and
+// that is a structural zero, not a small count. Plain accuracy weights the two error types by the
+// prevalence, and the prevalence is the one thing the sample got wrong.
+function allRules(K){
+  const out = [];
+  for (let b = 0; b < (1 << K); b++){
+    const f = new Uint8Array(K);
+    for (let k = 0; k < K; k++) f[k] = (b >> k) & 1;
+    out.push(f);
+  }
+  return out;
+}
+function selectionStudy(c, kappa){
+  const law = c.law, w = worldOf(law, kappa), rules = allRules(law.K);
+  const S = rules.map(f => metricsOf(law.mS, law.q, f));
+  const T = rules.map(f => metricsOf(w.m, w.eta, f));
+  // A pair whose two scores are EQUAL in exact arithmetic can still come back with opposite signs
+  // at 1e-16, because the two sums were accumulated in a different order. Those are ties, not
+  // inversions, so a pair only counts when both gaps clear TIE - and the number skipped is
+  // reported, because a silent tolerance is how a structural zero gets manufactured.
+  const TIE = 1e-12;
+  let accInv = 0, balInv = 0, f1Inv = 0, pairs = 0, balWorst = 0, balTies = 0;
+  let worstGap = -Infinity, worstPair = null;
+  for (let i = 0; i < rules.length; i++){
+    balWorst = Math.max(balWorst, Math.abs(S[i].bal - T[i].bal));
+    for (let j = i + 1; j < rules.length; j++){
+      pairs++;
+      const ds = S[i].acc - S[j].acc, dt = T[i].acc - T[j].acc;
+      if (ds * dt < 0 && Math.abs(ds) > TIE && Math.abs(dt) > TIE){
+        accInv++;
+        const lead = Math.abs(ds), loss = Math.abs(dt);
+        if (loss > worstGap){
+          worstGap = loss;
+          worstPair = { lead, loss,
+                        winS: Math.max(S[i].acc, S[j].acc), loseS: Math.min(S[i].acc, S[j].acc),
+                        winT: ds > 0 ? T[i].acc : T[j].acc, loseT: ds > 0 ? T[j].acc : T[i].acc };
+        }
+      }
+      const bs = S[i].bal - S[j].bal, bt = T[i].bal - T[j].bal;
+      if (bs * bt < 0){ if (Math.abs(bs) > TIE && Math.abs(bt) > TIE) balInv++; else balTies++; }
+      const fs = S[i].f1 - S[j].f1, ft = T[i].f1 - T[j].f1;
+      if (isFinite(fs) && isFinite(ft) && fs * ft < 0 && Math.abs(fs) > TIE && Math.abs(ft) > TIE) f1Inv++;
+    }
+  }
+  // The decision-relevant version: shortlist the ten rules the sample likes best, then compare the
+  // one it crowns against the one that is actually best among those same ten.
+  const order = rules.map((_, i) => i).sort((a, b) => S[b].acc - S[a].acc);
+  const top = order.slice(0, 10);
+  const crowned = top[0];
+  const bestOfTop = top.reduce((a, i) => T[i].acc > T[a].acc ? i : a, top[0]);
+  const globalBest = rules.map((_, i) => i).reduce((a, i) => T[i].acc > T[a].acc ? i : a, 0);
+  // ...and the exact reason accuracy can move at all: acc = spec + prev*(sens - spec), so the gap
+  // between the two accuracies is (prevSample - prevTruth)*(sens - spec) and nothing else.
+  let idWorst = 0;
+  const dPrev = S[0].prev - T[0].prev;
+  for (let i = 0; i < rules.length; i++)
+    idWorst = Math.max(idWorst, Math.abs((S[i].acc - T[i].acc) - dPrev * (S[i].sens - S[i].spec)));
+  return { rules: rules.length, pairs, accInv, balInv, balTies, f1Inv, balWorst, worstPair, kappa,
+           topRegret: T[bestOfTop].acc - T[crowned].acc,
+           crownedTrue: T[crowned].acc, bestOfTopTrue: T[bestOfTop].acc,
+           crownedSample: S[crowned].acc, globalBestTrue: T[globalBest].acc,
+           identityWorst: idWorst, dPrev };
+}
+// Accuracy is invariant exactly when sensitivity equals specificity - and the tidiest possible
+// configuration, a symmetric law read at a threshold of one half, satisfies that by accident. This
+// sweep exists because that accident nearly shipped as a finding.
+function knifeEdgeStudy(c, kappa){
+  const law = c.law, w = worldOf(law, kappa), out = [];
+  for (const thr of [0.15, 0.28, 0.42, 0.5, 0.58, 0.72, 0.85]){
+    const f = ruleFromThreshold(law, thr);
+    const S = metricsOf(law.mS, law.q, f), T = metricsOf(w.m, w.eta, f);
+    out.push({ thr, sens: S.sens, spec: S.spec, skew: S.sens - S.spec,
+               accS: S.acc, accT: T.acc, gap: S.acc - T.acc,
+               predicted: (S.prev - T.prev) * (S.sens - S.spec) });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- the correction, and its price
+// Knowing the true prevalence pins kappa exactly: kappa = odds(piObs)/odds(pi). Nobody knows pi, so
+// the realistic version estimates it from a small external random sample, and the price of that is
+// measurable.
+function correctionStudy(c, kappa){
+  const law = c.law, w = worldOf(law, kappa), f = ruleFromThreshold(law, c.thr);
+  const truePpv = metricsOf(w.m, w.eta, f).ppv;
+  const naivePpv = metricsOf(law.mS, law.q, f).ppv;
+  const rows = [];
+  for (const nExt of [25, 50, 100, 400, 1600, 6400]){
+    let se = 0, bias = 0, ok = 0;
+    for (let r = 0; r < c.seeds * 8; r++){
+      const rnd = mulberry32(repSeed(11 + nExt, r));
+      let hit = 0;
+      for (let i = 0; i < nExt; i++) if (rnd() < w.pi) hit++;
+      const piHat = clamp(hit / nExt, 0.5 / nExt, 1 - 0.5 / nExt);
+      const kHat = odds(law.piObs) / odds(piHat);
+      const etaHat = new Float64Array(law.K);
+      for (let k = 0; k < law.K; k++) etaHat[k] = expit(logit(law.q[k]) - Math.log(kHat));
+      const mHat = new Float64Array(law.K);
+      let tot = 0;
+      for (let k = 0; k < law.K; k++){ mHat[k] = law.mS[k] / (kHat * etaHat[k] + 1 - etaHat[k]); tot += mHat[k]; }
+      for (let k = 0; k < law.K; k++) mHat[k] /= tot;
+      const est = metricsOf(mHat, etaHat, f).ppv;
+      se += (est - truePpv) * (est - truePpv); bias += est - truePpv; ok++;
+    }
+    rows.push({ nExt, rmse: Math.sqrt(se / ok), bias: bias / ok, reps: ok });
+  }
+  return { rows, truePpv, naivePpv, naiveErr: Math.abs(naivePpv - truePpv),
+           oracle: metricsOf(w.m, w.eta, f).ppv };
+}
+
+// ---------------------------------------------------------------- the design is not the bug
+// Outcome-dependent sampling is usually deliberate, and at a low prevalence it is the right call:
+// for the same total n a balanced case-control draw estimates the SLOPE far more precisely than a
+// random draw, because the information about a slope lives in the minority class.
+function popSampler(law, w){
+  const cdfPop = new Float64Array(law.K);
+  let a = 0;
+  for (let k = 0; k < law.K; k++){ a += w.m[k]; cdfPop[k] = a; }
+  const pos = new Float64Array(law.K), neg = new Float64Array(law.K);
+  let P = 0, N = 0;
+  for (let k = 0; k < law.K; k++){ P += w.m[k] * w.eta[k]; N += w.m[k] * (1 - w.eta[k]); }
+  let ap = 0, an = 0;
+  for (let k = 0; k < law.K; k++){
+    ap += w.m[k] * w.eta[k] / P; pos[k] = ap;
+    an += w.m[k] * (1 - w.eta[k]) / N; neg[k] = an;
+  }
+  return { cdfPop, pos, neg };
+}
+function drawRandom(law, w, sm, n, seed){
+  const rnd = mulberry32(seed);
+  const cnt = new Float64Array(law.K), p = new Float64Array(law.K);
+  for (let i = 0; i < n; i++){
+    const u = rnd();
+    let k = 0; while (k < law.K - 1 && u > sm.cdfPop[k]) k++;
+    cnt[k]++; if (rnd() < w.eta[k]) p[k]++;
+  }
+  return { cnt, pos: p };
+}
+function drawBalanced(law, w, sm, n, seed){
+  const rnd = mulberry32(seed);
+  const cnt = new Float64Array(law.K), p = new Float64Array(law.K);
+  const half = Math.floor(n / 2);
+  for (let i = 0; i < half; i++){
+    let u = rnd(), k = 0; while (k < law.K - 1 && u > sm.pos[k]) k++;
+    cnt[k]++; p[k]++;
+  }
+  for (let i = 0; i < n - half; i++){
+    let u = rnd(), k = 0; while (k < law.K - 1 && u > sm.neg[k]) k++;
+    cnt[k]++;
+  }
+  return { cnt, pos: p };
+}
+// p(cell | y) is the one thing outcome-dependent sampling leaves alone, so a balanced case-control
+// draw from world A and one from world B are not similar - they are the same rows. Counted, not
+// argued, because it is the strongest available statement of the invariance.
+function balancedInvariance(c){
+  const law = c.law, specs = worldSpecs(c);
+  let ref = null, cdfWorst = 0, cellDiffs = 0, coefWorst = 0, comps = 0;
+  for (const sp of specs){
+    const w = worldOf(law, sp.kappa), sm = popSampler(law, w);
+    const d = drawBalanced(law, w, sm, Math.min(c.n, 4000), repSeed(22, 3));
+    const g = irlsLogistic(law.z, d, Math.min(c.n, 4000));
+    if (!ref) ref = { sm, d, g };
+    else {
+      for (let k = 0; k < law.K; k++){
+        comps++;
+        cdfWorst = Math.max(cdfWorst, Math.abs(sm.pos[k] - ref.sm.pos[k]),
+                                      Math.abs(sm.neg[k] - ref.sm.neg[k]));
+        if (d.cnt[k] !== ref.d.cnt[k] || d.pos[k] !== ref.d.pos[k]) cellDiffs++;
+      }
+      coefWorst = Math.max(coefWorst, Math.abs(g.b1 - ref.g.b1), Math.abs(g.b0 - ref.g.b0));
+    }
+  }
+  return { cdfWorst, cellDiffs, coefWorst, comps, worlds: specs.length, b1: ref.g.b1 };
+}
+function efficiencyStudy(c){
+  const law = c.law, rows = [];
+  for (const kappa of [1, 5, c.kappa, Math.min(c.kappa * 2, law.kappaMax)]){
+    const w = worldOf(law, kappa), sm = popSampler(law, w);
+    const trueB1 = irlsLogistic(law.z, (function(){
+      const cnt = new Float64Array(law.K), pos = new Float64Array(law.K);
+      for (let k = 0; k < law.K; k++){ cnt[k] = w.m[k] * 1e7; pos[k] = cnt[k] * w.eta[k]; }
+      return { cnt, pos };
+    })(), 1e7).b1;
+    const stats = function(draw, tag){
+      let s = 0, s2 = 0, ok = 0;
+      for (let r = 0; r < c.seeds; r++){
+        const d = draw(law, w, sm, c.n, repSeed(tag, r));
+        const g = irlsLogistic(law.z, d, c.n);
+        if (!isFinite(g.b1) || Math.abs(g.b1) > 50) continue;
+        s += g.b1; s2 += g.b1 * g.b1; ok++;
+      }
+      const mean = s / ok, sd = Math.sqrt(Math.max(0, s2 / ok - mean * mean));
+      return { mean, sd, ok };
+    };
+    const R = stats(drawRandom, 21), B = stats(drawBalanced, 22);
+    rows.push({ kappa, pi: w.pi, trueB1, randSd: R.sd, balSd: B.sd,
+                randBias: R.mean - trueB1, balBias: B.mean - trueB1,
+                ratio: R.sd / B.sd, expectedPos: c.n * w.pi });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- selection on a CONTINUOUS y
+// Same mechanism, no logits. Latent x ~ N(0,1), y = a + b x + sigma e. Keep only y > cut and the
+// pair (x, y) is a truncated bivariate normal, whose moments are elementary:
+//   alpha = (cut - a)/sigmaY,  lambda = phi(alpha)/(1 - Phi(alpha)),  delta = lambda(lambda - alpha)
+//   Var(y | sel) = sigmaY^2 (1 - delta)
+//   Var(x | sel) = 1 - rho^2 delta
+//   Cov(x, y | sel) = rho sigmaY (1 - delta)
+// so the OLS slope on the truncated sample is b (1 - delta)/(1 - rho^2 delta) - attenuated, because
+// (1-delta) <= (1-rho^2 delta) whenever rho^2 <= 1. Truncating on x instead leaves E[y|x] alone, so
+// that slope is b exactly. Both truncations lower R-squared by the same kind of amount, which is
+// why "the fit got worse and the range is restricted" cannot tell you which one happened.
+// lambda(a) = phi(a)/(1 - Phi(a)). Both halves carry the same exp(-a^2/2), so with a fractional-
+// error erfc the ratio stays accurate arbitrarily far out. millsCF is a wholly different route -
+// the classic continued fraction - and the two are asserted to agree rather than assumed to.
+function millsRatio(alpha){
+  const tail = 0.5 * erfc(alpha / Math.SQRT2);
+  if (tail > 0) return normPdf(alpha) / tail;
+  return millsCF(alpha);
+}
+function millsCF(alpha){
+  let cf = 0;
+  for (let j = 80; j >= 1; j--) cf = j / (alpha + cf);
+  return alpha + cf;
+}
+function truncTheory(b, sigma, cut, a){
+  a = a || 0;
+  const sigmaY = Math.sqrt(b * b + sigma * sigma), rho = b / sigmaY;
+  const alpha = (cut - a) / sigmaY, lam = millsRatio(alpha), del = lam * (lam - alpha);
+  const varX = 1 - rho * rho * del, varY = sigmaY * sigmaY * (1 - del);
+  const cov = rho * sigmaY * (1 - del);
+  return {
+    sigmaY, rho, alpha, lam, del, varX, varY, cov,
+    slope: cov / varX,
+    attenuation: (1 - del) / (1 - rho * rho * del),
+    r2: rho * rho * (1 - del) / (1 - rho * rho * del),
+    r2Full: rho * rho,
+    keep: 1 - normCdf(alpha),
+    meanX: rho * lam
+  };
+}
+function truncOnXTheory(b, sigma, cutX){
+  const lam = millsRatio(cutX), del = lam * (lam - cutX), varX = 1 - del;
+  return { slope: b, varX, del, keep: 1 - normCdf(cutX),
+           r2: b * b * varX / (b * b * varX + sigma * sigma) };
+}
+// Which cut on x reproduces the y-truncated R-squared? Put delta_x = delta into
+//     R2_x = b^2 (1 - delta_x) / (b^2 (1 - delta_x) + sigma^2)
+// and divide through by sigmaY^2: it becomes rho^2 (1 - delta)/(1 - rho^2 delta), which IS R2_y.
+// So the answer is the same STANDARDISED cut, alpha, for every (b, sigma, cut) - nothing to solve.
+// That makes the two retention rates identical too, both being 1 - Phi(alpha). matchedXCutNumeric
+// finds it the slow way so the closed form is confirmed rather than believed.
+function matchedXCut(b, sigma, cut, a){
+  return (cut - (a || 0)) / Math.sqrt(b * b + sigma * sigma);
+}
+function matchedXCutNumeric(b, sigma, targetR2){
+  const u = targetR2 * sigma * sigma / (b * b * (1 - targetR2));
+  const want = 1 - Math.min(u, 0.999999);
+  let lo = -9, hi = 14;
+  for (let i = 0; i < 200; i++){
+    const mid = 0.5 * (lo + hi), lam = millsRatio(mid), d = lam * (lam - mid);
+    if (d < want) lo = mid; else hi = mid;
+  }
+  return 0.5 * (lo + hi);
+}
+// Box-Muller, cosine branch. The verifier uses the sine branch of an independent generator.
+function gaussPair(rnd){
+  let u = rnd(); if (u < 1e-12) u = 1e-12;
+  const r = Math.sqrt(-2 * Math.log(u)), t = 2 * Math.PI * rnd();
+  return [r * Math.cos(t), r * Math.sin(t)];
+}
+function truncSim(b, sigma, cut, mode, n, seed, cutX){
+  const rnd = mulberry32(seed);
+  let sx = 0, sy = 0, sxx = 0, sxy = 0, syy = 0, kept = 0, tries = 0;
+  while (kept < n && tries < n * 4000){
+    tries++;
+    const g = gaussPair(rnd), x = g[0], e = g[1];
+    const y = b * x + sigma * e;
+    if (mode === "y" ? y > cut : x > cutX) {
+      kept++; sx += x; sy += y; sxx += x * x; sxy += x * y; syy += y * y;
+    }
+  }
+  const mx = sx / kept, my = sy / kept;
+  const vx = sxx / kept - mx * mx, vy = syy / kept - my * my, cxy = sxy / kept - mx * my;
+  return { kept, tries, slope: cxy / vx, varX: vx, varY: vy,
+           r2: cxy * cxy / (vx * vy), meanX: mx, accept: kept / tries };
+}
+function truncationStudy(c, b, sigma, cut){
+  b = b === undefined ? 1 : b; sigma = sigma === undefined ? 1 : sigma;
+  cut = cut === undefined ? 0.8 : cut;
+  const T = truncTheory(b, sigma, cut);
+  const cutX = matchedXCut(b, sigma, cut);
+  const cutXNum = matchedXCutNumeric(b, sigma, T.r2);
+  const X = truncOnXTheory(b, sigma, cutX);
+  const nSim = Math.min(c.n * 5, 40000);
+  let slopeY = 0, slopeX = 0, r2Y = 0, r2X = 0;
+  for (let r = 0; r < Math.min(c.seeds, 20); r++){
+    const sy = truncSim(b, sigma, cut, "y", nSim, repSeed(31, r));
+    const sx = truncSim(b, sigma, cut, "x", nSim, repSeed(32, r), cutX);
+    slopeY += sy.slope; slopeX += sx.slope; r2Y += sy.r2; r2X += sx.r2;
+  }
+  const reps = Math.min(c.seeds, 20);
+  return {
+    b, sigma, cut, cutX, cutXNum, cutGap: Math.abs(cutX - cutXNum),
+    theory: T, xTheory: X, reps, nSim,
+    keepGap: Math.abs(T.keep - X.keep), varXGap: T.varX - X.varX,
+    simSlopeY: slopeY / reps, simSlopeX: slopeX / reps,
+    simR2Y: r2Y / reps, simR2X: r2X / reps,
+    r2Gap: Math.abs(T.r2 - X.r2),
+    slopeGapY: Math.abs(slopeY / reps - T.slope),
+    slopeGapX: Math.abs(slopeX / reps - b)
+  };
+}
+// The attenuation factor is <= 1 always, with equality only at a perfect fit or no truncation -
+// swept rather than argued.
+function attenuationGrid(pts){
+  pts = pts || 60;
+  let worst = 0, minFactor = 1, checks = 0, viol = 0;
+  for (let i = 1; i <= pts; i++){
+    const b = 0.1 + 3 * i / pts;
+    for (let j = 1; j <= pts; j++){
+      const sigma = 0.1 + 3 * j / pts;
+      for (const cut of [-1.5, -0.5, 0.3, 1.1, 2.0]){
+        const T = truncTheory(b, sigma, cut);
+        checks++;
+        if (T.attenuation > 1 + 1e-12) viol++;
+        minFactor = Math.min(minFactor, T.attenuation);
+        worst = Math.max(worst, Math.abs(T.slope - b * T.attenuation));
+        if (T.r2 > T.r2Full + 1e-12) viol++;
+      }
+    }
+  }
+  return { checks, viol, minFactor, worst };
+}
+
+// ---------------------------------------------------------------- seed guard
+function seedGuard(c){
+  const R2 = Math.min(c.covReps, 800);
+  const hashed = coverageStudy(Object.assign({}, c, { covReps: R2 }), repSeed);
+  const stride = coverageStudy(Object.assign({}, c, { covReps: R2 }), strideSeed);
+  // ...and the same question for the Box-Muller sampler, which is where Day 69's artefact lived.
+  const R = 80;
+  const bm = function(seedFn){
+    let s = 0, s2 = 0;
+    for (let r = 0; r < R; r++){
+      const sim = truncSim(1, 1, 0.8, "y", 4000, seedFn(41, r));
+      s += sim.slope; s2 += sim.slope * sim.slope;
+    }
+    const mean = s / R, sd = Math.sqrt(Math.max(0, s2 / R - mean * mean));
+    return { mean, sd, se: sd / Math.sqrt(R), reps: R };
+  };
+  const exact = exactCoverage(c, hashed.truth[0]).coverage;
+  const reps = R2;
+  return {
+    exact, reps, se: Math.sqrt(exact * (1 - exact) / reps),
+    hashed: hashed.coverage[0], stride: stride.coverage[0],
+    hashedW: hashed.coverage[hashed.coverage.length - 1],
+    strideW: stride.coverage[stride.coverage.length - 1],
+    bmHashed: bm(repSeed), bmStride: bm(strideSeed),
+    theorySlope: truncTheory(1, 1, 0.8).slope
+  };
+}
+
+// ---------------------------------------------------------------- sample size
+function sampleSizeStudy(c){
+  const out = [];
+  for (const n of [500, 1000, 2000, 4000, 8000]){
+    const cc = Object.assign({}, c, { n, covReps: Math.min(c.covReps, 400) });
+    cc.law = c.law;
+    const cov = coverageStudy(cc);
+    out.push({ n, width: cov.width, covA: cov.coverage[0], covB: cov.coverage[1],
+               covBound: cov.coverage[cov.coverage.length - 1] });
+  }
+  return out;
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- UI
+const $ = id => document.getElementById(id);
+function cfgFromUI(){
+  return cfgOf({
+    sep:   +$("sSep").value,
+    base:  +$("sBase").value,
+    K:     +$("sK").value,
+    kappa: +$("sKap").value,
+    thr:   +$("sThr").value,
+    cost:  +$("sCost").value,
+    frac:  +$("sFrac").value,
+    n:     +$("sN").value,
+    nExt:  +$("sNE").value,
+    seeds: +$("sS").value,
+    covReps: +$("sR").value
+  });
+}
+function fmt(v, d){
+  return (v === undefined || v === null || !isFinite(v)) ? "&mdash;" : v.toFixed(d === undefined ? 4 : d);
+}
+const pct = v => (100 * v).toFixed(2) + "%";
+const yes = "<span class='ok'>yes</span>", no = "<span class='bad'>no</span>";
+const sci = v => v === 0 ? "0" : v.toExponential(1);
+// Thousands separators must not follow the reader's locale: 32640 is 32,640 on every page.
+const grp = v => String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+
+const WHY = {
+  sens:    "built from p(x|y=1) alone",
+  spec:    "built from p(x|y=0) alone",
+  bal:     "the mean of two invariants",
+  lrPos:   "a ratio of two invariants",
+  lrNeg:   "a ratio of two invariants",
+  auc:     "ranks positives against negatives, both invariant",
+  prev:    "the one thing selection changes",
+  ppv:     "mixes the classes through the prevalence",
+  npv:     "mixes the classes through the prevalence",
+  acc:     "spec + &pi;(sens &minus; spec)",
+  f1:      "contains precision",
+  predPos: "a marginal, so it carries the prevalence"
+};
+const LABEL = {
+  sens: "sensitivity", spec: "specificity", bal: "balanced accuracy", lrPos: "LR+", lrNeg: "LR&minus;",
+  auc: "ROC-AUC", prev: "prevalence", ppv: "precision (PPV)", npv: "NPV", acc: "accuracy",
+  f1: "F&#8321;", predPos: "predicted positive rate"
+};
+
+function render(){
+  const c = cfgFromUI(), law = c.law;
+  $("vSep").textContent  = c.sep.toFixed(2);
+  $("vBase").textContent = c.base.toFixed(2);
+  $("vK").textContent    = c.K;
+  $("vKap").textContent  = c.kappa.toFixed(2);
+  $("vThr").textContent  = c.thr.toFixed(2);
+  $("vCost").textContent = c.cost;
+  $("vFrac").textContent = c.frac.toFixed(2);
+  $("vN").textContent    = c.n;
+  $("vNE").textContent   = c.nExt;
+  $("vS").textContent    = c.seeds;
+  $("vR").textContent    = c.covReps;
+  $("wPiObs").textContent = fmt(law.piObs, 3);
+  $("wBound").textContent = "[" + fmt(law.piLo, 3) + ", " + fmt(law.piHi, 3) + "]";
+  $("wWidth").textContent = fmt(law.setWidth, 3);
+  $("covWord").textContent = c.covReps;
+  $("seedWord").textContent = c.seeds;
+  $("costWord").textContent = c.cost;
+
+  // ---- worlds + coverage
+  const cov = coverageStudy(c);
+  const exact = exactCoverageAll(c, cov.truth);
+  const half = cov.width / 2;
+  $("rowsWorlds").innerHTML = cov.worlds.map(function(w, i){
+    const covers = cov.coverage[i] > 0.5;
+    const cls = i === 0 ? "same3" : (w.kappa < 1 ? "same2" : "same");
+    return "<tr class='" + cls + "'><td>" + w.name + "</td>" +
+      "<td>" + fmt(w.kappa, 3) + "</td><td>" + fmt(w.s1, 4) + "</td><td>" + fmt(w.s0, 4) + "</td>" +
+      "<td><strong>" + fmt(w.pi) + "</strong></td><td>" + fmt(w.bayes) + "</td>" +
+      "<td>" + fmt(cov.ppvMean) + "</td><td>&plusmn;" + fmt(half, 4) + "</td>" +
+      "<td><strong>" + fmt(cov.truth[i]) + "</strong></td>" +
+      "<td>" + (covers ? yes : no) + "</td>" +
+      "<td>" + pct(cov.coverage[i]) + "</td><td>" + pct(cov.wilson[i]) + "</td>" +
+      "<td class='dim'>" + pct(exact[i]) + "</td></tr>";
+  }).join("");
+  const spread = Math.max.apply(null, cov.worlds.map(w => w.pi)) -
+                 Math.min.apply(null, cov.worlds.map(w => w.pi));
+  $("headline").innerHTML =
+    "Every row was fitted on the same rows, so the measured precision is <strong>" +
+    fmt(cov.ppvMean) + "</strong> in all of them and the interval is the same &plusmn;" +
+    fmt(half, 4) + " wide. The true precision ranges from <strong>" +
+    fmt(Math.min.apply(null, cov.truth)) + "</strong> to <strong>" +
+    fmt(Math.max.apply(null, cov.truth)) + "</strong> and the true prevalence spans " +
+    fmt(spread, 3) + ". The exact column is the coverage of that interval computed by summing " +
+    "binomial probabilities rather than simulating them.";
+  $("flagWorlds").innerHTML =
+    "The nominal 95% interval covers the truth <strong>" + pct(exact[0]) + "</strong> of the time " +
+    "in the reference world and <strong>" + pct(exact[1]) + "</strong> in the world next to it. " +
+    "It is not a wider interval that is needed &mdash; no interval built from these rows can " +
+    "contain " + fmt(cov.truth[1]) + " while being centred on " + fmt(cov.ppvMean) + ", because " +
+    "the rows are the same rows. At the design bound the selection probability for a positive " +
+    "reaches <strong>" + fmt(cov.worlds[cov.worlds.length - 1].s1, 4) + "</strong>: every case in " +
+    "the population is already in the file, and that is what stops &kappa; from going higher.";
+
+  // ---- identity
+  const ida = identityAudit(c);
+  const bi = balancedInvariance(c);
+  $("tblIdentity").innerHTML =
+    "<thead><tr><th>what was compared</th><th>comparisons</th><th>differences</th>" +
+    "<th>worst gap</th></tr></thead><tbody>" +
+    "<tr><td>cell index of every row, world against world</td><td>" + grp(ida.cells) + "</td>" +
+      "<td class='ok'>" + ida.cellDiffs + "</td><td>0</td></tr>" +
+    "<tr><td>recorded label of every row</td><td>" + grp(ida.cells) + "</td>" +
+      "<td class='ok'>" + ida.labelDiffs + "</td><td>0</td></tr>" +
+    "<tr><td>" + DIAG_KEYS.length + " derived diagnostics (accuracy, log-loss, Brier, AUC, ECE, " +
+      "both fitted coefficients &hellip;)</td><td>" + grp(ida.comps) + "</td>" +
+      "<td class='ok'>" + ida.diffs + "</td><td>" + sci(ida.worst) + "</td></tr>" +
+    "<tr class='same3'><td>a <em>balanced case-control</em> draw taken from each population " +
+      "separately &mdash; cell counts and positive counts</td><td>" + grp(bi.comps) + "</td>" +
+      "<td class='ok'>" + bi.cellDiffs + "</td><td>" + sci(bi.coefWorst) + "</td></tr>" +
+    "</tbody>";
+  $("sayIdentity").innerHTML =
+    "The last row is the stronger statement. Those draws were taken from five genuinely different " +
+    "populations &mdash; prevalences from " + fmt(Math.min.apply(null, cov.worlds.map(w => w.pi)), 3) +
+    " to " + fmt(Math.max.apply(null, cov.worlds.map(w => w.pi)), 3) + " &mdash; and the " +
+    "class-conditional cell distributions they sample from agree to " + sci(bi.cdfWorst) +
+    ", so the rows come out identical and both fitted coefficients differ by " + sci(bi.coefWorst) +
+    ". A case-control study cannot tell you which population it came from.";
+
+  // ---- invariance ledger
+  const L = invarianceLedger(c, c.kappa), aud = invarianceAudit(c);
+  $("rowsLedger").innerHTML = L.rows.map(function(r){
+    return "<tr class='" + (r.invariant ? "same3" : "") + "'><td>" + LABEL[r.key] + "</td>" +
+      "<td>" + fmt(r.sample) + "</td><td>" + fmt(r.truth) + "</td>" +
+      "<td>" + (r.invariant ? sci(r.diff) : "<strong>" + fmt(r.diff) + "</strong>") + "</td>" +
+      "<td>" + (r.invariant ? yes : no) + "</td>" +
+      "<td class='tiny' style='text-align:left'>" + WHY[r.key] + "</td></tr>";
+  }).join("");
+  $("sayLedger").innerHTML =
+    "Selection keeps a positive with probability s&#8321; whatever its features and a negative with " +
+    "s&#8320; whatever its features, so <code>p(x|y)</code> does not move. Anything built out of " +
+    "those two conditionals alone is exactly right on a selected sample; anything that mixes the " +
+    "classes carries the prevalence, and the prevalence is the thing that moved.";
+  $("flagLedger").innerHTML =
+    "Across all " + aud.worlds + " worlds the six invariant quantities differ from their population " +
+    "values by at most <strong>" + sci(aud.worst) + "</strong> over " + aud.checks + " checks" +
+    (aud.skipped ? " (" + aud.skipped + " skipped: a rule that fires on no cell leaves a " +
+      "likelihood ratio genuinely undefined)" : "") + " &mdash; " +
+    "floating-point summation order, not a shift. The smallest gap in the other block is " +
+    "<strong>" + fmt(L.shiftBest) + "</strong>. Precision reads " + fmt(L.S.ppv) + " and is truly " +
+    fmt(L.T.ppv) + ".";
+
+  // ---- admissibility + design bound
+  const ag = admissibilityGrid(c, 20001), db = designBoundStudy(c);
+  $("tblAdmit").innerHTML =
+    "<thead><tr><th>the move that worked on Day 69 and Day 70</th><th>result here</th></tr></thead>" +
+    "<tbody>" +
+    "<tr><td style='text-align:left'>worlds swept, &kappa; from 1e&minus;6 to 1e+6</td><td>" +
+      grp(ag.pts) + "</td></tr>" +
+    "<tr><td style='text-align:left'>(&kappa;, cell) pairs checked for &eta; &isin; (0,1) and m &gt; 0</td>" +
+      "<td>" + grp(ag.checks) + "</td></tr>" +
+    "<tr class='same3'><td style='text-align:left'><strong>worlds the constraint rejects</strong></td>" +
+      "<td class='ok'><strong>" + ag.illegal + "</strong></td></tr>" +
+    "<tr><td style='text-align:left'>smallest &eta; reached / distance of the largest from 1</td><td>" +
+      sci(ag.etaLo) + " / " + sci(1 - ag.etaHi) + "</td></tr>" +
+    "<tr><td style='text-align:left'>smallest population mass reached</td><td>" +
+      fmt(ag.massLo, 6) + "</td></tr></tbody>";
+  $("rowsBound").innerHTML = db.rows.map(function(r){
+    return "<tr" + (Math.abs(r.f - c.frac) < 1e-9 ? " class='same3'" : "") + "><td>" + fmt(r.f, 2) +
+      "</td><td>[" + fmt(r.piLo, 4) + ", " + fmt(r.piHi, 4) + "]</td>" +
+      "<td><strong>" + fmt(r.width, 6) + "</strong></td><td>" + fmt(r.closed, 6) + "</td>" +
+      "<td>" + sci(Math.abs(r.width - r.closed)) + "</td>" +
+      "<td>[" + fmt(r.kappaMin, 4) + ", " + fmt(r.kappaMax, 3) + "]</td></tr>";
+  }).join("");
+  $("flagBound").innerHTML =
+    "The width is <code>1 &minus; f</code> to <strong>" + sci(db.worst) + "</strong>, and moving the " +
+    "recorded base rate across five values changes it by <strong>" + sci(db.baseWorst) + "</strong> " +
+    "&mdash; the base rate cancels out of the width entirely. Sample <em>one per cent</em> of your " +
+    "population, however many rows that is, and the prevalence is pinned to an interval 0.99 wide. " +
+    "Sample all of it and &kappa; is pinned to exactly 1.";
+
+  // ---- coefficients
+  const cs = coefficientStudy(c);
+  $("rowsCoef").innerHTML = cs.rows.map(function(r){
+    return "<tr><td>" + r.name + "</td><td>" + fmt(r.b1Obs) + "</td><td>" + fmt(r.b1True) + "</td>" +
+      "<td class='ok'>" + sci(r.slopeGap) + "</td><td><strong>" + fmt(r.interceptGap) + "</strong></td>" +
+      "<td>" + fmt(r.predicted) + "</td><td class='ok'>" + sci(Math.abs(r.interceptGap - r.predicted)) +
+      "</td></tr>";
+  }).join("");
+  $("flagCoef").innerHTML =
+    "The slope is the same number in every world to <strong>" + sci(cs.slopeWorst) + "</strong> and " +
+    "the whole distortion lands on the intercept, equal to log &kappa; to <strong>" +
+    sci(cs.shiftWorst) + "</strong>. That is Prentice and Pyke, and it is why a case-control study " +
+    "reports odds ratios: the odds ratio is a difference of intercepts&rsquo; worth of nothing and a " +
+    "difference of slopes&rsquo; worth of everything. Fit whatever you like &mdash; you have measured " +
+    "&beta;&#8321; and you have measured &beta;&#8320; + log &kappa;, and no amount of data separates the " +
+    "second one into its parts.";
+
+  // ---- calibration
+  const cal = calibrationStudy(c, c.kappa);
+  $("rowsCal").innerHTML = cal.rows.map(function(r){
+    const hot = Math.abs(r.gap) === cal.maxGap;
+    return "<tr" + (hot ? " class='same'" : "") + "><td>" + r.k + "</td><td>" + fmt(r.q) + "</td>" +
+      "<td>" + fmt(r.eta) + "</td><td><strong>" + fmt(r.gap) + "</strong></td>" +
+      "<td>" + fmt(r.mS) + "</td><td>" + fmt(r.m) + "</td></tr>";
+  }).join("");
+  $("sayCal").innerHTML =
+    "Expected calibration error on the recorded sample is <strong>" + cal.eceSample.toFixed(0) +
+    "</strong> &mdash; exactly zero, not approximately &mdash; because the model was fitted to the " +
+    "labels the sample has. Against the population it is <strong>" + fmt(cal.eceTrue) + "</strong>.";
+  $("flagCal").innerHTML =
+    "The largest gap any single cell can ever show has a closed form. Maximising " +
+    "<code>expit(u+a) &minus; expit(u)</code> gives <code>u = &minus;a/2</code> by the symmetry of " +
+    "<code>&sigma;'</code>, so the supremum is <code>tanh(a/4)</code> = <strong>" +
+    cal.closed.toFixed(10) + "</strong> at &eta; = " + fmt(cal.argAt) + ". A 40,000-point scan finds " +
+    fmt(cal.scan, 10) + " at &eta; = " + fmt(cal.scanAt) + ", a gap of " + sci(cal.gapClosed) +
+    " which is the scan's own resolution. The worst cell here reaches " + fmt(cal.maxGap) + ". " +
+    "A reliability diagram drawn on this sample is flat, and it is flat for the same reason a " +
+    "thermometer sealed in a box reports a stable temperature.";
+
+  // ---- threshold
+  const thr = thresholdStudy(c);
+  $("rowsThr").innerHTML = thr.map(function(r, i){
+    return "<tr" + (i === 0 ? " class='same3'" : "") + "><td>&kappa; = " + fmt(r.kappa, 3) + "</td>" +
+      "<td>" + fmt(r.tOpt) + "</td><td><strong>" + fmt(r.effective) + "</strong></td>" +
+      "<td>" + r.disagree + " of " + law.K + "</td>" +
+      "<td>" + fmt(r.predPosNaive, 3) + " / " + fmt(r.predPosOpt, 3) + "</td>" +
+      "<td>" + fmt(r.cOpt) + "</td><td>" + fmt(r.cNaive) + "</td>" +
+      "<td><strong>" + fmt(r.regret) + "</strong></td>" +
+      "<td class='ok'>" + sci(r.corrRegret) + "</td></tr>";
+  }).join("");
+  // Quote the world on display rather than the worst one, so this paragraph and the header agree.
+  const worstThr = thr[1] || thr.reduce((a, r) => r.regret > a.regret ? r : a, thr[0]);
+  $("flagThr").innerHTML =
+    "You type <strong>" + fmt(worstThr.tOpt) + "</strong> and the machine runs <strong>" +
+    fmt(worstThr.effective) + "</strong>. The naive rule spends <strong>" +
+    fmt(worstThr.cNaive / worstThr.cOpt, 2) + "&times;</strong> the optimal cost and predicts " +
+    "positive at " + fmt(worstThr.predPosNaive, 3) + " where the optimal rule predicts " +
+    fmt(worstThr.predPosOpt, 3) + ". Subtracting log &kappa; from the logit before comparing puts " +
+    "the regret at exactly <strong>" + sci(worstThr.corrRegret) + "</strong> in every world &mdash; " +
+    "the correction is not an approximation, it is the inverse of the distortion.";
+
+  // ---- model selection
+  const selRows = [1, Math.max(2, Math.min(5, law.kappaMax)), c.kappa, law.kappaMax];
+  const sels = selRows.map(k => selectionStudy(c, k));
+  $("rowsSel").innerHTML = sels.map(function(s){
+    return "<tr" + (s.kappa === 1 ? " class='same3'" : "") + "><td>" + fmt(s.kappa, 3) + "</td>" +
+      "<td><strong>" + grp(s.accInv) + "</strong></td><td>" + grp(s.f1Inv) + "</td>" +
+      "<td class='ok'><strong>" + s.balInv + "</strong></td><td class='dim'>" + s.balTies + "</td>" +
+      "<td class='ok'>" + sci(s.balWorst) + "</td><td>" + fmt(s.topRegret) + "</td></tr>";
+  }).join("");
+  const sd = sels[2], wp = sd.worstPair;
+  $("saySel").innerHTML =
+    "Every rule in {0,1}<sup>" + law.K + "</sup> &mdash; all " + grp(sd.rules) + " of them and all " +
+    grp(sd.pairs) + " pairs &mdash; scored on the sample and in the population. Balanced accuracy " +
+    "is built only out of sensitivity and specificity, both invariant, so it cannot reorder " +
+    "anything: that zero is structural, not small.";
+  $("flagSel").innerHTML = wp ?
+    ("The worst inversion at &kappa; = " + fmt(c.kappa, 2) + ": a rule that wins the leaderboard by " +
+     "<strong>" + fmt(wp.lead) + "</strong> (" + fmt(wp.winS) + " against " + fmt(wp.loseS) +
+     ") while being <strong>" + fmt(wp.loss) + "</strong> worse in truth (" + fmt(wp.winT) +
+     " against " + fmt(wp.loseT) + "). And shortlisting does not save you: take the ten rules the " +
+     "sample likes best and the one it crowns has a true accuracy of " + fmt(sd.crownedTrue) +
+     " where the best of those same ten reaches " + fmt(sd.bestOfTopTrue) + " &mdash; a regret of " +
+     "<strong>" + fmt(sd.topRegret) + "</strong> paid entirely inside your own shortlist. " +
+     "The accuracy gap is exactly (&pi;'&minus;&pi;)(sens&minus;spec) over all " + grp(sd.rules) +
+     " rules, to " + sci(sd.identityWorst) + ".") :
+    "No inversions at this setting.";
+
+  // ---- knife edge
+  const ke = knifeEdgeStudy(c, c.kappa);
+  $("rowsKnife").innerHTML = ke.map(function(r){
+    const flat = Math.abs(r.skew) < 1e-12;
+    return "<tr" + (flat ? " class='same'" : "") + "><td>" + fmt(r.thr, 2) + "</td>" +
+      "<td>" + fmt(r.sens) + "</td><td>" + fmt(r.spec) + "</td>" +
+      "<td><strong>" + fmt(r.skew) + "</strong></td>" +
+      "<td>" + fmt(r.accS) + "</td><td>" + fmt(r.accT) + "</td>" +
+      "<td>" + (flat ? sci(r.gap) : "<strong>" + fmt(r.gap) + "</strong>") + "</td>" +
+      "<td>" + fmt(r.predicted) + "</td><td class='ok'>" +
+      sci(Math.abs(r.gap - r.predicted)) + "</td></tr>";
+  }).join("");
+  const flat = ke.filter(r => Math.abs(r.skew) < 1e-12);
+  $("flagKnife").innerHTML =
+    "This table exists because of a mistake. The first version of this page used a symmetric law " +
+    "read at a threshold of 0.5, and accuracy came back invariant to 1.1e-16 &mdash; sitting in the " +
+    "ledger above next to sensitivity and AUC, looking exactly like a theorem. It is a knife edge: " +
+    (flat.length ? "at this configuration the row at threshold " + fmt(flat[0].thr, 2) +
+       " still shows a gap of " + sci(flat[0].gap) + " against a predicted " +
+       flat[0].predicted.toExponential(0) + ", "
+     : "no threshold in this sweep hits sens = spec at the current settings, ") +
+    "and every other row is off by up to " +
+    fmt(Math.max.apply(null, ke.map(r => Math.abs(r.gap)))) + ". The identity holds to " +
+    sci(Math.max.apply(null, ke.map(r => Math.abs(r.gap - r.predicted)))) + " throughout.";
+
+  // ---- correction
+  const corr = correctionStudy(c, c.kappa);
+  $("rowsCorr").innerHTML = corr.rows.map(function(r){
+    return "<tr" + (r.nExt === c.nExt ? " class='same3'" : "") + "><td>" + grp(r.nExt) + "</td>" +
+      "<td><strong>" + fmt(r.rmse) + "</strong></td><td>" + fmt(r.bias) + "</td>" +
+      "<td>" + fmt(corr.naiveErr / r.rmse, 1) + "&times;</td><td class='dim'>" + r.reps + "</td></tr>";
+  }).join("");
+  $("sayCorr").innerHTML =
+    "Knowing the true prevalence pins &kappa; exactly, since <code>&kappa; = odds(&pi;')/odds(&pi;)</code>. " +
+    "Nobody knows &pi;, so the realistic version estimates it from a small external random sample " +
+    "and pays for the estimate. The uncorrected precision is off by <strong>" +
+    fmt(corr.naiveErr) + "</strong> &mdash; and that is bias, not noise, so it does not shrink with n.";
+  $("flagCorr").innerHTML =
+    "Four hundred external rows already beat the uncorrected number by <strong>" +
+    fmt(corr.naiveErr / corr.rows[3].rmse, 1) + "&times;</strong>, and the correction is unbiased " +
+    "throughout (largest |bias| " + fmt(Math.max.apply(null, corr.rows.map(r => Math.abs(r.bias)))) +
+    "). The trade is a fixed error you cannot reduce for a shrinking one you can, which is the " +
+    "usual shape of a good deal in this series.";
+
+  // ---- efficiency
+  const eff = efficiencyStudy(c);
+  $("rowsEff").innerHTML = eff.map(function(r){
+    return "<tr><td>" + fmt(r.kappa, 3) + "</td><td>" + fmt(r.pi) + "</td>" +
+      "<td>" + r.expectedPos.toFixed(0) + "</td>" +
+      "<td>" + fmt(r.randSd) + "</td><td>" + fmt(r.balSd) + "</td>" +
+      "<td><strong>" + fmt(r.ratio, 2) + "&times;</strong></td>" +
+      "<td>" + fmt(r.randBias) + "</td><td>" + fmt(r.balBias) + "</td></tr>";
+  }).join("");
+  const bestEff = eff[eff.length - 1];
+  $("flagEff").innerHTML =
+    "At a prevalence of " + fmt(bestEff.pi) + " a random draw of " + grp(c.n) + " rows contains " +
+    "about " + bestEff.expectedPos.toFixed(0) + " positives, and the slope comes back <strong>" +
+    fmt(bestEff.ratio, 2) + "&times;</strong> noisier than from a balanced draw of the same size. " +
+    "The balanced column is the same number in every row to eight decimals, which is not a " +
+    "coincidence: the class-conditional distributions it samples from are the invariant ones, so " +
+    "the balanced design draws the same dataset out of every world. Deliberate selection on the " +
+    "outcome is frequently the right call &mdash; it breaks the intercept and nothing else, and the " +
+    "intercept is the one thing an external prevalence figure restores.";
+
+  // ---- truncation
+  const B = 1, SG = 1;
+  const cuts = [-0.5, 0, 0.8, 1.5, 2.2];
+  $("rowsTrunc").innerHTML = cuts.map(function(cut){
+    const T = truncTheory(B, SG, cut), cx = matchedXCut(B, SG, cut), X = truncOnXTheory(B, SG, cx);
+    return "<tr" + (cut === 0.8 ? " class='same3'" : "") + "><td>" + fmt(cut, 2) + "</td>" +
+      "<td>" + fmt(T.keep, 3) + "</td><td>" + fmt(cx, 4) + "</td><td>" + fmt(X.keep, 3) + "</td>" +
+      "<td><strong>" + fmt(T.slope) + "</strong></td>" +
+      "<td class='ok'><strong>" + fmt(X.slope) + "</strong></td>" +
+      "<td>" + fmt(T.r2) + " / " + fmt(X.r2) + "</td>" +
+      "<td>" + fmt(T.varX) + "</td><td>" + fmt(X.varX) + "</td></tr>";
+  }).join("");
+  const tr = truncationStudy(c, B, SG, 0.8), agr = attenuationGrid(40);
+  $("sayTrunc").innerHTML =
+    "Monte Carlo at the highlighted row, " + tr.reps + " replications of " + grp(tr.nSim) +
+    " retained rows: slope <strong>" + fmt(tr.simSlopeY) + "</strong> against a closed form of " +
+    fmt(tr.theory.slope) + ", and <strong>" + fmt(tr.simSlopeX) + "</strong> against an exact " +
+    fmt(B, 4) + " under x-truncation. The matched cut from the algebra and the matched cut from " +
+    "bisecting the numerical R&sup2; agree to " + sci(tr.cutGap) + ", the retention rates to " +
+    sci(tr.keepGap) + ", the R&sup2; values to " + sci(tr.r2Gap) + ". A sweep of " + grp(agr.checks) +
+    " (b, &sigma;, cut) combinations finds <strong>" + agr.viol + "</strong> violations of " +
+    "attenuation &le; 1 (smallest factor " + fmt(agr.minFactor) + ") and reproduces " +
+    "slope = b &times; factor to " + sci(agr.worst) + ".";
+  $("flagTrunc").innerHTML =
+    "Two datasets with the same retention rate and the same R&sup2;, one of which has an unbiased " +
+    "slope and one of which is attenuated by <strong>" + fmt(tr.theory.attenuation) + "</strong>. " +
+    "And the diagnostic everyone reaches for points the wrong way: the x-truncated sample has the " +
+    "<em>narrower</em> range &mdash; Var(x) = " + fmt(tr.xTheory.varX) + " against " +
+    fmt(tr.theory.varX) + ", a difference of " + fmt(tr.varXGap) + " &mdash; and it is the one whose " +
+    "coefficient is right. &ldquo;Restriction of range&rdquo; is not the problem. Restriction on " +
+    "the <em>outcome</em> is.";
+
+  // ---- scale + seed guard
+  const ss = sampleSizeStudy(c), guard = seedGuard(c);
+  $("tblScale").innerHTML =
+    "<thead><tr><th>rows n</th><th>interval half-width</th><th>coverage, reference world</th>" +
+    "<th>coverage, &kappa; = " + fmt(c.kappa, 2) + "</th><th>coverage at the design bound</th>" +
+    "</tr></thead><tbody>" +
+    ss.map(function(r){
+      return "<tr><td>" + grp(r.n) + "</td><td>" + fmt(r.width / 2, 4) + "</td>" +
+        "<td>" + pct(r.covA) + "</td><td class='bad'>" + pct(r.covB) + "</td>" +
+        "<td class='bad'>" + pct(r.covBound) + "</td></tr>";
+    }).join("") + "</tbody>";
+  $("flagGuard").innerHTML =
+    "The exact coverage in the reference world is <strong>" + pct(guard.exact) + "</strong>, computed " +
+    "by summing binomial probabilities. Over " + grp(guard.reps) + " replications (standard error " +
+    (100 * guard.se).toFixed(2) + " points) the multiplicative-hash seed stream reads " +
+    pct(guard.hashed) + " and the arithmetic stride that produced Day 69's artefact reads " +
+    pct(guard.stride) + "; both are within " +
+    Math.max(Math.abs(guard.hashed - guard.exact), Math.abs(guard.stride - guard.exact)).toFixed(4) +
+    " of the truth. The Box&ndash;Muller sampler gets the same treatment: the truncated slope " +
+    "averages " + fmt(guard.bmHashed.mean) + " under hashing and " + fmt(guard.bmStride.mean) +
+    " under the stride, against a closed form of " + fmt(guard.theorySlope) + " with a standard " +
+    "error of " + fmt(guard.bmHashed.se) + " over " + guard.bmHashed.reps + " replications. " +
+    "Neither stream is distinguishable from the truth here &mdash; which is a conclusion this page " +
+    "can reach and the two before it could not, because they had nothing exact to compare against. " +
+    "More rows shrink the interval and never rescue the coverage in a shifted world: that column " +
+    "is zero at every size, because it is a bias, not a width.";
+
+  // ================================================================ in-page checks
+  const checks = [];
+  function T(label, fn){
+    let ok = false;
+    try { ok = !!fn(); } catch (e) { ok = false; }
+    checks.push({ label, ok });
+  }
+  const specs = worldSpecs(c), worlds = specs.map(s => worldOf(law, s.kappa));
+
+  T("conditioning on selection multiplies the odds: odds(q)/odds(&eta;) is &kappa; in every cell",
+    function(){
+      for (const w of worlds)
+        for (let k = 0; k < law.K; k++)
+          if (Math.abs(odds(law.q[k]) / odds(w.eta[k]) - w.kappa) > 1e-9 * w.kappa) return false;
+      return true;
+    });
+  T("the shift is the same constant in every cell: logit q &minus; logit &eta; = log &kappa; to 1e-12",
+    function(){
+      for (const w of worlds)
+        for (let k = 0; k < law.K; k++)
+          if (Math.abs((logit(law.q[k]) - logit(w.eta[k])) - w.logKappa) > 1e-12) return false;
+      return true;
+    });
+  T("the marginal odds shift by &kappa; too, so &kappa; = odds(&pi;')/odds(&pi;) exactly",
+    function(){
+      return worlds.every(w => Math.abs(odds(law.piObs) / odds(w.pi) / w.kappa - 1) < 1e-12);
+    });
+  T(grp(ida.cells) + " row comparisons across worlds: 0 differences in cell index and 0 in label",
+    function(){ return ida.cellDiffs === 0 && ida.labelDiffs === 0 && ida.cells > 10000; });
+  T(DIAG_KEYS.length + " sample diagnostics are bit-identical across every world (" +
+    grp(ida.comps) + " comparisons)",
+    function(){ return ida.diffs === 0 && ida.worst === 0; });
+  T("a balanced case-control draw from five different populations is the same dataset",
+    function(){ return bi.cellDiffs === 0 && bi.coefWorst === 0 && bi.cdfWorst < 1e-14; });
+  T("sensitivity, specificity, balanced accuracy, both likelihood ratios and AUC do not move",
+    function(){ return aud.worst < 1e-12 && aud.checks >= 20 && aud.skipped === 0; });
+  T("&hellip; while at least one prevalence-weighted quantity moves by more than 0.1",
+    function(){ return L.shiftBest > 0.1; });
+  T("the &ldquo;must be a probability&rdquo; constraint rejects 0 of " + grp(ag.pts) +
+    " worlds &mdash; it is vacuous here, unlike Day 69 and Day 70",
+    function(){ return ag.illegal === 0 && ag.pts >= 2000 && ag.etaLo > 0 && ag.etaHi < 1 && ag.massLo > 0; });
+  T("the design bound has width exactly 1 &minus; f, and the recorded base rate cancels",
+    function(){ return db.worst < 1e-12 && db.baseWorst < 1e-12; });
+  T("sampling the whole population (f = 1) pins &kappa; to 1 and the prevalence to a point",
+    function(){
+      const r = db.rows[0];
+      return Math.abs(r.width) < 1e-12 && Math.abs(r.kappaMin - 1) < 1e-9 && Math.abs(r.kappaMax - 1) < 1e-9;
+    });
+  T("the fitted slope is the true slope in every world, and the intercept is off by exactly log &kappa;",
+    function(){ return cs.slopeWorst < 1e-9 && cs.shiftWorst < 1e-9; });
+  T("expected calibration error on the recorded sample is exactly 0, not approximately",
+    function(){ return cal.eceSample === 0; });
+  T("&hellip; and the population calibration error is not",
+    function(){ return cal.eceTrue > 0.05 && cal.maxGap > 0.05; });
+  T("the supremum of the calibration gap is tanh(|log &kappa;|/4), confirmed by a 40,000-point scan",
+    function(){
+      return cal.gapClosed < 1e-6 && cal.maxGap <= cal.closed + 1e-12 &&
+             Math.abs(cal.scanAt - cal.argAt) < 2e-3;
+    });
+  T("a threshold of t on the recorded probability is a threshold of expit(logit t &minus; log &kappa;) " +
+    "on the truth",
+    function(){
+      const t = 1 / (1 + c.cost);
+      return thr.every(r => Math.abs(r.effective - expit(logit(t) - Math.log(r.kappa))) < 1e-12);
+    });
+  T("subtracting log &kappa; before comparing gives exactly zero regret in every world",
+    function(){ return thr.every(r => r.corrRegret < 1e-12); });
+  T("&hellip; and not correcting costs more than the optimal rule spends in total, somewhere",
+    function(){ return thr.some(r => r.regret > r.cOpt) && Math.abs(thr[0].regret) < 1e-12; });
+  T("balanced accuracy inverts 0 model pairs at every &kappa; &mdash; structural, since it is built " +
+    "from two invariants",
+    function(){ return sels.every(s => s.balInv === 0 && s.balWorst < 1e-12); });
+  T("plain accuracy inverts thousands of pairs, and exactly 0 when &kappa; = 1",
+    function(){ return sels[0].accInv === 0 && sels[sels.length - 1].accInv > 500; });
+  T("the accuracy gap is (&pi;' &minus; &pi;)(sens &minus; spec) over all " + grp(sd.rules) +
+    " rules, to 1e-12",
+    function(){ return sels.every(s => s.identityWorst < 1e-12); });
+  T("accuracy is invariant only where sens = spec, and the sweep finds that knife edge",
+    function(){
+      let flatGap = 0, steep = 0;
+      for (const r of ke){
+        if (Math.abs(r.gap - r.predicted) > 1e-12) return false;
+        if (Math.abs(r.skew) < 1e-12) flatGap = Math.max(flatGap, Math.abs(r.gap));
+        else steep = Math.max(steep, Math.abs(r.gap));
+      }
+      return flatGap < 1e-12 && steep > 0.05;
+    });
+  T("the exact coverage is computed by summing binomial pmfs, and the simulation agrees with it " +
+    "within 3 standard errors",
+    function(){
+      const se = Math.sqrt(Math.max(1e-9, exact[0] * (1 - exact[0]) / c.covReps));
+      return exact[0] > 0.9 && exact[0] < 0.99 &&
+             Math.abs(cov.coverage[0] - exact[0]) < 3 * se + 0.005;
+    });
+  T("the same interval covers 0.00% of the time in every shifted world, on Wald and on Wilson",
+    function(){
+      for (let i = 1; i < exact.length; i++){
+        if (exact[i] !== 0) return false;
+        if (cov.coverage[i] !== 0 || cov.wilson[i] !== 0) return false;
+      }
+      return true;
+    });
+  T("more rows shrink the interval monotonically and never rescue a shifted world",
+    function(){
+      for (let i = 1; i < ss.length; i++) if (ss[i].width >= ss[i - 1].width) return false;
+      return ss.every(r => r.covB === 0 && r.covBound === 0);
+    });
+  T("the prevalence correction is unbiased and its RMSE falls with the external sample size",
+    function(){
+      for (let i = 1; i < corr.rows.length; i++)
+        if (corr.rows[i].rmse >= corr.rows[i - 1].rmse) return false;
+      return corr.rows.every(r => Math.abs(r.bias) < 0.03) &&
+             corr.naiveErr / corr.rows[corr.rows.length - 1].rmse > 10;
+    });
+  T("a balanced draw beats a random one by more as the prevalence falls, and the balanced column " +
+    "is one number",
+    function(){
+      const last = eff[eff.length - 1];
+      return last.ratio > eff[0].ratio && last.ratio > 1.5 &&
+             eff.every(r => Math.abs(r.balSd - eff[0].balSd) < 1e-12);
+    });
+  T("truncating on y attenuates the slope by (1&minus;&delta;)/(1&minus;&rho;&sup2;&delta;); " +
+    grp(agr.checks) + " configurations, 0 violations of factor &le; 1",
+    function(){ return agr.viol === 0 && agr.worst < 1e-12 && agr.minFactor > 0; });
+  T("truncating on x at the same standardised cut leaves the slope exactly b, with the same " +
+    "retention rate and the same R&sup2;",
+    function(){
+      return Math.abs(tr.xTheory.slope - B) < 1e-15 && tr.keepGap < 1e-12 && tr.r2Gap < 1e-12;
+    });
+  T("&hellip; and the closed-form matched cut agrees with a numerical solve to 1e-9",
+    function(){ return tr.cutGap < 1e-9; });
+  T("the unbiased sample is the one with the NARROWER range, which is the opposite of the folklore",
+    function(){ return tr.xTheory.varX < tr.theory.varX && tr.varXGap > 0.05; });
+  T("the closed-form truncated slope matches a Box&ndash;Muller simulation to 0.02",
+    function(){ return tr.slopeGapY < 0.02 && tr.slopeGapX < 0.02; });
+  T("the Mills ratio from erfc and from its continued fraction agree to 1e-6 out to &alpha; = 12",
+    function(){
+      for (let a = 2; a <= 12; a += 0.5)
+        if (Math.abs(millsRatio(a) / millsCF(a) - 1) > 1e-6) return false;
+      return true;
+    });
+  T("&Phi;&#8315;&sup1; inverts &Phi; to 1e-7 (the tail rational is good to 1.2e-7 fractional)",
+    function(){
+      for (const p of [0.02, 0.25, 0.5, 0.9, 0.975, 0.999])
+        if (Math.abs(normCdf(normInv(p)) - p) > 1e-7) return false;
+      return true;
+    });
+  T("both seed streams sit within three standard errors of the exact coverage &mdash; no artefact " +
+    "to inherit from Day 69",
+    function(){
+      return Math.abs(guard.hashed - guard.exact) < 3 * guard.se + 0.01 &&
+             Math.abs(guard.stride - guard.exact) < 3 * guard.se + 0.01 &&
+             Math.abs(guard.bmHashed.mean - guard.theorySlope) < 4 * guard.bmHashed.se + 0.002;
+    });
+
+  const passed = checks.filter(k => k.ok).length;
+  $("selftest").innerHTML =
+    "<p style='margin:0 0 8px; font-weight:800' class='" + (passed === checks.length ? "ok" : "bad") +
+    "'>" + passed + " / " + checks.length + " checks passed</p><ul class='checks'>" +
+    checks.map(k => "<li>" + (k.ok ? "<span class='ok'>PASS</span>" : "<span class='bad'>FAIL</span>") +
+      " &nbsp;" + k.label + "</li>").join("") + "</ul>";
+}
+
+// A full render is a couple of seconds of Monte Carlo, so slider drags are debounced rather than dropped.
+let pending = null;
+function scheduleRender(){
+  if (pending) clearTimeout(pending);
+  pending = setTimeout(function(){ pending = null; render(); }, 160);
+}
+["sSep", "sBase", "sK", "sKap", "sThr", "sCost", "sFrac", "sN", "sNE", "sS", "sR"]
+  .forEach(function(id){ $(id).addEventListener("input", scheduleRender); });
+render();
+</script>
+</body>
+</html>
