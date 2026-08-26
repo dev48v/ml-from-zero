@@ -1,0 +1,1923 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero &middot; Day 72 &mdash; Is the test set big enough?</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --ink:#0f172a; --ink2:#334155; --dim:#64748b; --dim2:#94a3b8;
+    --line:#e2e8f0; --bg:#f1f5f9; --bg2:#f8fafc; --white:#fff;
+    --sky:#0369a1; --amber:#fffbeb; --amberL:#f59e0b; --amberT:#78350f;
+    --blue:#eff6ff; --violet:#f5f3ff; --rose:#fff1f2; --green:#f0fdf4;
+  }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--bg2); color:var(--ink); line-height:1.6;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.92em;
+         background:#e8eef6; padding:1px 4px; border-radius:4px; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; line-height:1.55;
+        font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre code { background:none; padding:0; color:inherit; }
+  h1,h2,h3 { line-height:1.25; margin:0; }
+  p { margin:0 0 .85em; }
+  header.top { background:var(--white); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .wrap { max-width:1150px; margin:0 auto; padding:16px; }
+  @media (min-width:768px) { .wrap { padding:24px; } }
+  .kicker { font-size:11px; font-weight:800; letter-spacing:.16em; color:var(--sky);
+            margin:0 0 8px; text-transform:uppercase; }
+  h1.lede { font-size:17px; font-weight:800; margin-bottom:14px; }
+  @media (min-width:768px) { h1.lede { font-size:19px; } }
+  h1.lede em { font-style:italic; }
+  #tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  #tabs button { font:inherit; font-size:13px; font-weight:700; cursor:pointer;
+                 border:0; padding:8px 18px; border-radius:9px; background:var(--bg); color:var(--ink); }
+  #tabs button.tab-active { background:#0f172a; color:#fff; }
+  .panel { display:block; }
+  .panel.hidden { display:none; }
+  .sheet { min-height:calc(100vh - 78px); padding:16px; background:var(--bg); }
+  @media (min-width:768px) { .sheet { padding:32px; } }
+  .sheet.plain { background:var(--white); }
+  .sheet.soft  { background:var(--bg2); }
+  .col { max-width:1150px; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+  .col.narrow { max-width:760px; gap:22px; }
+  .card { background:var(--white); border-radius:16px; padding:20px;
+          box-shadow:0 1px 3px rgba(15,23,42,.09), 0 1px 2px rgba(15,23,42,.05); }
+  .ctl { display:grid; gap:6px 24px; grid-template-columns:1fr; }
+  @media (min-width:700px)  { .ctl { grid-template-columns:1fr 1fr; } }
+  @media (min-width:1000px) { .ctl { grid-template-columns:1fr 1fr 1fr; } }
+  .ctl label { font-size:13px; display:block; }
+  .ctl input[type=range] { width:100%; margin:2px 0 0; }
+  .ctl .val { float:right; font-weight:700; font-variant-numeric:tabular-nums; }
+  .eyebrow { font-size:11px; font-weight:800; letter-spacing:.09em; color:var(--dim);
+             margin:0 0 4px; text-transform:uppercase; }
+  .say { font-size:13.5px; color:var(--ink2); margin:0 0 12px; }
+  .tiny { font-size:12px; color:var(--dim); }
+  .scroll { overflow-x:auto; }
+  table.num { width:100%; border-collapse:collapse; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:var(--dim); text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; white-space:normal; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  .ok   { color:#166534; font-weight:800; }
+  .bad  { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim  { color:var(--dim2); }
+  .same  { background:var(--blue); }
+  .same2 { background:var(--violet); }
+  .same3 { background:var(--green); }
+  .flag { font-size:13.5px; margin:12px 0 0; padding:12px; border-radius:9px;
+          background:var(--amber); border-left:4px solid var(--amberL); color:var(--amberT); }
+  .flag.blue { background:var(--blue); border-left-color:#3b82f6; color:#1e3a8a; }
+  .flag.rose { background:var(--rose); border-left-color:#f43f5e; color:#881337; }
+  ul.checks { list-style:none; margin:0; padding:0; font-size:13px; color:var(--ink2); }
+  ul.checks li { padding:1px 0; }
+  .foot { border-top:1px solid var(--line); background:var(--white); }
+  .foot .wrap { font-size:12.5px; color:var(--dim); }
+  .foot a { color:var(--sky); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <p class="kicker">MachineLearningFromZero &middot; Day 72</p>
+    <h1 class="lede">
+      &#128207; Is the test set big enough? &mdash; days 66 to 71 were an identification arc: given
+      this file, what can be known at all. This one <strong>steps out</strong>, because six is
+      enough and the question underneath was starting to repeat. Here the data does not exist yet
+      and the only question is <em>how much of it to collect</em>. Two models, the same
+      <code>n</code> test items, a 2&times;2 table of who got what right &mdash; and
+      <code>acc<sub>A</sub> &minus; acc<sub>B</sub> = p&#8321;&#8320; &minus; p&#8320;&#8321;</code>,
+      so the two cells where both models agree <strong>cancel</strong> and carry no information about
+      the difference whatsoever. Condition on the <code>d</code> rows where they disagreed and the
+      null is <code>Binomial(d, &frac12;)</code> exactly, which makes power a finite sum rather than
+      a simulation: at n = 600 it is <strong>0.830230251229</strong>, computed by two different
+      routes that agree to <strong>3.0e-14</strong> &mdash; and worth having exactly, because 2,000
+      replications read 0.8415, which is 1.3&sigma; away and would have shipped. That number does
+      not depend on how good the models are. Five worlds whose accuracies run from
+      <strong>97.6%</strong> down to <strong>30.8%</strong> share one power to the last digit, and
+      the sampler cannot tell them apart: <strong>60,000</strong> row comparisons, <strong>0</strong>
+      differences, while accuracy spans <strong>0.7117</strong>. The <em>unpaired</em> design &mdash;
+      score A on one test set and B on another &mdash; has no such invariance: same gap, same
+      &alpha;, and it needs from <strong>2.3&times;</strong> to <strong>15.3&times;</strong> the
+      items, with the multiplier set by an identity the page asserts to 1.1e-16,
+      <code>Var<sub>unpaired</sub> &minus; Var<sub>paired</sub> = 2(p&#8321;&#8321;p&#8320;&#8320;
+      &minus; p&#8321;&#8320;p&#8320;&#8321;)</code> &mdash; twice the <strong>determinant</strong>
+      of that 2&times;2 table, which is zero at exactly two accuracies and nowhere else. You ask for
+      &alpha; = 0.05 and the machine spends <strong>0.0331</strong>; you ask for 80% power, the
+      textbook formula hands you n = <strong>521</strong>, and 521 rows deliver
+      <strong>76.43%</strong> &mdash; the exact answer is <strong>562</strong>. The conditional
+      level ladder dips <strong>215</strong> times over d = 1 to 400 and the exact power dips
+      <strong>0</strong> times over 2,999 consecutive sample sizes, which is not what I expected to
+      find. Then the other way people compare models: <code>k</code> folds share a training set, so
+      the per-fold differences are correlated, and the naive paired t-test is exactly
+      <code>&radic;c</code> times a real <code>t</code> variate with
+      <code>c = (1+(k&minus;1)&rho;)/(1&minus;&rho;)</code> &mdash; a nominal 5% test that rejects a
+      true null <strong>51.24%</strong> of the time at k = 10, &rho; = 0.5, rising to
+      <strong>65.30%</strong> at k = 20, because <em>more folds is worse</em>. And a default of
+      &rho; = 0 would have made the correction look like a no-op to <strong>0e+0</strong>.
+      Pure vanilla JavaScript, one file, no build step.
+    </h1>
+    <div id="tabs">
+      <button data-tab="look" class="tab-active">&#128202; MEASURE</button>
+      <button data-tab="understand">&#129504; UNDERSTAND</button>
+      <button data-tab="build">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================================ MEASURE -->
+<section id="look" class="panel">
+  <div class="sheet">
+    <div class="col">
+
+      <div class="card">
+        <div class="ctl">
+          <label>disagreement rate <code>&delta; = p&#8321;&#8320; + p&#8320;&#8321;</code>
+            <span class="val" id="vDelta">0.060</span>
+            <input id="sDelta" type="range" min="0.01" max="0.4" step="0.005" value="0.06"></label>
+          <label>share of them A wins <code>&theta;</code>
+            <span class="val" id="vTheta">0.75</span>
+            <input id="sTheta" type="range" min="0.5" max="1" step="0.01" value="0.75"></label>
+          <label>world on display <code>&phi;</code> (how the agreements split)
+            <span class="val" id="vPhi">0.90</span>
+            <input id="sPhi" type="range" min="0" max="1" step="0.01" value="0.9"></label>
+          <label>test items n <span class="val" id="vN">600</span>
+            <input id="sN" type="range" min="100" max="3000" step="50" value="600"></label>
+          <label>level &alpha; <span class="val" id="vAlpha">0.050</span>
+            <input id="sAlpha" type="range" min="0.005" max="0.15" step="0.005" value="0.05"></label>
+          <label>power wanted <span class="val" id="vTarget">0.80</span>
+            <input id="sTarget" type="range" min="0.5" max="0.95" step="0.01" value="0.8"></label>
+          <label>folds k <span class="val" id="vK">10</span>
+            <input id="sK" type="range" min="3" max="20" step="1" value="10"></label>
+          <label>fold correlation &rho; <span class="val" id="vRho">0.50</span>
+            <input id="sRho" type="range" min="0" max="0.9" step="0.05" value="0.5"></label>
+          <label>replications <span class="val" id="vReps">2000</span>
+            <input id="sReps" type="range" min="500" max="8000" step="500" value="2000"></label>
+          <label>seeds in the identity audit <span class="val" id="vSeeds">25</span>
+            <input id="sSeeds" type="range" min="8" max="60" step="1" value="25"></label>
+        </div>
+        <p class="tiny" style="margin-top:12px">
+          Two models are scored on the <strong>same</strong> n items. Each item lands in one of four
+          cells: both right (<code>p&#8321;&#8321;</code>), only A right
+          (<code>p&#8321;&#8320; = <span id="wP10">0.0450</span></code>), only B right
+          (<code>p&#8320;&#8321; = <span id="wP01">0.0150</span></code>), both wrong
+          (<code>p&#8320;&#8320;</code>). The accuracy gap is
+          <code>p&#8321;&#8320; &minus; p&#8320;&#8321;</code> = <strong id="wGap">0.0300</strong>,
+          which is a definition and not a finding &mdash; the point is what it leaves out. The
+          displayed world has <strong id="wAcc">A at 0.8910, B at 0.8610</strong> and the two models
+          agree on <strong id="wAgree">94.00%</strong> of items; on average
+          <strong id="wDbar">36.0</strong> of the n rows disagree and the test reads
+          <em>only those</em>. Everything labelled <em>exact</em> is a finite sum over the binomial
+          or trinomial law &mdash; no sampling. Monte Carlo columns say so, use
+          <span id="repWord">2000</span> replications, and carry a standard error. The identity
+          audit uses <span id="seedWord">25</span> seeds.
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">five worlds, one test</p>
+        <p class="say" id="headline">&nbsp;</p>
+        <div class="scroll"><table class="num">
+          <thead><tr>
+            <th>world &phi;</th><th>acc A</th><th>acc B</th><th>they agree</th>
+            <th>det 2&times;2</th><th>odds ratio</th>
+            <th>paired power</th><th>unpaired power</th>
+            <th>n paired</th><th>n unpaired / arm</th><th>items &times;</th>
+          </tr></thead>
+          <tbody id="rowsWorlds"></tbody>
+        </table></div>
+        <p class="flag" id="flagWorlds">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the file does not move</p>
+        <p class="say">Each world above was built, and then the sample was drawn with the same seed.
+          <code>drawDiscordant(p&#8321;&#8320;, p&#8320;&#8321;, n, seed)</code> has no world
+          parameter &mdash; there is nowhere to put one &mdash; and it returns, per row, only whether
+          A alone was right, B alone was right, or the two agreed. The concordant rows are painted
+          afterwards from a separate stream. So the claim is not that the samples resemble each
+          other; it is that the test's entire input is the same integers.</p>
+        <div class="scroll"><table class="num" id="tblIdentity"></table></div>
+        <p class="tiny" id="sayIdentity">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the same number, three ways</p>
+        <div class="scroll"><table class="num" id="tblThree"></table></div>
+        <p class="flag" id="flagThree">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the level you asked for and the level you get</p>
+        <p class="say">Conditional on d disagreements the null distribution is
+          <code>Binomial(d, &frac12;)</code>, which is <em>discrete</em>: the attainable two-sided
+          levels are a ladder, and the test spends the largest rung that still fits under &alpha;.
+          At some d there is no rung at all and the test cannot reject however lopsided the split
+          is.</p>
+        <div class="scroll"><table class="num" id="tblLadder"></table></div>
+        <div class="scroll" style="margin-top:14px"><table class="num" id="tblSize"></table></div>
+        <p class="flag" id="flagLevel">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the sawtooth that averages away</p>
+        <div class="scroll"><table class="num" id="tblMono"></table></div>
+        <p class="flag blue" id="flagMono">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">how many items, exactly &mdash; and what the textbook formula costs</p>
+        <p class="say">The accuracy gap is held fixed and the <em>disagreement rate</em> is swept.
+          Every row is the same claim about the models; only how often they differ changes.</p>
+        <div class="scroll"><table class="num" id="tblSweep"></table></div>
+        <p class="flag" id="flagSweep">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">paired versus unpaired, and the identity behind the gap</p>
+        <div class="scroll"><table class="num" id="tblVar"></table></div>
+        <p class="flag" id="flagVar">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the knife edge where the two designs coincide</p>
+        <div class="scroll"><table class="num" id="tblEdge"></table></div>
+        <p class="flag rose" id="flagEdge">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the interval nobody checks</p>
+        <p class="say">Same rows, two ways of putting an error bar on the accuracy difference: the
+          paired one, which uses the discordant counts, and the one you get by subtracting two
+          independent-looking proportions. Coverage is exact &mdash; a sum over the whole 2&times;2
+          law, not a simulation &mdash; with the simulation next to it as a check.</p>
+        <div class="scroll"><table class="num" id="tblCover"></table></div>
+        <p class="flag" id="flagCover">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">k folds share a training set</p>
+        <p class="say">The other way people compare two models: k cross-validation folds, a paired
+          t-test on the per-fold differences, and nobody mentions that the folds were trained on
+          overlapping data. Under equicorrelation the answer is closed form, so this table has an
+          exact column too.</p>
+        <div class="scroll"><table class="num" id="tblFold"></table></div>
+        <p class="flag" id="flagFold">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">and more folds is worse</p>
+        <div class="scroll"><table class="num" id="tblFoldK"></table></div>
+        <p class="flag" id="flagFoldK">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">scale, seeds and the number I nearly reported</p>
+        <div class="scroll"><table class="num" id="tblScale"></table></div>
+        <p class="flag" id="flagGuard">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">in-page checks</p>
+        <div id="selftest"></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ UNDERSTAND -->
+<section id="understand" class="panel hidden">
+  <div class="sheet plain">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">How much test data buys an answer?</h2>
+
+      <h3 style="font-size:19px; font-weight:800">0. Breaking the arc on purpose</h3>
+      <p>Days 66 to 71 were one question asked six ways. Cross-validation leakage, distribution
+      shift, missing data, measurement error, label noise, selection on the outcome &mdash; all of
+      them ask <em>what can this file identify</em>, and all of them end in a bound. Day 71 already
+      strained it: its bound could not come from the data at all and had to come from the design.
+      That is the crack this page walks through. Here nothing is unidentified. The estimand is
+      trivial, the estimator is a difference of two counts, and the only question is whether the
+      experiment is <strong>big enough</strong> &mdash; which is not an identification question, it
+      is a design question, and it has an exact answer rather than an interval. Six identification
+      days in a row is a lot, and the honest reason to stop is that the seventh would have been the
+      same shape.</p>
+
+      <h3 style="font-size:19px; font-weight:800">1. Two cells do all the work</h3>
+      <p>Score two models on the same n items and every item lands in one of four cells: both right,
+      only A right, only B right, both wrong. Then</p>
+      <pre><code>acc_A - acc_B = (p11 + p10) - (p11 + p01) = p10 - p01</code></pre>
+      <p>and <code>p&#8321;&#8321;</code> has cancelled. So has <code>p&#8320;&#8320;</code>, which
+      never appeared. Whatever the two models have in common &mdash; and for two decent models that
+      is nearly everything &mdash; is irrelevant to the difference between them. A test set of 600
+      items on which the models disagree 36 times is a test of 36 items wearing a suit; the other
+      564 rows are already spent before the comparison starts. This is not an approximation or a
+      large-sample argument. It is arithmetic on the definition of accuracy.</p>
+
+      <h3 style="font-size:19px; font-weight:800">2. Conditioning makes the null exact</h3>
+      <p>Under the null the two models are equally accurate, which says
+      <code>p&#8321;&#8320; = p&#8320;&#8321;</code> and nothing about the other two cells. Condition
+      on the number of disagreements <code>d = n&#8321;&#8320; + n&#8320;&#8321;</code> and each
+      disagreement is a fair coin: <code>n&#8321;&#8320; | d ~ Binomial(d, &frac12;)</code>, exactly,
+      with no nuisance parameter left in the problem. That is McNemar's exact test. The chi-square
+      version everyone quotes, <code>(n&#8321;&#8320;&minus;n&#8320;&#8321;)&sup2;/d</code>, is a
+      normal approximation to this and inherits none of its exactness.</p>
+      <p>Because the null is exact, the <em>alternative</em> is exact too. Under
+      <code>(p&#8321;&#8320;, p&#8320;&#8321;)</code> the number of disagreements is
+      <code>Binomial(n, &delta;)</code> and the split within them is
+      <code>Binomial(d, &theta;)</code> with <code>&theta; = p&#8321;&#8320;/&delta;</code>, so power
+      is a double sum with no simulation anywhere in it. The MEASURE tab computes it twice &mdash;
+      once by conditioning and once as a flat sum of trinomial probabilities over the rejection
+      region &mdash; and the two agree to about 3e-14, which is summation order and nothing else.</p>
+
+      <h3 style="font-size:19px; font-weight:800">3. Power does not know how good the models are</h3>
+      <p>Power is a function of <code>(n, p&#8321;&#8320;, p&#8320;&#8321;, &alpha;)</code>. There is
+      no <code>p&#8321;&#8321;</code> in it. Two models at 97.6% and 94.6% are exactly as separable
+      as two at 30.8% and 27.8%, provided they disagree the same way, and the page demonstrates it
+      by construction rather than by a plot: the sampler takes the two discordant probabilities and
+      nothing else, the concordant rows are painted afterwards by a different function from a
+      different stream, and across five worlds spanning 0.71 in accuracy the test's input is the
+      same integers on 60,000 row comparisons.</p>
+      <p>This is a genuinely useful fact and also a trap. It means a benchmark result of the form
+      &ldquo;A beats B by 3 points, p &lt; 0.05, n = 600&rdquo; carries no information about whether
+      the models are any good, and a reader who assumes the significance was easier to reach because
+      the accuracies were high has it backwards &mdash; it was neither easier nor harder.</p>
+
+      <h3 style="font-size:19px; font-weight:800">4. The level is a ladder, not a number</h3>
+      <p>At d disagreements the achievable two-sided levels are
+      <code>2P(X &le; c)</code> for integer c: at d = 8 the choices are 0.0078 and 0.0703, so a 5%
+      test spends <strong>0.78%</strong>; at d = 17 there is a rung at 0.0490 and it spends almost
+      all of it. Below d = 6 there is no rung at all and the test cannot reject at 5% no matter how
+      lopsided the disagreements are &mdash; five out of five is <code>p = 0.0625</code>. Averaging
+      that ladder over the random d gives the size actually spent, and it is strictly below &alpha;
+      at every sample size: at the default, <strong>0.0331</strong> against a nominal 0.05. The test
+      is not calibrated at 5%; it is conservative, and the missing third of the level is missing
+      power that no amount of extra data recovers, because the discreteness lives in d.</p>
+
+      <h3 style="font-size:19px; font-weight:800">5. The sawtooth that is not there</h3>
+      <p>Given that ladder, I expected the exact power to be visibly non-monotone in n &mdash; that
+      the classic discreteness sawtooth would be right there in the sample-size curve, and that
+      &ldquo;the smallest n reaching 80% power is not the smallest n above it&rdquo; would be one of
+      the findings. It is not. Over <strong>2,999 consecutive sample sizes</strong> the exact power
+      dips zero times and the exact size dips zero times, while the ladder they are built from dips
+      <strong>215</strong> times over d = 1 to 400. The reason is that d is itself random: at n =
+      600 the number of disagreements has a standard deviation of about six, so every sample size
+      averages the ladder over a dozen rungs and the teeth cancel. The sawtooth is real, it is just
+      not observable in n. That is a negative result and it is on the page because it is the
+      opposite of what I set out to show.</p>
+
+      <h3 style="font-size:19px; font-weight:800">6. The textbook n is too small</h3>
+      <p>The standard formula is a normal approximation to the same conditional argument:</p>
+      <pre><code>n = [ z(1-a/2) sqrt(delta) + z(power) sqrt(delta - Delta^2) ]^2 / Delta^2</code></pre>
+      <p>At the default it returns 521. Run the exact power at 521 and it is <strong>0.7643</strong>,
+      not 0.80; the exact requirement is <strong>562</strong>, about 8% more. The direction is
+      always the same &mdash; the formula ignores the conservatism of section 4 and therefore always
+      under-books &mdash; and the size of the miss is worst in the middle, when the expected number
+      of disagreements is a few dozen. It is small at very low disagreement rates because there the
+      power is dominated by simply having enough discordant rows to reach the first rung of the
+      ladder at all, and it shrinks again at high ones because the ladder gets dense. Nobody is
+      going to be ruined by 8%, but it is a systematic 8% in the direction of an under-powered
+      study, and the exact number costs a few milliseconds to compute.</p>
+
+      <h3 style="font-size:19px; font-weight:800">7. More disagreement costs more data</h3>
+      <p>This one I had backwards for an hour. Hold the accuracy gap at 3 points and vary how often
+      the two models disagree at all. Intuition says two models that agree on almost everything are
+      hard to tell apart. The arithmetic says the opposite: at &delta; = 0.03 &mdash; the minimum,
+      where every single disagreement is one A wins &mdash; the exact requirement is
+      <strong>263</strong> items, and at &delta; = 0.24 it is over two thousand. The gap is the
+      <em>signal</em> and the disagreement rate is the <em>noise</em>: a disagreement A wins is
+      evidence, a disagreement B wins is counter-evidence, and what the test measures is the
+      imbalance between the two. Two models that differ only on the rows where A is right are the
+      easiest possible comparison, not the hardest.</p>
+      <p>The practical reading is uncomfortable for benchmark practice: an ensemble and its base
+      model, or a fine-tune and its checkpoint, are usually in exactly this happy regime and need
+      surprisingly little test data. Two independently trained architectures with the same headline
+      accuracy disagree constantly, and separating <em>them</em> at 3 points takes thousands of
+      items.</p>
+
+      <h3 style="font-size:19px; font-weight:800">8. What pairing is worth, exactly</h3>
+      <p>The alternative design is to score A on one test set and B on another. Its variance is
+      <code>acc<sub>A</sub>(1&minus;acc<sub>A</sub>) + acc<sub>B</sub>(1&minus;acc<sub>B</sub>)</code>.
+      The paired variance is <code>&delta; &minus; &Delta;&sup2;</code>. Subtract:</p>
+      <pre><code>Var_unpaired - Var_paired = 2 (p11 p00 - p10 p01)</code></pre>
+      <p>which is twice the determinant of the 2&times;2 table &mdash; that is, twice the covariance
+      between the two models' correctness. The page asserts it to 1.1e-16 in every world and over a
+      201-point sweep. Two consequences. First, the saving is large: at the default world the
+      unpaired variance is 0.2168 and the paired one is 0.0591, a factor of 3.7, and since the
+      unpaired design needs two arms the item count runs 6.7&times;. Second, and this is the part
+      the invariance in section 3 sets up, the unpaired requirement <em>depends on the accuracies</em>
+      while the paired one does not: 639 items per arm when the models are at 97.6%, 4,314 when they
+      are at 56.2%, because <code>p(1&minus;p)</code> peaks at a half. So the answer to &ldquo;how big
+      a test set do I need&rdquo; is a single number under pairing and a whole function under
+      independence.</p>
+
+      <h3 style="font-size:19px; font-weight:800">9. Two knife edges</h3>
+      <p>The determinant is zero when the two models' errors are independent, and then paired and
+      unpaired coincide exactly. Solving <code>p&#8321;&#8321;p&#8320;&#8320; =
+      p&#8321;&#8320;p&#8320;&#8321;</code> for the concordant split gives two roots and the page
+      prints both: at the default they sit at accuracies of about <strong>4.6%</strong> and
+      <strong>98.4%</strong>, and at those two points the variance ratio is 1.0000 to twelve
+      decimals. Everywhere between them the determinant is positive and pairing wins. It is worth
+      knowing that the knife edge exists, because a page that had happened to default to one of
+      those two configurations would have shown paired and unpaired agreeing perfectly and concluded
+      that pairing is a formality.</p>
+      <p>The second one is in the fold module and it is the one that nearly did happen. The
+      correction factor is <code>c = (1+(k&minus;1)&rho;)/(1&minus;&rho;)</code>, which is
+      <em>exactly</em> 1 at &rho; = 0. With independent folds the corrected test and the naive test
+      are not close, they are the same statistic, agreeing to 0e+0 on every replication. A default
+      of &rho; = 0 would have produced a module in which a correction provably does nothing. The
+      default is 0.5 and the &rho; = 0 row is kept in the table as the control.</p>
+
+      <h3 style="font-size:19px; font-weight:800">10. The folds are not independent and it is not a small effect</h3>
+      <p>k-fold cross-validation trains on overlapping data, so the per-fold differences are
+      correlated. Model that as equicorrelated normals with correlation &rho; and the naive paired
+      t-statistic is <em>exactly</em> <code>&radic;c</code> times a genuine <code>t(k&minus;1)</code>
+      variate. The proof is three lines and it is the reason this module has an exact column: for an
+      exchangeable normal vector the sample mean and the sample variance are still independent, the
+      mean has variance <code>&sigma;&sup2;(1+(k&minus;1)&rho;)/k</code>, and
+      <code>(k&minus;1)s&sup2;/(&sigma;&sup2;(1&minus;&rho;))</code> is still
+      <code>&chi;&sup2;(k&minus;1)</code>. So the type I error is
+      <code>2(1 &minus; F<sub>k&minus;1</sub>(t<sub>crit</sub>/&radic;c))</code> in closed form.</p>
+      <p>At k = 10 and &rho; = 0.5 that is <strong>51.24%</strong>. A test advertised at 5% rejects
+      a true null half the time, and dividing the statistic by <code>&radic;c</code> puts it back to
+      5% on the nose. The direction of the k dependence is the part worth carrying around: at fixed
+      &rho;, <strong>more folds is worse</strong> &mdash; 16.44% at k = 3, 51.24% at k = 10, 65.30%
+      at k = 20 &mdash; because extra folds add almost nothing to the effective sample size while
+      the t-table happily narrows the critical value as if they had. Ten-fold cross-validation is
+      not a safer significance test than three-fold; it is a more confident one.</p>
+
+      <h3 style="font-size:19px; font-weight:800">11. The interval nobody checks</h3>
+      <p>Reporting &ldquo;+3.0 points &plusmn; 1.9&rdquo; requires a standard error, and the one
+      people reach for treats the two accuracies as independent proportions. On paired data that
+      interval is too wide by the covariance term of section 8, and the over-coverage is not
+      cosmetic: exactly <strong>100.0000%</strong> at the middle world against a nominal 95%, with
+      an interval <strong>2.90&times;</strong> the width it should be. An interval that never misses
+      is not a safe interval, it is a wasted experiment &mdash; it is the same information as the
+      6.7&times; item count, seen from the other end. The paired interval itself is not perfect
+      either: its exact coverage is <strong>94.73%</strong>, slightly under nominal, and unlike the
+      naive one that number is identical in every world.</p>
+
+      <h3 style="font-size:19px; font-weight:800">12. The seed guard, for the third time</h3>
+      <p>Day 69 measured a 99.2% coverage that turned out to be an arithmetic seed stride feeding
+      Box&ndash;Muller. Day 70 re-measured it for a uniform-only sampler and found nothing; Day 71
+      re-measured it against an exact target and again found nothing. This page has both kinds of
+      sampler &mdash; a uniform categorical draw for the test items and a Box&ndash;Muller draw for
+      the folds &mdash; and both have exact targets, so the check is run a third time on both. Both
+      streams sit inside the sampling error of the exact answer in both modules, and the standard
+      errors are printed so the reader can see what that is worth. An inherited caveat that fails to
+      reproduce three times running, on four sampler-stream combinations, is a caveat about Day 69's
+      particular arrangement and not about the generator.</p>
+
+      <h3 style="font-size:19px; font-weight:800">13. Things I got wrong</h3>
+      <p>The sawtooth in section 5, which was going to be the headline and turned out to average
+      away; and the direction in section 7, which I had backwards until the sweep printed it. Two
+      more. The first draft of the identity audit passed the world into the sampler and compared the
+      resulting <em>datasets</em>, which is a weaker claim and also nearly a tautology; splitting
+      the draw into <code>drawDiscordant</code> and <code>paintWorld</code> made the invariance
+      structural rather than measured, and the measurement is still there because a structural
+      argument with no count attached is how a bug hides. The second: the exact sample-size search
+      was originally a linear scan calling a full power computation per n, which is O(n&sup2;) per
+      call and took 77 seconds for one sweep of the MEASURE tab. The fix is that
+      <code>P(reject | d)</code> does not depend on n at all, so one table serves every sample size
+      &mdash; 240 milliseconds, and the same rearrangement is what makes the monotonicity scan over
+      three thousand sizes affordable.</p>
+
+      <h3 style="font-size:19px; font-weight:800">14. What this is not</h3>
+      <p>One comparison. Two models, one test set, one hypothesis. Comparing twenty models on the
+      same benchmark is a multiplicity problem and that was Day 64; stopping when the p-value looks
+      good was Day 63. Nothing here is sequential and nothing here is corrected for a family.</p>
+      <p>The item-level half also assumes the test items are independent draws from the population
+      you care about, which is exactly the assumption days 66 to 71 spent six days undermining, and
+      the fold-level half models the correlation between folds as a single number &rho; that it does
+      not estimate. A real k-fold comparison has to estimate it, and the classic estimator &mdash;
+      Nadeau and Bengio's <code>1/k + n<sub>test</sub>/n<sub>train</sub></code> &mdash; is a
+      plug-in for exactly this c. What the page shows is the size of the hole, not how to fill it
+      from data.</p>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ BUILD -->
+<section id="build" class="panel hidden">
+  <div class="sheet soft">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">&#128296; How it is built</h2>
+
+      <h3 style="font-size:19px; font-weight:800">1. A 2&times;2 table, so the truth is a sum</h3>
+      <p>The generator is four probabilities that sum to one. That single choice removes every
+      integral from the item-level half of the page: power, size, the achieved level, the required
+      sample size and the coverage of both intervals are finite sums over binomial and trinomial
+      laws, computed in exact arithmetic. The Monte Carlo columns exist only as a check on those
+      sums, are labelled as such, and carry a standard error. The fold half is a Gaussian model
+      rather than a discrete one, and it earns its exact column a different way &mdash; the
+      equicorrelated t distribution is <code>&radic;c</code> times a standard one, so the type I
+      error is a t CDF evaluation.</p>
+
+      <h3 style="font-size:19px; font-weight:800">2. The sampler is not given a world</h3>
+      <p><code>drawDiscordant(p10, p01, n, seed)</code> takes four arguments and none of them says
+      how accurate the models are. It returns a per-row mark in {0, 1, 2} and the two counts, which
+      is the whole of what the test sees. A second function, <code>paintWorld</code>, fills in the
+      rows marked 0 from a separate stream. The invariance is therefore structural &mdash; there is
+      nowhere to put a world &mdash; and the page counts it anyway: 25 seeds &times; 600 rows
+      &times; 4 world pairs, comparing the mark of every row plus the two counts plus the exact
+      p-value, and printing the accuracy spread next to the zero so the reader can see that the
+      worlds really are different.</p>
+
+      <h3 style="font-size:19px; font-weight:800">3. P(reject | d) does not depend on n</h3>
+      <p>This is the whole performance story. The conditional rejection probability at d
+      disagreements is a function of d, &theta; and &alpha; only, so one table computed once serves
+      every sample size, and the power at n becomes a short dot product against a
+      <em>windowed</em> binomial &mdash; only the terms that carry mass, found by walking outwards
+      from the mode until the ratio test drops below 1e-17 of the peak. An exact sample-size search
+      over forty thousand candidates is then a few hundred milliseconds instead of a minute and a
+      half, and scanning three thousand consecutive sizes for a dip in the power curve becomes
+      something the page can do on every slider drag.</p>
+
+      <h3 style="font-size:19px; font-weight:800">4. Two routes to the exact power</h3>
+      <pre><code>powerCond: sum_d Bin(d; n, delta) * sum_{i: min(i,d-i) &lt;= c(d)} Bin(i; d, theta)
+powerTri : sum_{i,j} n!/(i! j! (n-i-j)!) p10^i p01^j (1-delta)^(n-i-j) over the same region</code></pre>
+      <p>Algebraically the same identity; numerically two different programs. One is a pair of
+      nested recurrences in log space, the other is a flat double loop over log-gammas with no
+      conditioning anywhere in it. They agree to about 3e-14 at n = 600, which is summation order.
+      The verifier adds a third route from a different direction entirely &mdash; a forward
+      simulator that draws two model outputs per item from the joint law and runs the test on the
+      counts it observes &mdash; and a fourth that computes the same conditional binomial tails from
+      a multiplicative recurrence rather than the page's log-gamma.</p>
+
+      <h3 style="font-size:19px; font-weight:800">5. The rejection region, twice</h3>
+      <p>The test is defined two ways in the engine and both are used: as a p-value
+      (<code>mcnemarP</code>, the probability of a split at least this lopsided) compared to &alpha;,
+      and as a critical count (<code>critOf</code>, the largest c whose two tails still fit under
+      &alpha;) compared to <code>min(n&#8321;&#8320;, n&#8320;&#8321;)</code>. The exact power uses
+      the second because it is cheap; the simulation is run through <em>both</em> and the two
+      rejection counts must be identical, which is a real check rather than a formality &mdash; an
+      off-by-one in the ladder shows up here and nowhere else.</p>
+
+      <h3 style="font-size:19px; font-weight:800">6. Where the tolerance comes from</h3>
+      <p>Row marks and counts are integers, so the identity audit uses <code>!==</code> and expects
+      exact zeros. Algebra does not get that treatment. The variance identity is a difference of
+      products of numbers near one, so it is asserted at 1e-15 and measured at 1.1e-16; the two
+      power routes are asserted at 1e-11 and measured at 3e-14; anything that passes through the
+      normal CDF is asserted at 1e-6, because the tail rational in use is Numerical Recipes'
+      <code>erfcc</code>, which bounds its <em>fractional</em> error at 1.2e-7 and says nothing
+      whatever about absolute error &mdash; <code>erfc(0)</code> reads 1.00000003, not 1, and an
+      assertion of 1e-15 there would be testing a promise the routine never made. Monte Carlo comparisons are asserted in units of
+      their own standard error, never in absolute points. The windowed binomial is compared to the
+      full vector at 1e-13 rather than 1e-15, and the reason is worth knowing: the full vector walks
+      up from <code>(1&minus;p)<sup>n</sup></code> accumulating n logarithms and drifts by about
+      1e-14 at n = 400, while the window is anchored at the mode by a single log-gamma and walks
+      outwards on exact ratios. The tolerance is set by the less accurate of the two, and it is not
+      the new one.</p>
+      <p>The verifier learned the same lesson twice while being written, both times about its own
+      oracles rather than the engine. Its reference <code>erfc</code> started life as
+      <code>1 &minus; &Phi;(x&radic;2)</code>, which at x = 5 subtracts two numbers agreeing to
+      twelve digits and keeps the rounding &mdash; a 4e-3 fractional error in the <em>reference</em>,
+      blamed on the engine until the tail was integrated directly. And its first fold-level
+      assertions were hand-typed constants carried over from a scratch run, which is only ever as
+      good as that run; they are now an independent chain &mdash; a t CDF built as the ratio of two
+      numerical integrals of the unnormalised density, needing no gamma function at all, and an
+      inflation factor re-derived by summing the covariance matrix. A magic constant cannot tell you
+      which side is wrong. An oracle can.</p>
+
+      <h3 style="font-size:19px; font-weight:800">7. The t distribution, from scratch</h3>
+      <p>The fold module needs <code>F<sub>&nu;</sub></code> and its inverse for integer &nu;, which
+      is the regularized incomplete beta: <code>F(t) = 1 &minus; &frac12; I<sub>x</sub>(&nu;/2,
+      &frac12;)</code> with <code>x = &nu;/(&nu;+t&sup2;)</code>. That is a Lentz continued fraction
+      and a log-gamma, forty lines, and the inverse is bisection on it. The verifier checks it by
+      Simpson-integrating the t density directly, by the closed form at &nu; = 1 (Cauchy, where
+      <code>F(1) = &frac34;</code> exactly) and by convergence to the normal CDF at large &nu;.</p>
+
+      <h3 style="font-size:19px; font-weight:800">8. Coverage against an exact number</h3>
+      <p>The naive interval's width depends on all three free counts, so its exact coverage is a
+      genuine triple sum: over the number of disagreements, over how they split, and over how many
+      of the remaining rows both models got right. Windowing keeps it to about half a second for
+      five worlds. It is worth the trouble &mdash; the answer at the middle world is 1.000000, and a
+      simulation would have reported 1.0000 and left the reader unable to tell &ldquo;never
+      misses&rdquo; from &ldquo;missed twice in 2,000&rdquo;.</p>
+
+      <h3 style="font-size:19px; font-weight:800">9. The seed guard, run against known answers</h3>
+      <p>Two samplers, two seed streams, two exact targets, one table. The multiplicative hash and
+      the arithmetic stride that produced Day 69's artefact are both run through the uniform
+      categorical sampler against the exact power, and through the Box&ndash;Muller fold sampler
+      against the exact type I error. All four numbers are printed with the standard error beside
+      them rather than summarised as a verdict.</p>
+
+      <h3 style="font-size:19px; font-weight:800">10. Verification</h3>
+      <p>The block between <code>ENGINE:BEGIN</code> and <code>ENGINE:END</code> is DOM-free and is
+      extracted by regex and run under Node against assertions written independently of it:
+      xorshift32 in place of mulberry32 and the sine branch of Box&ndash;Muller where the page uses
+      cosine; a normal CDF by Simpson integration against the page's rational tail; binomial
+      probabilities by a multiplicative recurrence against the page's log-gamma; the t CDF by
+      Simpson integration of its density against the page's continued fraction; the achieved level
+      in exact BigInt integer arithmetic, for every p-value up to d = 30; the joint law of the two
+      discordant counts by <strong>dynamic programming over items</strong> &mdash; no factorials, no
+      logarithms and no conditioning anywhere in it; and &mdash; the one that matters &mdash; a
+      <strong>forward simulator</strong> that draws, for each item, which of the four cells it fell
+      into, then reconstructs the counts and runs the test. The page never draws an item that way;
+      it starts from the two discordant probabilities. If the conditioning argument were wrong, the
+      forward simulator's rejection rate would not match the exact power, and that is the check. The
+      same simulator recovers the equicorrelated fold structure from its one-factor definition,
+      which is the latent quantity the fold module only reasons about. It comes to
+      <strong>2,408</strong> assertions in about nineteen seconds.</p>
+
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    MachineLearningFromZero &middot; Day 72 &middot; comparing two models &mdash; how much test data
+    it takes to tell them apart, and why the answer does not depend on how good they are. One file,
+    vanilla JavaScript, no build step and no libraries. Previous:
+    <a href="day71-outcome-dependent-sampling.html">Day 71 &mdash; Selection on the outcome</a>.
+  </div>
+</footer>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => x.classList.remove("tab-active"));
+  t.classList.add("tab-active");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Comparing two models - what the test set is actually buying you.
+//
+// Days 66 to 71 were an identification arc: given this dataset, what can be known at all. This is a
+// different question and the page says so out loud - given that we can decide what to collect, HOW
+// MUCH is enough to say that model A beats model B? Not "is the estimate identified" but "is the
+// experiment big enough", which is a design question and has an exact answer.
+//
+// Two models are scored on the SAME n test items. Each item lands in one of four cells:
+//
+//                        B right    B wrong
+//        A right          p11         p10        <- accA = p11 + p10
+//        A wrong          p01         p00        <- accB = p11 + p01
+//
+// accA - accB = p10 - p01. The concordant cells cancel: they carry no information about the
+// difference at all. Write delta = p10 + p01 for the DISAGREEMENT rate and Delta = p10 - p01 for
+// the gap. Conditional on the number of disagreements d = n10 + n01, the null "the two models are
+// equally accurate" says n10 ~ Binomial(d, 1/2) exactly - no asymptotics, no nuisance parameters,
+// and no dependence on p11 or p00. That is McNemar's exact test, and its entire input is a pair of
+// counts from the rows where the two models disagreed.
+//
+// Everything on this page follows from that sentence:
+//   * power depends on (n, p10, p01) and NOT on how accurate the models are. Two models at 97.6%
+//     and 94.6% are exactly as separable as two at 30.8% and 27.8% if they disagree the same way.
+//   * the achieved significance level is not the level you asked for. The conditional null is
+//     discrete, so at d discordants the attainable two-sided levels are a ladder - 0.0078 at d=8,
+//     0.0490 at d=17 - and averaging over the Binomial(n, delta) distribution of d gives an exact
+//     size that is strictly below alpha for every n.
+//   * the unpaired alternative - score A on one test set, B on another - has variance
+//     accA(1-accA) + accB(1-accB), and the paired variance is that MINUS twice the determinant of
+//     the 2x2 table above:
+//
+//         Var_unpaired - Var_paired = 2 (p11 p00 - p10 p01)      (exact, asserted to 1e-16)
+//
+//     The determinant is positive for any two models that agree more than chance, which is why the
+//     unpaired design needs several times the data - and unlike the paired design, how much more
+//     depends on how good the models are.
+//
+// The second half is the other way people compare models: k cross-validation folds and a paired
+// t-test on the per-fold differences. The folds share training data, so the differences are
+// correlated, and under equicorrelation the naive t statistic is EXACTLY sqrt(c) times a genuine
+// t(k-1) variate with
+//
+//         c = (1 + (k-1) rho) / (1 - rho)
+//
+// because the sample mean and the sample variance of an exchangeable normal vector are still
+// independent, the mean has variance sigma^2(1+(k-1)rho)/k, and (k-1)s^2/(sigma^2(1-rho)) is still
+// chi-square(k-1). So the type I error is 2(1 - F_{k-1}(t_crit / sqrt(c))) in closed form: at k=10
+// and rho=0.5 a nominal 5% test rejects 51.24% of the time when nothing is going on.
+
+// ---------------------------------------------------------------- generators and numerics
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// Replication seeds by multiplicative hashing. Day 69 measured a 99.2% coverage that read like a
+// finding and was an arithmetic seed stride feeding Box-Muller; Day 70 and Day 71 both re-measured
+// it and neither reproduced it. seedGuard() below runs a third re-measurement, for BOTH of this
+// page's samplers, against exact targets rather than against another simulation.
+function repSeed(tag, r){
+  return (Math.imul(r + 1, 2654435761) ^ Math.imul(tag + 1, 0x9E3779B1)) >>> 0;
+}
+function strideSeed(tag, r){ return (72000 + 1000 * tag + 7907 * r) >>> 0; }
+
+// Numerical Recipes 6.2 erfcc: fractional error below 1.2e-7 everywhere, where the A&S 7.1.26
+// rational only bounds the ABSOLUTE error.
+function erfc(x){
+  const z = Math.abs(x), t = 2 / (2 + z);
+  const ans = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 +
+    t * (0.09678418 + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 +
+    t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
+  return x >= 0 ? ans : 2 - ans;
+}
+function erf(x){ return 1 - erfc(x); }
+function normCdf(z){ return 0.5 * erfc(-z / Math.SQRT2); }
+function normPdf(z){ return Math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI); }
+// Acklam's rational approximation plus one Halley step, which takes it to machine precision.
+function normInv(p){
+  const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+             1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+  const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+             6.680131188771972e+01, -1.328068155288572e+01];
+  const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+             -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+  const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
+             3.754408661907416e+00];
+  const pl = 0.02425;
+  let q, r, x;
+  if (p < pl){
+    q = Math.sqrt(-2 * Math.log(p));
+    x = (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  } else if (p <= 1 - pl){
+    q = p - 0.5; r = q * q;
+    x = (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5]) * q /
+        (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+  } else {
+    q = Math.sqrt(-2 * Math.log(1 - p));
+    x = -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+  const e = normCdf(x) - p, u = e * Math.sqrt(2 * Math.PI) * Math.exp(x * x / 2);
+  return x - u / (1 + x * u / 2);
+}
+const Z95 = normInv(0.975);
+function lgamma(x){
+  const g = [676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
+             12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);
+  x -= 1;
+  let a = 0.99999999999980993;
+  const t = x + 7.5;
+  for (let i = 0; i < 8; i++) a += g[i] / (x + i + 1);
+  return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+}
+function binomVec(n, p){
+  const v = new Float64Array(n + 1);
+  if (p <= 0){ v[0] = 1; return v; }
+  if (p >= 1){ v[n] = 1; return v; }
+  const lp = Math.log(p), lq = Math.log1p(-p);
+  let acc = n * lq;
+  v[0] = Math.exp(acc);
+  for (let k = 1; k <= n; k++){ acc += Math.log((n - k + 1) / k) + lp - lq; v[k] = Math.exp(acc); }
+  return v;
+}
+// The same pmf, but only the terms that carry mass. A power curve over 3,000 sample sizes is then
+// 3,000 short sums rather than 3,000 sums of length n, which is what makes the exact sample-size
+// search interactive instead of a coffee break.
+function binomWindow(n, p, tol){
+  tol = tol || 1e-17;
+  if (p <= 0) return { lo: 0, v: new Float64Array([1]) };
+  if (p >= 1) return { lo: n, v: new Float64Array([1]) };
+  const lp = Math.log(p), lq = Math.log1p(-p);
+  const mode = Math.max(0, Math.min(n, Math.floor((n + 1) * p)));
+  const peak = Math.exp(lgamma(n + 1) - lgamma(mode + 1) - lgamma(n - mode + 1) +
+                        mode * lp + (n - mode) * lq);
+  const down = [];
+  let cur = peak;
+  for (let k = mode - 1; k >= 0; k--){
+    cur *= ((k + 1) / (n - k)) * ((1 - p) / p);
+    if (cur < peak * tol) break;
+    down.push(cur);
+  }
+  const up = [];
+  cur = peak;
+  for (let k = mode + 1; k <= n; k++){
+    cur *= ((n - k + 1) / k) * (p / (1 - p));
+    if (cur < peak * tol) break;
+    up.push(cur);
+  }
+  const v = new Float64Array(down.length + 1 + up.length);
+  for (let i = 0; i < down.length; i++) v[down.length - 1 - i] = down[i];
+  v[down.length] = peak;
+  for (let i = 0; i < up.length; i++) v[down.length + 1 + i] = up[i];
+  return { lo: mode - down.length, v: v };
+}
+// Continued fraction for the incomplete beta (NR 6.4), which gives the t distribution for the
+// fold module. Integer degrees of freedom only, which is all a k-fold comparison ever needs.
+function betacf(a, b, x){
+  const MAXIT = 400, EPS = 3e-16, FPMIN = 1e-300;
+  const qab = a + b, qap = a + 1, qam = a - 1;
+  let c = 1, d = 1 - qab * x / qap;
+  if (Math.abs(d) < FPMIN) d = FPMIN;
+  d = 1 / d;
+  let h = d;
+  for (let m = 1; m <= MAXIT; m++){
+    const m2 = 2 * m;
+    let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+    d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa / c;  if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d; h *= d * c;
+    aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+    d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
+    c = 1 + aa / c;  if (Math.abs(c) < FPMIN) c = FPMIN;
+    d = 1 / d;
+    const dl = d * c;
+    h *= dl;
+    if (Math.abs(dl - 1) < EPS) break;
+  }
+  return h;
+}
+function betai(a, b, x){
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  const bt = Math.exp(lgamma(a + b) - lgamma(a) - lgamma(b) + a * Math.log(x) + b * Math.log1p(-x));
+  return x < (a + 1) / (a + b + 2) ? bt * betacf(a, b, x) / a : 1 - bt * betacf(b, a, 1 - x) / b;
+}
+function tCdf(t, v){
+  const x = v / (v + t * t), p = 0.5 * betai(v / 2, 0.5, x);
+  return t > 0 ? 1 - p : p;
+}
+// Bisection, but bracket first: at one degree of freedom the 99.9th percentile is 318, so a fixed
+// window silently returns its own edge instead of the quantile.
+function tInv(p, v){
+  let hi = 1, lo = -1;
+  while (tCdf(hi, v) < p && hi < 1e12) hi *= 2;
+  while (tCdf(lo, v) > p && lo > -1e12) lo *= 2;
+  for (let i = 0; i < 200; i++){ const m = 0.5 * (lo + hi); if (tCdf(m, v) < p) lo = m; else hi = m; }
+  return 0.5 * (lo + hi);
+}
+function clamp(v, lo, hi){ return v < lo ? lo : (v > hi ? hi : v); }
+
+// ---------------------------------------------------------------- configuration
+const DEFAULTS = {
+  delta: 0.06,     // disagreement rate p10 + p01
+  theta: 0.75,     // share of the disagreements that A wins, so Delta = delta(2 theta - 1)
+  phi: 0.90,       // world on display: p11 = phi * (1 - delta)
+  n: 600,
+  alpha: 0.05,
+  target: 0.80,
+  k: 10,
+  rho: 0.5,
+  reps: 2000,
+  seeds: 25
+};
+function cfgOf(o){
+  const c = Object.assign({}, DEFAULTS, o || {});
+  c.delta = clamp(c.delta, 0.005, 0.5);
+  c.theta = clamp(c.theta, 0.5, 1);
+  c.phi = clamp(c.phi, 0, 1);
+  c.p10 = c.delta * c.theta;
+  c.p01 = c.delta * (1 - c.theta);
+  c.gap = c.p10 - c.p01;
+  c.p11 = c.phi * (1 - c.delta);
+  c.p00 = 1 - c.delta - c.p11;
+  c.accA = c.p11 + c.p10;
+  c.accB = c.p11 + c.p01;
+  c.z = normInv(1 - c.alpha / 2);
+  return c;
+}
+// A world is one number - phi, how the CONCORDANT mass splits. It moves both accuracies by up to
+// 0.67 and leaves the discordant cells, and therefore the paired test, untouched.
+function worldSpecs(){ return [0.99, 0.90, 0.75, 0.55, 0.28]; }
+function worldOf(c, phi){
+  const p11 = phi * (1 - c.delta), p00 = 1 - c.delta - p11;
+  return {
+    phi: phi, p11: p11, p00: p00,
+    accA: p11 + c.p10, accB: p11 + c.p01,
+    agree: p11 + p00,
+    det: p11 * p00 - c.p10 * c.p01,
+    varUnpaired: (p11 + c.p10) * (1 - p11 - c.p10) + (p11 + c.p01) * (1 - p11 - c.p01),
+    varPaired: c.delta - c.gap * c.gap,
+    oddsRatio: c.p10 * c.p01 > 0 ? (p11 * p00) / (c.p10 * c.p01) : Infinity
+  };
+}
+
+// ---------------------------------------------------------------- the exact conditional test
+// Largest c with P(min(X, d-X) <= c) <= alpha under X ~ Binomial(d, 1/2). -1 means that at d
+// discordants the two-sided exact test CANNOT reject at level alpha however lopsided the split is.
+function critOf(d, alpha){
+  if (d < 1) return -1;
+  const v = binomVec(d, 0.5);
+  let acc = 0, c = -1;
+  for (let i = 0; 2 * i <= d; i++){
+    const add = (i === d - i) ? v[i] : v[i] + v[d - i];
+    if (acc + add <= alpha + 1e-15){ acc += add; c = i; } else break;
+  }
+  return c;
+}
+function critTable(dmax, alpha){
+  const t = new Int32Array(dmax + 1);
+  for (let d = 0; d <= dmax; d++) t[d] = critOf(d, alpha);
+  return t;
+}
+// The level actually spent at d discordants - a ladder, not a number.
+function achievedLevel(d, alpha){
+  const c = critOf(d, alpha);
+  if (c < 0) return 0;
+  const v = binomVec(d, 0.5);
+  let s = 0;
+  for (let i = 0; i <= c; i++){ s += v[i]; if (d - i !== i) s += v[d - i]; }
+  return s;
+}
+// The exact two-sided p-value: the probability of a split at least this lopsided.
+function mcnemarP(n10, n01){
+  const d = n10 + n01;
+  if (d === 0) return 1;
+  const lo = Math.min(n10, n01), v = binomVec(d, 0.5);
+  let s = 0;
+  for (let i = 0; i <= lo; i++){ s += v[i]; if (d - i !== i) s += v[d - i]; }
+  return Math.min(1, s);
+}
+// P(reject | d) when n10 | d ~ Binomial(d, theta). Depends on d and not on n, so one table serves
+// every sample size - that is the trick behind the exact sample-size search.
+function rejTable(dmax, theta, alpha){
+  const t = new Float64Array(dmax + 1);
+  for (let d = 1; d <= dmax; d++){
+    const c = critOf(d, alpha);
+    if (c < 0) continue;
+    const v = binomVec(d, theta);
+    let s = 0;
+    for (let i = 0; i <= c; i++){ s += v[i]; if (d - i !== i) s += v[d - i]; }
+    t[d] = s;
+  }
+  return t;
+}
+function powerFromTable(n, delta, rej){
+  const w = binomWindow(n, delta);
+  let pw = 0;
+  for (let i = 0; i < w.v.length; i++){
+    const d = w.lo + i;
+    if (d >= 0 && d < rej.length) pw += w.v[i] * rej[d];
+  }
+  return pw;
+}
+// Route 1: condition on the number of disagreements, then average.
+function powerCond(n, p10, p01, alpha){
+  const delta = p10 + p01;
+  if (delta <= 0) return 0;
+  const w = binomWindow(n, delta);
+  return powerFromTable(n, delta, rejTable(w.lo + w.v.length - 1, p10 / delta, alpha));
+}
+// Route 2: no conditioning at all - a direct sum of trinomial probabilities over the rejection
+// region, built from log-gammas rather than from two nested binomial recurrences.
+function powerTri(n, p10, p01, alpha){
+  const delta = p10 + p01, pc = 1 - delta;
+  const l10 = p10 > 0 ? Math.log(p10) : 0, l01 = p01 > 0 ? Math.log(p01) : 0;
+  const lc = pc > 0 ? Math.log(pc) : 0, lgn = lgamma(n + 1);
+  const crit = critTable(n, alpha);
+  let pw = 0;
+  for (let i = 0; i <= n; i++){
+    if (p10 <= 0 && i > 0) break;
+    for (let j = 0; i + j <= n; j++){
+      if (p01 <= 0 && j > 0) break;
+      const d = i + j;
+      if (d === 0 || Math.min(i, j) > crit[d]) continue;
+      pw += Math.exp(lgn - lgamma(i + 1) - lgamma(j + 1) - lgamma(n - d + 1) +
+                     i * l10 + j * l01 + (n - d) * lc);
+    }
+  }
+  return pw;
+}
+function exactSize(n, delta, alpha){ return powerCond(n, delta / 2, delta / 2, alpha); }
+function nForPower(target, p10, p01, alpha, nMax){
+  const delta = p10 + p01;
+  if (delta <= 0 || p10 === p01) return -1;
+  const w = binomWindow(nMax, delta);
+  const rej = rejTable(w.lo + w.v.length - 1, p10 / delta, alpha);
+  for (let n = 2; n <= nMax; n++) if (powerFromTable(n, delta, rej) >= target) return n;
+  return -1;
+}
+// The formula in every textbook: a normal approximation to the same conditional argument.
+function nFormula(target, p10, p01, alpha){
+  const delta = p10 + p01, D = p10 - p01;
+  if (D === 0) return Infinity;
+  const za = normInv(1 - alpha / 2), zb = normInv(target);
+  return Math.ceil(Math.pow(za * Math.sqrt(delta) + zb * Math.sqrt(delta - D * D), 2) / (D * D));
+}
+
+// ---------------------------------------------------------------- the unpaired alternative
+// Two independent test sets of n items each - 2n items in total - and a pooled two-proportion z
+// test. Exact power by a double sum over the two binomials, not a normal approximation of it.
+function powerUnpaired(n, pA, pB, alpha){
+  const za = normInv(1 - alpha / 2);
+  const wa = binomWindow(n, pA, 1e-15), wb = binomWindow(n, pB, 1e-15);
+  let pw = 0;
+  for (let x = 0; x < wa.v.length; x++){
+    const a = wa.lo + x, pa = wa.v[x], ha = a / n;
+    for (let y = 0; y < wb.v.length; y++){
+      const b = wb.lo + y, hb = b / n, pp = (a + b) / (2 * n);
+      const se = Math.sqrt(pp * (1 - pp) * 2 / n);
+      if (se > 0 && Math.abs(ha - hb) / se > za) pw += pa * wb.v[y];
+    }
+  }
+  return pw;
+}
+// The two-sample normal formula, used only to bracket the exact search cheaply.
+function nUnpairedFormula(target, pA, pB, alpha){
+  const D = pA - pB;
+  if (D === 0) return Infinity;
+  const pbar = (pA + pB) / 2;
+  const za = normInv(1 - alpha / 2), zb = normInv(target);
+  return Math.ceil(Math.pow(za * Math.sqrt(2 * pbar * (1 - pbar)) +
+                            zb * Math.sqrt(pA * (1 - pA) + pB * (1 - pB)), 2) / (D * D));
+}
+function nUnpairedExact(target, pA, pB, alpha, nMax){
+  if (powerUnpaired(nMax, pA, pB, alpha) < target) return -1;
+  let lo = 5, hi = nMax;
+  while (lo < hi){
+    const m = (lo + hi) >> 1;
+    if (powerUnpaired(m, pA, pB, alpha) >= target) hi = m; else lo = m + 1;
+  }
+  return lo;
+}
+
+// ---------------------------------------------------------------- exact interval coverage
+// The paired Wald interval: Delta-hat = (n10 - n01)/n with the variance the pairing implies.
+function coverPaired(n, p10, p01, z){
+  const delta = p10 + p01, theta = p10 / delta, D = p10 - p01;
+  const w = binomWindow(n, delta, 1e-16);
+  let cov = 0, mass = 0, width = 0;
+  for (let x = 0; x < w.v.length; x++){
+    const d = w.lo + x, pd = w.v[x];
+    if (d > n || d < 0) continue;
+    const v = binomVec(d, theta);
+    for (let i = 0; i <= d; i++){
+      const j = d - i, pr = pd * v[i];
+      if (pr < 1e-18) continue;
+      mass += pr;
+      const dh = (i - j) / n, se = Math.sqrt(Math.max(0, d - (i - j) * (i - j) / n)) / n;
+      width += pr * 2 * z * se;
+      if (Math.abs(dh - D) <= z * se + 1e-15) cov += pr;
+    }
+  }
+  return { cov: cov, mass: mass, width: width };
+}
+// The interval you get by treating the two accuracies as if they came from independent samples.
+// Needs the third count too, so this is a genuine triple sum over the 2x2 table.
+function coverNaive(n, p10, p01, p11, z){
+  const delta = p10 + p01, theta = p10 / delta, D = p10 - p01;
+  const p00 = 1 - delta - p11, r = (p11 + p00) > 0 ? p11 / (p11 + p00) : 0;
+  const w = binomWindow(n, delta, 1e-16);
+  let cov = 0, mass = 0, width = 0;
+  for (let x = 0; x < w.v.length; x++){
+    const d = w.lo + x, pd = w.v[x];
+    if (d > n || d < 0) continue;
+    const v = binomVec(d, theta), m = n - d, wh = binomWindow(m, r, 1e-15);
+    for (let i = 0; i <= d; i++){
+      const j = d - i, pr = pd * v[i];
+      if (pr < 1e-16) continue;
+      const dh = (i - j) / n;
+      for (let y = 0; y < wh.v.length; y++){
+        const h = wh.lo + y, q = wh.v[y];
+        if (q < 1e-15 || h < 0 || h > m) continue;
+        const pa = (h + i) / n, pb = (h + j) / n;
+        const se = Math.sqrt((pa * (1 - pa) + pb * (1 - pb)) / n);
+        mass += pr * q;
+        width += pr * q * 2 * z * se;
+        if (Math.abs(dh - D) <= z * se + 1e-15) cov += pr * q;
+      }
+    }
+  }
+  return { cov: cov, mass: mass, width: width };
+}
+
+// ---------------------------------------------------------------- the sampler
+// The sampler is handed p10 and p01 and NOTHING ELSE. There is no argument in which to put a world.
+// It returns, per row, 1 if only A was right, 2 if only B was right, 0 if the two models agreed -
+// and the test consumes only this. The concordant rows are painted afterwards, by a separate
+// function, from a separate stream, and no quantity the test sees can depend on that paint.
+function drawDiscordant(p10, p01, n, seed){
+  const rnd = mulberry32(seed), marks = new Uint8Array(n);
+  const e1 = p10, e2 = p10 + p01;
+  let n10 = 0, n01 = 0;
+  for (let i = 0; i < n; i++){
+    const u = rnd();
+    if (u < e1){ marks[i] = 1; n10++; }
+    else if (u < e2){ marks[i] = 2; n01++; }
+  }
+  return { marks: marks, n10: n10, n01: n01, d: n10 + n01, n: n };
+}
+// Fill in the rows where the models agreed: both right with probability r, both wrong otherwise.
+// This is the only place a world enters, and it enters AFTER the sample exists.
+function paintWorld(draw, p11, p00, seed){
+  const rnd = mulberry32(seed), n = draw.n;
+  const r = (p11 + p00) > 0 ? p11 / (p11 + p00) : 0;
+  const aRight = new Uint8Array(n), bRight = new Uint8Array(n);
+  let hitA = 0, hitB = 0;
+  for (let i = 0; i < n; i++){
+    const m = draw.marks[i];
+    if (m === 1){ aRight[i] = 1; }
+    else if (m === 2){ bRight[i] = 1; }
+    else if (rnd() < r){ aRight[i] = 1; bRight[i] = 1; }
+    hitA += aRight[i]; hitB += bRight[i];
+  }
+  return { aRight: aRight, bRight: bRight, accA: hitA / n, accB: hitB / n };
+}
+// Every world, same seed, same rows. The claim is not that the samples look alike.
+function identityAudit(c){
+  const phis = worldSpecs(), reps = Math.max(8, Math.round(c.seeds));
+  let rows = 0, markDiffs = 0, countDiffs = 0, pDiffs = 0, accSpread = 0, pWorst = 0;
+  for (let r = 0; r < reps; r++){
+    const seed = repSeed(1, r);
+    const base = drawDiscordant(c.p10, c.p01, c.n, seed);
+    const pBase = mcnemarP(base.n10, base.n01);
+    const accs = [];
+    for (const phi of phis){
+      const w = worldOf(c, phi);
+      const draw = drawDiscordant(c.p10, c.p01, c.n, seed);
+      const paint = paintWorld(draw, w.p11, w.p00, repSeed(2, r));
+      accs.push(paint.accA);
+      if (phi !== phis[0]){
+        rows += c.n;
+        for (let i = 0; i < c.n; i++) if (draw.marks[i] !== base.marks[i]) markDiffs++;
+        if (draw.n10 !== base.n10 || draw.n01 !== base.n01) countDiffs++;
+        const p = mcnemarP(draw.n10, draw.n01);
+        const gap = Math.abs(p - pBase);
+        if (gap > 0) pDiffs++;
+        pWorst = Math.max(pWorst, gap);
+      }
+    }
+    accSpread = Math.max(accSpread, Math.max.apply(null, accs) - Math.min.apply(null, accs));
+  }
+  return { rows: rows, markDiffs: markDiffs, countDiffs: countDiffs, pDiffs: pDiffs,
+           pWorst: pWorst, accSpread: accSpread, reps: reps, worlds: phis.length };
+}
+
+// ---------------------------------------------------------------- studies
+// Three routes to the same number, one of which is a simulation with a standard error attached.
+function powerStudy(c, seedFn){
+  const cond = powerCond(c.n, c.p10, c.p01, c.alpha);
+  const tri = c.n <= 1200 ? powerTri(c.n, c.p10, c.p01, c.alpha) : NaN;
+  let rej = 0;
+  for (let r = 0; r < c.reps; r++){
+    const dr = drawDiscordant(c.p10, c.p01, c.n, seedFn(3, r));
+    if (mcnemarP(dr.n10, dr.n01) <= c.alpha) rej++;
+  }
+  const mc = rej / c.reps;
+  const se = Math.sqrt(Math.max(1e-12, cond * (1 - cond) / c.reps));
+  // and the same simulation counted by the critical-value route rather than the p-value route
+  let rej2 = 0;
+  const crit = critTable(c.n, c.alpha);
+  for (let r = 0; r < c.reps; r++){
+    const dr = drawDiscordant(c.p10, c.p01, c.n, seedFn(3, r));
+    if (Math.min(dr.n10, dr.n01) <= crit[dr.d]) rej2++;
+  }
+  return { cond: cond, tri: tri, gap: Math.abs(cond - tri), mc: mc, mcCrit: rej2 / c.reps,
+           se: se, sigma: Math.abs(mc - cond) / se, reps: c.reps };
+}
+function levelLadder(c, dLo, dHi){
+  const rows = [];
+  for (let d = dLo; d <= dHi; d++)
+    rows.push({ d: d, crit: critOf(d, c.alpha), level: achievedLevel(d, c.alpha) });
+  return rows;
+}
+function sizeCurve(c, ns){
+  return ns.map(function(n){
+    return { n: n, size: exactSize(n, c.delta, c.alpha),
+             power: powerCond(n, c.p10, c.p01, c.alpha),
+             dbar: n * c.delta };
+  });
+}
+// Is the exact power monotone in n? The conditional level sawtooths violently in d, so it ought to
+// leave a mark - and the answer is measured here rather than assumed.
+function monotoneScan(c, nMax){
+  const delta = c.delta, theta = c.p10 / delta;
+  const w = binomWindow(nMax, delta);
+  const rejP = rejTable(w.lo + w.v.length - 1, theta, c.alpha);
+  const rejN = rejTable(w.lo + w.v.length - 1, 0.5, c.alpha);
+  let powDips = 0, sizeDips = 0, powWorst = 0, sizeWorst = 0, prevP = -1, prevS = -1;
+  for (let n = 2; n <= nMax; n++){
+    const p = powerFromTable(n, delta, rejP), s = powerFromTable(n, delta, rejN);
+    if (p < prevP - 1e-15){ powDips++; powWorst = Math.max(powWorst, prevP - p); }
+    if (s < prevS - 1e-15){ sizeDips++; sizeWorst = Math.max(sizeWorst, prevS - s); }
+    prevP = p; prevS = s;
+  }
+  const levels = [];
+  for (let d = 1; d <= 400; d++) levels.push(achievedLevel(d, c.alpha));
+  let ladderDips = 0;
+  for (let i = 1; i < levels.length; i++) if (levels[i] < levels[i - 1] - 1e-15) ladderDips++;
+  return { nMax: nMax, powDips: powDips, sizeDips: sizeDips, powWorst: powWorst,
+           sizeWorst: sizeWorst, ladderDips: ladderDips, ladderMin: Math.min.apply(null, levels.slice(5)),
+           ladderMax: Math.max.apply(null, levels) };
+}
+// Fix the accuracy GAP and vary how often the two models disagree at all.
+function disagreementSweep(c, deltas){
+  return deltas.map(function(dl){
+    const p10 = (dl + c.gap) / 2, p01 = (dl - c.gap) / 2;
+    const nf = nFormula(c.target, p10, p01, c.alpha);
+    const nx = nForPower(c.target, p10, p01, c.alpha, Math.min(40000, Math.ceil(1.5 * nf) + 300));
+    return { delta: dl, p10: p10, p01: p01, nExact: nx, nFormula: nf,
+             powerAtFormula: nf < 40000 ? powerCond(nf, p10, p01, c.alpha) : NaN,
+             shortfall: c.target - (nf < 40000 ? powerCond(nf, p10, p01, c.alpha) : NaN),
+             dbar: nx * dl, ratio: nf / nx };
+  }).filter(function(r){ return r.p01 >= 0 && r.nExact > 0; });
+}
+// The design table: what each world costs, paired and unpaired.
+function designTable(c){
+  return worldSpecs().map(function(phi){
+    const w = worldOf(c, phi);
+    const nP = nForPower(c.target, c.p10, c.p01, c.alpha, 2 * nFormula(c.target, c.p10, c.p01, c.alpha) + 400);
+    const nUf = nUnpairedFormula(c.target, w.accA, w.accB, c.alpha);
+    const nU = nUnpairedExact(c.target, w.accA, w.accB, c.alpha, Math.min(200000, 2 * nUf + 400));
+    return {
+      phi: phi, accA: w.accA, accB: w.accB, agree: w.agree, det: w.det, or: w.oddsRatio,
+      varPaired: w.varPaired, varUnpaired: w.varUnpaired,
+      varGap: w.varUnpaired - w.varPaired - 2 * w.det,
+      powerPaired: powerCond(c.n, c.p10, c.p01, c.alpha),
+      powerUnpaired: powerUnpaired(c.n, w.accA, w.accB, c.alpha),
+      nPaired: nP, nUnpaired: nU, nUnpairedFormula: nUf,
+      itemRatio: nU > 0 ? (2 * nU) / nP : NaN
+    };
+  });
+}
+function coverageTable(c, seedFn){
+  const ex = coverPaired(c.n, c.p10, c.p01, c.z);
+  return worldSpecs().map(function(phi){
+    const w = worldOf(c, phi);
+    const nv = coverNaive(c.n, c.p10, c.p01, w.p11, c.z);
+    let hitP = 0, hitN = 0;
+    for (let r = 0; r < c.reps; r++){
+      const dr = drawDiscordant(c.p10, c.p01, c.n, seedFn(4, r));
+      const paint = paintWorld(dr, w.p11, w.p00, seedFn(5, r));
+      const dh = (dr.n10 - dr.n01) / c.n;
+      const seP = Math.sqrt(Math.max(0, dr.d - (dr.n10 - dr.n01) * (dr.n10 - dr.n01) / c.n)) / c.n;
+      const pa = paint.accA, pb = paint.accB;
+      const seN = Math.sqrt((pa * (1 - pa) + pb * (1 - pb)) / c.n);
+      if (Math.abs(dh - c.gap) <= c.z * seP + 1e-15) hitP++;
+      if (Math.abs(dh - c.gap) <= c.z * seN + 1e-15) hitN++;
+    }
+    return { phi: phi, accA: w.accA, or: w.oddsRatio,
+             exactPaired: ex.cov, exactNaive: nv.cov,
+             mcPaired: hitP / c.reps, mcNaive: hitN / c.reps,
+             widthPaired: ex.width, widthNaive: nv.width,
+             widthRatio: nv.width / ex.width };
+  });
+}
+// The 2x2 determinant is exactly half the variance the pairing saves, so the knife edge is where
+// the determinant is zero: two models whose errors are independent. Then paired and unpaired agree.
+function determinantEdge(c, phis){
+  return phis.map(function(phi){
+    const w = worldOf(c, phi);
+    return { phi: phi, accA: w.accA, det: w.det, or: w.oddsRatio,
+             varPaired: w.varPaired, varUnpaired: w.varUnpaired,
+             identity: Math.abs(w.varUnpaired - w.varPaired - 2 * w.det),
+             ratio: w.varUnpaired / w.varPaired };
+  });
+}
+function zeroDetPhi(c){
+  // p11 p00 = p10 p01 with p00 = 1 - delta - p11: a quadratic, both roots wanted.
+  const S = 1 - c.delta, Q = c.p10 * c.p01, disc = S * S - 4 * Q;
+  if (disc < 0) return null;
+  const lo = (S - Math.sqrt(disc)) / 2, hi = (S + Math.sqrt(disc)) / 2;
+  return { lo: lo, hi: hi, phiLo: lo / S, phiHi: hi / S };
+}
+
+// ---------------------------------------------------------------- k folds share training data
+function inflation(k, rho){ return (1 + (k - 1) * rho) / (1 - rho); }
+// EXACT type I error of the naive paired t-test on k equicorrelated fold differences.
+function foldSizeExact(k, rho, alpha){
+  const c = inflation(k, rho), tc = tInv(1 - alpha / 2, k - 1);
+  return 2 * (1 - tCdf(tc / Math.sqrt(c), k - 1));
+}
+function gaussPair(rnd){
+  let u = rnd();
+  if (u < 1e-12) u = 1e-12;
+  const r = Math.sqrt(-2 * Math.log(u)), a = 2 * Math.PI * rnd();
+  return [r * Math.cos(a), r * Math.sin(a)];
+}
+// The forward version: a shared training-set effect z0 that every fold sees, plus fold noise.
+function foldSim(k, rho, alpha, mu, reps, seedFn){
+  const tc = tInv(1 - alpha / 2, k - 1), c = inflation(k, rho);
+  const sr = Math.sqrt(rho), sn = Math.sqrt(1 - rho);
+  let rej = 0, rejC = 0;
+  for (let r = 0; r < reps; r++){
+    const rnd = mulberry32(seedFn(6, r));
+    const z0 = gaussPair(rnd)[0];
+    let sum = 0, sum2 = 0;
+    for (let i = 0; i < k; i++){
+      const d = mu + sr * z0 + sn * gaussPair(rnd)[0];
+      sum += d; sum2 += d * d;
+    }
+    const mean = sum / k, s2 = (sum2 - k * mean * mean) / (k - 1);
+    const t = mean * Math.sqrt(k) / Math.sqrt(Math.max(1e-300, s2));
+    if (Math.abs(t) > tc) rej++;
+    if (Math.abs(t / Math.sqrt(c)) > tc) rejC++;
+  }
+  return { naive: rej / reps, corrected: rejC / reps, reps: reps };
+}
+function foldStudy(c, rhos, seedFn){
+  return rhos.map(function(rho){
+    const ex = foldSizeExact(c.k, rho, c.alpha);
+    const sim = foldSim(c.k, rho, c.alpha, 0, c.reps, seedFn);
+    const se = Math.sqrt(Math.max(1e-12, ex * (1 - ex) / c.reps));
+    return { rho: rho, c: inflation(c.k, rho), exact: ex, sim: sim.naive,
+             corrected: sim.corrected, se: se, sigma: Math.abs(sim.naive - ex) / se };
+  });
+}
+function foldK(c, ks){
+  return ks.map(function(k){
+    return { k: k, c: inflation(k, c.rho), tc: tInv(1 - c.alpha / 2, k - 1),
+             exact: foldSizeExact(k, c.rho, c.alpha),
+             indep: foldSizeExact(k, 0, c.alpha) };
+  });
+}
+
+// ---------------------------------------------------------------- seeds
+function seedGuard(c){
+  const reps = Math.max(2000, c.reps * 2);
+  const exactPow = powerCond(c.n, c.p10, c.p01, c.alpha);
+  function run(seedFn){
+    let rej = 0;
+    for (let r = 0; r < reps; r++){
+      const dr = drawDiscordant(c.p10, c.p01, c.n, seedFn(7, r));
+      if (mcnemarP(dr.n10, dr.n01) <= c.alpha) rej++;
+    }
+    return rej / reps;
+  }
+  const hashed = run(repSeed), stride = run(strideSeed);
+  const se = Math.sqrt(exactPow * (1 - exactPow) / reps);
+  const exactFold = foldSizeExact(c.k, c.rho, c.alpha);
+  const fh = foldSim(c.k, c.rho, c.alpha, 0, reps, repSeed);
+  const fs = foldSim(c.k, c.rho, c.alpha, 0, reps, strideSeed);
+  const feSe = Math.sqrt(exactFold * (1 - exactFold) / reps);
+  return { reps: reps, exactPow: exactPow, hashed: hashed, stride: stride, se: se,
+           exactFold: exactFold, foldHashed: fh.naive, foldStride: fs.naive, foldSe: feSe,
+           worst: Math.max(Math.abs(hashed - exactPow), Math.abs(stride - exactPow)),
+           foldWorst: Math.max(Math.abs(fh.naive - exactFold), Math.abs(fs.naive - exactFold)) };
+}
+// ===== ENGINE:END =====
+
+// ================================================================ UI
+function $(id){ return document.getElementById(id); }
+function cfgFromUI(){
+  return {
+    delta: +$("sDelta").value, theta: +$("sTheta").value, phi: +$("sPhi").value,
+    n: +$("sN").value, alpha: +$("sAlpha").value, target: +$("sTarget").value,
+    k: +$("sK").value, rho: +$("sRho").value, reps: +$("sReps").value, seeds: +$("sSeeds").value
+  };
+}
+function fmt(v, d){
+  if (v === null || v === undefined || (typeof v === "number" && !isFinite(v))) return "&ndash;";
+  return v.toFixed(d === undefined ? 4 : d);
+}
+function pct(v, d){
+  if (v === null || v === undefined || !isFinite(v)) return "&ndash;";
+  return (100 * v).toFixed(d === undefined ? 2 : d) + "%";
+}
+function grp(n){ return Math.round(n).toLocaleString("en-US"); }
+function sci(v, d){ return (v === 0 ? 0 : v).toExponential(d === undefined ? 1 : d); }
+function tbl(head, rows){
+  return "<thead><tr>" + head.map(h => "<th>" + h + "</th>").join("") + "</tr></thead><tbody>" +
+    rows.map(r => "<tr>" + r.map(c => "<td>" + c + "</td>").join("") + "</tr>").join("") + "</tbody>";
+}
+
+function render(){
+  const c = cfgOf(cfgFromUI());
+  $("vDelta").textContent  = c.delta.toFixed(3);
+  $("vTheta").textContent  = c.theta.toFixed(2);
+  $("vPhi").textContent    = c.phi.toFixed(2);
+  $("vN").textContent      = c.n;
+  $("vAlpha").textContent  = c.alpha.toFixed(3);
+  $("vTarget").textContent = c.target.toFixed(2);
+  $("vK").textContent      = c.k;
+  $("vRho").textContent    = c.rho.toFixed(2);
+  $("vReps").textContent   = c.reps;
+  $("vSeeds").textContent  = c.seeds;
+  $("wP10").textContent = fmt(c.p10);
+  $("wP01").textContent = fmt(c.p01);
+  $("wGap").textContent = fmt(c.gap);
+  $("wAcc").textContent = "A at " + fmt(c.accA) + ", B at " + fmt(c.accB);
+  $("wAgree").textContent = pct(1 - c.delta);
+  $("wDbar").textContent = (c.n * c.delta).toFixed(1);
+  $("repWord").textContent = grp(c.reps);
+  $("seedWord").textContent = c.seeds;
+
+  const dt   = designTable(c);
+  const ida  = identityAudit(c);
+  const ps   = powerStudy(c, repSeed);
+  const lad  = levelLadder(c, 4, 20);
+  const nx   = dt[0].nPaired;
+  const nsRaw = [c.n, Math.round(c.n / 3), Math.round(c.n / 2), Math.round(c.n * 1.5),
+                 Math.round(c.n * 2.5), Math.round(c.n * 4), nx > 0 ? nx : c.n];
+  const ns = nsRaw.filter((v, i, a) => v >= 20 && a.indexOf(v) === i).sort((a, b) => a - b);
+  const sizes = sizeCurve(c, ns);
+  const mono  = monotoneScan(c, 3000);
+  const sweep = disagreementSweep(c, [c.gap, c.gap * 1.5, c.gap * 2, c.gap * 3,
+                                      c.gap * 5, c.gap * 8].filter(d => d <= 0.6));
+  const de    = determinantEdge(c, worldSpecs());
+  const edge  = zeroDetPhi(c);
+  const cov   = coverageTable(c, repSeed);
+  const folds = foldStudy(c, [0, 0.1, 0.25, c.rho, 0.75, 0.9]
+                  .filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b), repSeed);
+  const fk    = foldK(c, [3, 5, c.k, 20].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b));
+  const guard = seedGuard(c);
+
+  // ---------------------------------------------------------------- worlds
+  const powSpread = Math.max.apply(null, dt.map(r => r.powerPaired)) -
+                    Math.min.apply(null, dt.map(r => r.powerPaired));
+  const unpLo = Math.min.apply(null, dt.map(r => r.powerUnpaired));
+  const unpHi = Math.max.apply(null, dt.map(r => r.powerUnpaired));
+  const ratLo = Math.min.apply(null, dt.map(r => r.itemRatio));
+  const ratHi = Math.max.apply(null, dt.map(r => r.itemRatio));
+  $("rowsWorlds").innerHTML = dt.map(function(r){
+    return "<tr>" +
+      "<td>" + fmt(r.phi, 2) + "</td>" +
+      "<td>" + fmt(r.accA) + "</td>" +
+      "<td>" + fmt(r.accB) + "</td>" +
+      "<td>" + pct(r.agree) + "</td>" +
+      "<td>" + fmt(r.det, 6) + "</td>" +
+      "<td>" + fmt(r.or, 2) + "</td>" +
+      "<td class='same'>" + fmt(r.powerPaired, 6) + "</td>" +
+      "<td>" + fmt(r.powerUnpaired, 6) + "</td>" +
+      "<td class='same'>" + (r.nPaired > 0 ? grp(r.nPaired) : "&ndash;") + "</td>" +
+      "<td>" + (r.nUnpaired > 0 ? grp(r.nUnpaired) : "&gt; bound") + "</td>" +
+      "<td>" + fmt(r.itemRatio, 2) + "&times;</td>" +
+      "</tr>";
+  }).join("");
+  $("headline").innerHTML =
+    "Five worlds. The two discordant cells are identical in all of them &mdash; only the split of " +
+    "the <em>agreements</em> changes &mdash; so accuracy runs from " + fmt(dt[0].accA) + " down to " +
+    fmt(dt[dt.length - 1].accA) + " and the accuracy gap is " + fmt(c.gap) + " in every one. The " +
+    "blue columns are the paired test: one power to " + sci(powSpread) + ", one sample size. The " +
+    "unpaired design, given its own two test sets, ranges from " + fmt(unpHi, 4) + " down to " +
+    fmt(unpLo, 4) + " power at the same n and needs " + fmt(ratLo, 2) + "&times; to " +
+    fmt(ratHi, 2) + "&times; the items.";
+  $("flagWorlds").innerHTML =
+    "The paired power is not <em>approximately</em> equal across worlds &mdash; it is the same " +
+    "function call. <code>powerCond(n, p&#8321;&#8320;, p&#8320;&#8321;, &alpha;)</code> has no " +
+    "argument that the world could enter through, because the concordant cells cancel out of the " +
+    "accuracy difference before the test is even defined. The unpaired design has no such " +
+    "structure: its variance is acc(1&minus;acc) summed over the two models, which peaks at a half, " +
+    "so the middle world is the expensive one &mdash; " + grp(dt[3].nUnpaired) + " items per arm " +
+    "against " + grp(dt[0].nUnpaired) + " for the near-perfect pair, and " + grp(nx) + " for the " +
+    "paired design regardless.";
+
+  // ---------------------------------------------------------------- identity
+  $("tblIdentity").innerHTML = tbl(
+    ["what was compared", "comparisons", "differences"],
+    [["per-row discordant mark (0 / A only / B only)", grp(ida.rows),
+      "<span class='" + (ida.markDiffs === 0 ? "ok" : "bad") + "'>" + grp(ida.markDiffs) + "</span>"],
+     ["the two counts (n&#8321;&#8320;, n&#8320;&#8321;) fed to the test", grp(ida.reps * (ida.worlds - 1)),
+      "<span class='" + (ida.countDiffs === 0 ? "ok" : "bad") + "'>" + grp(ida.countDiffs) + "</span>"],
+     ["the exact p-value", grp(ida.reps * (ida.worlds - 1)),
+      "<span class='" + (ida.pDiffs === 0 ? "ok" : "bad") + "'>" + grp(ida.pDiffs) +
+      "</span> (worst " + sci(ida.pWorst) + ")"],
+     ["measured accuracy of model A", grp(ida.reps * ida.worlds),
+      "<span class='warn'>spans " + fmt(ida.accSpread) + "</span>"]]);
+  $("sayIdentity").innerHTML =
+    "The last row is the point of the first three. These are not five similar datasets &mdash; " +
+    "model A measures " + fmt(ida.accSpread) + " differently across them &mdash; and yet the " +
+    "quantity the test consumes is bit-identical, over " + grp(ida.rows) + " row comparisons on " +
+    ida.reps + " seeds. Everything the comparison knows lives in " +
+    (c.n * c.delta).toFixed(1) + " rows out of " + grp(c.n) + " on average.";
+
+  // ---------------------------------------------------------------- three ways
+  $("tblThree").innerHTML = tbl(
+    ["route", "power at n = " + grp(c.n), "note"],
+    [["exact &mdash; condition on d, then average over Binomial(n, &delta;)",
+      "<span class='ok'>" + fmt(ps.cond, 12) + "</span>", "a finite sum"],
+     ["exact &mdash; a flat trinomial sum over the rejection region",
+      isFinite(ps.tri) ? "<span class='ok'>" + fmt(ps.tri, 12) + "</span>" : "<span class='dim'>skipped above n = 1200</span>",
+      isFinite(ps.gap) ? "differs by " + sci(ps.gap, 2) : "&mdash;"],
+     ["Monte Carlo &mdash; " + grp(ps.reps) + " replications, p-value route",
+      fmt(ps.mc, 6), "&plusmn; " + fmt(ps.se, 5) + " (1 s.e.), " + fmt(ps.sigma, 2) + "&sigma; from exact"],
+     ["Monte Carlo &mdash; same draws, critical-count route",
+      fmt(ps.mcCrit, 6),
+      "<span class='" + (ps.mc === ps.mcCrit ? "ok" : "bad") + "'>" +
+      (ps.mc === ps.mcCrit ? "identical decisions" : "DISAGREES") + "</span>"],
+     ["exact size under the null (p&#8321;&#8320; = p&#8320;&#8321; = &delta;/2)",
+      "<span class='warn'>" + fmt(exactSize(c.n, c.delta, c.alpha), 6) + "</span>",
+      "you asked for " + fmt(c.alpha, 3)]]);
+  $("flagThree").innerHTML =
+    "This is why the exact column is worth building. The simulation reads " + fmt(ps.mc, 4) +
+    " against a truth of " + fmt(ps.cond, 4) + " &mdash; " + fmt(ps.sigma, 2) + " standard errors " +
+    "away at " + grp(ps.reps) + " replications, which is ordinary noise but is also exactly the " +
+    "size of discrepancy that gets written up as a finding. Day 71 lost an afternoon to a 96.0% " +
+    "that was really 94.95%. The last row is a different problem: the test spends " +
+    pct(exactSize(c.n, c.delta, c.alpha)) + " of the " + pct(c.alpha) + " it was given.";
+
+  // ---------------------------------------------------------------- level ladder
+  $("tblLadder").innerHTML = tbl(
+    ["d disagreements", "largest rejectable min-count c", "level actually spent", "wasted"],
+    lad.map(function(r){
+      return ["d = " + r.d, r.crit < 0 ? "<span class='bad'>cannot reject</span>" : String(r.crit),
+              r.level === 0 ? "<span class='bad'>0</span>" : fmt(r.level, 5),
+              fmt(c.alpha - r.level, 5)];
+    }));
+  $("tblSize").innerHTML = tbl(
+    ["n", "expected disagreements", "exact size", "exact power", "level spent"],
+    sizes.map(function(r){
+      return [grp(r.n), fmt(r.dbar, 1),
+              "<span class='warn'>" + fmt(r.size, 5) + "</span>",
+              fmt(r.power, 5), pct(r.size / c.alpha, 1) + " of &alpha;"];
+    }));
+  $("flagLevel").innerHTML =
+    "The ladder is the whole story. At d = 8 a two-sided exact test can spend 0.0078 or 0.0703 and " +
+    "nothing between, so it takes the first; below d = 6 there is no rung under 5% at all and the " +
+    "test cannot reject however lopsided the disagreements are. Averaged over the random d, the " +
+    "size at n = " + grp(c.n) + " is <strong>" + fmt(exactSize(c.n, c.delta, c.alpha), 4) +
+    "</strong> against a nominal " + fmt(c.alpha, 3) + ". That missing " +
+    pct(1 - exactSize(c.n, c.delta, c.alpha) / c.alpha, 0) + " of the level is missing power, and " +
+    "more rows do not buy it back &mdash; the size climbs towards &alpha; only as fast as d does.";
+
+  // ---------------------------------------------------------------- monotone
+  $("tblMono").innerHTML = tbl(
+    ["quantity", "scanned over", "dips", "worst dip"],
+    [["achieved level, as a function of d", "d = 1 to 400",
+      "<span class='warn'>" + grp(mono.ladderDips) + "</span>",
+      "range " + fmt(mono.ladderMin, 4) + " to " + fmt(mono.ladderMax, 4)],
+     ["exact power, as a function of n", "n = 2 to " + grp(mono.nMax),
+      "<span class='ok'>" + grp(mono.powDips) + "</span>", sci(mono.powWorst)],
+     ["exact size, as a function of n", "n = 2 to " + grp(mono.nMax),
+      "<span class='ok'>" + grp(mono.sizeDips) + "</span>", sci(mono.sizeWorst)]]);
+  $("flagMono").innerHTML =
+    "I expected the second and third rows to be full of teeth &mdash; the discreteness sawtooth is " +
+    "the standard warning about exact tests, and the first row shows it is really there, " +
+    grp(mono.ladderDips) + " reversals with the spent level swinging between " +
+    fmt(mono.ladderMin, 4) + " and " + fmt(mono.ladderMax, 4) + ". It does not survive. Over " +
+    grp(mono.nMax - 1) + " consecutive sample sizes there is not one dip in either curve, because d " +
+    "is itself random: at n = " + grp(c.n) + " its standard deviation is " +
+    fmt(Math.sqrt(c.n * c.delta * (1 - c.delta)), 1) + ", so each sample size averages the ladder " +
+    "over a dozen rungs and the teeth cancel. A negative result, printed because it was meant to be " +
+    "a positive one.";
+
+  // ---------------------------------------------------------------- sample size sweep
+  $("tblSweep").innerHTML = tbl(
+    ["disagreement &delta;", "p&#8321;&#8320; / p&#8320;&#8321;", "exact n for " + pct(c.target, 0),
+     "textbook n", "power the textbook n really gives", "shortfall", "disagreements at the exact n"],
+    sweep.map(function(r){
+      return [fmt(r.delta, 3), fmt(r.p10, 4) + " / " + fmt(r.p01, 4),
+              "<span class='ok'>" + grp(r.nExact) + "</span>", grp(r.nFormula),
+              "<span class='warn'>" + fmt(r.powerAtFormula, 4) + "</span>",
+              "&minus;" + fmt(r.shortfall, 4), fmt(r.dbar, 1)];
+    }));
+  const sw0 = sweep[0], swL = sweep[sweep.length - 1];
+  $("flagSweep").innerHTML =
+    "Two readings. First, the direction: at a fixed gap of " + fmt(c.gap) + ", two models that " +
+    "disagree on " + pct(sw0.delta, 1) + " of items need <strong>" + grp(sw0.nExact) + "</strong> " +
+    "test items and two that disagree on " + pct(swL.delta, 1) + " need <strong>" +
+    grp(swL.nExact) + "</strong>. Agreeing more makes the comparison <em>easier</em>, which is the " +
+    "opposite of the intuition &mdash; the disagreements are the noise and their imbalance is the " +
+    "signal. Second, the formula: it is short every single time, by up to " +
+    grp(Math.max.apply(null, sweep.map(r => r.nExact - r.nFormula))) + " items, and the study you " +
+    "run at its recommendation has power " + fmt(Math.min.apply(null, sweep.map(r => r.powerAtFormula)), 4) +
+    " when you asked for " + fmt(c.target, 2) + ".";
+
+  // ---------------------------------------------------------------- variance identity
+  $("tblVar").innerHTML = tbl(
+    ["world &phi;", "acc A", "Var unpaired", "Var paired", "2 &times; det", "identity residual", "ratio"],
+    de.map(function(r){
+      return [fmt(r.phi, 2), fmt(r.accA), fmt(r.varUnpaired, 6),
+              "<span class='same'>" + fmt(r.varPaired, 6) + "</span>",
+              fmt(2 * r.det, 6),
+              "<span class='ok'>" + sci(r.identity) + "</span>", fmt(r.ratio, 4) + "&times;"];
+    }));
+  $("flagVar").innerHTML =
+    "<code>Var<sub>unpaired</sub> &minus; Var<sub>paired</sub> = 2(p&#8321;&#8321;p&#8320;&#8320; " +
+    "&minus; p&#8321;&#8320;p&#8320;&#8321;)</code> &mdash; twice the determinant of the 2&times;2 " +
+    "table, which is twice the covariance between the two models being right. Worst residual over " +
+    "these worlds: " + sci(Math.max.apply(null, de.map(r => r.identity))) + ". The paired column " +
+    "is one number because <code>&delta; &minus; &Delta;&sup2;</code> contains no concordant cell; " +
+    "the unpaired column moves by " +
+    fmt(Math.max.apply(null, de.map(r => r.varUnpaired)) - Math.min.apply(null, de.map(r => r.varUnpaired)), 4) +
+    ". That single algebraic line is the whole of what pairing buys, and it says the saving is " +
+    "large precisely when the two models agree a lot &mdash; which is precisely when someone is " +
+    "most tempted to say the comparison is hopeless.";
+
+  // ---------------------------------------------------------------- knife edge
+  if (edge){
+    const eps = [
+      { label: "root 1: det = 0", phi: edge.phiLo },
+      { label: "just inside", phi: Math.min(1, edge.phiLo + 0.002) },
+      { label: "default world", phi: c.phi },
+      { label: "just inside", phi: Math.max(0, edge.phiHi - 0.002) },
+      { label: "root 2: det = 0", phi: edge.phiHi }
+    ];
+    const rows = determinantEdge(c, eps.map(e => e.phi));
+    $("tblEdge").innerHTML = tbl(
+      ["where", "&phi;", "acc A", "det 2&times;2", "Var unpaired / Var paired"],
+      rows.map(function(r, i){
+        return [eps[i].label, fmt(r.phi, 6), fmt(r.accA), sci(r.det, 3),
+                (Math.abs(r.ratio - 1) < 1e-9 ? "<span class='bad'>" : "<span class='ok'>") +
+                fmt(r.ratio, 6) + "</span>"];
+      }));
+    $("flagEdge").innerHTML =
+      "<code>p&#8321;&#8321;p&#8320;&#8320; = p&#8321;&#8320;p&#8320;&#8321;</code> is a quadratic " +
+      "in the concordant split and it has two roots, so there are exactly two configurations in " +
+      "which pairing buys <em>nothing</em> &mdash; here at accuracies of " + fmt(rows[0].accA, 4) +
+      " and " + fmt(rows[4].accA, 4) + ", where the ratio is " + fmt(rows[0].ratio, 6) +
+      ". They are the configurations in which the two models' errors are independent. Had the " +
+      "default landed on one of them, this page would have reported paired and unpaired designs as " +
+      "equivalent, with a variance ratio of 1.000000 to back it up. Day 71 shipped that mistake " +
+      "with a symmetric threshold; the defence is to find the knife edge deliberately and print it.";
+  }
+
+  // ---------------------------------------------------------------- coverage
+  $("tblCover").innerHTML = tbl(
+    ["world &phi;", "acc A", "paired: exact", "paired: MC", "naive: exact", "naive: MC",
+     "naive width &divide; paired width"],
+    cov.map(function(r){
+      return [fmt(r.phi, 2), fmt(r.accA),
+              "<span class='same'>" + pct(r.exactPaired, 4) + "</span>", pct(r.mcPaired, 2),
+              "<span class='warn'>" + pct(r.exactNaive, 4) + "</span>", pct(r.mcNaive, 2),
+              fmt(r.widthRatio, 4) + "&times;"];
+    }));
+  const wRatMax = Math.max.apply(null, cov.map(r => r.widthRatio));
+  $("flagCover").innerHTML =
+    "The paired interval covers " + pct(cov[0].exactPaired, 4) + " in every world &mdash; slightly " +
+    "under nominal, and identically so, because it never looks at the concordant cells. The " +
+    "interval built from two independent-looking proportions reaches <strong>" +
+    pct(Math.max.apply(null, cov.map(r => r.exactNaive)), 4) + "</strong> and is up to <strong>" +
+    fmt(wRatMax, 2) + "&times;</strong> too wide. Over-coverage reads as caution and is not: it is " +
+    "the same waste as the item-count multiplier in the first table, viewed from the other end. " +
+    "And note that an exact column is the only way to tell 100.0000% from &ldquo;missed twice in " +
+    grp(c.reps) + "&rdquo;.";
+
+  // ---------------------------------------------------------------- folds
+  $("tblFold").innerHTML = tbl(
+    ["&rho;", "inflation c", "exact type I error", "simulated", "&sigma; from exact",
+     "after dividing by &radic;c"],
+    folds.map(function(r){
+      return [fmt(r.rho, 2), fmt(r.c, 3),
+              (r.exact > 1.5 * c.alpha ? "<span class='bad'>" : "<span class='ok'>") +
+              fmt(r.exact, 5) + "</span>",
+              fmt(r.sim, 4), fmt(r.sigma, 2), fmt(r.corrected, 4)];
+    }));
+  const f0 = folds.filter(r => r.rho === 0)[0];
+  const fr = folds.filter(r => Math.abs(r.rho - c.rho) < 1e-12)[0] || folds[folds.length - 1];
+  $("flagFold").innerHTML =
+    "At k = " + c.k + " folds and &rho; = " + fmt(c.rho, 2) + ", a test advertised at " +
+    pct(c.alpha) + " rejects a true null <strong>" + pct(fr.exact, 2) + "</strong> of the time. " +
+    "That is a closed form, not a simulation: the naive t statistic is exactly &radic;c times a " +
+    "genuine t(" + (c.k - 1) + ") variate, so the size is 2(1 &minus; F(t<sub>crit</sub>/&radic;c)) " +
+    "= " + fmt(fr.exact, 5) + ", and " + grp(c.reps) + " replications of the forward model land " +
+    fmt(fr.sigma, 2) + "&sigma; away at " + fmt(fr.sim, 4) + ". Dividing by &radic;c restores " +
+    fmt(fr.corrected, 4) + ". " +
+    (f0 ? "The &rho; = 0 row is the control and the knife edge: c is exactly 1 there, so the " +
+          "&ldquo;correction&rdquo; is the identity function and the last two columns agree to " +
+          "0e+0. A page that defaulted to independent folds would have proved a correction does " +
+          "nothing." : "");
+
+  // ---------------------------------------------------------------- folds vs k
+  $("tblFoldK").innerHTML = tbl(
+    ["folds k", "t critical value", "inflation c at &rho; = " + fmt(c.rho, 2),
+     "exact type I error", "if the folds were independent"],
+    fk.map(function(r){
+      return [String(r.k), fmt(r.tc, 4), fmt(r.c, 3),
+              "<span class='bad'>" + fmt(r.exact, 5) + "</span>", fmt(r.indep, 5)];
+    }));
+  $("flagFoldK").innerHTML =
+    "More folds is worse, monotonically: " + pct(fk[0].exact, 2) + " at k = " + fk[0].k + " and " +
+    pct(fk[fk.length - 1].exact, 2) + " at k = " + fk[fk.length - 1].k + ", at the same &rho;. " +
+    "Extra folds add almost nothing to the effective sample size &mdash; they are re-runs on " +
+    "overlapping training sets &mdash; while the t table narrows the critical value from " +
+    fmt(fk[0].tc, 3) + " to " + fmt(fk[fk.length - 1].tc, 3) + " as though they were independent " +
+    "observations. Ten-fold cross-validation is not a safer significance test than three-fold. It " +
+    "is a more confident one.";
+
+  // ---------------------------------------------------------------- seeds and scale
+  $("tblScale").innerHTML = tbl(
+    ["what", "stream", "measured", "exact target", "1 s.e.", "&sigma;"],
+    [["power, uniform categorical sampler", "multiplicative hash", fmt(guard.hashed, 5),
+      fmt(guard.exactPow, 5), fmt(guard.se, 5),
+      fmt(Math.abs(guard.hashed - guard.exactPow) / guard.se, 2)],
+     ["power, uniform categorical sampler", "arithmetic stride (Day 69's)", fmt(guard.stride, 5),
+      fmt(guard.exactPow, 5), fmt(guard.se, 5),
+      fmt(Math.abs(guard.stride - guard.exactPow) / guard.se, 2)],
+     ["fold type I error, Box&ndash;Muller sampler", "multiplicative hash", fmt(guard.foldHashed, 5),
+      fmt(guard.exactFold, 5), fmt(guard.foldSe, 5),
+      fmt(Math.abs(guard.foldHashed - guard.exactFold) / guard.foldSe, 2)],
+     ["fold type I error, Box&ndash;Muller sampler", "arithmetic stride (Day 69's)", fmt(guard.foldStride, 5),
+      fmt(guard.exactFold, 5), fmt(guard.foldSe, 5),
+      fmt(Math.abs(guard.foldStride - guard.exactFold) / guard.foldSe, 2)]]);
+  $("flagGuard").innerHTML =
+    "All four numbers are over " + grp(guard.reps) + " replications. Day 69 measured a 99.2% " +
+    "coverage that was an arithmetic seed stride feeding Box&ndash;Muller; Day 70 re-measured it " +
+    "for a uniform sampler and Day 71 re-measured it against an exact target, and neither " +
+    "reproduced. This is the third re-measurement and it covers both sampler kinds at once: worst " +
+    "gap " + fmt(Math.max(guard.worst, guard.foldWorst), 4) + " against standard errors of " +
+    fmt(guard.se, 4) + " and " + fmt(guard.foldSe, 4) + ". The caveat is about Day 69's particular " +
+    "arrangement, not about the generator &mdash; and this page carries the exact column " +
+    "permanently, so the question cannot come back.";
+
+  // ================================================================ in-page checks
+  let binWorst = 0, binSum = 0;
+  for (const bp of [0.02, 0.06, 0.4, 0.75]){
+    const bn = 400, full = binomVec(bn, bp), bw = binomWindow(bn, bp);
+    let s = 0;
+    for (let i = 0; i < bw.v.length; i++){
+      binWorst = Math.max(binWorst, Math.abs(bw.v[i] - full[bw.lo + i]));
+      s += bw.v[i];
+    }
+    binSum = Math.max(binSum, Math.abs(s - 1));
+  }
+
+  const checks = [];
+  function T(label, fn){
+    let ok = false;
+    try { ok = !!fn(); } catch (e) { ok = false; }
+    checks.push({ label: label, ok: ok });
+  }
+  const worlds = worldSpecs().map(p => worldOf(c, p));
+
+  T("the accuracy gap is p&#8321;&#8320; &minus; p&#8320;&#8321; in every world &mdash; the " +
+    "concordant cells cancel exactly, not approximately",
+    function(){ return worlds.every(w => Math.abs((w.accA - w.accB) - c.gap) < 1e-16); });
+  T("the exact power is the SAME NUMBER in all " + dt.length + " worlds (spread " + sci(powSpread) + ")",
+    function(){ return powSpread === 0; });
+  T("&hellip; while the unpaired power over the same worlds spans " +
+    fmt(unpHi - unpLo, 4) + " and the required item count spans " +
+    fmt(ratHi - ratLo, 2) + "&times;",
+    function(){ return unpHi - unpLo > 0.2 && ratHi / ratLo > 3; });
+  T("exact power two ways &mdash; conditional decomposition and a flat trinomial sum &mdash; agree to " +
+    (isFinite(ps.gap) ? sci(ps.gap, 2) : "n/a"),
+    function(){ return !isFinite(ps.tri) || ps.gap < 1e-11; });
+  T("the Monte Carlo power is within 3 standard errors of the exact value (" +
+    fmt(ps.sigma, 2) + "&sigma; over " + grp(ps.reps) + " replications)",
+    function(){ return ps.sigma < 3; });
+  T("the p-value route and the critical-count route flag exactly the same replications",
+    function(){ return ps.mc === ps.mcCrit; });
+  T("p &le; &alpha; if and only if min(n&#8321;&#8320;, n&#8320;&#8321;) &le; c(d), over every " +
+    "split of every d up to 60",
+    function(){
+      for (let d = 0; d <= 60; d++){
+        const cr = critOf(d, c.alpha);
+        for (let i = 0; i <= d; i++)
+          if ((mcnemarP(i, d - i) <= c.alpha) !== (Math.min(i, d - i) <= cr)) return false;
+      }
+      return true;
+    });
+  T("a completely one-sided split has p = 2<sup>1&minus;d</sup>, and d = 0 has p = 1",
+    function(){
+      if (mcnemarP(0, 0) !== 1) return false;
+      for (let d = 1; d <= 30; d++)
+        if (Math.abs(mcnemarP(d, 0) - Math.pow(2, 1 - d)) > 1e-12) return false;
+      return true;
+    });
+  T(grp(ida.rows) + " row comparisons across worlds: 0 differences in the discordant mark",
+    function(){ return ida.markDiffs === 0 && ida.rows > 10000; });
+  T("&hellip; 0 differences in the two counts and 0 in the exact p-value, while model A's measured " +
+    "accuracy spans " + fmt(ida.accSpread),
+    function(){ return ida.countDiffs === 0 && ida.pDiffs === 0 && ida.pWorst === 0 && ida.accSpread > 0.3; });
+  T("the achieved level never exceeds &alpha;, over d = 1 to 400",
+    function(){
+      for (let d = 1; d <= 400; d++) if (achievedLevel(d, c.alpha) > c.alpha + 1e-15) return false;
+      return true;
+    });
+  T("&hellip; and the ladder is violently non-monotone in d: " + grp(mono.ladderDips) +
+    " reversals between " + fmt(mono.ladderMin, 4) + " and " + fmt(mono.ladderMax, 4),
+    function(){ return mono.ladderDips > 50 && mono.ladderMax / Math.max(1e-9, mono.ladderMin) > 3; });
+  T("the exact size is strictly below the nominal level at every sample size in the table",
+    function(){ return sizes.every(r => r.size < c.alpha); });
+  T("&hellip; yet exact power and exact size are monotone in n over " + grp(mono.nMax - 1) +
+    " consecutive sizes: " + mono.powDips + " and " + mono.sizeDips + " dips. The sawtooth " +
+    "averages away",
+    function(){ return mono.powDips === 0 && mono.sizeDips === 0; });
+  T("below d = 6 a two-sided exact test at 5% cannot reject at all, however lopsided the split",
+    function(){
+      if (c.alpha < 0.0625 && c.alpha >= 0.03125)
+        return critOf(5, c.alpha) < 0 && critOf(6, c.alpha) === 0;
+      return true;
+    });
+  T("the textbook sample size is below the exact one in every row of the sweep, and delivers less " +
+    "than the requested power",
+    function(){ return sweep.every(r => r.nFormula <= r.nExact && r.powerAtFormula < c.target); });
+  T("&hellip; and the exact requirement is never more than 10% above the formula's",
+    function(){ return sweep.every(r => r.nExact / r.nFormula < 1.10); });
+  T("at a fixed gap, MORE disagreement needs MORE test items &mdash; strictly increasing across the " +
+    "sweep, " + grp(sweep[0].nExact) + " to " + grp(sweep[sweep.length - 1].nExact),
+    function(){
+      for (let i = 1; i < sweep.length; i++) if (sweep[i].nExact <= sweep[i - 1].nExact) return false;
+      return true;
+    });
+  T("Var<sub>unpaired</sub> &minus; Var<sub>paired</sub> = 2 det, to " +
+    sci(Math.max.apply(null, de.map(r => r.identity))) + " in every world",
+    function(){ return de.every(r => r.identity < 1e-15); });
+  T("&hellip; and to 1e-15 over a 201-point sweep of the concordant split",
+    function(){
+      let worst = 0;
+      for (let i = 0; i <= 200; i++){
+        const w = worldOf(c, i / 200);
+        worst = Math.max(worst, Math.abs(w.varUnpaired - w.varPaired - 2 * w.det));
+      }
+      return worst < 1e-15;
+    });
+  T("the paired variance does not depend on the concordant split at all (0 spread), while the " +
+    "unpaired variance moves by more than 0.3",
+    function(){
+      const vp = de.map(r => r.varPaired), vu = de.map(r => r.varUnpaired);
+      return Math.max.apply(null, vp) - Math.min.apply(null, vp) === 0 &&
+             Math.max.apply(null, vu) - Math.min.apply(null, vu) > 0.3;
+    });
+  T("the determinant is positive in every world shown, so pairing helps in all of them",
+    function(){ return de.every(r => r.det > 0); });
+  T("det = 0 has exactly two roots, and at both of them the variance ratio is 1 to 1e-12",
+    function(){
+      if (!edge) return false;
+      const a = worldOf(c, edge.phiLo), b = worldOf(c, edge.phiHi);
+      return Math.abs(a.varUnpaired / a.varPaired - 1) < 1e-12 &&
+             Math.abs(b.varUnpaired / b.varPaired - 1) < 1e-12 &&
+             edge.phiLo < edge.phiHi;
+    });
+  T("the exact coverage of the paired interval is identical in every world (it never reads a " +
+    "concordant cell)",
+    function(){ return cov.every(r => r.exactPaired === cov[0].exactPaired); });
+  T("the naive interval is wider in every world, by up to " + fmt(wRatMax, 2) +
+    "&times;, and over-covers up to " + pct(Math.max.apply(null, cov.map(r => r.exactNaive)), 4),
+    function(){
+      return cov.every(r => r.widthRatio > 1 && r.exactNaive >= r.exactPaired) && wRatMax > 1.5;
+    });
+  T("both simulated coverages are within 3 standard errors of their exact values",
+    function(){
+      return cov.every(function(r){
+        const se1 = Math.sqrt(Math.max(1e-9, r.exactPaired * (1 - r.exactPaired) / c.reps));
+        const se2 = Math.sqrt(Math.max(1e-9, r.exactNaive * (1 - r.exactNaive) / c.reps));
+        return Math.abs(r.mcPaired - r.exactPaired) < 3 * se1 + 0.003 &&
+               Math.abs(r.mcNaive - r.exactNaive) < 3 * se2 + 0.003;
+      });
+    });
+  T("the fold inflation is (1+(k&minus;1)&rho;)/(1&minus;&rho;) and the exact type I error " +
+    "2(1&minus;F(t/&radic;c)) matches the forward simulation within 3 s.e. at every &rho;",
+    function(){
+      return folds.every(r => Math.abs(r.c - (1 + (c.k - 1) * r.rho) / (1 - r.rho)) < 1e-12 &&
+                              r.sigma < 3);
+    });
+  T("at &rho; = 0 the correction is exactly the identity &mdash; c = 1 to 0e+0 and the two " +
+    "decisions agree on every replication",
+    function(){
+      if (!f0) return true;
+      return inflation(c.k, 0) === 1 && f0.sim === f0.corrected &&
+             Math.abs(f0.exact - c.alpha) < 1e-9;
+    });
+  T("&hellip; and at every &rho; &gt; 0 the corrected test is within 3 s.e. of &alpha; while the " +
+    "naive one is not",
+    function(){
+      const se = Math.sqrt(c.alpha * (1 - c.alpha) / c.reps);
+      return folds.filter(r => r.rho > 0).every(r => Math.abs(r.corrected - c.alpha) < 3 * se + 0.005) &&
+             folds.filter(r => r.rho >= 0.25).every(r => r.exact > 4 * c.alpha);
+    });
+  T("more folds is worse at fixed &rho;: the exact type I error is strictly increasing in k",
+    function(){
+      for (let i = 1; i < fk.length; i++) if (fk[i].exact <= fk[i - 1].exact) return false;
+      return fk.every(r => Math.abs(r.indep - c.alpha) < 1e-9);
+    });
+  T("the t CDF inverts to 1e-9, gives the Cauchy value F(1) = &frac34; exactly at &nu; = 1, and " +
+    "converges to the normal CDF at large &nu;",
+    function(){
+      for (const p of [0.55, 0.75, 0.9, 0.975, 0.999])
+        for (const v of [1, 4, 9, 30])
+          if (Math.abs(tCdf(tInv(p, v), v) - p) > 1e-9) return false;
+      if (Math.abs(tCdf(1, 1) - 0.75) > 1e-9) return false;
+      for (const t of [-2, -0.5, 0.5, 2])
+        if (Math.abs(tCdf(t, 4000) - normCdf(t)) > 1e-3) return false;
+      return true;
+    });
+  T("the windowed binomial matches the full vector term by term to " + sci(binWorst) +
+    " and sums to 1 to " + sci(binSum) + " &mdash; the drift is the full vector's, not the window's",
+    function(){ return binWorst < 1e-13 && binSum < 1e-12; });
+  T("&Phi;&#8315;&sup1; inverts &Phi; to 1e-7 (the tail rational is good to 1.2e-7 fractional)",
+    function(){
+      for (const p of [0.005, 0.025, 0.25, 0.5, 0.9, 0.975, 0.999])
+        if (Math.abs(normCdf(normInv(p)) - p) > 1e-7) return false;
+      return true;
+    });
+  T("both seed streams sit within 3 s.e. of the exact target, for BOTH samplers &mdash; nothing to " +
+    "inherit from Day 69",
+    function(){
+      return Math.abs(guard.hashed - guard.exactPow) < 3 * guard.se + 0.005 &&
+             Math.abs(guard.stride - guard.exactPow) < 3 * guard.se + 0.005 &&
+             Math.abs(guard.foldHashed - guard.exactFold) < 3 * guard.foldSe + 0.005 &&
+             Math.abs(guard.foldStride - guard.exactFold) < 3 * guard.foldSe + 0.005;
+    });
+
+  const passed = checks.filter(k => k.ok).length;
+  $("selftest").innerHTML =
+    "<p style='margin:0 0 8px; font-weight:800' class='" + (passed === checks.length ? "ok" : "bad") +
+    "'>" + passed + " / " + checks.length + " checks passed</p><ul class='checks'>" +
+    checks.map(k => "<li>" + (k.ok ? "<span class='ok'>PASS</span>" : "<span class='bad'>FAIL</span>") +
+      " &nbsp;" + k.label + "</li>").join("") + "</ul>";
+}
+
+// A full render is a second or two of exact sums and Monte Carlo, so slider drags are debounced.
+let pending = null;
+function scheduleRender(){
+  if (pending) clearTimeout(pending);
+  pending = setTimeout(function(){ pending = null; render(); }, 180);
+}
+["sDelta", "sTheta", "sPhi", "sN", "sAlpha", "sTarget", "sK", "sRho", "sReps", "sSeeds"]
+  .forEach(function(id){ $(id).addEventListener("input", scheduleRender); });
+render();
+</script>
+</body>
+</html>
