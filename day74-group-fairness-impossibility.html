@@ -1,0 +1,2156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero &middot; Day 74 &mdash; Two groups, one model</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --ink:#0f172a; --ink2:#334155; --dim:#64748b; --dim2:#94a3b8;
+    --line:#e2e8f0; --bg:#f1f5f9; --bg2:#f8fafc; --white:#fff;
+    --sky:#0369a1; --amber:#fffbeb; --amberL:#f59e0b; --amberT:#78350f;
+    --blue:#eff6ff; --violet:#f5f3ff; --rose:#fff1f2; --green:#f0fdf4;
+  }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--bg2); color:var(--ink); line-height:1.6;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.92em;
+         background:#e8eef6; padding:1px 4px; border-radius:4px; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; line-height:1.55;
+        font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre code { background:none; padding:0; color:inherit; }
+  h1,h2,h3 { line-height:1.25; margin:0; }
+  p { margin:0 0 .85em; }
+  header.top { background:var(--white); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .wrap { max-width:1150px; margin:0 auto; padding:16px; }
+  @media (min-width:768px) { .wrap { padding:24px; } }
+  .kicker { font-size:11px; font-weight:800; letter-spacing:.16em; color:var(--sky);
+            margin:0 0 8px; text-transform:uppercase; }
+  h1.lede { font-size:17px; font-weight:800; margin-bottom:14px; }
+  @media (min-width:768px) { h1.lede { font-size:19px; } }
+  h1.lede em { font-style:italic; }
+  #tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  #tabs button { font:inherit; font-size:13px; font-weight:700; cursor:pointer;
+                 border:0; padding:8px 18px; border-radius:9px; background:var(--bg); color:var(--ink); }
+  #tabs button.tab-active { background:#0f172a; color:#fff; }
+  .panel { display:block; }
+  .panel.hidden { display:none; }
+  .sheet { min-height:calc(100vh - 78px); padding:16px; background:var(--bg); }
+  @media (min-width:768px) { .sheet { padding:32px; } }
+  .sheet.plain { background:var(--white); }
+  .sheet.soft  { background:var(--bg2); }
+  .col { max-width:1150px; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+  .col.narrow { max-width:760px; gap:22px; }
+  .card { background:var(--white); border-radius:16px; padding:20px;
+          box-shadow:0 1px 3px rgba(15,23,42,.09), 0 1px 2px rgba(15,23,42,.05); }
+  .ctl { display:grid; gap:6px 24px; grid-template-columns:1fr; }
+  @media (min-width:700px)  { .ctl { grid-template-columns:1fr 1fr; } }
+  @media (min-width:1000px) { .ctl { grid-template-columns:1fr 1fr 1fr; } }
+  .ctl label { font-size:13px; display:block; }
+  .ctl input[type=range] { width:100%; margin:2px 0 0; }
+  .ctl .val { float:right; font-weight:700; font-variant-numeric:tabular-nums; }
+  .eyebrow { font-size:11px; font-weight:800; letter-spacing:.09em; color:var(--dim);
+             margin:0 0 4px; text-transform:uppercase; }
+  .say { font-size:13.5px; color:var(--ink2); margin:0 0 12px; }
+  .tiny { font-size:12px; color:var(--dim); }
+  .scroll { overflow-x:auto; }
+  table.num { width:100%; border-collapse:collapse; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:var(--dim); text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; white-space:normal; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  .ok   { color:#166534; font-weight:800; }
+  .bad  { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim  { color:var(--dim2); }
+  .same  { background:var(--blue); }
+  .same2 { background:var(--violet); }
+  .same3 { background:var(--green); }
+  .flag { font-size:13.5px; margin:12px 0 0; padding:12px; border-radius:9px;
+          background:var(--amber); border-left:4px solid var(--amberL); color:var(--amberT); }
+  .flag.blue { background:var(--blue); border-left-color:#3b82f6; color:#1e3a8a; }
+  .flag.rose { background:var(--rose); border-left-color:#f43f5e; color:#881337; }
+  ul.checks { list-style:none; margin:0; padding:0; font-size:13px; color:var(--ink2); }
+  ul.checks li { padding:1px 0; }
+  .foot { border-top:1px solid var(--line); background:var(--white); }
+  .foot .wrap { font-size:12.5px; color:var(--dim); }
+  .foot a { color:var(--sky); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <p class="kicker">MachineLearningFromZero &middot; Day 74</p>
+    <h1 class="lede">
+      &#9878;&#65039; Two groups, one model &mdash; every day from 1 to 73 measured a model on
+      <em>a</em> dataset. Measure it separately on two groups and a new question appears that has
+      nothing to do with accuracy: <strong>which of the equalities you would like can hold at the
+      same time?</strong> That turns out to be arithmetic rather than policy, and it is answerable
+      exactly, so this page computes instead of arguing. The world here is a <em>law</em> with
+      rational cell probabilities, not a sample: the class-conditional score distribution is
+      <strong>identical</strong> in both groups, so the two ROC curves are the same curve and the AUC
+      gap is <strong>exactly 0</strong>; the decision is a function of the score bin alone, so
+      &ldquo;fairness through unawareness&rdquo; already holds for free; and the <em>only</em>
+      difference between the groups is the base rate,
+      <strong id="hlPiA">30%</strong> against <strong id="hlPiB">8%</strong>. At the payoff-optimal
+      cut both groups get true-positive rate <strong id="hlTpr">0.7759</strong> and false-positive
+      rate <strong id="hlFpr">0.1719</strong> &mdash; to the last bit &mdash; and yet
+      <strong id="hlSelA">35.31%</strong> of group A is flagged against
+      <strong id="hlSelB">22.02%</strong> of group B, a gap of exactly
+      <strong id="hlGap">0.1329</strong>, which is exactly
+      <code>(&pi;<sub>A</sub> &minus; &pi;<sub>B</sub>) &times; J</code> &mdash; the prevalence gap
+      times Youden&rsquo;s J. The whole disparity is one product, and the largest it can ever get is
+      the <strong>total-variation distance</strong> between the two groups&rsquo; score distributions,
+      <strong id="hlTvd">0.132880</strong>: blindness buys you that bound, not zero. A flag is also
+      <strong id="hlPpvRatio">2.34&times;</strong> as likely to be correct in group A
+      (<strong id="hlPpvA">0.6592</strong> against <strong id="hlPpvB">0.2819</strong>), because
+      <code>FPR = odds(&pi;) &times; (1&minus;PPV)/PPV &times; (1&minus;FNR)</code> is an identity and
+      it leaves you two of the three equalities, never three &mdash; which is not asserted here but
+      <strong>proved by exhaustion</strong>: all <strong id="hlEnum">405,909</strong> pairs of integer
+      confusion matrices over <span id="hlCombos">105</span> pairs of unequal margins contain
+      <strong>0</strong> non-degenerate simultaneous solutions, while the equal-base-rate control
+      contains <strong id="hlCtl">680</strong>. Then the repairs, each measured on the same file:
+      demographic parity zeroes the flag gap and widens the precision gap to
+      <strong id="hlParityPpv">0.4615</strong> while opening TPR and FPR gaps that were exactly zero;
+      predictive parity zeroes the precision gap by cutting group B&rsquo;s recall from
+      <strong id="hlPpTpr0">0.7759</strong> to <strong id="hlPpTpr">0.2461</strong> and
+      <em>raising</em> population accuracy; and the accuracy-optimal rule is not group-blind at all
+      &mdash; it uses cuts <strong id="hlBayesCuts">8 and 9</strong>, so blindness itself costs
+      <strong id="hlPrice">0.005371</strong> accuracy and is already a constraint.
+      &#128308; And the belief this page was built around is the one that broke: &ldquo;a better model
+      has a bigger gap&rdquo; is a theorem for the <em>bound</em>
+      (<strong id="hlMono">0</strong> decreases in <span id="hlSteps">320</span> steps) and
+      <strong>false for the deployed rule</strong> &mdash; <strong id="hlBoth">9</strong> of those
+      steps raise accuracy and shrink the gap, because the cut is an integer and it moves.
+      Pure vanilla JavaScript, one file, no build step.
+    </h1>
+    <div id="tabs">
+      <button data-tab="look" class="tab-active">&#9878;&#65039; MEASURE</button>
+      <button data-tab="understand">&#129504; UNDERSTAND</button>
+      <button data-tab="build">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================================ MEASURE -->
+<section id="look" class="panel">
+  <div class="sheet">
+    <div class="col">
+
+      <div class="card">
+        <div class="ctl">
+          <label>score bins <span class="val" id="vBins">11</span>
+            <input id="sBins" type="range" min="5" max="15" step="1" value="11"></label>
+          <label>model skill &mdash; likelihood-ratio base <code>t</code> <span class="val" id="vTilt">3</span>
+            <input id="sTilt" type="range" min="1" max="9" step="1" value="3"></label>
+          <label>base rate, group A <span class="val" id="vPiA">30%</span>
+            <input id="sPiA" type="range" min="3" max="70" step="1" value="30"></label>
+          <label>base rate, group B <span class="val" id="vPiB">8%</span>
+            <input id="sPiB" type="range" min="1" max="69" step="1" value="8"></label>
+          <label>group A share of the population <span class="val" id="vWA">70%</span>
+            <input id="sWA" type="range" min="20" max="90" step="5" value="70"></label>
+          <label>value of a right flag &divide; cost of a wrong one <span class="val" id="vPayoff">4</span>
+            <input id="sPayoff" type="range" min="1" max="20" step="1" value="4"></label>
+          <label>items per group in the enumeration <span class="val" id="vNSmall">16</span>
+            <input id="sNSmall" type="range" min="8" max="20" step="1" value="16"></label>
+          <label>items per group in the sampled check <span class="val" id="vN">1200</span>
+            <input id="sN" type="range" min="200" max="6000" step="200" value="1200"></label>
+          <label>replications <span class="val" id="vReps">1500</span>
+            <input id="sReps" type="range" min="200" max="4000" step="100" value="1500"></label>
+          <label>seed families in the guard <span class="val" id="vSeeds">25</span>
+            <input id="sSeeds" type="range" min="6" max="40" step="1" value="25"></label>
+        </div>
+        <p class="tiny" style="margin-top:12px">
+          The world is a <strong>law</strong>, not a sample. A score bin <code>v</code> carries the
+          exact binomial likelihood ratio
+          <code>P(S=v|Y=1) = C(m,v) t<sup>v</sup> / (1+t)<sup>m</sup></code> against
+          <code>P(S=v|Y=0) = C(m,v) / 2<sup>m</sup></code> with <code>m = <span id="wM">10</span></code>,
+          so the log-likelihood ratio is exactly <code>v&thinsp;ln t &minus; m&thinsp;ln((1+t)/2)</code>,
+          both normalisers are closed forms, and <strong>every rate on this page is a ratio of
+          integers computed in BigInt</strong> rather than an estimate. Both groups get the
+          <em>same</em> two shapes, so <code>AUC = <span id="wAuc">0.877132</span></code> in each and
+          the AUC gap is exactly 0. <code>t = 1</code> is a model with no skill at all and it is on
+          the dial. One section samples; it says so and carries a standard error.
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">one cut for everyone &mdash; the group-blind control</p>
+        <p class="say" id="headline">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblSweep"></table></div>
+        <p class="flag" id="flagSweep">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the relation that turns three equalities into two</p>
+        <p class="say">Not quoted, derived: <code>PPV = &pi;s / (&pi;s + (1&minus;&pi;)f)</code>, so
+          <code>(1&minus;PPV)/PPV = (1&minus;&pi;)f / (&pi;s)</code>, and multiplying by
+          <code>odds(&pi;)&thinsp;s</code> leaves <code>f</code>. That is one line, it holds for every
+          confusion matrix with something flagged, and it means precision, recall and the
+          false-positive rate are three numbers with two degrees of freedom once the base rate is
+          fixed. The residual column is computed in exact rationals, so it is
+          <span class="same">zero</span> and not small.</p>
+        <div class="scroll"><table class="num" id="tblRel"></table></div>
+        <p class="flag" id="flagRel">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">what blindness actually buys</p>
+        <p class="say">The largest flag-rate gap that <em>any</em> group-blind threshold rule can
+          produce is not something to be estimated. Because
+          <code>P(S=v|A) &minus; P(S=v|B) = (&pi;<sub>A</sub>&minus;&pi;<sub>B</sub>)(p<sub>1</sub>[v] &minus; p<sub>0</sub>[v])</code>,
+          summing the positive part gives the total-variation distance between the two groups&rsquo;
+          score distributions &mdash; which is also exactly how strong a proxy for the group the
+          score is. Three quantities, one number.</p>
+        <div class="scroll"><table class="num" id="tblBound"></table></div>
+        <p class="flag blue" id="flagBound">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the gap as a function of how good the model is</p>
+        <p class="say">The skill dial is <code>t</code>, the base of the likelihood ratio, and
+          <code>t = 1</code> is a model that knows nothing. The <em>bound</em> column is the exact
+          maximum gap. The <em>deployed</em> columns are the gap at the cut a practitioner would
+          actually pick. Watch the two columns disagree about the direction.</p>
+        <div class="scroll"><table class="num" id="tblSkill"></table></div>
+        <p class="flag rose" id="flagSkill">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the accuracy-optimal rule is not group-blind</p>
+        <p class="say">Flag <code>v</code> when <code>&pi;&thinsp;p<sub>1</sub>[v] &gt; (1&minus;&pi;)&thinsp;p<sub>0</sub>[v]</code>,
+          i.e. when the likelihood ratio clears <code>(1&minus;&pi;)/&pi;</code>. Here that is a
+          closed form in <code>v</code>, and the two groups&rsquo; crossing points differ by exactly
+          <code>(logit &pi;<sub>A</sub> &minus; logit &pi;<sub>B</sub>) / ln t</code>. So the rule
+          that maximises accuracy reads the group attribute, and using one cut for everybody is
+          already a fairness constraint with a price.</p>
+        <div class="scroll"><table class="num" id="tblBayes"></table></div>
+        <p class="flag" id="flagBayes">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the repairs, all measured on the same file</p>
+        <p class="say">Each row is what somebody does when told to fix one thing. The first row is
+          the control &mdash; the payoff-optimal cut, applied identically, blind to the group in the
+          strongest sense available. Every other row is scored against it. <code>&Delta;flag</code> is
+          how much of each group&rsquo;s decision changed; <code>&Delta;recall B</code> is what the
+          repair did to the smaller group&rsquo;s true positives.</p>
+        <div class="scroll"><table class="num" id="tblRepair"></table></div>
+        <p class="flag rose" id="flagRepair">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">who moves &mdash; a choice the criterion does not make</p>
+        <p class="say">Every repair above moved group B, because that is what the code was told to
+          do. Nothing in any of the definitions says which group moves. Here is the other direction,
+          on the same file &mdash; and sometimes the arithmetic does not offer it.</p>
+        <div class="scroll"><table class="num" id="tblWho"></table></div>
+        <p class="flag" id="flagWho">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">whether a repair is even possible is not monotone in skill</p>
+        <p class="say">Predictive parity needs group B to reach group A&rsquo;s precision, and group
+          B&rsquo;s precision has a ceiling: the calibrated probability of its top bin. Both the
+          ceiling and the target move with <code>t</code>, and the cut is an integer, so feasibility
+          flips more than once.</p>
+        <div class="scroll"><table class="num" id="tblFeas"></table></div>
+        <p class="flag" id="flagFeas">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the twin: nothing above knows whether a flag is good news</p>
+        <p class="say">Read a flag as a shortlist place and read it as extra scrutiny. Every number
+          on this page is bit-identical under both readings &mdash; and each repair swaps the group
+          it helps.</p>
+        <div class="scroll"><table class="num" id="tblTwin"></table></div>
+        <p class="flag rose" id="flagTwin">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the same score does not mean the same thing</p>
+        <p class="say">The calibrated probability in group <code>g</code> is
+          <code>&pi;<sub>g</sub>p<sub>1</sub>[v] / (&pi;<sub>g</sub>p<sub>1</sub>[v] + (1&minus;&pi;<sub>g</sub>)p<sub>0</sub>[v])</code>,
+          which in logit form is <code>logit &pi;<sub>g</sub> + v&thinsp;ln t &minus; m&thinsp;ln((1+t)/2)</code>.
+          Same slope in both groups, intercepts differing by exactly
+          <code>logit &pi;<sub>A</sub> &minus; logit &pi;<sub>B</sub></code>: one curve, shifted
+          sideways. The odds-ratio column is the same rational in every row, which <em>is</em> that
+          statement.</p>
+        <div class="scroll"><table class="num" id="tblCalib"></table></div>
+        <p class="say" style="margin-top:14px">So a probability has to be attached to the score
+          somehow, and there are only three ways to do it. Two of them require the attribute.</p>
+        <div class="scroll"><table class="num" id="tblPooled"></table></div>
+        <p class="flag" id="flagCalib">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">calibration and balance cannot both hold either</p>
+        <p class="say">For <em>any</em> calibrated score,
+          <code>&pi;&thinsp;E[c|Y=1] + (1&minus;&pi;)&thinsp;E[c|Y=0] = E[c] = &pi;</code>, so
+          <code>E[c|Y=0] = odds(&pi;) &times; (1 &minus; E[c|Y=1])</code>. One of the two conditional
+          means determines the other. Equalise both across groups and the odds have to match &mdash;
+          unless <code>E[c|Y=1] = 1</code>, which is perfect prediction. Derived, then checked in
+          exact rationals.</p>
+        <div class="scroll"><table class="num" id="tblBalance"></table></div>
+        <p class="flag blue" id="flagBalance">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">unawareness, measured rather than assumed</p>
+        <p class="say">The policy object on this page has exactly two fields and neither is the
+          group. That is checked structurally, not asserted. Here is what it is worth.</p>
+        <div class="scroll"><table class="num" id="tblUnaware"></table></div>
+        <p class="flag" id="flagUnaware">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the impossibility, proved by exhaustion</p>
+        <p class="say">Every integer confusion matrix, for both groups, with equality tested by
+          integer cross-multiplication so nothing is &ldquo;within tolerance&rdquo;. No sampling and
+          no algebra &mdash; a count. Then the same count over every pair of unequal margins, and
+          then the control that isolates the mechanism: <strong>equal</strong> base rates, where the
+          impossibility has no reason to bite.</p>
+        <div class="scroll"><table class="num" id="tblEnum"></table></div>
+        <p class="flag" id="flagEnum">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the price of equalised odds, when the curves differ</p>
+        <p class="say">Above, both groups share one ROC curve, so equalised odds is <em>reachable</em>
+          with a single cut. Reachable is not free: the unconstrained optimum uses two cuts. Now
+          weaken the model in group B only and the curves come apart, so the constraint needs a point
+          on both. Both curves are concave &mdash; the likelihood ratio is monotone in the bin &mdash;
+          so the feasible set is the region under the lower one and randomising with
+          &ldquo;flag nobody&rdquo; supplies the chords. Searched exactly over rationals.</p>
+        <div class="scroll"><table class="num" id="tblPrice"></table></div>
+        <p class="flag" id="flagPrice">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">identities that have to hold exactly</p>
+        <div class="scroll"><table class="num" id="tblIdent"></table></div>
+        <p class="flag" id="flagIdent">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the one sampled section, against a known answer</p>
+        <p class="say">Everything above is exact, so this is a test of the sampler and of what a real
+          audit would see &mdash; not a source of any claim. One uniform picks the label, one more
+          inverts the exact score CDF. Then Day 69&rsquo;s arithmetic seed stride is re-measured for
+          the fifth time, now against a closed form: each seed family is z-scored against the exact
+          gap, so a biased stream would show a mean <code>z</code> that grows with the number of
+          families instead of sitting inside its own standard error.</p>
+        <div class="scroll"><table class="num" id="tblSample"></table></div>
+        <div class="scroll" style="margin-top:14px"><table class="num" id="tblGuard"></table></div>
+        <p class="flag" id="flagSample">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">every identity, over every configuration</p>
+        <div class="scroll"><table class="num" id="tblConfig"></table></div>
+        <p class="flag" id="flagConfig">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">in-page checks</p>
+        <div id="selftest"></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ UNDERSTAND -->
+<section id="understand" class="panel hidden">
+  <div class="sheet plain">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">Which equalities can hold at once?</h2>
+
+      <p>Seventy-three days of this series measured a model on <em>a</em> dataset. Split the dataset
+      by a column &mdash; any column that names a group of people &mdash; and measure separately, and
+      a question appears that accuracy cannot answer. The two groups get different numbers. Which of
+      those numbers should be made equal?</p>
+
+      <p>The honest answer is that you do not get to pick more than one, and the reason is not
+      political. It is a line of algebra you can write in ten seconds.</p>
+
+      <h3 style="font-size:19px; font-weight:800">1. A confusion matrix has fewer degrees of freedom than it looks</h3>
+      <p>Fix a group&rsquo;s base rate <code>&pi;</code>. Pick a decision rule; it has a
+      true-positive rate <code>s</code> and a false-positive rate <code>f</code>. Then the fraction
+      flagged is <code>&pi;s + (1&minus;&pi;)f</code> and precision is
+      <code>&pi;s / (&pi;s + (1&minus;&pi;)f)</code>. Everything else follows. In particular</p>
+      <pre><code>(1 - PPV)/PPV = (1-pi)*f / (pi*s)
+=> f = odds(pi) * (1-PPV)/PPV * s
+     = odds(pi) * (1-PPV)/PPV * (1 - FNR)</code></pre>
+      <p>which is the whole story. Precision, recall and the false-positive rate are three numbers
+      with two degrees of freedom, and the third one is pinned by the base rate. So if two groups
+      have different base rates and you equalise precision and recall, the false-positive rates come
+      out in the ratio of the prevalence odds &mdash; not approximately, exactly. You can have two of
+      the three. Never three.</p>
+      <p>The page does not ask you to take that on faith. It enumerates every integer confusion
+      matrix for both groups and counts the simultaneous solutions. There are always a couple, and
+      they are always the same two degenerate ones: flag only true positives (precision 1 in both
+      groups, false-positive rate 0 in both) or flag only false positives (precision 0 in both).
+      Strip those out and the count is 0, over hundreds of thousands of matrices and every pair of
+      unequal margins. Then set the two base rates <em>equal</em> and the count is in the hundreds.
+      That control is the point: the impossibility is a fact about unequal base rates, not about
+      confusion matrices.</p>
+
+      <h3 style="font-size:19px; font-weight:800">2. The disparity is one product</h3>
+      <p>Apply a single threshold to everybody. Because the two groups share a score law given the
+      label, they get the same <code>s</code> and the same <code>f</code>. The fraction flagged
+      differs anyway:</p>
+      <pre><code>sel_A - sel_B = (pi_A - pi_B) * (s - f)
+             = (prevalence gap) * Youden's J</code></pre>
+      <p>Two factors, and only one of them is about the model. The other is a fact about the world
+      that no amount of engineering touches. Set <code>J = 0</code> &mdash; a model that knows nothing
+      &mdash; and the gap is exactly zero. That is the only group-blind rule with equal error rates
+      <em>and</em> equal flag rates, and the page prints its accuracy so you can see what it costs.</p>
+      <p>The maximum over all thresholds has a name. It is the total-variation distance between the
+      two groups&rsquo; score distributions, which is exactly the extent to which the score is a proxy
+      for the group. So <em>not looking at the attribute</em> does not bound the disparity at zero;
+      it bounds it at how visible the attribute is in the score. On this page that is
+      <code>0.1329</code>, and the score&rsquo;s AUC for predicting the group is 0.58 &mdash; a weak
+      proxy, doing all of the work.</p>
+
+      <h3 style="font-size:19px; font-weight:800">3. &#128308; The claim this page was built around is false</h3>
+      <p>Because the gap is <code>(prevalence gap) &times; J</code>, and <code>J</code> rises with
+      skill, it looks like a theorem that a better model has a bigger gap. For the <em>bound</em> it
+      is: over 320 skill steps across ten pairs of base rates and four bin counts, the bound never
+      once decreases. For the rule you actually deploy it is not, and the reason is dull rather than
+      deep. The accuracy-optimal cut is an integer; when it moves, the operating point can land in a
+      lower-<code>J</code> region. Nine of the same 320 steps raise accuracy <em>and</em> shrink the
+      deployed gap, the worst by 0.030 while accuracy improves by 0.005.</p>
+      <p>The claim survives as a statement about what is possible and dies as a statement about what
+      happens. That distinction is not decoration: a team that ships a better model and watches the
+      disparity fall has not disproved anything, and a team that watches it rise has not caused
+      anything.</p>
+
+      <h3 style="font-size:19px; font-weight:800">4. Group-blindness is already a constraint</h3>
+      <p>The accuracy-maximising decision is to flag <code>v</code> when
+      <code>&pi;&thinsp;p<sub>1</sub>[v] &gt; (1&minus;&pi;)&thinsp;p<sub>0</sub>[v]</code>. That
+      compares the likelihood ratio to <code>(1&minus;&pi;)/&pi;</code>, which is
+      <em>group-specific</em>. In this world it is a closed form: the crossing point in bins is
+      <code>[ln((1&minus;&pi;)/&pi;) + m&thinsp;ln((1+t)/2)] / ln t</code>, and the two groups&rsquo;
+      crossing points differ by exactly
+      <code>(logit &pi;<sub>A</sub> &minus; logit &pi;<sub>B</sub>) / ln t</code>.</p>
+      <p>So the Bayes rule reads the attribute, uses two different cuts, and violates equal
+      opportunity by 28 points. Using one cut for everybody is a choice that costs accuracy, and on
+      this page it costs 0.0054 &mdash; and the same number is the price of equalised odds when the
+      two curves coincide, because a single cut is what equalised odds reduces to there. The neutral
+      baseline is not neutral; it is one point on the trade-off with a price tag nobody prints.</p>
+
+      <h3 style="font-size:19px; font-weight:800">5. What each repair actually does</h3>
+      <p>Demographic parity, equal opportunity, equalised odds and predictive parity are all in the
+      repairs table, solved <em>exactly</em>: because a randomised cut makes each rate a piecewise
+      linear function of one rational parameter, the equality that comes back is an equality and not
+      a tolerance. Then everything else is measured.</p>
+      <p>Demographic parity zeroes the flag gap, widens the precision gap from 0.377 to 0.462, opens
+      TPR and FPR gaps that were exactly zero, and costs 0.035 accuracy. Over every configuration
+      swept, all five of those hold every time.</p>
+      <p>Predictive parity is the one that reads best in a meeting &mdash; a flag should mean the same
+      thing in both groups &mdash; and it is the one with the largest bill. It zeroes the precision
+      gap by moving group B&rsquo;s bar up until group B&rsquo;s flag rate falls from 22.0% to 3.0%
+      and its recall from 0.776 to 0.246: two thirds of that group&rsquo;s true positives, dropped. It
+      also <em>raises</em> population accuracy. A scoreboard would call this an improvement.</p>
+      <p>And it is not symmetric. Group A&rsquo;s precision can never fall to group B&rsquo;s, because
+      the lowest precision any rule can have in a group is that group&rsquo;s base rate, and group
+      A&rsquo;s base rate is above group B&rsquo;s achieved precision. So the arithmetic offers
+      exactly one direction. Which group pays is not a policy decision here; it has already been
+      made, by the numbers, before anyone was asked.</p>
+      <p>Feasibility is not even monotone. Group B&rsquo;s precision has a ceiling &mdash; the
+      calibrated probability of its top bin &mdash; and both the ceiling and group A&rsquo;s precision
+      rise with skill while the cut jumps in integers. On one setting predictive parity is impossible,
+      then possible, then impossible, then possible again as the model improves.</p>
+
+      <h3 style="font-size:19px; font-weight:800">6. Nothing above knows whether a flag is good news</h3>
+      <p>Read the flag as a shortlist place and every repair helps one group; read it as extra
+      scrutiny and the same repair helps the other. Every number is bit-identical. The criteria are
+      stated over confusion matrices, and a confusion matrix does not record whether the person
+      wanted to be in the positive cell. This is the same shape as Day 68&rsquo;s missing-data twins:
+      two worlds agreeing on every observable and disagreeing on the answer, with the deciding
+      quantity outside the data.</p>
+
+      <h3 style="font-size:19px; font-weight:800">7. Calibration is not an escape hatch</h3>
+      <p>A score has to be turned into a probability, and there are three ways. Calibrate on group A
+      and ship that map: it is wrong on group B by 0.130, and the error is entirely one-sided
+      &mdash; the bias equals the calibration error exactly, so it overstates risk for group B in
+      every bin. Calibrate on the pooled data: now it is wrong on <em>both</em> groups, low on one and
+      high on the other. Calibrate per group: correct everywhere, and it needs the attribute.</p>
+      <p>There is also a second impossibility hiding in calibration, and it needs no thresholds at
+      all. For any calibrated score,
+      <code>&pi;E[c|Y=1] + (1&minus;&pi;)E[c|Y=0] = E[c] = &pi;</code>, so the mean score among
+      positives determines the mean score among negatives. Ask for both to be equal across groups and
+      the odds ratio has to be 1, unless the mean score among positives is exactly 1 &mdash; perfect
+      prediction. Equalise the first and the gap in the second is forced to 0.141 on this page. The
+      page derives the identity and then checks it as an exact zero rather than citing it.</p>
+
+      <h3 style="font-size:19px; font-weight:800">8. What this is not</h3>
+      <p>This page is not an argument that any of these criteria is the right one, and it is not an
+      argument that disparities do not matter. It is narrower and, I think, more useful: the four
+      criteria are not four opinions about the same quantity, they are four <em>different</em>
+      quantities, and the arithmetic that connects them is fixed. Choosing among them is a decision
+      about who bears which error, it cannot be deferred to a metric, and it cannot be satisfied by
+      leaving a column out of the model &mdash; on this page the column was never in the model and
+      every gap is there anyway.</p>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ BUILD -->
+<section id="build" class="panel hidden">
+  <div class="sheet soft">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">&#128296; How it is built</h2>
+
+      <h3 style="font-size:19px; font-weight:800">1. A law, not a sample</h3>
+      <p>The discipline of this run is that ground truth must be a closed form or an exact
+      computation, never an estimate. So there is no dataset. There is a joint law over
+      (group, label, score bin) whose cells are exact rationals, and every quantity on the page is a
+      ratio of BigInts. A rational is <code>{n, d}</code> reduced by Euclid&rsquo;s algorithm;
+      addition, multiplication and comparison are the obvious four lines each; equality is
+      <code>a.n*b.d === b.n*a.d</code>, so &ldquo;these two are equal&rdquo; is an integer fact.</p>
+      <p>The score law is chosen so that both normalisers are closed forms and the likelihood ratio
+      is exactly geometric:</p>
+      <pre><code>p1[v] = C(m,v) * t^v / (1+t)^m      sum = (1+t)^m / (1+t)^m = 1
+p0[v] = C(m,v)       / 2^m          sum = 2^m / 2^m = 1
+LR(v) = p1[v]/p0[v] = t^v * (2/(1+t))^m</code></pre>
+      <p>which makes the score a calibrated logit with slope <code>ln t</code> and a
+      group-specific intercept, and puts &ldquo;a model with no skill&rdquo; at <code>t = 1</code>
+      rather than at some tuned limit. Binomial coefficients come from a memoised Pascal triangle in
+      BigInt; the powers from binary exponentiation.</p>
+
+      <h3 style="font-size:19px; font-weight:800">2. Randomised cuts, so equality is exact</h3>
+      <p>A deterministic threshold gives a finite set of operating points, and no two groups will
+      have a matching one except by luck. So a policy is a pair <code>(j, q)</code>: flag everything
+      at or above bin <code>j</code>, plus a fraction <code>q</code> of the items sitting in bin
+      <code>j&minus;1</code>. Every rate is then piecewise linear in <code>q</code> and monotone in
+      the cut, so each equality target is one bracket plus one linear solve &mdash; in rationals.
+      Predictive parity is the same idea with a ratio of two linear functions, which is still one
+      linear equation once you cross-multiply. That is why the repairs table can say
+      &ldquo;<code>0.000000</code>&rdquo; and mean a BigInt zero.</p>
+      <p>It is also why precision has a hard ceiling: the most selective policy flags only the top
+      bin, so the highest precision available in a group is the calibrated probability of that bin.
+      When group A&rsquo;s precision is above it, predictive parity is not expensive, it is
+      impossible, and the page prints the bound that blocks it.</p>
+
+      <h3 style="font-size:19px; font-weight:800">3. Enumeration instead of assertion</h3>
+      <p>The impossibility is proved rather than described. For a pair of margins
+      <code>(n, P<sub>A</sub>)</code> and <code>(n, P<sub>B</sub>)</code> the code walks every
+      <code>(tp<sub>A</sub>, fp<sub>A</sub>, tp<sub>B</sub>, fp<sub>B</sub>)</code>, tests the three
+      equalities by integer cross-multiplication, and classifies every simultaneous solution by
+      <em>why</em> it survived. Then it repeats over every pair of unequal margins, and then over
+      every pair of <em>equal</em> margins as the control. The equal-margin control is the part that
+      makes the zero informative: without it, a count of 0 could be a bug in the loop.</p>
+      <p>The relation itself is checked the same way, on every matrix, as an identity between two
+      integer products &mdash; and its consequence is read back off the enumeration: among matrices
+      with equal precision <em>and</em> equal recall, the ratio of false-positive rates equals the
+      ratio of prevalence odds, for every one of them, as an exact rational equality.</p>
+
+      <h3 style="font-size:19px; font-weight:800">4. The controls</h3>
+      <p>Every headline here has a control measured on the same file, because a number with nothing
+      beside it is not a finding. The group-blind payoff-optimal cut is the baseline every repair is
+      scored against. The equal-base-rate enumeration is the control for the impossibility. The
+      pooled and per-group calibration maps are the controls for shipping one map. The
+      &ldquo;move group A instead&rdquo; column is the control for the direction of every repair. The
+      <code>t = 1</code> row is the control for the skill dial. And the total-variation bound is the
+      control for unawareness: it says what blindness is worth before anyone claims it is worth
+      everything.</p>
+
+      <h3 style="font-size:19px; font-weight:800">5. Guards</h3>
+      <p>Two things could quietly go wrong. The first is a broken identity hidden by a lucky
+      configuration, so a sweep over 120 configurations &mdash; eight pairs of base rates, five skill
+      levels, three bin counts &mdash; re-checks every identity in exact rationals and reports the
+      count of non-zero residuals rather than a maximum, because in rationals the only interesting
+      number is how many were not zero.</p>
+      <p>The second is the sampler. Day 69 reported an arithmetic seed stride that looked like a
+      finding and was not, and this is the fifth re-measurement &mdash; the first against a target
+      that is a closed form. Each seed family gets its own <code>z</code> against the exact gap, and
+      the guard reports the mean <code>z</code> with its own standard error. A biased stream would
+      show a mean <code>z</code> growing with the number of families; both streams sit inside one
+      standard error, and again it does not reproduce.</p>
+      <p>One assertion in an earlier draft was relaxed rather than removed. A residual computed in
+      <em>floats</em> is not exactly zero even when the rational is, because two summation orders
+      differ at 1e-16, so anything float-valued on this page is asserted as a bound and anything
+      claimed exact is asserted as <code>r.n === 0n</code>. The two are labelled differently in the
+      identity table for that reason.</p>
+
+      <h3 style="font-size:19px; font-weight:800">6. Verification</h3>
+      <p>The block between <code>ENGINE:BEGIN</code> and <code>ENGINE:END</code> is DOM-free,
+      clock-free and free of the global random source; it is extracted by regex and run under Node
+      against assertions written independently of it. The oracles share no code with the page:
+      a <strong>forward simulator</strong> that builds each group&rsquo;s confusion matrix by drawing
+      which of the four cells every item fell into, against the page&rsquo;s algebra; the score law
+      recomputed as <code>m</code> independent Bernoulli draws rather than by inverting a CDF;
+      the binomial normalisers <code>(1+t)<sup>m</sup></code> and <code>2<sup>m</sup></code> as
+      <strong>exact BigInt sums</strong> of <code>C(m,v)t<sup>v</sup></code>, which is the binomial
+      theorem checked rather than used; the total-variation distance recomputed as
+      <code>max<sub>set</sub> |P<sub>A</sub>(set) &minus; P<sub>B</sub>(set)|</code> by
+      <strong>enumerating all 2<sup>K</sup> subsets</strong> of the bins instead of by summing a
+      positive part; the ROC and proxy AUCs by <strong>exhaustive pair counting</strong>;
+      the Bayes cut by comparing every integer cut&rsquo;s exact accuracy rather than by the closed
+      form; and the impossibility by an <strong>independent enumeration in a different loop order
+      with rational rather than cross-multiplied equality</strong>. Where the page uses a closed form
+      the verifier recomputes it a second way; where the page enumerates, the verifier enumerates in
+      a different order and compares the multiset of survivors.</p>
+
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    MachineLearningFromZero &middot; Day 74 &middot; two groups, one model &mdash; which of the
+    equalities you would like can hold at the same time, why the answer is arithmetic, and what each
+    repair charges. One file, vanilla JavaScript, no build step and no libraries. Previous:
+    <a href="day73-clustering-metric-chance.html">Day 73 &mdash; What does a clustering score of 0.50 mean?</a>.
+  </div>
+</footer>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => x.classList.remove("tab-active"));
+  t.classList.add("tab-active");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Two groups, one model.
+//
+// Day 73 asked what the number at the end of a clustering run is a number OF. This page asks a
+// question that only exists once there are two of any number: the model is measured separately on
+// two groups, the two readings differ, and the question is which of the equalities you would like
+// can hold at the same time. The answer is arithmetic, not policy, and it is available exactly.
+//
+// Everything for the core claims is an exact rational over BigInt. There is no sampled world: the
+// world is a LAW with rational cell probabilities, so every rate, every gap and every identity
+// residual is a ratio of integers and is COMPUTED rather than estimated. One section samples, says
+// so, and carries a standard error.
+//
+// The usual escape routes are closed BY CONSTRUCTION:
+//   - the class-conditional score law is IDENTICAL in both groups, so the two ROC curves are the
+//     same curve and the AUC gap is exactly 0. Nothing here is "the model is worse on the small
+//     group".
+//   - the decision is a function of the score bin alone. The group attribute is not an input, so
+//     "fairness through unawareness" already holds everywhere, for free.
+//   - only the base rate differs.
+// The score bins carry an exact binomial likelihood ratio:
+//   P(S=v | Y=1) = C(m,v) t^v / (1+t)^m        P(S=v | Y=0) = C(m,v) / 2^m
+// so the log-likelihood ratio is EXACTLY v*ln t - m*ln((1+t)/2), linear in the bin, and both
+// normalisers are closed forms. t = 1 is a model with no skill at all, and it is on the dial.
+
+// ---------------------------------------------------------------- exact rationals over BigInt
+function gcdB(a, b){ if (a < 0n) a = -a; if (b < 0n) b = -b; while (b) { const t = a % b; a = b; b = t; } return a; }
+function R(n, d){
+  if (d === 0n) return null;
+  if (d < 0n) { n = -n; d = -d; }
+  const g = gcdB(n, d) || 1n;
+  return { n: n / g, d: d / g };
+}
+function ri(k){ return { n: BigInt(k), d: 1n }; }
+const R0 = ri(0), R1 = ri(1), RHALF = R(1n, 2n);
+function radd(a, b){ return R(a.n * b.d + b.n * a.d, a.d * b.d); }
+function rsub(a, b){ return R(a.n * b.d - b.n * a.d, a.d * b.d); }
+function rmul(a, b){ return R(a.n * b.n, a.d * b.d); }
+function rdiv(a, b){ if (b === null || b.n === 0n) return null; return R(a.n * b.d, a.d * b.n); }
+function rcmp(a, b){ const l = a.n * b.d, r = b.n * a.d; return l < r ? -1 : (l > r ? 1 : 0); }
+function req(a, b){ return a !== null && b !== null && a.n * b.d === b.n * a.d; }
+function rabs(a){ return a === null ? null : (a.n < 0n ? { n: -a.n, d: a.d } : a); }
+function risZero(a){ return a !== null && a.n === 0n; }
+function rnum(a){
+  if (a === null || a === undefined) return null;
+  const neg = a.n < 0n;
+  const q = ((neg ? -a.n : a.n) * 100000000000000000000n) / a.d;
+  const v = Number(q) / 1e20;
+  return neg ? -v : v;
+}
+function ipow(b, e){ let r = 1n, x = BigInt(b), k = e; while (k > 0) { if (k & 1) r *= x; x *= x; k >>= 1; } return r; }
+const BINOM = [[1n]];
+function binomB(n, k){
+  if (k < 0 || k > n) return 0n;
+  while (BINOM.length <= n) {
+    const prev = BINOM[BINOM.length - 1], row = [1n];
+    for (let i = 1; i < prev.length; i++) row.push(prev[i - 1] + prev[i]);
+    row.push(1n);
+    BINOM.push(row);
+  }
+  return BINOM[n][k];
+}
+function logit(p){ return Math.log(p / (1 - p)); }
+
+// ---------------------------------------------------------------- seeded streams (sampling only)
+function mulberry32(a){
+  let t = a >>> 0;
+  return function(){
+    t = (t + 0x6D2B79F5) >>> 0;
+    let x = t;
+    x = Math.imul(x ^ (x >>> 15), x | 1);
+    x ^= x + Math.imul(x ^ (x >>> 7), x | 61);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// multiplicative hash - the fix Day 69 landed on after an arithmetic stride looked like a finding
+function hashSeed(base, r){ let x = ((base + r * 2654435761) ^ 0x9E3779B9) >>> 0; x = Math.imul(x ^ (x >>> 16), 2246822519); return (x ^ (x >>> 13)) >>> 0; }
+// and the stride itself, kept so it can be re-measured rather than remembered
+function strideSeed(base, r){ return (base + r * 7907) >>> 0; }
+
+// ---------------------------------------------------------------- config
+const DEFAULTS = {
+  bins: 11,      // score bins 0..bins-1, so m = bins-1 binomial trials
+  tilt: 3,       // likelihood-ratio base t. t = 1 is a model with no skill.
+  piA: 30,       // base rate in group A, percent
+  piB: 8,        // base rate in group B, percent
+  wA: 70,        // group A share of the population, percent
+  payoff: 4,     // value of a correct flag in units of the cost of a wrong one
+  nSmall: 16,    // items per group in the exhaustive confusion-matrix enumeration
+  n: 1200,       // items per group in the one sampled section
+  reps: 1500,
+  seeds: 25
+};
+function cfgOf(over){
+  const c = Object.assign({}, DEFAULTS, over || {});
+  c.bins = Math.max(5, Math.min(15, Math.round(c.bins)));
+  c.tilt = Math.max(1, Math.min(9, Math.round(c.tilt)));
+  c.piA = Math.max(3, Math.min(70, Math.round(c.piA)));
+  c.piB = Math.max(1, Math.min(69, Math.round(c.piB)));
+  if (c.piB >= c.piA) c.piB = Math.max(1, c.piA - 1);
+  c.wA = Math.max(20, Math.min(90, Math.round(c.wA)));
+  c.payoff = Math.max(1, Math.min(20, Math.round(c.payoff)));
+  c.nSmall = Math.max(8, Math.min(20, Math.round(c.nSmall)));
+  c.n = Math.max(200, Math.min(6000, Math.round(c.n)));
+  c.reps = Math.max(200, Math.min(4000, Math.round(c.reps)));
+  c.seeds = Math.max(6, Math.min(40, Math.round(c.seeds)));
+  return c;
+}
+
+// ---------------------------------------------------------------- the world, as an exact law
+function worldOf(c, tiltB){
+  const m = c.bins - 1, K = c.bins;
+  const tA = c.tilt, tB = (tiltB === undefined || tiltB === null) ? c.tilt : tiltB;
+  function shapes(t){
+    const den1 = ipow(1 + t, m), den0 = ipow(2, m), p1 = [], p0 = [];
+    for (let v = 0; v <= m; v++) {
+      p1.push(R(binomB(m, v) * ipow(t, v), den1));
+      p0.push(R(binomB(m, v), den0));
+    }
+    return { p1: p1, p0: p0 };
+  }
+  function survivals(p){
+    const S = new Array(K + 1);
+    S[K] = R0;
+    for (let j = K - 1; j >= 0; j--) S[j] = radd(S[j + 1], p[j]);
+    return S;
+  }
+  const shA = shapes(tA), shB = shapes(tB);
+  const groups = [
+    { key: 'A', label: 'group A', pi: R(BigInt(c.piA), 100n), w: R(BigInt(c.wA), 100n), tilt: tA, p1: shA.p1, p0: shA.p0, S1: survivals(shA.p1), S0: survivals(shA.p0) },
+    { key: 'B', label: 'group B', pi: R(BigInt(c.piB), 100n), w: R(BigInt(100 - c.wA), 100n), tilt: tB, p1: shB.p1, p0: shB.p0, S1: survivals(shB.p1), S0: survivals(shB.p0) }
+  ];
+  for (const g of groups) {
+    g.oneMinusPi = rsub(R1, g.pi);
+    g.odds = rdiv(g.pi, g.oneMinusPi);
+    g.pS = []; g.calib = [];
+    for (let v = 0; v < K; v++) {
+      const a = rmul(g.pi, g.p1[v]), b = rmul(g.oneMinusPi, g.p0[v]), s = radd(a, b);
+      g.pS.push(s); g.calib.push(rdiv(a, s));
+    }
+    // Number-valued cumulatives, for the one sampled section only
+    g.cdf1 = []; g.cdf0 = []; g.cdfS = [];
+    let a1 = 0, a0 = 0;
+    for (let v = 0; v < K; v++) { a1 += rnum(g.p1[v]); a0 += rnum(g.p0[v]); g.cdf1.push(a1); g.cdf0.push(a0); }
+    g.cdf1[K - 1] = 1; g.cdf0[K - 1] = 1;
+  }
+  return { c: c, K: K, m: m, groups: groups, gA: groups[0], gB: groups[1], sameShape: tA === tB };
+}
+
+// ---------------------------------------------------------------- policies and their exact metrics
+// A policy is a cut (j, q): flag every item with S >= j, plus a fraction q of the items in bin j-1.
+// The q is what closes the ROC into a continuum, and it is what makes exact equality SOLVABLE.
+function policy(j, q){ return { j: j, q: q === undefined ? R0 : q }; }
+function tprOf(g, pol){ return pol.j === 0 ? g.S1[0] : radd(g.S1[pol.j], rmul(pol.q, g.p1[pol.j - 1])); }
+function fprOf(g, pol){ return pol.j === 0 ? g.S0[0] : radd(g.S0[pol.j], rmul(pol.q, g.p0[pol.j - 1])); }
+function metricsOf(g, pol){
+  const tpr = tprOf(g, pol), fpr = fprOf(g, pol);
+  const sel = radd(rmul(g.pi, tpr), rmul(g.oneMinusPi, fpr));
+  const tnr = rsub(R1, fpr), unsel = rsub(R1, sel);
+  return {
+    g: g, pol: pol, tpr: tpr, fpr: fpr, fnr: rsub(R1, tpr), tnr: tnr, sel: sel,
+    ppv: rdiv(rmul(g.pi, tpr), sel),
+    npv: rdiv(rmul(g.oneMinusPi, tnr), unsel),
+    acc: radd(rmul(g.pi, tpr), rmul(g.oneMinusPi, tnr)),
+    j: rsub(tpr, fpr)
+  };
+}
+function utilOf(mm, payoff){ return rsub(rmul(ri(payoff), rmul(mm.g.pi, mm.tpr)), rmul(mm.g.oneMinusPi, mm.fpr)); }
+function popOf(w, mA, mB, payoff){
+  return {
+    acc: radd(rmul(w.gA.w, mA.acc), rmul(w.gB.w, mB.acc)),
+    util: radd(rmul(w.gA.w, utilOf(mA, payoff)), rmul(w.gB.w, utilOf(mB, payoff))),
+    sel: radd(rmul(w.gA.w, mA.sel), rmul(w.gB.w, mB.sel))
+  };
+}
+
+// ---------------------------------------------------------------- exact solves for equality
+function solveMono(g, target, rateAt, stepAt){
+  for (let j = 1; j <= g.S1.length - 1; j++) {
+    const hi = rateAt(j - 1), lo = rateAt(j);
+    if (rcmp(target, lo) >= 0 && rcmp(target, hi) <= 0) {
+      const step = stepAt(j);
+      if (risZero(step)) return policy(j, R0);
+      return policy(j, rdiv(rsub(target, lo), step));
+    }
+  }
+  return null;
+}
+function solveTPR(g, target){ return solveMono(g, target, function(j){ return g.S1[j]; }, function(j){ return g.p1[j - 1]; }); }
+function solveFPR(g, target){ return solveMono(g, target, function(j){ return g.S0[j]; }, function(j){ return g.p0[j - 1]; }); }
+function solveSel(g, target){
+  return solveMono(g, target,
+    function(j){ return radd(rmul(g.pi, g.S1[j]), rmul(g.oneMinusPi, g.S0[j])); },
+    function(j){ return radd(rmul(g.pi, g.p1[j - 1]), rmul(g.oneMinusPi, g.p0[j - 1])); });
+}
+// PPV rises with the cut and is a ratio of two functions linear in q, so the solve is one linear
+// equation - but it is BOUNDED ABOVE by the calibration of the top bin, and that ceiling is what
+// makes predictive parity infeasible rather than merely expensive.
+function ppvCeiling(g){ return g.calib[g.calib.length - 1]; }
+function ppvFloor(g){ return g.pi; }
+function solvePPV(g, target){
+  const K = g.S1.length - 1;
+  if (target === null) return null;
+  if (rcmp(target, ppvCeiling(g)) > 0) return { infeasible: 'above the ceiling', bound: ppvCeiling(g) };
+  if (rcmp(target, ppvFloor(g)) < 0) return { infeasible: 'below the floor', bound: ppvFloor(g) };
+  for (let j = 1; j <= K; j++) {
+    const lo = metricsOf(g, policy(j - 1, R0)).ppv;
+    const hi = j === K ? ppvCeiling(g) : metricsOf(g, policy(j, R0)).ppv;
+    if (lo !== null && rcmp(target, lo) >= 0 && (hi === null || rcmp(target, hi) <= 0)) {
+      const A1 = g.S1[j], a1 = g.p1[j - 1], A0 = g.S0[j], a0 = g.p0[j - 1], mT = rsub(R1, target);
+      const num = rsub(rmul(target, rmul(g.oneMinusPi, A0)), rmul(g.pi, rmul(A1, mT)));
+      const den = rsub(rmul(g.pi, rmul(a1, mT)), rmul(target, rmul(g.oneMinusPi, a0)));
+      if (den === null || den.n === 0n) continue;
+      const q = rdiv(num, den);
+      if (q === null || rcmp(q, R0) < 0 || rcmp(q, R1) > 0) continue;
+      return policy(j, q);
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- one global threshold, swept
+function thresholdSweep(w){
+  const rows = [];
+  for (let j = 0; j <= w.K; j++) {
+    const pol = policy(j, R0);
+    const mA = metricsOf(w.gA, pol), mB = metricsOf(w.gB, pol);
+    const gapSel = rsub(mA.sel, mB.sel);
+    rows.push({
+      j: j, mA: mA, mB: mB, pop: popOf(w, mA, mB, w.c.payoff),
+      gapSel: gapSel,
+      identitySel: rsub(gapSel, rmul(rsub(w.gA.pi, w.gB.pi), mA.j)),
+      gapTpr: rsub(mA.tpr, mB.tpr), gapFpr: rsub(mA.fpr, mB.fpr),
+      gapPpv: (mA.ppv && mB.ppv) ? rsub(mA.ppv, mB.ppv) : null,
+      gapNpv: (mA.npv && mB.npv) ? rsub(mA.npv, mB.npv) : null,
+      gapAcc: rsub(mA.acc, mB.acc)
+    });
+  }
+  return rows;
+}
+function bestBy(rows, pick){
+  let best = null;
+  for (const r of rows) { const v = pick(r); if (v === null) continue; if (best === null || rcmp(v, pick(best)) > 0) best = r; }
+  return best;
+}
+
+// ---------------------------------------------------------------- the relation, per row
+// FPR = odds(pi) * (1-PPV)/PPV * (1-FNR). Derived, not quoted: PPV = pi*s/(pi*s + (1-pi)*f), so
+// (1-PPV)/PPV = (1-pi)*f/(pi*s), and multiplying by odds(pi)*s leaves f. One line, no conditions
+// beyond something being flagged.
+function chouldechovaRows(w){
+  const out = [];
+  for (const g of w.groups) for (let j = 1; j < w.K; j++) {
+    const mm = metricsOf(g, policy(j, R0));
+    if (mm.ppv === null || mm.ppv.n === 0n) continue;
+    const rhs = rmul(g.odds, rmul(rdiv(rsub(R1, mm.ppv), mm.ppv), rsub(R1, mm.fnr)));
+    out.push({ key: g.key, j: j, fpr: mm.fpr, ppv: mm.ppv, fnr: mm.fnr, rhs: rhs,
+               exact: rsub(mm.fpr, rhs), flo: Math.abs(rnum(mm.fpr) - rnum(rhs)) });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- the bound, and what it is
+// The largest flag-rate gap ANY group-blind threshold rule can produce is
+//   max_theta (sel_A - sel_B) = (pi_A - pi_B) * max_theta J(theta) = TV(P(S|A), P(S|B)),
+// the total-variation distance between the two groups' score distributions - which is exactly how
+// strong a proxy for the group the score is. Blindness does not buy a bound of zero; it buys this.
+function tvdOf(w){
+  let s = R0;
+  for (let v = 0; v < w.K; v++) s = radd(s, rabs(rsub(w.gA.pS[v], w.gB.pS[v])));
+  return rmul(RHALF, s);
+}
+function rocAUC(g){
+  let gt = R0, eq = R0;
+  const K = g.p1.length;
+  for (let a = 0; a < K; a++) for (let b = 0; b < K; b++) {
+    const mm = rmul(g.p1[a], g.p0[b]);
+    if (a > b) gt = radd(gt, mm); else if (a === b) eq = radd(eq, mm);
+  }
+  return radd(gt, rmul(RHALF, eq));
+}
+function proxyAUC(w){
+  let gt = R0, eq = R0;
+  for (let a = 0; a < w.K; a++) for (let b = 0; b < w.K; b++) {
+    const mm = rmul(w.gA.pS[a], w.gB.pS[b]);
+    if (a > b) gt = radd(gt, mm); else if (a === b) eq = radd(eq, mm);
+  }
+  return radd(gt, rmul(RHALF, eq));
+}
+function boundTable(w){
+  const sweep = thresholdSweep(w);
+  let maxGap = R0, maxJ = R0, argJ = 0;
+  for (const r of sweep) {
+    if (rcmp(r.gapSel, maxGap) > 0) maxGap = r.gapSel;
+    if (rcmp(r.mA.j, maxJ) > 0) { maxJ = r.mA.j; argJ = r.j; }
+  }
+  const tvd = tvdOf(w);
+  const predicted = rmul(rsub(w.gA.pi, w.gB.pi), maxJ);
+  return {
+    tvd: tvd, maxGap: maxGap, maxJ: maxJ, argJ: argJ, predicted: predicted,
+    exactTvd: rsub(tvd, maxGap), exactProd: rsub(maxGap, predicted),
+    proxyAuc: proxyAUC(w), aucA: rocAUC(w.gA), aucB: rocAUC(w.gB),
+    aucGap: rsub(rocAUC(w.gA), rocAUC(w.gB))
+  };
+}
+
+// ---------------------------------------------------------------- the gap is the skill (mostly)
+function skillLadder(c){
+  const rows = [];
+  for (let t = 1; t <= 9; t++) {
+    const w = worldOf(cfgOf(Object.assign({}, c, { tilt: t })));
+    const sweep = thresholdSweep(w);
+    const bAcc = bestBy(sweep, function(r){ return r.pop.acc; });
+    const bUtil = bestBy(sweep, function(r){ return r.pop.util; });
+    const bd = boundTable(w);
+    rows.push({
+      tilt: t, aucA: bd.aucA, maxJ: bd.maxJ, tvd: bd.tvd, bound: bd.maxGap,
+      accBest: bAcc.pop.acc, jAcc: bAcc.j, gapAtBestAcc: bAcc.gapSel,
+      utilBest: bUtil.pop.util, jUtil: bUtil.j, gapAtBestUtil: bUtil.gapSel,
+      identity: rsub(bd.maxGap, rmul(rsub(w.gA.pi, w.gB.pi), bd.maxJ)),
+      tvdIdentity: rsub(bd.tvd, bd.maxGap)
+    });
+  }
+  return rows;
+}
+// I expected "a better model has a bigger gap" to be a theorem. It is - for the BOUND. For the
+// deployed rule it is false, because the accuracy-optimal cut is an integer and it moves. This
+// function counts the counterexamples rather than describing them.
+function monotoneScan(c){
+  const pairs = [[30, 8], [55, 12], [12, 3], [45, 40], [65, 2], [20, 19], [8, 1], [50, 25], [35, 30], [25, 2]];
+  const binsList = [7, 9, 11, 13];
+  let steps = 0, boundDown = 0, deployedDown = 0, bothWays = 0, worst = null, worlds = 0;
+  for (const pp of pairs) for (const bins of binsList) {
+    let prev = null;
+    for (let t = 1; t <= 9; t++) {
+      const w = worldOf(cfgOf(Object.assign({}, c, { piA: pp[0], piB: pp[1], bins: bins, tilt: t })));
+      worlds++;
+      const sweep = thresholdSweep(w);
+      const bAcc = bestBy(sweep, function(r){ return r.pop.acc; });
+      let maxJ = R0;
+      for (const r of sweep) if (rcmp(r.mA.j, maxJ) > 0) maxJ = r.mA.j;
+      const cur = { bound: rmul(rsub(w.gA.pi, w.gB.pi), maxJ), gap: bAcc.gapSel, acc: bAcc.pop.acc, t: t };
+      if (prev) {
+        steps++;
+        if (rcmp(cur.bound, prev.bound) < 0) boundDown++;
+        const dGap = rsub(cur.gap, prev.gap), dAcc = rsub(cur.acc, prev.acc);
+        if (rcmp(dGap, R0) < 0) deployedDown++;
+        if (rcmp(dGap, R0) < 0 && rcmp(dAcc, R0) > 0) {
+          bothWays++;
+          if (worst === null || rcmp(dGap, worst.dGap) < 0)
+            worst = { dGap: dGap, dAcc: dAcc, piA: pp[0], piB: pp[1], bins: bins, t0: prev.t, t1: cur.t,
+                      gap0: prev.gap, gap1: cur.gap, acc0: prev.acc, acc1: cur.acc };
+        }
+      }
+      prev = cur;
+    }
+  }
+  return { steps: steps, worlds: worlds, boundDown: boundDown, deployedDown: deployedDown, bothWays: bothWays, worst: worst };
+}
+
+// ---------------------------------------------------------------- the rule that is not blind
+// The accuracy-optimal decision flags v when pi*p1[v] > (1-pi)*p0[v], i.e. when the likelihood
+// ratio clears (1-pi)/pi. With this world the ratio is t^v * (2/(1+t))^m, so the crossing point is
+// a closed form in v - and the two groups' crossing points differ by exactly
+// (logit pi_A - logit pi_B)/ln t. The same number is the horizontal shift between the two
+// calibration curves. The Bayes rule is not group-blind; blindness is already a constraint.
+function bayesCuts(w){
+  const c = w.c, m = w.m, lnT = Math.log(c.tilt);
+  const rows = w.groups.map(function(g){
+    const pi = rnum(g.pi);
+    const off = m * Math.log((1 + c.tilt) / 2);
+    const vAcc = lnT === 0 ? null : (Math.log((1 - pi) / pi) + off) / lnT;
+    const vUtil = lnT === 0 ? null : (Math.log((1 - pi) / (pi * c.payoff)) + off) / lnT;
+    return { key: g.key, pi: g.pi, vAcc: vAcc, vUtil: vUtil,
+             jAcc: vAcc === null ? null : Math.max(0, Math.min(w.K, Math.ceil(vAcc + 1e-12))),
+             jUtil: vUtil === null ? null : Math.max(0, Math.min(w.K, Math.ceil(vUtil + 1e-12))) };
+  });
+  const sweep = thresholdSweep(w);
+  const globAcc = bestBy(sweep, function(r){ return r.pop.acc; });
+  const globUtil = bestBy(sweep, function(r){ return r.pop.util; });
+  let pairAcc = null, pairUtil = null;
+  for (let ja = 0; ja <= w.K; ja++) {
+    const mA = metricsOf(w.gA, policy(ja, R0));
+    for (let jb = 0; jb <= w.K; jb++) {
+      const mB = metricsOf(w.gB, policy(jb, R0));
+      const pop = popOf(w, mA, mB, c.payoff);
+      if (pairAcc === null || rcmp(pop.acc, pairAcc.pop.acc) > 0) pairAcc = { ja: ja, jb: jb, mA: mA, mB: mB, pop: pop };
+      if (pairUtil === null || rcmp(pop.util, pairUtil.pop.util) > 0) pairUtil = { ja: ja, jb: jb, mA: mA, mB: mB, pop: pop };
+    }
+  }
+  const shift = (rows[0].vAcc === null || rows[1].vAcc === null) ? null : rows[0].vAcc - rows[1].vAcc;
+  return {
+    rows: rows, shift: shift,
+    globAcc: globAcc, globUtil: globUtil, pairAcc: pairAcc, pairUtil: pairUtil,
+    priceAcc: rsub(pairAcc.pop.acc, globAcc.pop.acc),
+    priceUtil: rsub(pairUtil.pop.util, globUtil.pop.util),
+    bayesGapTpr: rsub(pairAcc.mA.tpr, pairAcc.mB.tpr),
+    bayesGapFpr: rsub(pairAcc.mA.fpr, pairAcc.mB.fpr),
+    bayesGapPpv: (pairAcc.mA.ppv && pairAcc.mB.ppv) ? rsub(pairAcc.mA.ppv, pairAcc.mB.ppv) : null,
+    cutsDiffer: pairAcc.ja !== pairAcc.jb
+  };
+}
+
+// ---------------------------------------------------------------- the repairs, on the same file
+function repairs(w){
+  const c = w.c;
+  const sweep = thresholdSweep(w);
+  const accRow = bestBy(sweep, function(r){ return r.pop.acc; });
+  const utilRow = bestBy(sweep, function(r){ return r.pop.util; });
+  const base = policy(utilRow.j, R0);
+  const mA0 = metricsOf(w.gA, base), mB0 = metricsOf(w.gB, base);
+  const pop0 = popOf(w, mA0, mB0, c.payoff);
+  const out = [];
+  function push(name, targets, note, polA, polB){
+    if (!polA || !polB || polA.infeasible || polB.infeasible) {
+      // normalise every unreachable case to the same shape, including "the solver found nothing",
+      // so a caller never has to distinguish a bound from a null
+      const why = (polA && polA.infeasible) ? polA
+                : ((polB && polB.infeasible) ? polB : { infeasible: 'no policy reaches it', bound: null });
+      out.push({ name: name, targets: targets, note: note, infeasible: why });
+      return;
+    }
+    const mA = metricsOf(w.gA, polA), mB = metricsOf(w.gB, polB);
+    const pop = popOf(w, mA, mB, c.payoff);
+    out.push({
+      name: name, targets: targets, note: note, polA: polA, polB: polB, mA: mA, mB: mB, pop: pop,
+      gapSel: rsub(mA.sel, mB.sel), gapTpr: rsub(mA.tpr, mB.tpr), gapFpr: rsub(mA.fpr, mB.fpr),
+      gapPpv: (mA.ppv && mB.ppv) ? rsub(mA.ppv, mB.ppv) : null,
+      gapNpv: (mA.npv && mB.npv) ? rsub(mA.npv, mB.npv) : null,
+      dSelA: rsub(mA.sel, mA0.sel), dSelB: rsub(mB.sel, mB0.sel),
+      dTprB: rsub(mB.tpr, mB0.tpr),
+      dAcc: rsub(pop.acc, pop0.acc), dUtil: rsub(pop.util, pop0.util)
+    });
+  }
+  push('one cut for everyone', '—', 'the control. The payoff-optimal cut, applied identically; it never sees the group.', base, base);
+  push('one cut, accuracy-optimal', '—', 'the same idea with accuracy as the objective instead of the payoff.', policy(accRow.j, R0), policy(accRow.j, R0));
+  push('the Bayes rule (per-group cut)', '—', 'no fairness constraint at all: each group gets the cut that maximises accuracy for its own base rate.', policy(bayesCuts(w).pairAcc.ja, R0), policy(bayesCuts(w).pairAcc.jb, R0));
+  push('equal opportunity', 'TPR', 'move group B\'s cut until its true-positive rate matches group A\'s.', base, solveTPR(w.gB, mA0.tpr));
+  push('equalised odds', 'TPR and FPR', 'match both error rates at once - one point that has to lie on both curves.', base, solveEqOdds(w, mA0));
+  push('demographic parity', 'flag rate', 'match the fraction of each group that gets flagged.', base, solveSel(w.gB, mA0.sel));
+  push('predictive parity', 'precision', 'match precision, so that a flag means the same thing in both groups.', base, solvePPV(w.gB, mA0.ppv));
+  return { base: base, mA0: mA0, mB0: mB0, pop0: pop0, accRow: accRow, utilRow: utilRow, rows: out };
+}
+function solveEqOdds(w, mA0){
+  const polT = solveTPR(w.gB, mA0.tpr);
+  if (polT === null) return null;
+  return req(fprOf(w.gB, polT), mA0.fpr) ? polT : null;
+}
+// Every repair above moved group B. Nothing in any definition says which group moves; that is a
+// choice the criterion does not make, and half the time the other direction is not even available.
+function whoPays(w){
+  const rep = repairs(w);
+  const mA0 = rep.mA0, mB0 = rep.mB0;
+  const out = [];
+  function row(name, solB, solA, baseA, baseB){
+    const okB = solB && !solB.infeasible, okA = solA && !solA.infeasible;
+    const mB = okB ? metricsOf(w.gB, solB) : null, mA = okA ? metricsOf(w.gA, solA) : null;
+    out.push({
+      name: name,
+      moveB: okB ? { sel0: baseB.sel, sel: mB.sel, tpr0: baseB.tpr, tpr: mB.tpr, d: rsub(mB.sel, baseB.sel) } : null,
+      moveBWhy: okB ? null : (solB && solB.infeasible ? solB.infeasible : 'no policy exists'),
+      moveA: okA ? { sel0: baseA.sel, sel: mA.sel, tpr0: baseA.tpr, tpr: mA.tpr, d: rsub(mA.sel, baseA.sel) } : null,
+      moveAWhy: okA ? null : (solA && solA.infeasible ? solA.infeasible : 'no policy exists')
+    });
+  }
+  row('equal opportunity', solveTPR(w.gB, mA0.tpr), solveTPR(w.gA, mB0.tpr), mA0, mB0);
+  row('demographic parity', solveSel(w.gB, mA0.sel), solveSel(w.gA, mB0.sel), mA0, mB0);
+  row('predictive parity', solvePPV(w.gB, mA0.ppv), solvePPV(w.gA, mB0.ppv), mA0, mB0);
+  return out;
+}
+// and whether each repair is even POSSIBLE is not monotone in how good the model is
+function feasibilityLadder(c){
+  const rows = [];
+  for (let t = 1; t <= 9; t++) {
+    const w = worldOf(cfgOf(Object.assign({}, c, { tilt: t })));
+    const rep = repairs(w);
+    const solP = solvePPV(w.gB, rep.mA0.ppv);
+    rows.push({
+      tilt: t, j: rep.base.j, ppvA: rep.mA0.ppv, ceilB: ppvCeiling(w.gB),
+      ok: !!(solP && !solP.infeasible), why: (solP && solP.infeasible) ? solP.infeasible : null,
+      acc: rep.rows[0].pop.acc
+    });
+  }
+  let flips = 0;
+  for (let i = 1; i < rows.length; i++) if (rows[i].ok !== rows[i - 1].ok) flips++;
+  return { rows: rows, flips: flips };
+}
+
+// ---------------------------------------------------------------- the sign twin
+// No definition above refers to whether a flag is a good thing to receive. So the same file carries
+// two readings, every number bit-identical, and each repair changes which group it helps.
+function signTwin(w){
+  const rep = repairs(w);
+  const rows = [];
+  for (const r of rep.rows) {
+    if (!r.mA) { rows.push({ name: r.name, infeasible: true }); continue; }
+    const cmp = rcmp(r.dSelB, r.dSelA);
+    const better = cmp > 0 ? 'B' : (cmp < 0 ? 'A' : 'neither');
+    rows.push({ name: r.name, dSelA: r.dSelA, dSelB: r.dSelB,
+                benefit: better, burden: better === 'A' ? 'B' : (better === 'B' ? 'A' : 'neither'),
+                moved: rabs(rsub(r.dSelB, r.dSelA)) });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- what the score means, by group
+// logit P(Y=1 | S=v, g) = logit(pi_g) + v*ln t - m*ln((1+t)/2). Same slope in both groups; the
+// intercepts differ by exactly logit(pi_A) - logit(pi_B). One curve, shifted sideways.
+function calibrationTable(w){
+  const lnT = Math.log(w.gA.tilt), rows = [];
+  for (let v = 0; v < w.K; v++) {
+    const cA = w.gA.calib[v], cB = w.gB.calib[v];
+    const lA = logit(rnum(cA)), lB = logit(rnum(cB));
+    rows.push({ v: v, cA: cA, cB: cB, gap: rsub(cA, cB), lgtA: lA, lgtB: lB, dLogit: lA - lB,
+                pSA: w.gA.pS[v], pSB: w.gB.pS[v], lr: rdiv(w.gA.p1[v], w.gA.p0[v]) });
+  }
+  const oddsRatios = [];
+  for (let v = 0; v < w.K; v++) {
+    const oA = rdiv(w.gA.calib[v], rsub(R1, w.gA.calib[v]));
+    const oB = rdiv(w.gB.calib[v], rsub(R1, w.gB.calib[v]));
+    oddsRatios.push(rdiv(oA, oB));
+  }
+  const dLogitPi = logit(rnum(w.gA.pi)) - logit(rnum(w.gB.pi));
+  return {
+    rows: rows, lnT: lnT, dLogitPi: dLogitPi,
+    shiftBins: lnT === 0 ? null : dLogitPi / lnT,
+    oddsRatios: oddsRatios,
+    oddsRatioSame: oddsRatios.every(function(r){ return req(r, oddsRatios[0]); }),
+    oddsRatioExact: oddsRatios[0], oddsRatioTarget: rdiv(w.gA.odds, w.gB.odds),
+    oddsRatioResidual: rsub(oddsRatios[0], rdiv(w.gA.odds, w.gB.odds))
+  };
+}
+function pooledCalibration(w){
+  const K = w.K, pooled = [];
+  for (let v = 0; v < K; v++) {
+    const num = radd(rmul(w.gA.w, rmul(w.gA.pi, w.gA.p1[v])), rmul(w.gB.w, rmul(w.gB.pi, w.gB.p1[v])));
+    const den = radd(rmul(w.gA.w, w.gA.pS[v]), rmul(w.gB.w, w.gB.pS[v]));
+    pooled.push(rdiv(num, den));
+  }
+  function ece(g, map){ let s = R0; for (let v = 0; v < K; v++) s = radd(s, rmul(g.pS[v], rabs(rsub(map[v], g.calib[v])))); return s; }
+  function bias(g, map){ let s = R0; for (let v = 0; v < K; v++) s = radd(s, rmul(g.pS[v], rsub(map[v], g.calib[v]))); return s; }
+  return {
+    pooled: pooled,
+    rows: [
+      { name: 'group A’s own map, on group A', ece: ece(w.gA, w.gA.calib), bias: bias(w.gA, w.gA.calib), needsAttr: true },
+      { name: 'group A’s map, shipped to group B', ece: ece(w.gB, w.gA.calib), bias: bias(w.gB, w.gA.calib), needsAttr: false },
+      { name: 'the pooled map, on group A', ece: ece(w.gA, pooled), bias: bias(w.gA, pooled), needsAttr: false },
+      { name: 'the pooled map, on group B', ece: ece(w.gB, pooled), bias: bias(w.gB, pooled), needsAttr: false },
+      { name: 'each group’s own map', ece: R0, bias: R0, needsAttr: true }
+    ]
+  };
+}
+
+// ---------------------------------------------------------------- calibration and balance
+// For ANY calibrated score c on a population with base rate pi:
+//   pi*E[c|Y=1] + (1-pi)*E[c|Y=0] = E[c] = pi,   hence   E[c|Y=0] = odds(pi)*(1 - E[c|Y=1]).
+// Equalise both conditional means across two groups and the odds have to match - unless
+// E[c|Y=1] = 1, which is perfect prediction. Derived here, then checked exactly.
+function balanceTable(w){
+  const rows = [];
+  for (const g of w.groups) {
+    let e = R0, e1 = R0, e0 = R0;
+    for (let v = 0; v < w.K; v++) {
+      e = radd(e, rmul(g.pS[v], g.calib[v]));
+      e1 = radd(e1, rmul(g.p1[v], g.calib[v]));
+      e0 = radd(e0, rmul(g.p0[v], g.calib[v]));
+    }
+    rows.push({
+      key: g.key, pi: g.pi, mean: e, x1: e1, x0: e0,
+      lawExact: rsub(radd(rmul(g.pi, e1), rmul(g.oneMinusPi, e0)), g.pi),
+      meanIsPi: rsub(e, g.pi),
+      x0Predicted: rmul(g.odds, rsub(R1, e1)),
+      x0Exact: rsub(e0, rmul(g.odds, rsub(R1, e1)))
+    });
+  }
+  const shared = rows[0].x1;
+  const forcedA = rmul(w.gA.odds, rsub(R1, shared)), forcedB = rmul(w.gB.odds, rsub(R1, shared));
+  return {
+    rows: rows, gapX1: rsub(rows[0].x1, rows[1].x1), gapX0: rsub(rows[0].x0, rows[1].x0),
+    forcedA: forcedA, forcedB: forcedB, forcedGap: rsub(forcedA, forcedB),
+    oddsRatio: rdiv(w.gA.odds, w.gB.odds),
+    perfectEscape: rsub(R1, shared)
+  };
+}
+
+// ---------------------------------------------------------------- unawareness, measured
+function unawareness(w){
+  const rep = repairs(w), base = rep.rows[0], bd = boundTable(w);
+  return {
+    policyFields: Object.keys(rep.base).sort().join(','),
+    blind: Object.keys(rep.base).sort().join(',') === 'j,q',
+    proxyAuc: bd.proxyAuc, tvd: bd.tvd, bound: bd.maxGap,
+    gapSel: base.gapSel, gapPpv: base.gapPpv, gapNpv: base.gapNpv,
+    identity: rsub(base.gapSel, rmul(rsub(w.gA.pi, w.gB.pi), base.mA.j)),
+    boundIdentity: bd.exactTvd
+  };
+}
+
+// ---------------------------------------------------------------- exhaustive enumeration
+// Every integer confusion matrix, for both groups, no sampling and no algebra - a count. Equality
+// is tested by integer cross-multiplication, so nothing here is "within tolerance".
+function enumPair(nA, PA, nB, PB, keepWitnesses){
+  const NA = nA - PA, NB = nB - PB;
+  let total = 0, all3 = 0, nondeg = 0, ppv1 = 0, ppv0 = 0, undef = 0, twoOfThree = 0;
+  const witnesses = [], oddsRows = [];
+  for (let tpA = 0; tpA <= PA; tpA++) for (let fpA = 0; fpA <= NA; fpA++)
+  for (let tpB = 0; tpB <= PB; tpB++) for (let fpB = 0; fpB <= NB; fpB++) {
+    total++;
+    const eqTPR = tpA * PB === tpB * PA;
+    const eqFPR = fpA * NB === fpB * NA;
+    const selA = tpA + fpA, selB = tpB + fpB;
+    const eqPPV = selA > 0 && selB > 0 && tpA * selB === tpB * selA;
+    const nEq = (eqTPR ? 1 : 0) + (eqFPR ? 1 : 0) + (eqPPV ? 1 : 0);
+    if (nEq === 2) twoOfThree++;
+    if (eqTPR && eqFPR && eqPPV) {
+      all3++;
+      if (selA === 0 || selB === 0) undef++;
+      else if (fpA === 0 && fpB === 0) ppv1++;
+      else if (tpA === 0 && tpB === 0) ppv0++;
+      else { nondeg++; if (keepWitnesses && witnesses.length < 6) witnesses.push([tpA, fpA, tpB, fpB]); }
+    }
+    if (keepWitnesses && eqPPV && eqTPR && fpA > 0 && fpB > 0 && tpA > 0 && tpB > 0 && oddsRows.length < 5000)
+      oddsRows.push([tpA, fpA, tpB, fpB]);
+  }
+  return { nA: nA, PA: PA, nB: nB, PB: PB, total: total, all3: all3, nondeg: nondeg,
+           ppv1: ppv1, ppv0: ppv0, undef: undef, twoOfThree: twoOfThree,
+           witnesses: witnesses, oddsRows: oddsRows };
+}
+function enumProof(w){
+  const c = w.c, n = c.nSmall;
+  // the margins must be UNEQUAL or the whole exercise measures nothing, so they are clamped into
+  // 1 <= P_B < P_A <= n-1 rather than merely rounded from the base rates
+  const PA = Math.max(2, Math.min(n - 1, Math.round(n * c.piA / 100)));
+  let PB = Math.max(1, Math.min(n - 1, Math.round(n * c.piB / 100)));
+  if (PB >= PA) PB = PA - 1;
+  const main = enumPair(n, PA, n, PB, true);
+  // the whole family of unequal margins, so the zero is not one lucky pair
+  let famPairs = 0, famAll3 = 0, famNondeg = 0, famCombos = 0;
+  for (let a = 1; a < n; a++) for (let b = 1; b < a; b++) {
+    const e = enumPair(n, a, n, b, false);
+    famPairs += e.total; famAll3 += e.all3; famNondeg += e.nondeg; famCombos++;
+  }
+  // the CONTROL: equal margins, where the impossibility has no reason to bite
+  let ctlPairs = 0, ctlAll3 = 0, ctlNondeg = 0, ctlCombos = 0;
+  for (let a = 1; a < n; a++) {
+    const e = enumPair(n, a, n, a, false);
+    ctlPairs += e.total; ctlAll3 += e.all3; ctlNondeg += e.nondeg; ctlCombos++;
+  }
+  // and the relation itself, on every matrix of one group, cross-multiplied into integers
+  let idChecked = 0, idFail = 0;
+  const NA = n - PA;
+  for (let tp = 1; tp <= PA; tp++) for (let fp = 1; fp <= NA; fp++) {
+    idChecked++;
+    if (fp * (tp + fp) * PA * tp !== PA * fp * tp * (tp + fp)) idFail++;
+  }
+  return {
+    n: n, PA: PA, PB: PB, main: main,
+    family: { combos: famCombos, pairs: famPairs, all3: famAll3, nondeg: famNondeg },
+    control: { combos: ctlCombos, pairs: ctlPairs, all3: ctlAll3, nondeg: ctlNondeg },
+    idChecked: idChecked, idFail: idFail
+  };
+}
+// the consequence of the relation, read off the enumeration rather than from the algebra: among
+// matrices with equal precision AND equal recall, the ratio of false-positive rates is the ratio
+// of prevalence odds - exactly, for every one of them.
+function enumOddsCheck(w){
+  const p = enumProof(w), n = p.n, PA = p.PA, PB = p.PB, NA = n - PA, NB = n - PB;
+  const target = R(BigInt(PA) * BigInt(NB), BigInt(NA) * BigInt(PB));
+  let checked = 0, bad = 0;
+  for (const wit of p.main.oddsRows) {
+    const ratio = R(BigInt(wit[1]) * BigInt(NB), BigInt(NA) * BigInt(wit[3]));
+    checked++;
+    if (!req(ratio, target)) bad++;
+  }
+  return { checked: checked, bad: bad, target: target,
+           oddsA: R(BigInt(PA), BigInt(NA)), oddsB: R(BigInt(PB), BigInt(NB)) };
+}
+
+// ---------------------------------------------------------------- the price of equalised odds
+// When the model IS less informative in one group the curves differ, equalised odds needs a point
+// on both, and the best such point is a real loss. Both curves are concave (the likelihood ratio is
+// monotone in the bin), so the feasible set is the region under the lower curve; randomising with
+// "flag nobody" supplies the chords. Searched exactly over rationals.
+function priceLadder(c){
+  const rows = [];
+  for (let tb = c.tilt; tb >= 1; tb--) {
+    const w = worldOf(cfgOf(c), tb);
+    let free = null;
+    for (let ja = 0; ja <= w.K; ja++) {
+      const mA = metricsOf(w.gA, policy(ja, R0));
+      for (let jb = 0; jb <= w.K; jb++) {
+        const mB = metricsOf(w.gB, policy(jb, R0));
+        const pop = popOf(w, mA, mB, c.payoff);
+        if (free === null || rcmp(pop.acc, free.acc) > 0) free = { acc: pop.acc, ja: ja, jb: jb };
+      }
+    }
+    let eq = null;
+    for (let jb = 0; jb <= w.K; jb++) {
+      const mB = metricsOf(w.gB, policy(jb, R0));
+      const polA = solveFPR(w.gA, mB.fpr);
+      if (polA === null) continue;
+      const mA = metricsOf(w.gA, polA);
+      if (rcmp(mA.tpr, mB.tpr) < 0) continue;
+      // A can reach at least B's TPR at B's FPR; scale down the whole point to land on B exactly
+      const lam = risZero(mA.tpr) ? R1 : rdiv(mB.tpr, mA.tpr);
+      if (lam === null || rcmp(lam, R1) > 0) continue;
+      const tprA = rmul(lam, mA.tpr), fprA = rmul(lam, mA.fpr);
+      if (!req(tprA, mB.tpr)) continue;
+      const accA = radd(rmul(w.gA.pi, tprA), rmul(w.gA.oneMinusPi, rsub(R1, fprA)));
+      const acc = radd(rmul(w.gA.w, accA), rmul(w.gB.w, mB.acc));
+      if (eq === null || rcmp(acc, eq.acc) > 0) eq = { acc: acc, fpr: fprA, tpr: tprA, jb: jb, randomised: rcmp(lam, R1) < 0 };
+    }
+    rows.push({
+      tiltB: tb, same: tb === c.tilt, aucA: rocAUC(w.gA), aucB: rocAUC(w.gB),
+      aucGap: rsub(rocAUC(w.gA), rocAUC(w.gB)),
+      free: free ? free.acc : null, freeCuts: free ? [free.ja, free.jb] : null,
+      eq: eq ? eq.acc : null, randomised: eq ? eq.randomised : null,
+      price: (free && eq) ? rsub(free.acc, eq.acc) : null
+    });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- the one sampled section
+// Everything above is exact, so this is a test of the SAMPLER against a known answer, not a source
+// of claims. One uniform picks the label, one more inverts the exact score CDF.
+function drawGroup(rnd, g, n){
+  const pi = rnum(g.pi), K = g.cdf1.length;
+  const rows = new Int8Array(n), bins = new Int8Array(n);
+  for (let i = 0; i < n; i++) {
+    const y = rnd() < pi ? 1 : 0;
+    const u = rnd(), cdf = y ? g.cdf1 : g.cdf0;
+    let v = 0;
+    while (v < K - 1 && u > cdf[v]) v++;
+    rows[i] = y; bins[i] = v;
+  }
+  return { y: rows, v: bins, n: n };
+}
+function measureAt(s, j){
+  let tp = 0, fp = 0, pos = 0, neg = 0;
+  for (let i = 0; i < s.n; i++) {
+    if (s.y[i]) { pos++; if (s.v[i] >= j) tp++; } else { neg++; if (s.v[i] >= j) fp++; }
+  }
+  return { tpr: pos ? tp / pos : null, fpr: neg ? fp / neg : null,
+           sel: (tp + fp) / s.n, ppv: (tp + fp) ? tp / (tp + fp) : null, pos: pos };
+}
+function statOf(a){
+  const n = a.length;
+  if (!n) return { n: 0, mean: null, sd: null, se: null };
+  let s = 0; for (const v of a) s += v;
+  const mean = s / n;
+  let q = 0; for (const v of a) q += (v - mean) * (v - mean);
+  const sd = n > 1 ? Math.sqrt(q / (n - 1)) : 0;
+  return { n: n, mean: mean, sd: sd, se: sd / Math.sqrt(n) };
+}
+function finiteSample(w, seedFn, base){
+  const c = w.c;
+  const sweep = thresholdSweep(w);
+  const row = bestBy(sweep, function(r){ return r.pop.util; });
+  const j = row.j;
+  const exSel = rnum(row.gapSel), exPpv = row.gapPpv === null ? null : rnum(row.gapPpv);
+  const exPpvB = row.mB.ppv === null ? null : rnum(row.mB.ppv);
+  const gs = [], gp = [], pb = [];
+  let signOk = 0, ppvSignOk = 0, ppvUsable = 0;
+  for (let r = 0; r < c.reps; r++) {
+    const rnd = mulberry32((seedFn || hashSeed)(base === undefined ? 740000 : base, r));
+    const sA = drawGroup(rnd, w.gA, c.n), sB = drawGroup(rnd, w.gB, c.n);
+    const mA = measureAt(sA, j), mB = measureAt(sB, j);
+    const dSel = mA.sel - mB.sel;
+    gs.push(dSel);
+    if ((dSel > 0) === (exSel > 0)) signOk++;
+    if (mA.ppv !== null && mB.ppv !== null) {
+      gp.push(mA.ppv - mB.ppv); pb.push(mB.ppv); ppvUsable++;
+      if (((mA.ppv - mB.ppv) > 0) === (exPpv > 0)) ppvSignOk++;
+    }
+  }
+  return {
+    j: j, n: c.n, reps: c.reps,
+    exSel: exSel, exPpv: exPpv, exPpvB: exPpvB,
+    sel: statOf(gs), ppv: statOf(gp), ppvB: statOf(pb),
+    signOk: signOk / c.reps, ppvSignOk: ppvUsable ? ppvSignOk / ppvUsable : null,
+    usable: ppvUsable
+  };
+}
+// Day 69 reported an arithmetic seed stride that looked like a finding and was not. This is the
+// fifth re-measurement, and the first against a target that is a closed form: c.seeds independent
+// seed families, each one z-scored against the exact gap. If either stream were biased the mean z
+// would grow with the number of families rather than sit inside its own standard error.
+function seedGuard(w){
+  const c = w.c;
+  const per = Math.max(60, Math.round(c.reps / c.seeds));
+  const sweep = thresholdSweep(w);
+  const row = bestBy(sweep, function(r){ return r.pop.util; });
+  const j = row.j, exact = rnum(row.gapSel);
+  function stream(fn){
+    const zs = [];
+    for (let k = 0; k < c.seeds; k++) {
+      const g = [];
+      for (let r = 0; r < per; r++) {
+        const rnd = mulberry32(fn((100003 * k + 7) >>> 0, r));
+        const mA = measureAt(drawGroup(rnd, w.gA, c.n), j);
+        const mB = measureAt(drawGroup(rnd, w.gB, c.n), j);
+        g.push(mA.sel - mB.sel);
+      }
+      const s = statOf(g);
+      if (s.se > 0) zs.push((s.mean - exact) / s.se);
+    }
+    const s = statOf(zs);
+    return { families: zs.length, per: per, meanZ: s.mean, sdZ: s.sd, seZ: s.se,
+             t: (s.se && s.se > 0) ? s.mean / s.se : null };
+  }
+  return { j: j, exact: exact, per: per, hashed: stream(hashSeed), stride: stream(strideSeed) };
+}
+
+// ---------------------------------------------------------------- the sweep that holds it together
+function configSweep(c){
+  const rows = [];
+  let worstSel = 0, worstCh = 0, worstBal = 0, worstBound = 0, nonZero = 0, checked = 0;
+  const piPairs = [[30, 8], [55, 12], [12, 3], [45, 40], [65, 2], [20, 19], [8, 1], [50, 25]];
+  for (let bi = 0; bi < piPairs.length; bi++) for (let t = 1; t <= 5; t++) for (let bins = 6; bins <= 12; bins += 3) {
+    const w = worldOf(cfgOf(Object.assign({}, c, { piA: piPairs[bi][0], piB: piPairs[bi][1], tilt: t, bins: bins })));
+    let sel = 0, ch = 0;
+    for (const r of thresholdSweep(w)) {
+      checked++;
+      if (!risZero(r.identitySel)) nonZero++;
+      sel = Math.max(sel, Math.abs(rnum(r.identitySel)));
+    }
+    for (const r of chouldechovaRows(w)) {
+      checked++;
+      if (!risZero(r.exact)) nonZero++;
+      ch = Math.max(ch, r.flo);
+    }
+    for (const r of balanceTable(w).rows) {
+      checked++;
+      if (!risZero(r.lawExact) || !risZero(r.x0Exact) || !risZero(r.meanIsPi)) nonZero++;
+      worstBal = Math.max(worstBal, Math.abs(rnum(r.lawExact)), Math.abs(rnum(r.x0Exact)));
+    }
+    const bd = boundTable(w);
+    checked += 2;
+    if (!risZero(bd.exactTvd) || !risZero(bd.exactProd)) nonZero++;
+    worstBound = Math.max(worstBound, Math.abs(rnum(bd.exactTvd)), Math.abs(rnum(bd.exactProd)));
+    worstSel = Math.max(worstSel, sel);
+    worstCh = Math.max(worstCh, ch);
+    rows.push({ piA: piPairs[bi][0], piB: piPairs[bi][1], tilt: t, bins: bins, sel: sel, ch: ch });
+  }
+  return { rows: rows, configs: rows.length, checked: checked, nonZero: nonZero,
+           worstSel: worstSel, worstCh: worstCh, worstBal: worstBal, worstBound: worstBound };
+}
+
+// ---------------------------------------------------------------- identities worth stating
+function identityTable(w){
+  const out = [];
+  const sweep = thresholdSweep(w), bal = balanceTable(w), cal = calibrationTable(w), bd = boundTable(w);
+  function add(name, exact, note){ out.push({ name: name, exact: exact, ok: risZero(exact), flo: Math.abs(rnum(exact)), note: note }); }
+  function worstOf(pick){ let wv = R0; for (const r of sweep) { const v = pick(r); if (v !== null && rcmp(rabs(v), rabs(wv)) > 0) wv = v; } return wv; }
+  add('flag-rate gap = (prevalence gap) &times; Youden&rsquo;s J, at every cut', worstOf(function(r){ return r.identitySel; }), 'the whole disparity, as one product');
+  let wc = R0;
+  for (const r of chouldechovaRows(w)) if (rcmp(rabs(r.exact), rabs(wc)) > 0) wc = r.exact;
+  add('FPR = odds(prevalence) &times; (1&minus;PPV)/PPV &times; (1&minus;FNR)', wc, 'the relation that turns three equalities into two');
+  add('the largest flag-rate gap = TV(P(S|A), P(S|B))', bd.exactTvd, 'blindness buys this bound, not zero');
+  add('&hellip; and that bound = (prevalence gap) &times; max J', bd.exactProd, 'the proxy strength and the skill are the same number');
+  add('a calibrated score averages to the base rate', bal.rows[0].meanIsPi, 'E[c] = &pi;, exactly');
+  add('E[c|Y=0] = odds(&pi;) &times; (1 &minus; E[c|Y=1]), group A', bal.rows[0].x0Exact, 'calibration fixes one from the other');
+  add('&hellip; and in group B', bal.rows[1].x0Exact, 'same law, different odds');
+  add('the two calibration curves differ by ONE odds ratio at every bin', cal.oddsRatioResidual, 'and it is odds(&pi;<sub>A</sub>)/odds(&pi;<sub>B</sub>)');
+  add('a single cut already gives equal TPR in both groups', worstOf(function(r){ return r.gapTpr; }), 'the ROC curves are the same curve');
+  add('&hellip; and equal FPR, so equalised odds is REACHABLE here', worstOf(function(r){ return r.gapFpr; }), 'reachable is not the same as free');
+  add('the AUC gap is exactly zero', bd.aucGap, 'the model is equally good, exactly');
+  return { rows: out, allOk: out.every(function(r){ return r.ok; }) };
+}
+// ===== ENGINE:END =====
+
+// ================================================================ UI
+function $(id){ return document.getElementById(id); }
+function cfgFromUI(){
+  return {
+    bins: +$("sBins").value, tilt: +$("sTilt").value, piA: +$("sPiA").value, piB: +$("sPiB").value,
+    wA: +$("sWA").value, payoff: +$("sPayoff").value, nSmall: +$("sNSmall").value,
+    n: +$("sN").value, reps: +$("sReps").value, seeds: +$("sSeeds").value
+  };
+}
+function F(r, d){
+  const v = rnum(r);
+  if (v === null || !isFinite(v)) return "&ndash;";
+  return v.toFixed(d === undefined ? 4 : d);
+}
+function FN(v, d){
+  if (v === null || v === undefined || !isFinite(v)) return "&ndash;";
+  return v.toFixed(d === undefined ? 4 : d);
+}
+function PC(r, d){
+  const v = rnum(r);
+  if (v === null || !isFinite(v)) return "&ndash;";
+  return (100 * v).toFixed(d === undefined ? 2 : d) + "%";
+}
+function grp(n){ return Math.round(n).toLocaleString("en-US"); }
+function sci(v, d){ return (v === 0 ? 0 : v).toExponential(d === undefined ? 1 : d); }
+function Z(r){ return risZero(r) ? "<span class='ok'>exact 0</span>" : "<span class='bad'>" + sci(rnum(r), 2) + "</span>"; }
+function tbl(head, rows){
+  return "<thead><tr>" + head.map(h => "<th>" + h + "</th>").join("") + "</tr></thead><tbody>" +
+    rows.map(r => "<tr" + (r.cls ? " class='" + r.cls + "'" : "") + ">" +
+      (r.cells || r).map(c => "<td>" + c + "</td>").join("") + "</tr>").join("") + "</tbody>";
+}
+
+let checks = [];
+function T(label, fn){
+  let ok = false;
+  try { ok = !!fn(); } catch (e) { ok = false; }
+  checks.push({ label: label, ok: ok });
+}
+
+function render(){
+  const c = cfgOf(cfgFromUI());
+  $("vBins").textContent = c.bins;
+  $("vTilt").textContent = c.tilt;
+  $("vPiA").textContent = c.piA + "%";
+  $("vPiB").textContent = c.piB + "%";
+  $("vWA").textContent = c.wA + "%";
+  $("vPayoff").textContent = c.payoff;
+  $("vNSmall").textContent = c.nSmall;
+  $("vN").textContent = c.n;
+  $("vReps").textContent = c.reps;
+  $("vSeeds").textContent = c.seeds;
+
+  const w = worldOf(c);
+  $("wM").textContent = w.m;
+  $("wAuc").textContent = F(rocAUC(w.gA), 6);
+
+  const sweep = thresholdSweep(w);
+  const bound = boundTable(w);
+  const rel = chouldechovaRows(w);
+  const skill = skillLadder(c);
+  const mono = monotoneScan(c);
+  const bayes = bayesCuts(w);
+  const rep = repairs(w);
+  const who = whoPays(w);
+  const feas = feasibilityLadder(c);
+  const feasLow = feasibilityLadder(cfgOf(Object.assign({}, c, { piB: Math.min(2, c.piA - 1) })));
+  const twin = signTwin(w);
+  const cal = calibrationTable(w);
+  const pooled = pooledCalibration(w);
+  const bal = balanceTable(w);
+  const un = unawareness(w);
+  const en = enumProof(w);
+  const eo = enumOddsCheck(w);
+  const price = priceLadder(c);
+  const ident = identityTable(w);
+  const fs = finiteSample(w);
+  const guard = seedGuard(w);
+  const cs = configSweep(c);
+
+  const base = rep.rows[0];
+  const parity = rep.rows.find(function(r){ return r.name === "demographic parity"; });
+  const predP = rep.rows.find(function(r){ return r.name === "predictive parity"; });
+
+  // ---------------------------------------------------------------- one cut for everyone
+  $("headline").innerHTML =
+    "Both groups get the same true-positive rate and the same false-positive rate at every row " +
+    "&mdash; the <span class='same'>shaded</span> columns are equal as BigInts, not to four places. " +
+    "At the payoff-optimal cut <code>j = " + rep.utilRow.j + "</code> the flag rates are " +
+    PC(base.mA.sel) + " and " + PC(base.mB.sel) + ", a gap of <strong>" + F(base.gapSel, 6) +
+    "</strong>, and precision is " + F(base.mA.ppv) + " against " + F(base.mB.ppv) + ".";
+  $("tblSweep").innerHTML = tbl(
+    ["cut j", "TPR both", "FPR both", "J", "flag A", "flag B", "flag gap", "&minus; (&Delta;&pi;)J",
+     "PPV A", "PPV B", "PPV gap", "NPV gap", "accuracy", "payoff"],
+    sweep.map(function(r){
+      return { cls: r.j === rep.utilRow.j ? "same3" : "", cells: [
+        r.j, "<span class='same'>" + F(r.mA.tpr) + "</span>", "<span class='same'>" + F(r.mA.fpr) + "</span>",
+        F(r.mA.j), PC(r.mA.sel), PC(r.mB.sel), F(r.gapSel, 6), Z(r.identitySel),
+        F(r.mA.ppv), F(r.mB.ppv), F(r.gapPpv), F(r.gapNpv), F(r.pop.acc, 6), F(r.pop.util, 5)] };
+    }));
+  $("flagSweep").innerHTML =
+    "The identity column is the flag-rate gap minus <code>(&pi;<sub>A</sub>&minus;&pi;<sub>B</sub>)&times;J</code>, " +
+    "in exact rationals, at every one of the " + sweep.length + " cuts. The disparity is not merely " +
+    "<em>related</em> to the prevalence gap and the model's skill &mdash; it <em>is</em> their " +
+    "product, so the row where <code>J</code> is largest is <code>j = " + bound.argJ + "</code>, and " +
+    "that is necessarily where the gap is largest too.";
+
+  // ---------------------------------------------------------------- the relation
+  const relShow = rel.filter(function(r){ return r.key === "A"; }).concat(rel.filter(function(r){ return r.key === "B"; }));
+  $("tblRel").innerHTML = tbl(
+    ["group", "cut j", "PPV", "1&minus;FNR", "odds(&pi;)", "predicted FPR", "actual FPR", "exact residual", "float residual"],
+    relShow.map(function(r){
+      return [r.key, r.j, F(r.ppv), F(rsub(R1, r.fnr)), F(r.key === "A" ? w.gA.odds : w.gB.odds, 5),
+              "<span class='same'>" + F(r.rhs, 8) + "</span>", "<span class='same'>" + F(r.fpr, 8) + "</span>",
+              Z(r.exact), r.flo === 0 ? "<span class='ok'>0</span>" : sci(r.flo, 1)];
+    }));
+  const relFail = rel.filter(function(r){ return !risZero(r.exact); }).length;
+  $("flagRel").innerHTML =
+    rel.length + " rows, " + relFail + " non-zero residuals. The float column is zero too here, " +
+    "which is luck rather than a guarantee &mdash; the same residual computed as a difference of " +
+    "two long sums would land at 1e&minus;16, which is why everything claimed exact on this page is " +
+    "checked as <code>numerator === 0n</code> and everything float-valued is checked as a bound.";
+
+  // ---------------------------------------------------------------- the bound
+  $("tblBound").innerHTML = tbl(["quantity", "value", "residual against the bound", "what it is"], [
+    ["largest flag-rate gap over all cuts", F(bound.maxGap, 8), "&mdash;", "attained at <code>j = " + bound.argJ + "</code>"],
+    ["(&pi;<sub>A</sub> &minus; &pi;<sub>B</sub>) &times; max J", F(bound.predicted, 8), Z(bound.exactProd), "the product form"],
+    ["TV(P(S|A), P(S|B))", F(bound.tvd, 8), Z(bound.exactTvd), "how far apart the two score distributions are"],
+    ["AUC of predicting the GROUP from the score", F(bound.proxyAuc, 6), "&mdash;", "the score as a proxy for the attribute"],
+    ["AUC of the model, group A", F(bound.aucA, 6), "&mdash;", "the same curve in both groups"],
+    ["AUC of the model, group B", F(bound.aucB, 6), Z(bound.aucGap), "gap exactly zero, by construction"],
+    ["max J (Youden)", F(bound.maxJ, 8), "&mdash;", "the model's whole contribution to the gap"]
+  ]);
+  $("flagBound").innerHTML =
+    "Three different-looking quantities are one number. A score with AUC <strong>" + F(bound.proxyAuc, 4) +
+    "</strong> for predicting the group &mdash; barely better than a coin &mdash; is enough to produce " +
+    "a flag-rate gap of <strong>" + F(bound.maxGap, 6) + "</strong> with the attribute nowhere in the " +
+    "model. Unawareness does not bound the disparity at zero. It bounds it at the total-variation " +
+    "distance, and that distance is a fact about the base rates and the model, not about the code.";
+
+  // ---------------------------------------------------------------- skill ladder
+  $("tblSkill").innerHTML = tbl(
+    ["t", "model AUC", "max J", "BOUND = TVD", "identity", "cut (acc)", "best accuracy", "deployed gap",
+     "cut (payoff)", "best payoff", "deployed gap"],
+    skill.map(function(r){
+      return { cls: r.tilt === c.tilt ? "same3" : (r.tilt === 1 ? "same" : ""), cells: [
+        r.tilt, F(r.aucA, 6), F(r.maxJ), F(r.bound, 8),
+        (risZero(r.identity) && risZero(r.tvdIdentity)) ? "<span class='ok'>exact 0</span>" : "<span class='bad'>NO</span>",
+        r.jAcc, F(r.accBest, 6), F(r.gapAtBestAcc, 6), r.jUtil, F(r.utilBest, 6), F(r.gapAtBestUtil, 6)] };
+    }));
+  $("flagSkill").innerHTML =
+    "&#128308; This is where the claim I built the page around broke. Over <strong>" + mono.steps +
+    "</strong> skill steps across ten pairs of base rates and four bin counts, the BOUND decreases " +
+    "<strong>" + mono.boundDown + "</strong> times &mdash; it is monotone in skill, as the product " +
+    "form says it must be. The DEPLOYED gap decreases <strong>" + mono.deployedDown + "</strong> " +
+    "times, and <strong>" + mono.bothWays + "</strong> of those steps raise accuracy at the same " +
+    "time" + (mono.worst ? ", the largest being base rates " + mono.worst.piA + "% and " +
+      mono.worst.piB + "% at " + mono.worst.bins + " bins, where <code>t</code> " + mono.worst.t0 +
+      " &rarr; " + mono.worst.t1 + " moves the gap " + F(mono.worst.gap0, 4) + " &rarr; " +
+      F(mono.worst.gap1, 4) + " while accuracy moves " + F(mono.worst.acc0, 6) + " &rarr; " +
+      F(mono.worst.acc1, 6) : "") + ". The cut is an integer; when it jumps, the operating point can " +
+    "land where <code>J</code> is smaller. &ldquo;A better model has a bigger gap&rdquo; is a " +
+    "statement about what is possible, not about what happens.";
+
+  // ---------------------------------------------------------------- bayes cuts
+  const bcRows = bayes.rows.map(function(r){
+    return [r.key, PC(r.pi, 0), FN(r.vAcc, 6), r.jAcc, FN(r.vUtil, 6), r.jUtil,
+            F(r.key === "A" ? w.gA.odds : w.gB.odds, 5)];
+  });
+  $("tblBayes").innerHTML = tbl(
+    ["group", "base rate", "accuracy crossing, in bins", "&rarr; cut", "payoff crossing", "&rarr; cut", "odds(&pi;)"], bcRows);
+  $("flagBayes").innerHTML =
+    "The two crossings differ by <strong>" + FN(Math.abs(bayes.shift), 6) + "</strong> bins, which is " +
+    "exactly <code>(logit &pi;<sub>A</sub> &minus; logit &pi;<sub>B</sub>) / ln t</code> &mdash; and " +
+    "the same number is the horizontal shift between the two calibration curves further down. The " +
+    "best single cut scores <strong>" + F(bayes.globAcc.pop.acc, 6) + "</strong>; the best pair of " +
+    "cuts (<code>j<sub>A</sub> = " + bayes.pairAcc.ja + "</code>, <code>j<sub>B</sub> = " +
+    bayes.pairAcc.jb + "</code>) scores <strong>" + F(bayes.pairAcc.pop.acc, 6) + "</strong>. So " +
+    "group-blindness costs <strong>" + F(bayes.priceAcc, 6) + "</strong> accuracy and <strong>" +
+    F(bayes.priceUtil, 6) + "</strong> payoff, and the accuracy-optimal rule &mdash; the one with no " +
+    "fairness constraint on it whatsoever &mdash; violates equal opportunity by <strong>" +
+    F(bayes.bayesGapTpr, 4) + "</strong>. The neutral baseline is not neutral.";
+
+  // ---------------------------------------------------------------- repairs
+  $("tblRepair").innerHTML = tbl(
+    ["policy", "equalises", "flag gap", "TPR gap", "FPR gap", "PPV gap", "NPV gap",
+     "&Delta;flag A", "&Delta;flag B", "&Delta;recall B", "&Delta;accuracy", "&Delta;payoff"],
+    rep.rows.map(function(r){
+      if (!r.mA) return { cls: "same2", cells: [r.name, r.targets,
+        "<span class='bad'>IMPOSSIBLE</span> &mdash; " + r.infeasible.infeasible + " of " +
+        F(r.infeasible.bound), "", "", "", "", "", "", "", "", ""] };
+      return { cls: r.name === "one cut for everyone" ? "same3" : "", cells: [
+        r.name, r.targets,
+        risZero(r.gapSel) ? "<span class='ok'>0</span>" : F(r.gapSel),
+        risZero(r.gapTpr) ? "<span class='ok'>0</span>" : F(r.gapTpr),
+        risZero(r.gapFpr) ? "<span class='ok'>0</span>" : F(r.gapFpr),
+        risZero(r.gapPpv) ? "<span class='ok'>0</span>" : F(r.gapPpv),
+        F(r.gapNpv), F(r.dSelA), F(r.dSelB), F(r.dTprB), F(r.dAcc, 5), F(r.dUtil, 5)] };
+    }));
+  $("flagRepair").innerHTML =
+    (parity && parity.mA ? "Demographic parity zeroes the flag gap <em>exactly</em> and widens the " +
+      "precision gap from " + F(base.gapPpv, 4) + " to " + F(parity.gapPpv, 4) + " while opening a " +
+      "TPR gap of size " + F(rabs(parity.gapTpr), 4) + " and an FPR gap of size " +
+      F(rabs(parity.gapFpr), 4) + " that were both exactly zero, and it costs " +
+      F(rabs(parity.dAcc), 5) + " accuracy. " : "") +
+    (predP && predP.mA ? "&#128308; Predictive parity is the expensive one: it zeroes the precision " +
+      "gap by moving group B's bar until its flag rate falls " + PC(rep.mB0.sel) + " &rarr; " +
+      PC(predP.mB.sel) + " and its recall " + F(rep.mB0.tpr, 4) + " &rarr; " + F(predP.mB.tpr, 4) +
+      " &mdash; " + PC(rdiv(rsub(rep.mB0.tpr, predP.mB.tpr), rep.mB0.tpr), 1) + " of that group's " +
+      "true positives, dropped &mdash; while population accuracy " +
+      (rcmp(predP.dAcc, R0) > 0 ? "<strong>rises</strong> by " + F(predP.dAcc, 5)
+                               : "falls by " + F(rabs(predP.dAcc), 5)) +
+      ". A scoreboard would call that an improvement." : "") ;
+
+  // ---------------------------------------------------------------- who pays
+  $("tblWho").innerHTML = tbl(
+    ["criterion", "move group B: flag rate", "recall", "move group A: flag rate", "recall", "is the other direction available?"],
+    who.map(function(r){
+      return [r.name,
+        r.moveB ? PC(r.moveB.sel0) + " &rarr; " + PC(r.moveB.sel) : "<span class='bad'>&mdash;</span>",
+        r.moveB ? F(r.moveB.tpr0) + " &rarr; " + F(r.moveB.tpr) : "&mdash;",
+        r.moveA ? PC(r.moveA.sel0) + " &rarr; " + PC(r.moveA.sel) : "<span class='bad'>&mdash;</span>",
+        r.moveA ? F(r.moveA.tpr0) + " &rarr; " + F(r.moveA.tpr) : "&mdash;",
+        (r.moveA && r.moveB) ? "<span class='ok'>both</span>"
+          : "<span class='bad'>no &mdash; " + (r.moveAWhy || r.moveBWhy) + "</span>"];
+    }));
+  const oneWay = who.filter(function(r){ return !(r.moveA && r.moveB); }).length;
+  $("flagWho").innerHTML =
+    oneWay + " of the " + who.length + " criteria offer" + (oneWay === 1 ? "s" : "") +
+    " only one direction on this file. The reason " +
+    "for predictive parity is arithmetic: the lowest precision any rule can have in a group is that " +
+    "group's own base rate (flag everybody), so group A's precision cannot fall below <strong>" +
+    PC(w.gA.pi, 1) + "</strong> &mdash; and group B is already achieving <strong>" +
+    F(rep.mB0.ppv, 4) + "</strong>. Which group pays has been decided before anybody was asked.";
+
+  // ---------------------------------------------------------------- feasibility
+  $("tblFeas").innerHTML = tbl(
+    ["t", "payoff cut", "group A precision", "group B's ceiling", "accuracy", "predictive parity"],
+    feas.rows.map(function(r){
+      return { cls: r.tilt === c.tilt ? "same3" : "", cells: [
+        r.tilt, r.j, F(r.ppvA), F(r.ceilB), F(r.acc, 6),
+        r.ok ? "<span class='ok'>possible</span>" : "<span class='bad'>impossible</span>"] };
+    }));
+  $("flagFeas").innerHTML =
+    "Feasibility flips <strong>" + feas.flips + "</strong> time" + (feas.flips === 1 ? "" : "s") +
+    " across the skill dial at " + c.piA + "% against " + c.piB + "%, and <strong>" + feasLow.flips +
+    "</strong> at " + c.piA + "% against " + Math.min(2, c.piA - 1) + "% &mdash; " +
+    feasLow.rows.map(function(r){ return r.ok ? "&#10003;" : "&#10007;"; }).join(" ") +
+    " as <code>t</code> goes 1 to 9, each step a strictly better model. Both the ceiling and the " +
+    "target rise with skill, and the cut jumps in integers, so their order can swap more than once.";
+
+  // ---------------------------------------------------------------- twin
+  $("tblTwin").innerHTML = tbl(
+    ["policy", "&Delta;flag A", "&Delta;flag B", "if a flag is a shortlist place", "if a flag is extra scrutiny", "size of the swing"],
+    twin.map(function(r){
+      if (r.infeasible) return { cls: "same2", cells: [r.name, "&mdash;", "&mdash;", "impossible", "impossible", "&mdash;"] };
+      return [r.name, F(r.dSelA), F(r.dSelB),
+        r.benefit === "neither" ? "<span class='dim'>neither</span>" : "helps group " + r.benefit,
+        r.burden === "neither" ? "<span class='dim'>neither</span>" : "helps group " + r.burden,
+        F(r.moved)];
+    }));
+  $("flagTwin").innerHTML =
+    "Every number in this table is bit-identical under both readings; only the last two columns " +
+    "differ, and they are not computed from the data at all. This is Day 68's twin shape in a new " +
+    "problem: two worlds agreeing on every observable and disagreeing on the answer, with the " +
+    "deciding quantity outside the file. A confusion matrix does not record whether the person " +
+    "wanted to be in the positive cell.";
+
+  // ---------------------------------------------------------------- calibration
+  $("tblCalib").innerHTML = tbl(
+    ["bin v", "LR(v)", "P(S=v|A)", "P(S=v|B)", "P(Y=1|v,A)", "P(Y=1|v,B)", "gap",
+     "logit A", "logit B", "&Delta;logit", "odds ratio"],
+    cal.rows.map(function(r, i){
+      return [r.v, F(r.lr, 4), F(r.pSA), F(r.pSB), F(r.cA), F(r.cB), F(r.gap),
+              FN(r.lgtA, 4), FN(r.lgtB, 4), "<span class='same'>" + FN(r.dLogit, 6) + "</span>",
+              "<span class='same'>" + F(cal.oddsRatios[i], 6) + "</span>"];
+    }));
+  $("tblPooled").innerHTML = tbl(["how the score becomes a probability", "calibration error", "signed bias", "needs the attribute?"],
+    pooled.rows.map(function(r){
+      return [r.name, F(r.ece, 6), F(r.bias, 6),
+              r.needsAttr ? "<span class='bad'>yes</span>" : "<span class='ok'>no</span>"];
+    }));
+  $("flagCalib").innerHTML =
+    "The odds-ratio column is the same rational in every bin &mdash; <strong>" +
+    F(cal.oddsRatioExact, 6) + "</strong>, exactly <code>odds(&pi;<sub>A</sub>)/odds(&pi;<sub>B</sub>)</code> " +
+    "&mdash; so the two calibration curves are one curve shifted sideways by <strong>" +
+    FN(cal.shiftBins, 6) + "</strong> bins, the same number as the shift between the two " +
+    "accuracy-optimal cuts. Shipping group A's map to group B is wrong by " +
+    F(pooled.rows[1].ece, 6) + " and the signed bias is <em>identical</em> to it, so the error is " +
+    "entirely one-sided. The pooled map is wrong in both groups, in opposite directions. The only " +
+    "map that is right everywhere needs the column you were told not to use.";
+
+  // ---------------------------------------------------------------- balance
+  $("tblBalance").innerHTML = tbl(
+    ["group", "&pi;", "E[c]", "E[c] &minus; &pi;", "E[c|Y=1]", "E[c|Y=0]", "odds(&pi;)(1&minus;E[c|Y=1])",
+     "residual", "the calibration law"],
+    bal.rows.map(function(r){
+      return [r.key, F(r.pi), F(r.mean), Z(r.meanIsPi), F(r.x1), F(r.x0),
+              "<span class='same'>" + F(r.x0Predicted, 8) + "</span>", Z(r.x0Exact), Z(r.lawExact)];
+    }).concat([
+      ["gap between the groups", "&mdash;", "&mdash;", "&mdash;", F(bal.gapX1), F(bal.gapX0), "&mdash;", "&mdash;", "&mdash;"],
+      ["if E[c|Y=1] were equalised, the forced gap in E[c|Y=0]", "&mdash;", "&mdash;", "&mdash;",
+       "<span class='ok'>0</span>", "<span class='bad'>" + F(bal.forcedGap) + "</span>", "&mdash;", "&mdash;",
+       "escape needs 1&minus;E[c|Y=1] = " + F(bal.perfectEscape)]
+    ]));
+  $("flagBalance").innerHTML =
+    "No thresholds appear anywhere in this table. Calibration alone forces <code>E[c|Y=0]</code> from " +
+    "<code>E[c|Y=1]</code>, so the two balance conditions are one condition, and asking for both " +
+    "across groups asks the odds ratio to be 1 &mdash; it is <strong>" + F(bal.oddsRatio, 5) +
+    "</strong>. Equalise the mean score among positives and the gap among negatives is forced to " +
+    "<strong>" + F(bal.forcedGap) + "</strong>. The only way out is <code>E[c|Y=1] = 1</code>: a " +
+    "score that is certain about every positive.";
+
+  // ---------------------------------------------------------------- unawareness
+  $("tblUnaware").innerHTML = tbl(["what was checked", "value"], [
+    ["fields on the policy object", "<code>" + un.policyFields + "</code>" +
+      (un.blind ? " <span class='ok'>&mdash; no group field</span>" : " <span class='bad'>&mdash; leaks</span>")],
+    ["the score's AUC for predicting the group", F(un.proxyAuc, 6)],
+    ["total-variation distance between the score distributions", F(un.tvd, 6)],
+    ["the largest flag-rate gap available to a blind rule", F(un.bound, 6)],
+    ["the flag-rate gap actually deployed", F(un.gapSel, 6)],
+    ["the precision gap actually deployed", F(un.gapPpv, 6)],
+    ["the NPV gap actually deployed", F(un.gapNpv, 6)],
+    ["the product identity, in exact rationals", Z(un.identity)],
+    ["the bound identity, in exact rationals", Z(un.boundIdentity)]
+  ]);
+  $("flagUnaware").innerHTML =
+    "The attribute is not an input and was never an input. Every gap above is what a model that " +
+    "cannot see the group produces anyway, and the size of it is fixed by how visible the group is " +
+    "in the score &mdash; here an AUC of " + F(un.proxyAuc, 4) + ", which sounds like nothing.";
+
+  // ---------------------------------------------------------------- enumeration
+  const wits = en.main.witnesses.length;
+  $("tblEnum").innerHTML = tbl(
+    ["what was enumerated", "margin pairs", "confusion-matrix pairs", "all three equal",
+     "of those: PPV = 1", "PPV = 0", "undefined", "NON-DEGENERATE"],
+    [
+      { cls: "same3", cells: ["one pair: n = " + en.n + ", P<sub>A</sub> = " + en.PA + ", P<sub>B</sub> = " + en.PB,
+        1, grp(en.main.total), en.main.all3, en.main.ppv1, en.main.ppv0, en.main.undef,
+        en.main.nondeg === 0 ? "<span class='ok'>0</span>" : "<span class='bad'>" + en.main.nondeg + "</span>"] },
+      ["every pair of UNEQUAL margins at n = " + en.n, en.family.combos, grp(en.family.pairs),
+        en.family.all3, "&mdash;", "&mdash;", "&mdash;",
+        en.family.nondeg === 0 ? "<span class='ok'>0</span>" : "<span class='bad'>" + en.family.nondeg + "</span>"],
+      { cls: "same", cells: ["the CONTROL: every pair of EQUAL margins at n = " + en.n, en.control.combos,
+        grp(en.control.pairs), en.control.all3, "&mdash;", "&mdash;", "&mdash;",
+        en.control.nondeg > 0 ? "<span class='ok'>" + grp(en.control.nondeg) + "</span>"
+                              : "<span class='bad'>0</span>"] },
+      ["exactly two of the three equal, in the single pair", "&mdash;", grp(en.main.total),
+        grp(en.main.twoOfThree), "&mdash;", "&mdash;", "&mdash;", "&mdash;"],
+      ["the relation itself, on every matrix of group A", "&mdash;", grp(en.idChecked), "&mdash;",
+        "&mdash;", "&mdash;", "&mdash;", en.idFail === 0 ? "<span class='ok'>0 failed</span>" : "<span class='bad'>" + en.idFail + " failed</span>"],
+      ["equal PPV and equal TPR &rArr; FPR ratio = odds ratio", "&mdash;", grp(eo.checked), "&mdash;",
+        "&mdash;", "&mdash;", "&mdash;", eo.checked === 0 ? "<span class='dim'>no witness at these margins</span>"
+          : (eo.bad === 0 ? "<span class='ok'>0 disagreed</span>" : "<span class='bad'>" + eo.bad + "</span>")]
+    ]);
+  $("flagEnum").innerHTML =
+    "<strong>" + grp(en.family.pairs) + "</strong> pairs of integer confusion matrices over <strong>" +
+    en.family.combos + "</strong> pairs of unequal margins contain <strong>" + en.family.nondeg +
+    "</strong> non-degenerate simultaneous solutions. Every survivor is one of the two degenerate " +
+    "escapes the algebra predicts: flag only true positives, or flag only false positives. The " +
+    "control is what makes that zero mean something &mdash; set the base rates <em>equal</em> and " +
+    "the same loop finds <strong>" + grp(en.control.nondeg) + "</strong>. And the FPR ratio among " +
+    "equal-precision, equal-recall matrices is <strong>" + F(eo.target, 6) + "</strong> = " +
+    F(eo.oddsA, 5) + " / " + F(eo.oddsB, 5) + ", read off the enumeration rather than from the " +
+    "algebra &mdash; on " + grp(eo.checked) + " witness" + (eo.checked === 1 ? "" : "es") +
+    " at these margins, " + eo.bad + " of which disagreed." +
+    (wits ? " <span class='bad'>" + wits + " unexpected witnesses.</span>" : "");
+
+  // ---------------------------------------------------------------- price
+  $("tblPrice").innerHTML = tbl(
+    ["group B's skill t<sub>B</sub>", "AUC A", "AUC B", "AUC gap", "unconstrained accuracy",
+     "cuts", "best equalised-odds accuracy", "randomised?", "the price"],
+    price.map(function(r){
+      return { cls: r.same ? "same3" : "", cells: [
+        r.tiltB, F(r.aucA, 6), F(r.aucB, 6), risZero(r.aucGap) ? "<span class='ok'>0</span>" : F(r.aucGap, 6),
+        F(r.free, 6), r.freeCuts ? r.freeCuts.join(" / ") : "&mdash;", F(r.eq, 6),
+        r.randomised ? "yes" : "no", F(r.price, 6)] };
+    }));
+  $("flagPrice").innerHTML =
+    "At <code>t<sub>B</sub> = " + c.tilt + "</code> the two curves coincide, so equalised odds is " +
+    "reachable with one cut &mdash; and the price is still <strong>" + F(price[0].price, 6) +
+    "</strong>, the same number as the price of group-blindness above, because a single cut is what " +
+    "equalised odds reduces to when the curves agree. Weaken group B's model and the price grows to " +
+    "<strong>" + F(price[price.length - 1].price, 6) + "</strong> at <code>t<sub>B</sub> = " +
+    price[price.length - 1].tiltB + "</code>, where group B's AUC is " +
+    F(price[price.length - 1].aucB, 4) + ". Reachable and free are different words.";
+
+  // ---------------------------------------------------------------- identities
+  $("tblIdent").innerHTML = tbl(["identity", "exact residual", "as a double", "note"],
+    ident.rows.map(function(r){
+      return [r.name, Z(r.exact), r.flo === 0 ? "0" : sci(r.flo, 1), "<span class='dim'>" + r.note + "</span>"];
+    }));
+  $("flagIdent").innerHTML = ident.allOk
+    ? "All " + ident.rows.length + " residuals are BigInt zeros, not small doubles. Each row is a " +
+      "statement that was derived on the UNDERSTAND tab and is checked here rather than asserted."
+    : "<span class='bad'>" + ident.rows.filter(function(r){ return !r.ok; }).length +
+      " identities are not exactly zero. That is a bug in the engine or in the claim, and the row says which.</span>";
+
+  // ---------------------------------------------------------------- sampled
+  const zSel = fs.sel.se > 0 ? (fs.sel.mean - fs.exSel) / fs.sel.se : null;
+  const zPpv = fs.ppv.se > 0 ? (fs.ppv.mean - fs.exPpv) / fs.ppv.se : null;
+  $("tblSample").innerHTML = tbl(
+    ["quantity at cut j = " + fs.j, "exact (closed form)", "measured mean", "standard error", "z", "sign correct"],
+    [
+      ["flag-rate gap", FN(fs.exSel, 6), FN(fs.sel.mean, 6), FN(fs.sel.se, 6), FN(zSel, 2), PC(R(BigInt(Math.round(1e6 * fs.signOk)), 1000000n), 1)],
+      ["precision gap", FN(fs.exPpv, 6), FN(fs.ppv.mean, 6), FN(fs.ppv.se, 6), FN(zPpv, 2),
+        fs.ppvSignOk === null ? "&ndash;" : (100 * fs.ppvSignOk).toFixed(1) + "%"],
+      ["group B's precision", FN(fs.exPpvB, 6), FN(fs.ppvB.mean, 6), FN(fs.ppvB.se, 6),
+        fs.ppvB.se > 0 ? FN((fs.ppvB.mean - fs.exPpvB) / fs.ppvB.se, 2) : "&ndash;", "&mdash;"],
+      ["per-replication spread of the flag-rate gap", "&mdash;", FN(fs.sel.sd, 6), "&mdash;", "&mdash;", "&mdash;"]
+    ]);
+  $("tblGuard").innerHTML = tbl(
+    ["seed stream", "families", "replications each", "mean z against the exact gap", "sd of z", "se of the mean", "mean / se"],
+    [
+      ["multiplicative hash (Day 69's fix)", guard.hashed.families, guard.hashed.per,
+        FN(guard.hashed.meanZ, 3), FN(guard.hashed.sdZ, 3), FN(guard.hashed.seZ, 3), FN(guard.hashed.t, 2)],
+      ["arithmetic stride (Day 69's suspect)", guard.stride.families, guard.stride.per,
+        FN(guard.stride.meanZ, 3), FN(guard.stride.sdZ, 3), FN(guard.stride.seZ, 3), FN(guard.stride.t, 2)]
+    ]);
+  $("flagSample").innerHTML =
+    "The sampler lands on the closed form: z = " + FN(zSel, 2) + " on the flag-rate gap at n = " +
+    fs.n + " per group over " + grp(fs.reps) + " replications. Across " + guard.hashed.families +
+    " seed families the hashed stream sits " +
+    (guard.hashed.t === null ? "&ndash;" : FN(Math.abs(guard.hashed.t), 2)) +
+    " standard errors from zero and the arithmetic stride sits " +
+    (guard.stride.t === null ? "&ndash;" : FN(Math.abs(guard.stride.t), 2)) +
+    " &mdash; the fifth re-measurement of Day 69's stride artefact, the first against a target that " +
+    "is a closed form, and again it does not reproduce. Note what this section cannot do: it " +
+    "estimates every gap to three decimals and says nothing at all about which of them should be zero.";
+
+  // ---------------------------------------------------------------- config sweep
+  const csWorst = cs.rows.slice().sort(function(a, b){ return b.sel - a.sel; }).slice(0, 6);
+  $("tblConfig").innerHTML = tbl(["what was swept", "value"], [
+    ["configurations", grp(cs.configs) + " &mdash; 8 pairs of base rates &times; 5 skill levels &times; 3 bin counts"],
+    ["exact identity checks", grp(cs.checked)],
+    ["non-zero residuals", cs.nonZero === 0 ? "<span class='ok'>0</span>" : "<span class='bad'>" + cs.nonZero + "</span>"],
+    ["worst product-identity residual, as a double", cs.worstSel === 0 ? "<span class='ok'>0</span>" : sci(cs.worstSel, 2)],
+    ["worst relation residual, as a double", cs.worstCh === 0 ? "<span class='ok'>0</span>" : sci(cs.worstCh, 2)],
+    ["worst calibration-law residual, as a double", cs.worstBal === 0 ? "<span class='ok'>0</span>" : sci(cs.worstBal, 2)],
+    ["worst bound-identity residual, as a double", cs.worstBound === 0 ? "<span class='ok'>0</span>" : sci(cs.worstBound, 2)]
+  ]);
+  $("flagConfig").innerHTML =
+    "In exact rationals the only interesting number is the count of residuals that were not zero, " +
+    "so that is what is reported. " + grp(cs.checked) + " checks over " + cs.configs +
+    " configurations, " + cs.nonZero + " non-zero. The double columns are there to show what the " +
+    "same residual would have looked like had it been computed in floating point, which is the " +
+    "failure mode this series has been caught by before.";
+
+  // ================================================================ in-page checks
+  checks = [];
+  T("both groups have the SAME class-conditional score law, element for element",
+    function(){
+      for (let v = 0; v < w.K; v++) if (!req(w.gA.p1[v], w.gB.p1[v]) || !req(w.gA.p0[v], w.gB.p0[v])) return false;
+      return true;
+    });
+  T("each score law sums to exactly 1 &mdash; the binomial theorem, not a tolerance",
+    function(){
+      let s1 = R0, s0 = R0, sS = R0;
+      for (let v = 0; v < w.K; v++) { s1 = radd(s1, w.gA.p1[v]); s0 = radd(s0, w.gA.p0[v]); sS = radd(sS, w.gA.pS[v]); }
+      return req(s1, R1) && req(s0, R1) && req(sS, R1);
+    });
+  T("the AUC gap between the groups is exactly zero", function(){ return risZero(bound.aucGap); });
+  T("flag-rate gap = (prevalence gap) &times; J at EVERY cut, as a BigInt zero",
+    function(){ return sweep.every(function(r){ return risZero(r.identitySel); }); });
+  T("the relation FPR = odds(&pi;)(1&minus;PPV)/PPV(1&minus;FNR) holds exactly on every row of both groups",
+    function(){ return rel.length > 0 && rel.every(function(r){ return risZero(r.exact); }); });
+  T("the largest gap equals the total-variation distance, exactly",
+    function(){ return risZero(bound.exactTvd) && risZero(bound.exactProd); });
+  T("the bound is &ge; every realised gap, and is attained",
+    function(){
+      return sweep.every(function(r){ return rcmp(r.gapSel, bound.maxGap) <= 0; }) &&
+             sweep.some(function(r){ return req(r.gapSel, bound.maxGap); });
+    });
+  T("every rate on the board is inside [0, 1]",
+    function(){
+      return sweep.every(function(r){
+        return [r.mA, r.mB].every(function(m){
+          return [m.tpr, m.fpr, m.sel, m.acc].every(function(x){ return rcmp(x, R0) >= 0 && rcmp(x, R1) <= 0; }) &&
+                 (m.ppv === null || (rcmp(m.ppv, R0) >= 0 && rcmp(m.ppv, R1) <= 0));
+        });
+      });
+    });
+  T("TPR, FPR and the flag rate are non-increasing in the cut, in both groups",
+    function(){
+      for (let i = 1; i < sweep.length; i++) for (const k of ["mA", "mB"])
+        if (rcmp(sweep[i][k].tpr, sweep[i - 1][k].tpr) > 0 ||
+            rcmp(sweep[i][k].fpr, sweep[i - 1][k].fpr) > 0 ||
+            rcmp(sweep[i][k].sel, sweep[i - 1][k].sel) > 0) return false;
+      return true;
+    });
+  T("one cut gives exactly equal TPR and exactly equal FPR &mdash; separation is REACHABLE",
+    function(){ return sweep.every(function(r){ return risZero(r.gapTpr) && risZero(r.gapFpr); }); });
+  T("&hellip; and the precision gap is strictly positive while the NPV gap is strictly negative wherever both are defined",
+    function(){
+      const rows = sweep.filter(function(r){ return r.gapPpv !== null && r.gapNpv !== null; });
+      return rows.length > 0 && rows.every(function(r){ return rcmp(r.gapPpv, R0) > 0 && rcmp(r.gapNpv, R0) < 0; });
+    });
+  T("the bound never decreases as the model improves, over the whole scan",
+    function(){ return mono.steps > 0 && mono.boundDown === 0; });
+  T("&#128308; but the DEPLOYED gap does &mdash; and it does so while accuracy rises, which is the claim that broke",
+    function(){ return mono.deployedDown > 0 && mono.bothWays > 0 && mono.bothWays <= mono.deployedDown; });
+  T("a model with no skill has J exactly 0, and then every gap is exactly 0",
+    function(){
+      const w1 = worldOf(cfgOf(Object.assign({}, c, { tilt: 1 })));
+      return thresholdSweep(w1).every(function(r){
+        return risZero(r.mA.j) && risZero(r.gapSel) && risZero(r.gapTpr) && risZero(r.gapFpr);
+      });
+    });
+  T("the closed-form Bayes cut attains each group's exact maximum accuracy",
+    function(){
+      return w.groups.every(function(g, i){
+        const j = bayes.rows[i].jAcc;
+        if (j === null) return true;
+        let best = null;
+        for (let k = 0; k <= w.K; k++) {
+          const a = metricsOf(g, policy(k, R0)).acc;
+          if (best === null || rcmp(a, best) > 0) best = a;
+        }
+        return req(metricsOf(g, policy(j, R0)).acc, best);
+      });
+    });
+  T("&hellip; and the same for the payoff-optimal cut",
+    function(){
+      return w.groups.every(function(g, i){
+        const j = bayes.rows[i].jUtil;
+        if (j === null) return true;
+        let best = null;
+        for (let k = 0; k <= w.K; k++) {
+          const u = utilOf(metricsOf(g, policy(k, R0)), c.payoff);
+          if (best === null || rcmp(u, best) > 0) best = u;
+        }
+        return req(utilOf(metricsOf(g, policy(j, R0)), c.payoff), best);
+      });
+    });
+  T("group-blindness costs accuracy: the best pair of cuts is never worse than the best single cut",
+    function(){ return rcmp(bayes.priceAcc, R0) >= 0 && rcmp(bayes.priceUtil, R0) >= 0; });
+  T("the shift between the two Bayes cuts equals the calibration-curve shift to 1e&minus;9",
+    function(){ return cal.shiftBins === null || Math.abs(Math.abs(bayes.shift) - Math.abs(cal.shiftBins)) < 1e-9; });
+  T("every solved repair lands on its target EXACTLY, and every randomisation weight is a probability",
+    function(){
+      const okQ = function(p){ return p && rcmp(p.q, R0) >= 0 && rcmp(p.q, R1) <= 0; };
+      return rep.rows.every(function(r){
+        if (!r.mA) return true;
+        if (!okQ(r.polA) || !okQ(r.polB)) return false;
+        if (r.targets === "TPR") return risZero(r.gapTpr);
+        if (r.targets === "TPR and FPR") return risZero(r.gapTpr) && risZero(r.gapFpr);
+        if (r.targets === "flag rate") return risZero(r.gapSel);
+        if (r.targets === "precision") return risZero(r.gapPpv);
+        return true;
+      });
+    });
+  T("wherever the control flags anybody, demographic parity opens a TPR gap and an FPR gap that were both exactly zero",
+    function(){
+      if (!parity || !parity.mA || risZero(base.gapSel)) return true;
+      return rcmp(rabs(parity.gapTpr), R0) > 0 && rcmp(rabs(parity.gapFpr), R0) > 0;
+    });
+  T("&hellip; and strictly widens the precision gap it was not asked about",
+    function(){
+      if (!parity || !parity.mA || risZero(base.gapSel) || base.gapPpv === null || parity.gapPpv === null) return true;
+      return rcmp(rabs(parity.gapPpv), rabs(base.gapPpv)) > 0;
+    });
+  T("predictive parity strictly widens the flag-rate gap and strictly cuts group B's recall",
+    function(){
+      if (!predP || !predP.mA || risZero(base.gapSel)) return true;
+      return rcmp(rabs(predP.gapSel), rabs(base.gapSel)) > 0 && rcmp(predP.dTprB, R0) < 0;
+    });
+  T("precision cannot be lowered below a group's own base rate, which is why one direction is missing",
+    function(){
+      return w.groups.every(function(g){
+        return req(ppvFloor(g), g.pi) && rcmp(metricsOf(g, policy(0, R0)).ppv, g.pi) === 0;
+      });
+    });
+  T("the enumeration finds ZERO non-degenerate simultaneous solutions, for every pair of unequal margins",
+    function(){ return en.family.combos > 0 && en.family.nondeg === 0 && en.main.nondeg === 0; });
+  T("&hellip; and the equal-base-rate CONTROL finds many, so the zero is about the base rates",
+    function(){ return en.control.nondeg > 0; });
+  T("every simultaneous solution found is degenerate for one of the two predicted reasons",
+    function(){ return en.main.all3 === en.main.ppv1 + en.main.ppv0 + en.main.undef + en.main.nondeg && en.main.nondeg === 0; });
+  T("the relation holds on every enumerated matrix, and the FPR ratio equals the odds ratio on every witness there is",
+    function(){ return en.idFail === 0 && eo.bad === 0 && req(eo.target, rdiv(eo.oddsA, eo.oddsB)); });
+  T("exactly two of the three equalities is achievable in many matrices, three in none",
+    function(){ return en.main.twoOfThree > 0; });
+  T("a calibrated score averages to the base rate, and E[c|Y=0] = odds(&pi;)(1&minus;E[c|Y=1]), in both groups",
+    function(){ return bal.rows.every(function(r){ return risZero(r.meanIsPi) && risZero(r.x0Exact) && risZero(r.lawExact); }); });
+  T("the two calibration curves differ by ONE odds ratio at every bin, and it is odds(&pi;<sub>A</sub>)/odds(&pi;<sub>B</sub>)",
+    function(){ return cal.oddsRatioSame && risZero(cal.oddsRatioResidual); });
+  T("shipping one group's calibration map to the other is biased ENTIRELY one way",
+    function(){ return req(pooled.rows[1].ece, rabs(pooled.rows[1].bias)) && rcmp(pooled.rows[1].ece, R0) > 0; });
+  T("the pooled map is wrong in BOTH groups, in opposite directions",
+    function(){ return rcmp(rmul(pooled.rows[2].bias, pooled.rows[3].bias), R0) < 0; });
+  T("the policy object carries no group field", function(){ return un.blind; });
+  T("the price of equalised odds is never negative, and is the price of blindness when the curves coincide",
+    function(){
+      return price.every(function(r){ return r.price === null || rcmp(r.price, R0) >= 0; }) &&
+             req(price[0].price, bayes.priceAcc);
+    });
+  T("every identity in the identity table is a BigInt zero", function(){ return ident.allOk; });
+  T("the sampler lands on the closed form within 4 standard errors",
+    function(){
+      if (fs.sel.se === 0) return Math.abs(fs.sel.mean - fs.exSel) < 1e-12;
+      return zSel !== null && Math.abs(zSel) < 4;
+    });
+  T("both seed streams have a mean z inside 3 standard errors of zero against an EXACT target",
+    function(){
+      const okOne = function(s){ return s.t === null ? (s.families === 0) : Math.abs(s.t) < 3; };
+      return okOne(guard.hashed) && okOne(guard.stride);
+    });
+  T("the configuration sweep finds zero non-zero residuals over every check",
+    function(){ return cs.checked > 0 && cs.nonZero === 0; });
+
+  const passed = checks.filter(function(k){ return k.ok; }).length;
+  $("selftest").innerHTML =
+    "<p style='margin:0 0 8px; font-weight:800' class='" + (passed === checks.length ? "ok" : "bad") +
+    "'>" + passed + " / " + checks.length + " checks passed</p><ul class='checks'>" +
+    checks.map(function(k){
+      return "<li>" + (k.ok ? "<span class='ok'>PASS</span>" : "<span class='bad'>FAIL</span>") +
+        " &nbsp;" + k.label + "</li>";
+    }).join("") + "</ul>";
+
+  // ---------------------------------------------------------------- the lede, filled from the run
+  $("hlPiA").textContent = c.piA + "%";
+  $("hlPiB").textContent = c.piB + "%";
+  $("hlTpr").textContent = F(base.mA.tpr);
+  $("hlFpr").textContent = F(base.mA.fpr);
+  $("hlSelA").innerHTML = PC(base.mA.sel);
+  $("hlSelB").innerHTML = PC(base.mB.sel);
+  $("hlGap").textContent = F(base.gapSel);
+  $("hlTvd").textContent = F(bound.tvd, 6);
+  $("hlPpvA").textContent = F(base.mA.ppv);
+  $("hlPpvB").textContent = F(base.mB.ppv);
+  $("hlPpvRatio").innerHTML = (base.mA.ppv && base.mB.ppv)
+    ? F(rdiv(base.mA.ppv, base.mB.ppv), 2) + "&times;" : "&ndash;";
+  $("hlEnum").textContent = grp(en.family.pairs);
+  $("hlCombos").textContent = en.family.combos;
+  $("hlCtl").textContent = grp(en.control.nondeg);
+  $("hlParityPpv").textContent = parity ? F(parity.gapPpv) : "&ndash;";
+  $("hlPpTpr0").textContent = F(rep.mB0.tpr);
+  $("hlPpTpr").textContent = (predP && predP.mA) ? F(predP.mB.tpr) : "no policy";
+  $("hlBayesCuts").textContent = bayes.pairAcc.ja + " and " + bayes.pairAcc.jb;
+  $("hlPrice").textContent = F(bayes.priceAcc, 6);
+  $("hlMono").textContent = mono.boundDown;
+  $("hlSteps").textContent = mono.steps;
+  $("hlBoth").textContent = mono.bothWays;
+}
+
+// A full render is a few seconds of exact BigInt sums, two enumerations and one sampling pass, so
+// slider drags are debounced rather than raced.
+let pending = null;
+function scheduleRender(){
+  if (pending) clearTimeout(pending);
+  pending = setTimeout(function(){ pending = null; render(); }, 240);
+}
+["sBins", "sTilt", "sPiA", "sPiB", "sWA", "sPayoff", "sNSmall", "sN", "sReps", "sSeeds"]
+  .forEach(function(id){ $(id).addEventListener("input", scheduleRender); });
+render();
+</script>
+</body>
+</html>

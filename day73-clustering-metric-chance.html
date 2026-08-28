@@ -1,0 +1,1888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero &middot; Day 73 &mdash; What does a clustering score of 0.50 mean?</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --ink:#0f172a; --ink2:#334155; --dim:#64748b; --dim2:#94a3b8;
+    --line:#e2e8f0; --bg:#f1f5f9; --bg2:#f8fafc; --white:#fff;
+    --sky:#0369a1; --amber:#fffbeb; --amberL:#f59e0b; --amberT:#78350f;
+    --blue:#eff6ff; --violet:#f5f3ff; --rose:#fff1f2; --green:#f0fdf4;
+  }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--bg2); color:var(--ink); line-height:1.6;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.92em;
+         background:#e8eef6; padding:1px 4px; border-radius:4px; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; line-height:1.55;
+        font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre code { background:none; padding:0; color:inherit; }
+  h1,h2,h3 { line-height:1.25; margin:0; }
+  p { margin:0 0 .85em; }
+  header.top { background:var(--white); border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .wrap { max-width:1150px; margin:0 auto; padding:16px; }
+  @media (min-width:768px) { .wrap { padding:24px; } }
+  .kicker { font-size:11px; font-weight:800; letter-spacing:.16em; color:var(--sky);
+            margin:0 0 8px; text-transform:uppercase; }
+  h1.lede { font-size:17px; font-weight:800; margin-bottom:14px; }
+  @media (min-width:768px) { h1.lede { font-size:19px; } }
+  h1.lede em { font-style:italic; }
+  #tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  #tabs button { font:inherit; font-size:13px; font-weight:700; cursor:pointer;
+                 border:0; padding:8px 18px; border-radius:9px; background:var(--bg); color:var(--ink); }
+  #tabs button.tab-active { background:#0f172a; color:#fff; }
+  .panel { display:block; }
+  .panel.hidden { display:none; }
+  .sheet { min-height:calc(100vh - 78px); padding:16px; background:var(--bg); }
+  @media (min-width:768px) { .sheet { padding:32px; } }
+  .sheet.plain { background:var(--white); }
+  .sheet.soft  { background:var(--bg2); }
+  .col { max-width:1150px; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+  .col.narrow { max-width:760px; gap:22px; }
+  .card { background:var(--white); border-radius:16px; padding:20px;
+          box-shadow:0 1px 3px rgba(15,23,42,.09), 0 1px 2px rgba(15,23,42,.05); }
+  .ctl { display:grid; gap:6px 24px; grid-template-columns:1fr; }
+  @media (min-width:700px)  { .ctl { grid-template-columns:1fr 1fr; } }
+  @media (min-width:1000px) { .ctl { grid-template-columns:1fr 1fr 1fr; } }
+  .ctl label { font-size:13px; display:block; }
+  .ctl input[type=range] { width:100%; margin:2px 0 0; }
+  .ctl .val { float:right; font-weight:700; font-variant-numeric:tabular-nums; }
+  .eyebrow { font-size:11px; font-weight:800; letter-spacing:.09em; color:var(--dim);
+             margin:0 0 4px; text-transform:uppercase; }
+  .say { font-size:13.5px; color:var(--ink2); margin:0 0 12px; }
+  .tiny { font-size:12px; color:var(--dim); }
+  .scroll { overflow-x:auto; }
+  table.num { width:100%; border-collapse:collapse; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:var(--dim); text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; white-space:normal; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  .ok   { color:#166534; font-weight:800; }
+  .bad  { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim  { color:var(--dim2); }
+  .same  { background:var(--blue); }
+  .same2 { background:var(--violet); }
+  .same3 { background:var(--green); }
+  .flag { font-size:13.5px; margin:12px 0 0; padding:12px; border-radius:9px;
+          background:var(--amber); border-left:4px solid var(--amberL); color:var(--amberT); }
+  .flag.blue { background:var(--blue); border-left-color:#3b82f6; color:#1e3a8a; }
+  .flag.rose { background:var(--rose); border-left-color:#f43f5e; color:#881337; }
+  ul.checks { list-style:none; margin:0; padding:0; font-size:13px; color:var(--ink2); }
+  ul.checks li { padding:1px 0; }
+  .foot { border-top:1px solid var(--line); background:var(--white); }
+  .foot .wrap { font-size:12.5px; color:var(--dim); }
+  .foot a { color:var(--sky); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <p class="kicker">MachineLearningFromZero &middot; Day 73</p>
+    <h1 class="lede">
+      &#129513; What does a clustering score of 0.50 mean? &mdash; Days 4, 15, 22, 25 and 49 built
+      clustering algorithms and every one of them ended by printing a number. This page is about the
+      number. Score two labellings of the same items against each other and the whole input is a
+      contingency table, so the <strong>chance level is a finite sum</strong> rather than something
+      you shuffle for &mdash; and it is not zero. Under the fixed-margin permutation null the
+      expected mutual information has a closed form, and a labelling that knows <em>nothing at
+      all</em> about the truth scores an exact <strong id="hlChance">0.5637</strong> on homogeneity at
+      <code>k' = 100</code> on <span id="hlN2">240</span> items. So here is the comparison that
+      matters: a uniformly random <strong id="hlKp">93</strong>-cluster labelling scores homogeneity
+      <strong id="hlRand">0.5033</strong> while a clustering that genuinely gets half the items right
+      scores <strong id="hlHalf">0.3118</strong> &mdash; and on the same two tables the
+      chance-corrected controls read <strong id="hlAri">0.0003 against 0.2919</strong>, the right way
+      round, and by <strong id="hlRatio">0.29</strong> of the index&rsquo;s range. The exact <code>k'</code> at which pure
+      chance overtakes that half-right clustering is <strong id="hlThr">50</strong> for homogeneity,
+      <strong id="hlThrG">92</strong> geometric, <strong id="hlThrA">116</strong> arithmetic, and
+      <strong>never</strong> for ARI or AMI, whose chance level is exactly 0 &mdash; a fact rather
+      than a convention. Then the version of this that ships in papers: <span id="hlN">240</span>
+      points on a line with <span id="hlK">5</span> real clusters, the <em>exactly optimal</em>
+      k-means solution at every k from 1 to n by dynamic programming, and k chosen by maximising the
+      agreement score. Homogeneity, purity and both min-normalised scores all choose
+      <strong id="hlArg">k = 240</strong> &mdash; one point per cluster &mdash; completeness chooses
+      <strong>k = 1</strong>, and V-measure, NMI, ARI and AMI choose <strong id="hlArg5">5</strong>.
+      The chance correction fixes the <em>mean</em> and not the <em>normaliser</em>: adjusted mutual
+      information under <code>min</code> normalisation is exactly
+      <strong>1.000000000000</strong> for every refinement of the truth &mdash; 23 clusters, 42, 61,
+      121 &mdash; because numerator and denominator are the same number term for term, and at the
+      singleton limit both are exactly zero and the machine prints
+      <strong id="hlNoise">0.9882</strong>, the quotient of two rounding errors. Everything labelled
+      exact is enumerated or summed: all <strong id="hlTables">2,211</strong> tables with the given
+      margins, weighted by the multiple hypergeometric law, reproduce the closed-form
+      <code>E[MI]</code> to <strong id="hlAgree">1.6e-15</strong> and give <code>E[ARI]</code> to
+      <strong id="hlAriZero">6.3e-17</strong> of zero.
+      Pure vanilla JavaScript, one file, no build step.
+    </h1>
+    <div id="tabs">
+      <button data-tab="look" class="tab-active">&#128202; MEASURE</button>
+      <button data-tab="understand">&#129504; UNDERSTAND</button>
+      <button data-tab="build">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================================ MEASURE -->
+<section id="look" class="panel">
+  <div class="sheet">
+    <div class="col">
+
+      <div class="card">
+        <div class="ctl">
+          <label>points <code>n</code> <span class="val" id="vN">240</span>
+            <input id="sN" type="range" min="120" max="360" step="20" value="240"></label>
+          <label>true clusters <code>k</code> <span class="val" id="vK">5</span>
+            <input id="sK" type="range" min="3" max="8" step="1" value="5"></label>
+          <label>cluster size skew <span class="val" id="vSkew">0.50</span>
+            <input id="sSkew" type="range" min="0" max="0.8" step="0.05" value="0.5"></label>
+          <label>separation in &sigma; <span class="val" id="vSep">3.0</span>
+            <input id="sSep" type="range" min="1" max="4" step="0.1" value="3"></label>
+          <label>clusters in the random labelling <code>k'</code> <span class="val" id="vKp">100</span>
+            <input id="sKp" type="range" min="4" max="200" step="2" value="100"></label>
+          <label>fraction of labels moved (the control) <span class="val" id="vMoved">0.50</span>
+            <input id="sMoved" type="range" min="0.1" max="0.9" step="0.05" value="0.5"></label>
+          <label>items in the enumerated world <span class="val" id="vSmall">30</span>
+            <input id="sSmall" type="range" min="18" max="36" step="3" value="30"></label>
+          <label>level &alpha; for the permutation test <span class="val" id="vAlpha">0.050</span>
+            <input id="sAlpha" type="range" min="0.005" max="0.15" step="0.005" value="0.05"></label>
+          <label>replications <span class="val" id="vReps">1500</span>
+            <input id="sReps" type="range" min="500" max="4000" step="250" value="1500"></label>
+          <label>seeds in the audit <span class="val" id="vSeeds">25</span>
+            <input id="sSeeds" type="range" min="8" max="40" step="1" value="25"></label>
+        </div>
+        <p class="tiny" style="margin-top:12px">
+          The data is <span id="wN">240</span> points on a line: cluster <code>g</code> sits at
+          <code>g&times;</code><span id="wSep">3.0</span><code>&sigma;</code> and its members are
+          placed at <em>its own quantiles</em>, so there is no seed anywhere in the dataset and no
+          run-to-run noise to hide behind. True sizes <strong id="wSizes">83/60/44/31/22</strong>,
+          <code>H(U) = <span id="wHU">1.5082</span></code> nats against
+          <code>ln n = <span id="wLogN">5.4806</span></code>. Every candidate clustering meets the
+          truth through a contingency table, and everything labelled <em>exact</em> is a finite sum:
+          a closed form, or an enumeration of every table with the given margins. Monte Carlo columns
+          say so and carry a standard error. The audit uses <span id="seedWord">25</span> seeds and
+          <span id="repWord">1,500</span> replications.
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">choose k by maximising the score</p>
+        <p class="say" id="headline">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblSweep"></table></div>
+        <p class="flag" id="flagSweep">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">where each metric puts its maximum</p>
+        <p class="say">The same sweep read the other way. <code>k'</code> runs from 1 to
+          <span id="argN">240</span> and the clustering at each <code>k'</code> is the exact minimiser
+          of the within-cluster sum of squares, found by dynamic programming rather than by Lloyd's
+          algorithm, so no row here is a local optimum or a lucky restart. The last columns are what
+          the metric reports at the true k, for the same money.</p>
+        <div class="scroll"><table class="num" id="tblArg"></table></div>
+        <p class="flag rose" id="flagArg">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the chance level, in closed form</p>
+        <p class="say">Fix both margins and permute the labels. The normaliser of every score in the
+          mutual-information family is then a constant, so <code>E[NMI] = E[MI]/norm</code> exactly,
+          and <code>E[MI]</code> is a sum over the hypergeometric support. Nothing is shuffled.
+          <code>E[ARI]</code> is exactly 0 by construction, which is the entire point of the
+          adjustment. The last column is the folklore approximation
+          <code>(r&minus;1)(c&minus;1)/2n</code>.</p>
+        <div class="scroll"><table class="num" id="tblChance"></table></div>
+        <p class="flag" id="flagChance">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">a candidate board, and the inversion in it</p>
+        <div class="scroll"><table class="num" id="tblBoard"></table></div>
+        <p class="flag" id="flagBoard">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">how many clusters chance needs in order to win</p>
+        <p class="say">The control is fixed: a clustering with the true number of clusters and
+          <span id="movedWord">50</span>% of its labels reassigned at random &mdash; a genuinely
+          half-right answer, scored on the same items. Then <code>k'</code> is raised until the
+          <em>exact chance level</em> of a labelling that knows nothing overtakes it.</p>
+        <div class="scroll"><table class="num" id="tblThr"></table></div>
+        <p class="flag" id="flagThr">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">the exact permutation null, by enumeration</p>
+        <p class="say">Every table with the given margins, weighted by the multiple hypergeometric
+          law &mdash; which <em>is</em> the law of the table under a uniform random relabelling. So
+          this is the permutation null with no permutations in it, and it gives the whole
+          distribution rather than a mean. The closed form is checked against it in the
+          <span class="same">shaded</span> columns.</p>
+        <div class="scroll"><table class="num" id="tblEnum"></table></div>
+        <p class="flag" id="flagEnum">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">an exact p-value instead of a rule of thumb</p>
+        <p class="say">A deterministic corruption path: walk the items in an interleaved order and
+          shift each one class along. No seed and no sampling, so the only randomness in the row is
+          the null it is compared against &mdash; and that null is enumerated, so the p-value is
+          exact rather than estimated.</p>
+        <div class="scroll"><table class="num" id="tblPath"></table></div>
+        <p class="say" style="margin-top:14px">And the same world corrupted <em>at random</em> rather
+          than cyclically, because the cyclic path preserves too much structure to ever reach chance.
+          One seed, so this table is where the p-value crosses &alpha; and not a smooth curve.</p>
+        <div class="scroll"><table class="num" id="tblNoise"></table></div>
+        <p class="flag blue" id="flagPath">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">chance correction fixes the mean, not the normaliser</p>
+        <p class="say">A <em>refinement</em> of the truth &mdash; split every true class into pieces
+          and never merge across classes &mdash; determines the truth exactly, so
+          <code>MI = H(U)</code> however small the pieces get. Watch what each normaliser does with
+          that, before and after the chance level is subtracted.</p>
+        <div class="scroll"><table class="num" id="tblRef"></table></div>
+        <p class="flag rose" id="flagRef">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">two different nulls, and only one of them is the one you get</p>
+        <div class="scroll"><table class="num" id="tblNulls"></table></div>
+        <p class="flag" id="flagNulls">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">identities that have to hold exactly</p>
+        <div class="scroll"><table class="num" id="tblId"></table></div>
+        <p class="flag" id="flagId">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">seeds, against a known answer</p>
+        <div class="scroll"><table class="num" id="tblGuard"></table></div>
+        <p class="flag" id="flagGuard">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">in-page checks</p>
+        <div id="selftest"></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ UNDERSTAND -->
+<section id="understand" class="panel hidden">
+  <div class="sheet plain">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">What does a clustering score mean?</h2>
+
+      <h3 style="font-size:19px; font-weight:800">0. Why this and not another algorithm</h3>
+      <p>This series has built k-means, DBSCAN, a Gaussian mixture with EM, hierarchical clustering
+      and spectral clustering, and every one of those days ended the same way: a number was printed
+      and the number was good, so the algorithm worked. Day 72 stepped out of an identification arc
+      to ask whether an experiment was big enough. This one asks the question underneath all five
+      clustering days at once &mdash; what the printed number is a number <em>of</em> &mdash; and it
+      turns out to be answerable in closed form, because the score does not see the data. It sees a
+      contingency table of counts, and the space of tables with fixed margins is finite.</p>
+
+      <h3 style="font-size:19px; font-weight:800">1. The score never touches the data</h3>
+      <p>Take the truth <code>U</code> with <code>r</code> classes and a candidate clustering
+      <code>V</code> with <code>c</code> clusters. Cross-tabulate: <code>n<sub>ij</sub></code> is the
+      number of items in class <code>i</code> and cluster <code>j</code>, with margins
+      <code>a<sub>i</sub></code> and <code>b<sub>j</sub></code>. Every external clustering metric in
+      common use &mdash; mutual information and its four normalisations, homogeneity, completeness,
+      V-measure, purity, the Rand index, adjusted Rand, Fowlkes&ndash;Mallows, Jaccard, variation of
+      information &mdash; is a function of that table and nothing else. Two completely different
+      datasets that produce the same table get the same score, by construction.</p>
+      <p>That is what makes the chance level computable. &ldquo;What would this score be if the
+      clustering knew nothing?&rdquo; becomes a question about a finite set of integer matrices, and
+      the natural null is: hold both margins fixed and permute the labels. The table is then
+      multiple-hypergeometric, and expectations are sums.</p>
+
+      <h3 style="font-size:19px; font-weight:800">2. Two families, two different defects</h3>
+      <p>The pair-counting family counts pairs of items. With
+      <code>S = &Sigma; C(n<sub>ij</sub>,2)</code>, <code>A = &Sigma; C(a<sub>i</sub>,2)</code>,
+      <code>B = &Sigma; C(b<sub>j</sub>,2)</code> and <code>P = C(n,2)</code>, the Rand index is
+      <code>(P &minus; A &minus; B + 2S)/P</code> and</p>
+      <pre><code>E[S] = A B / P            (exact, under fixed margins)
+ARI  = (S - A B / P) / ((A+B)/2 - A B / P)</code></pre>
+      <p>so the adjusted Rand index is the raw agreement with its chance level subtracted and its
+      range rescaled. Given the margins the denominator is a <em>constant</em>, so
+      <code>E[ARI] = 0</code> exactly &mdash; not approximately, not on average over datasets, but
+      exactly, for every pair of margins.</p>
+      <p>The information family measures how much knowing the cluster tells you about the class.
+      <code>MI</code> has a chance level too, and it is not zero and not small:</p>
+      <pre><code>E[MI] = sum_i sum_j sum_q (q/n) ln(n q / (a_i b_j)) * P_hyper(q; n, a_i, b_j)</code></pre>
+      <p>That is Vinh, Epps and Bailey's formula, and it is what the MEASURE tab computes. The
+      folklore shortcut <code>(r&minus;1)(c&minus;1)/2n</code> comes from the chi-square
+      approximation to <code>2n&middot;MI</code>, and it is wrong by tens of percent in both
+      directions &mdash; 16% low at <code>k' = 32</code> and 32% high at <code>k' = n</code> on the
+      default world &mdash; so the page prints both.</p>
+
+      <h3 style="font-size:19px; font-weight:800">3. Splitting is free, and three metrics pay for it</h3>
+      <p>Here is the mechanism behind the whole page in one line. If <code>V</code> is a
+      <em>refinement</em> of <code>U</code> &mdash; every cluster sits inside one class &mdash; then
+      <code>V</code> determines <code>U</code>, so <code>H(U|V) = 0</code> and
+      <code>MI = H(U)</code> exactly. Not nearly; exactly, and independently of how small the pieces
+      are. Homogeneity is defined as <code>1 &minus; H(U|V)/H(U)</code>, which is
+      <code>MI/H(U)</code>, so homogeneity is <strong>1.000</strong> for every refinement including
+      the one with <code>n</code> clusters of one item each. Purity is 1 there too. And because
+      <code>H(V) &ge; H(U)</code> for any refinement, <code>min(H(U),H(V)) = H(U)</code>, so
+      NMI under <code>min</code> normalisation is also exactly 1.</p>
+      <p>Completeness, <code>MI/H(V)</code>, has the mirror-image defect: it is 1 for the single
+      cluster containing everything. That is why V-measure exists &mdash; it is the harmonic mean of
+      the two, and the harmonic mean of <code>MI/H(U)</code> and <code>MI/H(V)</code> is exactly
+      <code>2MI/(H(U)+H(V))</code>, which is NMI with arithmetic normalisation. Two metrics that
+      appear in different papers under different names are the same function; the page asserts it at
+      1e-15 and measures 1.1e-16.</p>
+
+      <h3 style="font-size:19px; font-weight:800">4. The number that made this page</h3>
+      <p>Adjusting for chance is supposed to fix this, and for the pair-counting family it does. For
+      the information family it fixes only half the problem, because the adjustment is</p>
+      <pre><code>AMI = (MI - E[MI]) / (norm - E[MI])</code></pre>
+      <p>and the normaliser is still in there. Take any refinement again. The numerator is
+      <code>H(U) &minus; E[MI]</code>. Under <code>min</code> normalisation the denominator is
+      <code>min(H(U),H(V)) &minus; E[MI] = H(U) &minus; E[MI]</code> &mdash; the same number, term
+      for term. So <strong>AMI is exactly 1.000000000000 for every refinement of the truth</strong>:
+      two dozen clusters or a hundred and twenty, all of them a perfect score from a
+      chance-corrected metric. And at the
+      singleton limit <code>E[MI] = H(U)</code> as well, because with every column margin equal to 1
+      every relabelling gives the same table up to permutation, so numerator and denominator are both
+      exactly zero. The machine then divides one rounding error by another and reports 0.988, or
+      1.007 on a balanced world, or whatever the last bit happens to be. The page prints the numerator and the
+      denominator next to the answer so this is visible rather than argued.</p>
+
+      <h3 style="font-size:19px; font-weight:800">5. Choosing k with the metric</h3>
+      <p>The MEASURE tab does the thing benchmark tables do. Points on a line, five real clusters,
+      and for every <code>k</code> from 1 to <code>n</code> the <em>exactly optimal</em> k-means
+      partition &mdash; one-dimensional k-means has an exact dynamic program, so there are no
+      restarts, no seeds and no local minima to blame. Then pick the <code>k</code> whose clustering
+      the metric likes best.</p>
+      <p>Homogeneity picks <code>k = n</code>. Purity picks <code>k = n</code>. NMI and AMI under
+      <code>min</code> normalisation pick <code>k = n</code>. Completeness picks <code>k = 1</code>.
+      V-measure, NMI (arithmetic &mdash; scikit-learn's current default), ARI and AMI pick the true
+      <code>k</code>. That is not a subtle bias to be corrected with a penalty term; it is four
+      shipped metrics whose maximum over the whole family is the degenerate answer.</p>
+      <p>And the reason is worth having, because it says which metrics are <em>safe</em> rather than
+      merely which ones passed this time. The degenerate answer's score is itself a closed form: at
+      <code>k' = n</code> homogeneity, purity and both min-normalised scores are 1, geometric NMI is
+      <code>&radic;(H(U)/ln n)</code>, arithmetic NMI and V-measure are
+      <code>2H(U)/(H(U)+ln n)</code>, and the adjusted Rand index and AMI are <em>exactly zero</em>.
+      A metric is safe from this failure only if that floor is zero, and only the last two are. Drop
+      the separation slider to 1.5 and watch it happen: the best honest clustering can no longer beat
+      <code>&radic;(H(U)/ln n) = 0.5246</code>, and geometric NMI's maximum moves to
+      <code>k' = n</code> as well. It was never immune, only comfortable.</p>
+
+      <h3 style="font-size:19px; font-weight:800">6. The ranking inversion</h3>
+      <p>An argmax on a nested family is a strong statement but a slightly artificial one, so the
+      page also does the plainest possible comparison. Two candidates. One is a uniformly random
+      labelling into many clusters &mdash; it knows nothing. The other has the right number of
+      clusters and half its labels reassigned at random &mdash; it knows something. Homogeneity ranks
+      the one that knows nothing <em>above</em> the one that knows something &mdash; 0.5033 against
+      0.3118 on the default world &mdash; while the adjusted Rand index reads 0.0003 against 0.2919
+      and ranks them the right way round across almost a third of its range.</p>
+      <p>The exact version of that statement is the threshold table: hold the half-right control
+      fixed and raise <code>k'</code> until the chance level of the ignorant labelling overtakes it.
+      For homogeneity it takes 50 clusters, for geometric normalisation 92, for arithmetic 116, and
+      for ARI and AMI it never happens at any <code>k'</code>, because their chance level is zero at
+      every <code>k'</code>. Those thresholds are exact numbers rather
+      than measurements, and they say something practical: the vulnerability is not &ldquo;NMI is
+      badly behaved&rdquo;, it is &ldquo;NMI is badly behaved once the number of clusters is a
+      noticeable fraction of the number of items&rdquo;, which is exactly the regime of
+      single-cell, community detection and near-duplicate work.</p>
+
+      <h3 style="font-size:19px; font-weight:800">7. Zero on average is not zero</h3>
+      <p>ARI's chance level is exactly zero, and that is not the same as ARI being zero when nothing
+      is going on. Enumerate every table with three balanced classes over thirty items &mdash; 2,211
+      of them, weighted by the hypergeometric law &mdash; and the null standard deviation of ARI is
+      about 0.05, the 95th percentile is about 0.098 and the 99th is about 0.162. So a reported ARI
+      of 0.12 on thirty items is inside the range that pure chance produces one time in twenty, and
+      the honest response is not a rule of thumb about what counts as weak agreement. It is a
+      permutation test &mdash; and because the null is enumerable, the p-value is exact and costs a
+      few milliseconds. The page prints it along a corruption path so you can see where the score
+      stops being consistent with chance.</p>
+
+      <h3 style="font-size:19px; font-weight:800">8. The controls are not free either</h3>
+      <p>None of this is an argument that ARI and AMI are the answer and the rest is a mistake. They
+      disagree with each other, and the page finds where. Drop the separation to 2 and geometric NMI
+      and geometric AMI choose <code>k = 3</code> while arithmetic NMI, ARI and arithmetic AMI choose
+      4, and the truth is 5 &mdash; none of them right, and not even wrong in the same direction.
+      Over the candidate board ARI and AMI invert 2 of the 55 pairs. The known shape of that
+      disagreement is that the pair-counting family is dominated by large clusters &mdash;
+      <code>C(a,2)</code> grows quadratically, so the 83-item class contributes 14.7 times the pairs
+      of the 22-item one while being under four times its size &mdash; while the information family
+      weights clusters by their probability. Neither is wrong. They are answering different questions,
+      and a paper that reports one of them without saying which normalisation it used has not
+      reported a number at all.</p>
+
+      <h3 style="font-size:19px; font-weight:800">9. What to actually do</h3>
+      <p>Three things, all cheap. Report the chance level next to the score, because it is a closed
+      form and takes microseconds. Say which normalisation you used, because V-measure, NMI-min,
+      NMI-geometric and NMI-arithmetic are four different numbers off one table and they do not even
+      agree on the ordering. And if the number of clusters is not fixed in advance, do not select it
+      with a metric whose maximum is at <code>k = n</code> &mdash; check that first, on your own
+      family of solutions, with the two lines of code the MEASURE tab is running.</p>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ BUILD -->
+<section id="build" class="panel hidden">
+  <div class="sheet soft">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">&#128296; How it is built</h2>
+
+      <h3 style="font-size:19px; font-weight:800">1. A finite sample space, so the truth is a sum</h3>
+      <p>Every score on the page is a function of a contingency table, and the permutation null fixes
+      both margins, so the null sample space is the finite set of non-negative integer matrices with
+      those margins. <code>enumerateTables</code> walks it by recursion over cells, keeping the
+      remaining row total and the remaining column totals and pruning a branch the moment the columns
+      to the right cannot absorb what is left. Each completed table gets the multiple hypergeometric
+      weight <code>&prod;a<sub>i</sub>! &prod;b<sub>j</sub>! / (n! &prod;n<sub>ij</sub>!)</code>,
+      built out of log-gammas. Thirty items in three balanced classes is 2,211 tables and a few
+      milliseconds; the weights are then asserted to sum to 1, which is the cheapest possible check
+      that the enumeration is complete and the weights are right.</p>
+      <p>From that one pass the page gets the exact mean, standard deviation, median, 95th and 99th
+      percentiles and upper-tail probability of <em>every</em> index at once. No sampling, no
+      bootstrap and no asymptotics anywhere in the null.</p>
+
+      <h3 style="font-size:19px; font-weight:800">2. The same expectation, two ways</h3>
+      <p>The closed form for <code>E[MI]</code> is a triple sum over the hypergeometric support, and
+      the enumeration is a sum over tables. They share no code and no loop structure. On the default
+      world they agree to about 1.5e-15, and <code>E[S]</code> matches <code>A&middot;B/P</code> to
+      the last bit, which is the strongest available evidence that both are right. A single
+      implementation of an expectation is a claim; two are a measurement.</p>
+
+      <h3 style="font-size:19px; font-weight:800">3. Data with no seed in it</h3>
+      <p>The dataset is deterministic on purpose. Class <code>g</code> has <code>m</code> members and
+      they are placed at <code>g&middot;sep + &sigma;&Phi;<sup>-1</sup>((t+&frac12;)/m)</code> for
+      <code>t = 0&hellip;m&minus;1</code> &mdash; the quantiles of its own normal, not a draw from it.
+      So there is no run-to-run variation in any headline, nothing to average over, and a reader who
+      changes a slider sees the mechanism move rather than the noise. Where the page does sample
+      &mdash; the random labellings, the Monte Carlo checks on the exact null &mdash; the column says
+      so and carries a standard error.</p>
+
+      <h3 style="font-size:19px; font-weight:800">4. k-means without Lloyd's algorithm</h3>
+      <p>The argmax claim in section 5 of UNDERSTAND would be worthless if the clustering at each
+      <code>k</code> were a local optimum, because then the metric might be preferring a lucky
+      restart rather than a value of <code>k</code>. In one dimension the optimal k-means partition
+      is contiguous in sorted order, so it is a dynamic program: with prefix sums of
+      <code>x</code> and <code>x&sup2;</code> the cost of any segment is <code>O(1)</code>, and
+      <code>kmeans1dAll</code> builds every layer in one <code>O(k n&sup2;)</code> sweep, returning
+      the exact optimum for all <code>k</code> from 1 to <code>n</code> together with a back-pointer
+      table to recover the labels. The verifier checks the contiguity theorem the only honest way, by
+      brute-forcing <em>all</em> set partitions of a small dataset and confirming the dynamic program
+      found the global optimum among them and not merely among the contiguous ones.</p>
+
+      <h3 style="font-size:19px; font-weight:800">5. Where the identities live</h3>
+      <p>Six things on this page are algebraic identities rather than measurements, and each one is
+      asserted with a tolerance chosen from what the arithmetic can deliver:</p>
+      <pre><code>V-measure                  == 2 MI / (H(U) + H(V))      1e-15
+NMI(min)                   == max(homogeneity, completeness)
+NMI(max)                   == min(homogeneity, completeness)
+homogeneity                == MI / H(U)
+MI(refinement of U)        == H(U)                       exact for large pieces
+AMI(min) on a refinement   == 1                          numerator IS denominator
+E[ARI]                     == 0                          6e-17 over the enumeration</code></pre>
+      <p>The refinement identity is the one worth watching: it is bit-exact while the pieces are
+      large, and it drifts to about 5e-15 at pieces of one, because <code>MI</code> is then a sum of
+      <code>n</code> terms each of which is a separate logarithm while <code>H(U)</code> is a sum of
+      <code>k</code>. The page prints the residual rather than hiding it inside a tolerance, and the
+      assertion is written at 1e-13 with the reason stated.</p>
+
+      <h3 style="font-size:19px; font-weight:800">6. Two nulls, and the difference is not a bug</h3>
+      <p>There are two things &ldquo;a clustering that knows nothing&rdquo; can mean. Fix the cluster
+      sizes and permute which items go where &mdash; that is the fixed-margin null, it is what ARI
+      and AMI correct for, and it is the one with the closed form. Or draw a label uniformly for each
+      item, which is what you would actually do to simulate an ignorant clusterer &mdash; and that has
+      <em>random</em> margins, and at <code>k' = 100</code> on 240 items it leaves about nine
+      clusters empty, so the realised <code>k'</code> is smaller and the realised score is lower.
+      The page measures both against the exact number: the permutation draw lands on
+      <code>E[MI]/norm</code> within a standard error, and the uniform draw sits visibly below it.
+      Neither is wrong; they are different experiments, and conflating them is how a chance level gets
+      quoted 12% too low.</p>
+
+      <h3 style="font-size:19px; font-weight:800">7. Guards</h3>
+      <p>Two samplers, two seed streams, one exact target. The permutation sampler is run with
+      multiplicative-hash seeds and with the arithmetic stride that produced Day 69's artefact, both
+      against the closed-form <code>E[NMI]</code>, and both numbers are printed with the standard
+      error beside them instead of being summarised as a verdict. This is the fourth consecutive
+      re-measurement of that artefact and the third time it has failed to reproduce, which is now the
+      more informative result.</p>
+      <p>The enumeration also has a cap. Margins with many small clusters blow up combinatorially
+      &mdash; three classes over eighteen items split into nine pairs is 352,128 tables &mdash; so
+      <code>enumerateTables</code> takes a ceiling and the table reports <code>over cap</code> rather
+      than freezing the tab. Where the cap bites, the closed-form expectation is still exact and only
+      the quantiles go missing, and the row says which.</p>
+
+      <h3 style="font-size:19px; font-weight:800">8. Verification</h3>
+      <p>The block between <code>ENGINE:BEGIN</code> and <code>ENGINE:END</code> is DOM-free, is
+      extracted by regex and is run under Node against assertions written independently of it:
+      xorshift32 in place of mulberry32; the multiple hypergeometric weights in exact
+      <strong>BigInt rational arithmetic</strong> against the page's log-gammas, so the enumeration
+      weights are shown to sum to exactly one and not merely to 1e-14 of it; <code>E[MI]</code> a
+      third time by <strong>enumerating all n! relabellings</strong> of a tiny dataset, which is the
+      definition the closed form and the table enumeration are both standing in for; the pair counts
+      recomputed by an explicit <code>O(n&sup2;)</code> loop over all <code>C(n,2)</code> pairs
+      instead of by <code>&Sigma;C(n<sub>ij</sub>,2)</code>; mutual information recomputed as
+      <code>H(U)+H(V)&minus;H(U,V)</code> from the joint entropy rather than as a sum of
+      <code>p log(p/pq)</code>; <code>lgamma</code> against exact BigInt factorials; the inverse
+      normal against a Simpson-integrated normal CDF; and the exact k-means optimum against a
+      <strong>brute force over every set partition</strong> of a ten-point dataset, 115,975 of them,
+      which tests the contiguity theorem the dynamic program is built on rather than the dynamic
+      program alone.</p>
+
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    MachineLearningFromZero &middot; Day 73 &middot; chance in a clustering score &mdash; what the
+    number at the end of a clustering run is a number of, and why four of the metrics that ship with
+    it are maximised by one point per cluster. One file, vanilla JavaScript, no build step and no
+    libraries. Previous:
+    <a href="day72-model-comparison-power.html">Day 72 &mdash; Is the test set big enough?</a>.
+  </div>
+</footer>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => x.classList.remove("tab-active"));
+  t.classList.add("tab-active");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Chance in a clustering score.
+//
+// Day 72 asked how much test data it takes to separate two models. This one asks what the number at
+// the end of a clustering run is a number OF, and the answer is available in closed form for a
+// reason worth stating up front: an external clustering metric never sees the data. It sees a
+// contingency table.
+//
+// Truth U with r classes, candidate V with c clusters, n_ij items in class i and cluster j, margins
+// a_i and b_j. Mutual information and its four normalisations, homogeneity, completeness, V-measure,
+// purity, Rand, adjusted Rand, Fowlkes-Mallows, Jaccard and variation of information are all
+// functions of that table alone. So "what would this score be if the clustering knew nothing" is a
+// question about a FINITE set of integer matrices, and the honest null - fix both margins, permute
+// the labels - makes the table multiple hypergeometric. Expectations are sums, and the whole
+// distribution is enumerable.
+//
+// Pair counting. With S = sum C(n_ij,2), A = sum C(a_i,2), B = sum C(b_j,2), P = C(n,2):
+//
+//     E[S] = A B / P                                        exact, under fixed margins
+//     ARI  = (S - A B / P) / ((A+B)/2 - A B / P)
+//
+// Given the margins the denominator is a constant, so E[ARI] = 0 EXACTLY, for every pair of margins.
+//
+// Information. E[MI] is not zero and not small (Vinh, Epps and Bailey 2010):
+//
+//     E[MI] = sum_i sum_j sum_q (q/n) ln(n q/(a_i b_j)) P_hyper(q; n, a_i, b_j)
+//
+// and because the normaliser is deterministic under fixed margins, E[NMI] = E[MI]/norm exactly too.
+//
+// The mechanism the page is about is one line. If V is a REFINEMENT of U - every cluster inside one
+// class - then V determines U, so H(U|V) = 0 and MI = H(U) exactly, however small the pieces are.
+// Homogeneity is MI/H(U), so it is 1.000 for every refinement including n clusters of one item.
+// H(V) >= H(U) for a refinement, so NMI under min normalisation is 1.000 as well. And the chance
+// correction does not save it: AMI = (MI - E[MI])/(norm - E[MI]) with norm = min(H(U),H(V)) = H(U)
+// has numerator and denominator equal term for term, so AMI(min) is exactly 1 for every refinement,
+// and at the singleton limit both are exactly zero and the machine divides one rounding error by
+// another.
+//
+// Everything labelled exact here is a closed form or an enumeration. The data itself has no seed in
+// it - each class is placed at its own quantiles - and the clustering at each k is the exact k-means
+// optimum from a dynamic program rather than a Lloyd restart, so an argmax over k is a statement
+// about k and not about a lucky initialisation.
+
+// ---------------------------------------------------------------- generators and numerics
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+// Replication seeds by multiplicative hashing; strideSeed is Day 69's arithmetic stride, kept as a control.
+function repSeed(tag, r){ return (Math.imul(r + 1, 2654435761) ^ Math.imul(tag + 1, 0x9E3779B1)) >>> 0; }
+function strideSeed(tag, r){ return (73000 + 1000 * tag + 7907 * r) >>> 0; }
+
+// Lanczos log-gamma; every factorial on this page goes through it.
+function lgamma(x){
+  const g = [676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
+             12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - lgamma(1 - x);
+  x -= 1;
+  let a = 0.99999999999980993;
+  const t = x + 7.5;
+  for (let i = 0; i < 8; i++) a += g[i] / (x + i + 1);
+  return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(t) - t + Math.log(a);
+}
+function lfact(n){ return lgamma(n + 1); }
+function choose2(n){ return n * (n - 1) / 2; }
+// Acklam's rational inverse normal; used only to place points at their own quantiles.
+function normInv(p){
+  const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+             1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+  const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+             6.680131188771972e+01, -1.328068155288572e+01];
+  const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+             -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+  const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
+  const pl = 0.02425;
+  let q, r, x;
+  if (p < pl){
+    q = Math.sqrt(-2 * Math.log(p));
+    x = (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  } else if (p <= 1 - pl){
+    q = p - 0.5; r = q * q;
+    x = (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5]) * q /
+        (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+  } else {
+    q = Math.sqrt(-2 * Math.log(1 - p));
+    x = -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+  return x;
+}
+
+// ---------------------------------------------------------------- partitions and tables
+// k class sizes summing to n; skew 0 is as equal as integers allow, higher skew is geometric.
+function classSizes(n, k, skew){
+  const w = [];
+  for (let i = 0; i < k; i++) w.push(Math.pow(1 - 0.55 * skew, i));
+  const tot = w.reduce((s, v) => s + v, 0);
+  const sizes = w.map(v => Math.max(1, Math.floor(n * v / tot)));
+  let used = sizes.reduce((s, v) => s + v, 0), i = 0;
+  while (used < n){ sizes[i % k]++; used++; i++; }
+  while (used > n){ if (sizes[i % k] > 1){ sizes[i % k]--; used--; } i++; }
+  return sizes;
+}
+function labelsFromSizes(sizes){
+  const n = sizes.reduce((s, v) => s + v, 0);
+  const u = new Int32Array(n);
+  let at = 0;
+  for (let g = 0; g < sizes.length; g++) for (let t = 0; t < sizes[g]; t++) u[at++] = g;
+  return u;
+}
+function countsOf(labels){
+  const map = new Map();
+  for (let i = 0; i < labels.length; i++) map.set(labels[i], (map.get(labels[i]) || 0) + 1);
+  return [...map.entries()].sort((p, q) => p[0] - q[0]).map(e => e[1]);
+}
+// Contingency table of two labellings, empty rows and columns dropped as every library does.
+function contingency(u, v){
+  const ri = new Map(), ci = new Map();
+  for (let i = 0; i < u.length; i++){
+    if (!ri.has(u[i])) ri.set(u[i], ri.size);
+    if (!ci.has(v[i])) ci.set(v[i], ci.size);
+  }
+  const r = ri.size, c = ci.size, m = new Int32Array(r * c);
+  for (let i = 0; i < u.length; i++) m[ri.get(u[i]) * c + ci.get(v[i])]++;
+  const a = new Int32Array(r), b = new Int32Array(c);
+  for (let i = 0; i < r; i++) for (let j = 0; j < c; j++){ a[i] += m[i * c + j]; b[j] += m[i * c + j]; }
+  return { m, a, b, r, c, n: u.length };
+}
+function tableFrom(a, b, m){
+  return { m, a, b, r: a.length, c: b.length, n: a.reduce((s, v) => s + v, 0) };
+}
+
+// ---------------------------------------------------------------- entropies, information, pairs
+function entropy(counts, n){
+  let h = 0;
+  for (const q of counts) if (q > 0) h -= (q / n) * Math.log(q / n);
+  return h;
+}
+function miOf(T){
+  const { m, a, b, r, c, n } = T;
+  let mi = 0;
+  for (let i = 0; i < r; i++) for (let j = 0; j < c; j++){
+    const q = m[i * c + j];
+    if (q > 0) mi += (q / n) * Math.log(q * n / (a[i] * b[j]));
+  }
+  return mi;
+}
+function pairCounts(T){
+  const { m, a, b, r, c, n } = T;
+  let S = 0;
+  for (let i = 0; i < r * c; i++) S += choose2(m[i]);
+  let A = 0, B = 0;
+  for (let i = 0; i < r; i++) A += choose2(a[i]);
+  for (let j = 0; j < c; j++) B += choose2(b[j]);
+  return { S, A, B, P: choose2(n) };
+}
+function purityOf(T){
+  const { m, r, c, n } = T;
+  let s = 0;
+  for (let j = 0; j < c; j++){ let best = 0; for (let i = 0; i < r; i++) best = Math.max(best, m[i * c + j]); s += best; }
+  return s / n;
+}
+
+// ---------------------------------------------------------------- exact chance levels
+// E[S] under the fixed-margin permutation null. This is exactly what ARI subtracts.
+function expectedS(A, B, P){ return P > 0 ? A * B / P : 0; }
+// E[MI] under the same null, summed over the hypergeometric support. No sampling.
+function expectedMI(a, b, n){
+  const lfN = lfact(n);
+  let e = 0;
+  for (let i = 0; i < a.length; i++) for (let j = 0; j < b.length; j++){
+    const ai = a[i], bj = b[j];
+    const lo = Math.max(1, ai + bj - n), hi = Math.min(ai, bj);
+    const base = lfact(ai) + lfact(bj) + lfact(n - ai) + lfact(n - bj) - lfN;
+    for (let q = lo; q <= hi; q++){
+      const lw = base - lfact(q) - lfact(ai - q) - lfact(bj - q) - lfact(n - ai - bj + q);
+      e += (q / n) * Math.log(q * n / (ai * bj)) * Math.exp(lw);
+    }
+  }
+  return e;
+}
+// The folklore shortcut: 2n MI is asymptotically chi-square with (r-1)(c-1) degrees of freedom.
+function chi2MI(r, c, n){ return (r - 1) * (c - 1) / (2 * n); }
+
+// ---------------------------------------------------------------- the index board
+function indicesOf(T){
+  const { a, b, n } = T;
+  const hU = entropy([...a], n), hV = entropy([...b], n);
+  const mi = miOf(T);
+  const { S, A, B, P } = pairCounts(T);
+  const eS = expectedS(A, B, P), maxS = (A + B) / 2;
+  const hom = hU > 0 ? mi / hU : 1, comp = hV > 0 ? mi / hV : 1;
+  const norm = { min: Math.min(hU, hV), geo: Math.sqrt(hU * hV),
+                 arith: (hU + hV) / 2, max: Math.max(hU, hV) };
+  const nmi = {};
+  for (const key in norm) nmi[key] = norm[key] > 0 ? mi / norm[key] : 0;
+  return {
+    n, r: T.r, c: T.c, hU, hV, mi, hom, comp,
+    vmeasure: (hom + comp) > 0 ? 2 * hom * comp / (hom + comp) : 0,
+    nmiMin: nmi.min, nmiGeo: nmi.geo, nmiArith: nmi.arith, nmiMax: nmi.max,
+    ri: P > 0 ? (P - A - B + 2 * S) / P : 1,
+    ari: (maxS - eS) !== 0 ? (S - eS) / (maxS - eS) : 0,
+    fm: (A > 0 && B > 0) ? S / Math.sqrt(A * B) : 0,
+    jaccard: (A + B - S) > 0 ? S / (A + B - S) : 1,
+    purity: purityOf(T),
+    vi: hU + hV - 2 * mi, nvi: n > 1 ? (hU + hV - 2 * mi) / Math.log(n) : 0,
+    S, A, B, P, eS, maxS, norm
+  };
+}
+// The same mutual information with the chance level removed, four normalisers, numerator kept.
+function amiOf(ix, eMI){
+  const out = { num: ix.mi - eMI, den: {} };
+  for (const key in ix.norm){
+    const den = ix.norm[key] - eMI;
+    out.den[key] = den;
+    out[key] = Math.abs(den) < 1e-14 ? null : out.num / den;
+  }
+  return out;
+}
+function scoreOf(u, v){
+  const T = contingency(u, v);
+  const ix = indicesOf(T);
+  const eMI = expectedMI([...T.a], [...T.b], T.n);
+  return { T, ix, eMI, ami: amiOf(ix, eMI) };
+}
+// One definition of the metric list, shared by every table and every argmax on the page.
+function metricList(){
+  return [
+    ["hom",      "homogeneity",           s => s.ix.hom],
+    ["comp",     "completeness",          s => s.ix.comp],
+    ["vmeasure", "V-measure",             s => s.ix.vmeasure],
+    ["purity",   "purity",                s => s.ix.purity],
+    ["nmiMin",   "NMI (min)",             s => s.ix.nmiMin],
+    ["nmiGeo",   "NMI (geometric)",       s => s.ix.nmiGeo],
+    ["nmiArith", "NMI (arithmetic)",      s => s.ix.nmiArith],
+    ["nmiMax",   "NMI (max)",             s => s.ix.nmiMax],
+    ["ri",       "Rand index",            s => s.ix.ri],
+    ["ari",      "adjusted Rand",         s => s.ix.ari],
+    ["fm",       "Fowlkes-Mallows",       s => s.ix.fm],
+    ["jaccard",  "Jaccard",               s => s.ix.jaccard],
+    ["amiMin",   "AMI (min)",             s => s.ami.min],
+    ["amiGeo",   "AMI (geometric)",       s => s.ami.geo],
+    ["amiArith", "AMI (arithmetic)",      s => s.ami.arith]
+  ];
+}
+const CHANCE_FREE = { ari: 1, amiMin: 1, amiGeo: 1, amiArith: 1 };
+
+// ---------------------------------------------------------------- the exact permutation null
+// Every table with these margins, weighted by the multiple hypergeometric law - which IS the law of
+// the table under a uniform random relabelling, so this is the permutation null with no permutations.
+function enumerateTables(a, b, visit, cap){
+  const r = a.length, c = b.length, n = a.reduce((s, v) => s + v, 0);
+  const m = new Int32Array(r * c), brem = Int32Array.from(b);
+  const lfBase = a.reduce((s, v) => s + lfact(v), 0) + b.reduce((s, v) => s + lfact(v), 0) - lfact(n);
+  let seen = 0, over = false;
+  function row(i){
+    if (over) return;
+    if (i === r){
+      seen++;
+      if (cap && seen > cap){ over = true; return; }
+      let lw = lfBase;
+      for (let t = 0; t < r * c; t++) lw -= lfact(m[t]);
+      visit(m, Math.exp(lw));
+      return;
+    }
+    (function cell(j, left){
+      if (over) return;
+      if (j === c - 1){
+        if (left <= brem[j]){ m[i * c + j] = left; brem[j] -= left; row(i + 1); brem[j] += left; }
+        return;
+      }
+      let capRest = 0;
+      for (let t = j + 1; t < c; t++) capRest += brem[t];
+      const hi = Math.min(left, brem[j]), lo = Math.max(0, left - capRest);
+      for (let x = lo; x <= hi; x++){
+        m[i * c + j] = x; brem[j] -= x;
+        cell(j + 1, left - x);
+        brem[j] += x;
+        if (over) return;
+      }
+    })(0, a[i]);
+  }
+  row(0);
+  return { tables: seen, over };
+}
+const NULL_KEYS = ["mi", "nmiMin", "nmiGeo", "nmiArith", "hom", "comp", "vmeasure",
+                   "ri", "ari", "fm", "jaccard", "purity", "S"];
+// The exact null distribution of every index at once, from one pass over the table space.
+function nullDist(a, b, cap){
+  const vals = {}, w = [], res = {};
+  for (const key of NULL_KEYS) vals[key] = [];
+  let wsum = 0;
+  const info = enumerateTables(a, b, function(m, wt){
+    const ix = indicesOf(tableFrom(Int32Array.from(a), Int32Array.from(b), Int32Array.from(m)));
+    for (const key of NULL_KEYS) vals[key].push(ix[key]);
+    w.push(wt); wsum += wt;
+  }, cap);
+  if (info.over) return { over: true, tables: info.tables };
+  for (const key of NULL_KEYS){
+    const pairs = vals[key].map((v, i) => [v, w[i]]).sort((p, q) => p[0] - q[0]);
+    let mean = 0;
+    for (const pr of pairs) mean += pr[0] * pr[1];
+    let varr = 0;
+    for (const pr of pairs) varr += pr[1] * (pr[0] - mean) * (pr[0] - mean);
+    let acc = 0, med = pairs[0][0], q95 = pairs[pairs.length - 1][0], q99 = q95;
+    let hm = false, h5 = false, h9 = false;
+    for (const pr of pairs){
+      acc += pr[1];
+      if (!hm && acc >= 0.5){ med = pr[0]; hm = true; }
+      if (!h5 && acc >= 0.95){ q95 = pr[0]; h5 = true; }
+      if (!h9 && acc >= 0.99){ q99 = pr[0]; h9 = true; }
+    }
+    res[key] = { mean, sd: Math.sqrt(Math.max(0, varr)), median: med, q95, q99,
+                 lo: pairs[0][0], hi: pairs[pairs.length - 1][0],
+                 tail: function(t){ let p = 0; for (const pr of pairs) if (pr[0] >= t - 1e-12) p += pr[1]; return p; } };
+  }
+  res.over = false;
+  res.wsum = wsum;
+  res.tables = info.tables;
+  return res;
+}
+
+// ---------------------------------------------------------------- candidate clusterings
+function singletons(n){ const v = new Int32Array(n); for (let i = 0; i < n; i++) v[i] = i; return v; }
+function oneBlob(n){ return new Int32Array(n); }
+// Split every true class into consecutive pieces of at most s items - a refinement, so it determines U.
+function refine(u, s){
+  const v = new Int32Array(u.length), used = new Map(), lab = new Map();
+  let next = 0;
+  for (let i = 0; i < u.length; i++){
+    const g = u[i], seen = used.get(g) || 0;
+    used.set(g, seen + 1);
+    const key = g + ":" + Math.floor(seen / s);
+    if (!lab.has(key)) lab.set(key, next++);
+    v[i] = lab.get(key);
+  }
+  return v;
+}
+// Merge true classes in consecutive groups of g - a coarsening, so U determines it.
+function coarsen(u, g){
+  const v = new Int32Array(u.length);
+  for (let i = 0; i < u.length; i++) v[i] = Math.floor(u[i] / g);
+  return v;
+}
+// Deterministic corruption: walk items in an interleaved order and shift each one class along.
+function corrupt(u, k, j){
+  const v = Int32Array.from(u), byClass = [];
+  for (let g = 0; g < k; g++) byClass.push([]);
+  for (let i = 0; i < u.length; i++) byClass[u[i]].push(i);
+  const order = [];
+  for (let t = 0; ; t++){
+    let any = false;
+    for (let g = 0; g < k; g++) if (t < byClass[g].length){ order.push(byClass[g][t]); any = true; }
+    if (!any) break;
+  }
+  for (let t = 0; t < Math.min(j, order.length); t++) v[order[t]] = (u[order[t]] + 1) % k;
+  return v;
+}
+function randomLabels(n, kp, rnd){
+  const v = new Int32Array(n);
+  for (let i = 0; i < n; i++) v[i] = Math.min(kp - 1, Math.floor(rnd() * kp));
+  return v;
+}
+// Reassign a fraction f of items to a uniformly random class - the honest "partly right" candidate.
+function shuffleLabels(u, k, f, rnd){
+  const v = Int32Array.from(u);
+  for (let i = 0; i < u.length; i++) if (rnd() < f) v[i] = Math.min(k - 1, Math.floor(rnd() * k));
+  return v;
+}
+// A random labelling with the SAME margins - the fixed-margin null, drawn rather than summed.
+function permuteLabels(v0, rnd){
+  const v = Int32Array.from(v0);
+  for (let i = v.length - 1; i > 0; i--){
+    const j = Math.floor(rnd() * (i + 1)), t = v[i];
+    v[i] = v[j]; v[j] = t;
+  }
+  return v;
+}
+
+// ---------------------------------------------------------------- data with no seed in it
+// k groups on a line; each member sits at one of ITS OWN quantiles, so the dataset is deterministic.
+function makeData(n, k, skew, sep, sigma){
+  const sizes = classSizes(n, k, skew), pts = [];
+  for (let g = 0; g < k; g++)
+    for (let t = 0; t < sizes[g]; t++)
+      pts.push({ x: g * sep + sigma * normInv((t + 0.5) / sizes[g]), g });
+  pts.sort((p, q) => p.x - q.x || p.g - q.g);
+  return { x: Float64Array.from(pts.map(p => p.x)), u: Int32Array.from(pts.map(p => p.g)), sizes };
+}
+// Exact optimal one-dimensional k-means by dynamic programming - no restarts, no local minima.
+// One pass builds every layer, so all k from 1 to Kmax come out of the same O(k n^2) sweep.
+function kmeans1dAll(x, Kmax){
+  const n = x.length;
+  const s1 = new Float64Array(n + 1), s2 = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++){ s1[i + 1] = s1[i] + x[i]; s2[i + 1] = s2[i] + x[i] * x[i]; }
+  const cost = function(i, j){
+    const m = j - i;
+    if (m <= 1) return 0;
+    const t = s1[j] - s1[i];
+    return Math.max(0, (s2[j] - s2[i]) - t * t / m);
+  };
+  let prev = new Float64Array(n + 1).fill(Infinity);
+  prev[0] = 0;
+  const backs = [], wcss = [null];
+  for (let g = 1; g <= Kmax; g++){
+    const cur = new Float64Array(n + 1).fill(Infinity), back = new Int32Array(n + 1).fill(-1);
+    for (let j = g; j <= n; j++){
+      let bv = Infinity, bi = -1;
+      for (let i = g - 1; i < j; i++){
+        if (!isFinite(prev[i])) continue;
+        const v = prev[i] + cost(i, j);
+        if (v < bv){ bv = v; bi = i; }
+      }
+      cur[j] = bv; back[j] = bi;
+    }
+    backs.push(back); wcss.push(cur[n]);
+    prev = cur;
+  }
+  const labelsFor = function(K){
+    const labels = new Int32Array(n);
+    let j = n;
+    for (let g = K; g >= 1; g--){
+      const i = backs[g - 1][j];
+      for (let t = i; t < j; t++) labels[t] = g - 1;
+      j = i;
+    }
+    return labels;
+  };
+  return { wcss, labelsFor, cost };
+}
+
+// ---------------------------------------------------------------- configuration and the world
+const DEFAULTS = { n: 240, k: 5, skew: 0.5, sep: 3, kp: 100, moved: 0.5,
+                   nSmall: 30, alpha: 0.05, reps: 1200, seeds: 25 };
+const ENUM_CAP = 30000;
+function cfgOf(o){
+  const c = Object.assign({}, DEFAULTS, o || {});
+  c.n = Math.max(60, Math.min(400, Math.round(c.n)));
+  c.k = Math.max(2, Math.min(10, Math.round(c.k)));
+  c.kp = Math.max(2, Math.min(c.n, Math.round(c.kp)));
+  c.nSmall = 3 * Math.max(6, Math.min(12, Math.round(c.nSmall / 3)));
+  c.sigma = 1;
+  return c;
+}
+// The world is the dataset plus the exact k-means optimum at every k, scored against the truth.
+function worldOf(c){
+  const D = makeData(c.n, c.k, c.skew, c.sep, c.sigma);
+  const km = kmeans1dAll(D.x, c.n);
+  const sweep = [];
+  for (let kp = 1; kp <= c.n; kp++){
+    const s = scoreOf(D.u, km.labelsFor(kp));
+    s.kp = kp; s.wcss = km.wcss[kp];
+    sweep.push(s);
+  }
+  return { n: c.n, k: c.k, x: D.x, u: D.u, sizes: D.sizes,
+           hU: entropy(D.sizes, c.n), logN: Math.log(c.n), km, sweep };
+}
+// Smallest k' attaining the maximum, so a tie at 1.0 is reported at the smallest k' and not the last.
+function argmaxSmallest(vals){
+  let mx = -Infinity;
+  for (const v of vals) if (v !== null && isFinite(v) && v > mx) mx = v;
+  for (let i = 0; i < vals.length; i++)
+    if (vals[i] !== null && isFinite(vals[i]) && vals[i] > mx - 1e-12) return { at: i, max: mx };
+  return { at: -1, max: mx };
+}
+function kArgmaxTable(w){
+  return metricList().map(function(md){
+    const vals = w.sweep.map(md[2]);
+    const r = argmaxSmallest(vals);
+    const atTrue = md[2](w.sweep[w.k - 1]);
+    return { key: md[0], label: md[1], kp: r.at + 1, max: r.max, atTrue,
+             degenerate: r.at + 1 === w.n || r.at + 1 === 1, right: r.at + 1 === w.k };
+  });
+}
+
+// ---------------------------------------------------------------- studies
+function sweepRows(w, kps){
+  return kps.filter(kp => kp >= 1 && kp <= w.n).map(kp => w.sweep[kp - 1]);
+}
+function candidateBoard(c, w){
+  const u = w.u, n = c.n, k = c.k;
+  const piece = Math.max(2, Math.round(Math.min.apply(null, w.sizes) / 3));
+  const items = [
+    ["the truth", u],
+    ["k-means at the true k = " + k, w.km.labelsFor(k)],
+    ["k-means at k = " + n, w.km.labelsFor(n)],
+    ["truth split into pieces of " + piece, refine(u, piece)],
+    ["truth split into pairs", refine(u, 2)],
+    ["one cluster per item", singletons(n)],
+    ["everything in one cluster", oneBlob(n)],
+    ["true classes merged in twos", coarsen(u, 2)],
+    [Math.round(100 * c.moved) + "% of labels moved at random", shuffleLabels(u, k, c.moved, mulberry32(0x5EED5EED))],
+    ["random labels, k' = " + c.kp, randomLabels(n, c.kp, mulberry32(0xC0FFEE))],
+    ["random labels, k' = " + k, randomLabels(n, k, mulberry32(0xC0FFEE))]
+  ];
+  return items.map(function(it){
+    const s = scoreOf(u, it[1]);
+    s.label = it[0];
+    s.chanceHom = s.ix.hU > 0 ? s.eMI / s.ix.hU : 0;
+    s.chanceGeo = s.ix.norm.geo > 0 ? s.eMI / s.ix.norm.geo : 0;
+    s.chanceArith = s.ix.norm.arith > 0 ? s.eMI / s.ix.norm.arith : 0;
+    return s;
+  });
+}
+// The exact chance level as a function of how many clusters the ignorant labelling has.
+function chanceLadder(c, w, kps){
+  return kps.map(function(kp){
+    const b = classSizes(c.n, kp, 0);
+    const hV = entropy(b, c.n);
+    const eMI = expectedMI(w.sizes, b, c.n);
+    const A = w.sizes.reduce((s, v) => s + choose2(v), 0);
+    const B = b.reduce((s, v) => s + choose2(v), 0);
+    return { kp, hV, eMI, chi2: chi2MI(c.k, kp, c.n),
+             hom: eMI / w.hU, min: eMI / Math.min(w.hU, hV),
+             geo: eMI / Math.sqrt(w.hU * hV), arith: 2 * eMI / (w.hU + hV),
+             ari: 0, eS: A * B / choose2(c.n) };
+  });
+}
+// The control is a genuinely half-right clustering; how many clusters does chance need to beat it?
+function thresholdTable(c, w){
+  const ctrl = scoreOf(w.u, shuffleLabels(w.u, c.k, c.moved, mulberry32(0x5EED5EED)));
+  const kps = [];
+  for (let kp = 2; kp <= c.n; kp++) kps.push(kp);
+  const ladder = chanceLadder(c, w, kps);
+  const rows = [
+    ["homogeneity", ctrl.ix.hom, r => r.hom],
+    ["NMI (min)", ctrl.ix.nmiMin, r => r.min],
+    ["NMI (geometric)", ctrl.ix.nmiGeo, r => r.geo],
+    ["NMI (arithmetic) = V-measure", ctrl.ix.nmiArith, r => r.arith],
+    ["adjusted Rand", ctrl.ix.ari, r => r.ari],
+    ["AMI (arithmetic)", ctrl.ami.arith, r => r.ari]
+  ];
+  return { ctrl, rows: rows.map(function(row){
+    const hit = ladder.find(r => row[2](r) > row[1]);
+    return { label: row[0], control: row[1], firstKp: hit ? hit.kp : null,
+             chanceAtN: row[2](ladder[ladder.length - 1]) };
+  }) };
+}
+// Margin shapes for the enumeration, from a 3-class world small enough to walk exhaustively.
+function enumShapes(c){
+  const a = classSizes(c.nSmall, 3, 0);
+  return [
+    ["3 x 3, balanced", a, classSizes(c.nSmall, 3, 0)],
+    ["3 x 3, skewed candidate", a, classSizes(c.nSmall, 3, 0.6)],
+    ["3 x 4", a, classSizes(c.nSmall, 4, 0)],
+    ["3 x 5", a, classSizes(c.nSmall, 5, 0)],
+    ["3 x 6", a, classSizes(c.nSmall, 6, 0)]
+  ];
+}
+function enumTable(c, w){
+  return enumShapes(c).map(function(sh){
+    const t0 = Date.now();
+    const nd = nullDist(sh[1], sh[2], ENUM_CAP);
+    const eMI = expectedMI(sh[1], sh[2], c.nSmall);
+    const A = sh[1].reduce((s, v) => s + choose2(v), 0);
+    const B = sh[2].reduce((s, v) => s + choose2(v), 0);
+    return { label: sh[0], a: sh[1], b: sh[2], nd, eMI, eS: A * B / choose2(c.nSmall),
+             ms: Date.now() - t0 };
+  });
+}
+// A deterministic walk from perfect to scrambled, each step carrying an exact permutation p-value.
+function corruptionPath(c){
+  const sizes = classSizes(c.nSmall, 3, 0);
+  const u = labelsFromSizes(sizes);
+  const rows = [];
+  const step = 2;
+  for (let j = 0; j <= Math.round(c.nSmall * 2 / 3); j += step){
+    const s = scoreOf(u, corrupt(u, 3, j));
+    const nd = nullDist([...s.T.a], [...s.T.b], ENUM_CAP);
+    rows.push({ j, s, nd,
+                pAri: nd.over ? null : nd.ari.tail(s.ix.ari),
+                pGeo: nd.over ? null : nd.nmiGeo.tail(s.ix.nmiGeo),
+                pHom: nd.over ? null : nd.hom.tail(s.ix.hom),
+                q95: nd.over ? null : nd.ari.q95 });
+  }
+  return { u, sizes, rows };
+}
+// The same small world corrupted at random rather than cyclically, so the p-value actually crosses
+// alpha - the deterministic path above preserves too much structure to ever reach chance.
+function noisePath(c){
+  const sizes = classSizes(c.nSmall, 3, 0);
+  const u = labelsFromSizes(sizes);
+  const rows = [];
+  for (let t = 0; t <= 10; t++){
+    const f = t / 10;
+    const s = scoreOf(u, shuffleLabels(u, 3, f, mulberry32(repSeed(3, t))));
+    const nd = nullDist([...s.T.a], [...s.T.b], ENUM_CAP);
+    rows.push({ f, s, nd,
+                pAri: nd.over ? null : nd.ari.tail(s.ix.ari),
+                pGeo: nd.over ? null : nd.nmiGeo.tail(s.ix.nmiGeo),
+                pHom: nd.over ? null : nd.hom.tail(s.ix.hom),
+                q95: nd.over ? null : nd.ari.q95 });
+  }
+  return { u, sizes, rows };
+}
+// Refinements of the truth: MI is pinned at H(U), so this isolates what the normaliser does.
+function refinementTable(c, w){
+  const smallest = Math.min.apply(null, w.sizes);
+  const pieces = [];
+  for (const p of [Math.max(4, Math.round(smallest / 2)), Math.max(3, Math.round(smallest / 4)), 4, 2, 1])
+    if (pieces.indexOf(p) < 0) pieces.push(p);
+  pieces.sort((x, y) => y - x);
+  return pieces.map(function(p){
+    const s = scoreOf(w.u, refine(w.u, p));
+    return { piece: p, s, miGap: s.ix.mi - s.ix.hU,
+             num: s.ami.num, denMin: s.ami.den.min, denGeo: s.ami.den.geo };
+  });
+}
+// Fixed margins versus a uniform draw: two different meanings of "knows nothing".
+function twoNulls(c, w, seedFn){
+  const kps = [Math.max(2, Math.round(c.kp / 4)), Math.max(3, Math.round(c.kp / 2)), c.kp];
+  return kps.filter((v, i, arr) => arr.indexOf(v) === i).map(function(kp){
+    const b = classSizes(c.n, kp, 0);
+    const hV = entropy(b, c.n);
+    const eMI = expectedMI(w.sizes, b, c.n);
+    const target = labelsFromSizes(b);
+    let mFixed = 0, mFree = 0, mFreeAri = 0, cFree = 0, m2 = 0;
+    for (let r = 0; r < c.reps; r++){
+      const pv = permuteLabels(target, mulberry32(seedFn(kp, r)));
+      const v1 = indicesOf(contingency(w.u, pv)).nmiMin;
+      mFixed += v1; m2 += v1 * v1;
+      const fv = randomLabels(c.n, kp, mulberry32(seedFn(kp + 977, r)));
+      const ixf = indicesOf(contingency(w.u, fv));
+      mFree += ixf.nmiMin; mFreeAri += ixf.ari; cFree += ixf.c;
+    }
+    const mean = mFixed / c.reps;
+    return { kp, exact: eMI / Math.min(w.hU, hV), fixed: mean,
+             se: Math.sqrt(Math.max(0, m2 / c.reps - mean * mean) / c.reps),
+             free: mFree / c.reps, freeAri: mFreeAri / c.reps, nonempty: cFree / c.reps };
+  });
+}
+// Identities that are algebra rather than measurement, with the residual printed not hidden.
+function identityTable(c, w, en){
+  const rows = [];
+  const cands = [w.u, w.km.labelsFor(c.k), refine(w.u, 4), coarsen(w.u, 2),
+                 shuffleLabels(w.u, c.k, 0.4, mulberry32(11)), randomLabels(c.n, 12, mulberry32(13))];
+  let worstV = 0, worstMin = 0, worstMax = 0, worstHom = 0;
+  for (const v of cands){
+    const s = scoreOf(w.u, v);
+    worstV = Math.max(worstV, Math.abs(s.ix.vmeasure - s.ix.nmiArith));
+    worstMin = Math.max(worstMin, Math.abs(s.ix.nmiMin - Math.max(s.ix.hom, s.ix.comp)));
+    worstMax = Math.max(worstMax, Math.abs(s.ix.nmiMax - Math.min(s.ix.hom, s.ix.comp)));
+    worstHom = Math.max(worstHom, Math.abs(s.ix.hom - s.ix.mi / s.ix.hU));
+  }
+  rows.push(["V-measure = 2MI/(H(U)+H(V)) = NMI arithmetic", worstV, 1e-15]);
+  rows.push(["NMI(min) = max(homogeneity, completeness)", worstMin, 1e-15]);
+  rows.push(["NMI(max) = min(homogeneity, completeness)", worstMax, 1e-15]);
+  rows.push(["homogeneity = MI / H(U)", worstHom, 1e-15]);
+  // Relabelling the truth is not a different clustering, and every index has to agree.
+  const shift = scoreOf(w.u, corrupt(w.u, c.k, c.n));
+  let worstLab = 0;
+  for (const md of metricList()){
+    const a = md[2](scoreOf(w.u, w.u)), b = md[2](shift);
+    if (a !== null && b !== null) worstLab = Math.max(worstLab, Math.abs(a - b));
+  }
+  rows.push(["every index is invariant to relabelling the clusters", worstLab, 1e-15]);
+  // A refinement determines the truth, so MI is H(U) and AMI(min) is one.
+  let worstRef = 0, worstAmi = 0;
+  for (const p of [8, 4, 2]){
+    const s = scoreOf(w.u, refine(w.u, p));
+    worstRef = Math.max(worstRef, Math.abs(s.ix.mi - s.ix.hU));
+    if (s.ami.min !== null) worstAmi = Math.max(worstAmi, Math.abs(s.ami.min - 1));
+  }
+  rows.push(["MI = H(U) for any refinement of the truth", worstRef, 1e-13]);
+  rows.push(["AMI(min) = 1 for any refinement of the truth", worstAmi, 1e-13]);
+  // E[S] closed form against the enumeration, and E[ARI] against zero. The enumeration is handed in
+  // rather than repeated, because walking the table space twice costs a second and proves nothing.
+  const shapes = en || enumTable(c, w);
+  let worstES = 0, worstEMI = 0, worstAri = 0, worstW = 0, worstNmiE = 0;
+  for (const sh of shapes){
+    const nd = sh.nd;
+    if (nd.over) continue;
+    const nSm = sh.a.reduce((s, v) => s + v, 0);
+    const hUs = entropy([...sh.a], nSm), hVs = entropy([...sh.b], nSm);
+    worstES = Math.max(worstES, Math.abs(nd.S.mean - sh.eS));
+    worstEMI = Math.max(worstEMI, Math.abs(nd.mi.mean - sh.eMI));
+    worstAri = Math.max(worstAri, Math.abs(nd.ari.mean));
+    worstW = Math.max(worstW, Math.abs(nd.wsum - 1));
+    worstNmiE = Math.max(worstNmiE, Math.abs(nd.nmiGeo.mean - nd.mi.mean / Math.sqrt(hUs * hVs)));
+  }
+  rows.push(["the enumeration weights sum to one", worstW, 1e-12]);
+  rows.push(["E[S] by enumeration = A B / P", worstES, 1e-11]);
+  rows.push(["E[MI] by enumeration = the closed form", worstEMI, 1e-13]);
+  rows.push(["E[ARI] = 0 exactly, over every table", worstAri, 1e-14]);
+  rows.push(["E[NMI] = E[MI] / norm, because the norm is a constant", worstNmiE, 1e-14]);
+  return rows.map(r => ({ label: r[0], residual: r[1], tol: r[2], ok: r[1] < r[2] }));
+}
+// Two seed streams against one exact target, for the fourth re-measurement of Day 69's artefact.
+function seedGuard(c, w){
+  const b = classSizes(c.n, c.kp, 0);
+  const hV = entropy(b, c.n);
+  const exact = expectedMI(w.sizes, b, c.n) / Math.min(w.hU, hV);
+  const target = labelsFromSizes(b);
+  const run = function(seedFn){
+    let m = 0, m2 = 0;
+    for (let r = 0; r < c.reps; r++){
+      const v = indicesOf(contingency(w.u, permuteLabels(target, mulberry32(seedFn(7, r))))).nmiMin;
+      m += v; m2 += v * v;
+    }
+    const mean = m / c.reps;
+    return { mean, se: Math.sqrt(Math.max(0, m2 / c.reps - mean * mean) / c.reps) };
+  };
+  return { exact, hashed: run(repSeed), stride: run(strideSeed) };
+}
+// ===== ENGINE:END =====
+
+// ================================================================ UI
+function $(id){ return document.getElementById(id); }
+function cfgFromUI(){
+  return {
+    n: +$("sN").value, k: +$("sK").value, skew: +$("sSkew").value, sep: +$("sSep").value,
+    kp: +$("sKp").value, moved: +$("sMoved").value, nSmall: +$("sSmall").value,
+    alpha: +$("sAlpha").value, reps: +$("sReps").value, seeds: +$("sSeeds").value
+  };
+}
+function fmt(v, d){
+  if (v === null || v === undefined || (typeof v === "number" && !isFinite(v))) return "&ndash;";
+  return v.toFixed(d === undefined ? 4 : d);
+}
+function pct(v, d){
+  if (v === null || v === undefined || !isFinite(v)) return "&ndash;";
+  return (100 * v).toFixed(d === undefined ? 2 : d) + "%";
+}
+function grp(n){ return Math.round(n).toLocaleString("en-US"); }
+function sci(v, d){ return (v === 0 ? 0 : v).toExponential(d === undefined ? 1 : d); }
+function tbl(head, rows){
+  return "<thead><tr>" + head.map(h => "<th>" + h + "</th>").join("") + "</tr></thead><tbody>" +
+    rows.map(r => "<tr" + (r.cls ? " class='" + r.cls + "'" : "") + ">" +
+      (r.cells || r).map(c => "<td>" + c + "</td>").join("") + "</tr>").join("") + "</tbody>";
+}
+function uniqSorted(arr, lo, hi){
+  return arr.map(v => Math.round(v)).filter(v => v >= lo && v <= hi)
+            .filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
+}
+
+function render(){
+  const c = cfgOf(cfgFromUI());
+  $("vN").textContent = c.n;
+  $("vK").textContent = c.k;
+  $("vSkew").textContent = c.skew.toFixed(2);
+  $("vSep").textContent = c.sep.toFixed(1);
+  $("vKp").textContent = c.kp;
+  $("vMoved").textContent = c.moved.toFixed(2);
+  $("vSmall").textContent = c.nSmall;
+  $("vAlpha").textContent = c.alpha.toFixed(3);
+  $("vReps").textContent = c.reps;
+  $("vSeeds").textContent = c.seeds;
+
+  const w = worldOf(c);
+  $("wN").textContent = c.n;
+  $("wSep").textContent = c.sep.toFixed(1);
+  $("wSizes").textContent = w.sizes.join("/");
+  $("wHU").textContent = fmt(w.hU);
+  $("wLogN").textContent = fmt(w.logN);
+  $("seedWord").textContent = c.seeds;
+  $("repWord").textContent = grp(c.reps);
+  $("argN").textContent = c.n;
+  $("movedWord").textContent = Math.round(100 * c.moved);
+
+  const arg = kArgmaxTable(w);
+  const argOf = key => arg.find(r => r.key === key);
+  const rows = sweepRows(w, uniqSorted([1, 2, 3, 4, 5, 6, 7, 8, 10, 15, 20, 30, 50,
+                                        Math.round(c.n / 2), c.n, c.k, c.k + 1], 1, c.n));
+  const board = candidateBoard(c, w);
+  const ladder = chanceLadder(c, w, uniqSorted([2, 4, 8, 16, 32, 64, c.kp, Math.round(c.n / 2), c.n], 2, c.n));
+  const thr = thresholdTable(c, w);
+  const en = enumTable(c, w);
+  const path = corruptionPath(c);
+  const noise = noisePath(c);
+  const ref = refinementTable(c, w);
+  const nulls = twoNulls(c, w, repSeed);
+  const ids = identityTable(c, w, en);
+  const guard = seedGuard(c, w);
+
+  // ---------------------------------------------------------------- the k sweep
+  $("tblSweep").innerHTML = tbl(
+    ["k'", "within-cluster SS", "homogeneity", "completeness", "V-measure", "purity",
+     "NMI min", "NMI geo", "NMI arith", "adj. Rand", "AMI arith", "AMI min"],
+    rows.map(function(s){
+      const cls = s.kp === c.k ? "same3" : (s.kp === c.n || s.kp === 1 ? "same2" : "");
+      return { cls, cells: [
+        s.kp === c.k ? "<strong>" + s.kp + " (true)</strong>" : s.kp,
+        s.wcss.toFixed(2), fmt(s.ix.hom), fmt(s.ix.comp), fmt(s.ix.vmeasure), fmt(s.ix.purity),
+        fmt(s.ix.nmiMin), fmt(s.ix.nmiGeo), fmt(s.ix.nmiArith), fmt(s.ix.ari),
+        fmt(s.ami.arith), fmt(s.ami.min)] };
+    }));
+  const degen = arg.filter(r => r.degenerate);
+  const good = arg.filter(r => r.right);
+  $("headline").innerHTML =
+    "The clustering at each <code>k'</code> is the exact optimum, so this is the best case for every " +
+    "metric at once. <strong>" + degen.length + " of the " + arg.length + "</strong> put their " +
+    "maximum on a degenerate answer &mdash; " +
+    degen.map(r => r.label + " at k' = " + r.kp).join(", ") + " &mdash; while " +
+    good.length + " find k = " + c.k + ".";
+  $("flagSweep").innerHTML =
+    "The green row is the truth, the violet rows are the degenerate ends. Homogeneity climbs from " +
+    fmt(rows[0].ix.hom) + " at k' = 1 to <strong>" + fmt(w.sweep[c.n - 1].ix.hom) +
+    "</strong> at k' = " + c.n + " and never turns round; the within-cluster sum of squares falls " +
+    "from " + w.sweep[0].wcss.toFixed(1) + " to exactly 0, which is the same fact seen from the " +
+    "objective's side. The adjusted Rand index reads <strong>" + fmt(w.sweep[c.n - 1].ix.ari) +
+    "</strong> for that final clustering while the <em>unadjusted</em> Rand index reads " +
+    "<strong>" + fmt(w.sweep[c.n - 1].ix.ri) + "</strong> &mdash; the raw index is a share of pairs " +
+    "and almost every pair is a true negative, so it flatters everything.";
+
+  // ---------------------------------------------------------------- where the maxima are
+  $("tblArg").innerHTML = tbl(
+    ["metric", "argmax k'", "value there", "value at k = " + c.k, "gap", "verdict"],
+    arg.map(function(r){
+      const cls = r.degenerate ? "same2" : (r.right ? "same3" : "");
+      return { cls, cells: [
+        r.label + (CHANCE_FREE[r.key] ? " <span class='dim'>(chance-corrected)</span>" : ""),
+        r.kp, fmt(r.max), fmt(r.atTrue),
+        r.atTrue === null ? "&ndash;" : fmt(r.max - r.atTrue),
+        r.degenerate ? "<span class='bad'>degenerate</span>"
+                     : (r.right ? "<span class='ok'>the true k</span>"
+                                : "<span class='warn'>k' = " + r.kp + "</span>")] };
+    }));
+  const amiMinArg = argOf("amiMin");
+  $("flagArg").innerHTML =
+    "Four of these are maximised by one cluster per item and one by one cluster for everything, and " +
+    "that is not a small bias to be penalised away &mdash; it is the metric's global maximum over " +
+    "the whole family. The uncomfortable row is <strong>AMI (min)</strong>: it is chance-corrected, " +
+    "and it still lands on k' = " + amiMinArg.kp + " with a value of <strong>" +
+    fmt(amiMinArg.max, 4) + "</strong>" +
+    (amiMinArg.max > 1 ? " &mdash; <strong>above 1</strong>, which the definition forbids" : "") +
+    ". Chance correction is not the same repair as choosing a sensible normaliser, and the table " +
+    "below on refinements shows why in one line of algebra. Everything with a chance-corrected " +
+    "definition other than that one puts its maximum at k' = " +
+    arg.filter(r => CHANCE_FREE[r.key] && r.key !== "amiMin").map(r => r.kp).join(" / ") + ". " +
+    "What decides this is the <em>floor</em> &mdash; what the degenerate answer scores &mdash; and " +
+    "that is a closed form: at k' = " + c.n + " homogeneity, purity and both min-normalised scores " +
+    "are 1, geometric NMI is &radic;(H(U)/ln n) = <strong>" + fmt(Math.sqrt(w.hU / w.logN)) +
+    "</strong>, arithmetic NMI and V-measure are 2H(U)/(H(U)+ln n) = <strong>" +
+    fmt(2 * w.hU / (w.hU + w.logN)) + "</strong>, and the adjusted Rand index and AMI are " +
+    "<strong>exactly 0</strong>. A metric is safe from this failure only if its floor is zero, and " +
+    "only the last two are: drag the separation slider down to 1.5 and geometric NMI joins the " +
+    "degenerate list, because the best honest clustering can no longer clear " +
+    fmt(Math.sqrt(w.hU / w.logN)) + ".";
+
+  // ---------------------------------------------------------------- the chance ladder
+  const worstChi = ladder.reduce((acc, r) => Math.max(acc, Math.abs(r.chi2 / r.eMI - 1)), 0);
+  $("tblChance").innerHTML = tbl(
+    ["clusters k' in the ignorant labelling", "H(V)", "E[MI] exact", "folklore (r&minus;1)(c&minus;1)/2n",
+     "folklore error", "E[homogeneity]", "E[NMI min]", "E[NMI geo]", "E[NMI arith]", "E[adj. Rand]"],
+    ladder.map(r => [r.kp === c.kp ? "<strong>" + r.kp + "</strong>" : r.kp,
+      fmt(r.hV), fmt(r.eMI, 6), fmt(r.chi2, 6), pct(r.chi2 / r.eMI - 1, 1),
+      "<strong>" + fmt(r.hom) + "</strong>", fmt(r.min), fmt(r.geo), fmt(r.arith),
+      "<span class='ok'>" + fmt(r.ari) + "</span>"]));
+  $("flagChance").innerHTML =
+    "The chance level of the information family grows without bound in k' and reaches exactly " +
+    "<strong>1.0000</strong> for homogeneity at k' = n, where every score is a certainty rather than " +
+    "a finding. At the slider's k' = " + c.kp + " a labelling that knows nothing is expected to " +
+    "score <strong>" + fmt(ladder.find(r => r.kp === c.kp).hom) + "</strong> on homogeneity and " +
+    "<strong>" + fmt(ladder.find(r => r.kp === c.kp).geo) + "</strong> on geometric NMI. " +
+    "<code>E[adj. Rand]</code> is 0 in every row and that column is not rounded &mdash; it is 0 " +
+    "because the numerator's expectation is <code>A B / P &minus; A B / P</code> and the denominator " +
+    "is a constant. The folklore chi-square shortcut is off by up to <strong>" +
+    pct(worstChi, 1) + "</strong> across these rows, in both directions.";
+
+  // ---------------------------------------------------------------- the candidate board
+  const rnd = board.find(s => s.label.indexOf("random labels, k' = " + c.kp) === 0);
+  const half = board.find(s => s.label.indexOf("% of labels moved") > 0);
+  const inverted = rnd && half && rnd.ix.hom > half.ix.hom;
+  $("tblBoard").innerHTML = tbl(
+    ["candidate clustering", "k'", "homogeneity", "its own E[hom]", "NMI geo", "NMI arith",
+     "purity", "Rand", "adj. Rand", "AMI arith", "AMI min"],
+    board.map(function(s){
+      const cls = (s === rnd || s === half) ? "same" : "";
+      return { cls, cells: [s.label, s.T.c,
+        "<strong>" + fmt(s.ix.hom) + "</strong>", "<span class='dim'>" + fmt(s.chanceHom) + "</span>",
+        fmt(s.ix.nmiGeo), fmt(s.ix.nmiArith), fmt(s.ix.purity), fmt(s.ix.ri),
+        "<strong>" + fmt(s.ix.ari) + "</strong>", fmt(s.ami.arith), fmt(s.ami.min)] };
+    }));
+  $("flagBoard").innerHTML = (rnd && half)
+    ? ("The two shaded rows are the comparison. A uniformly random labelling with " + rnd.T.c +
+       " non-empty clusters scores homogeneity <strong>" + fmt(rnd.ix.hom) + "</strong>; a clustering " +
+       "with the right number of clusters and " + Math.round(100 * c.moved) + "% of its labels " +
+       "reassigned at random scores <strong>" + fmt(half.ix.hom) + "</strong>. " +
+       (inverted ? "The one that knows nothing wins" : "The half-right one wins here, but see the " +
+        "threshold table &mdash; raise k' and it stops winning") +
+       ". On the same two tables the adjusted Rand index reads <strong>" + fmt(rnd.ix.ari) +
+       "</strong> against <strong>" + fmt(half.ix.ari) + "</strong>, and AMI <strong>" +
+       fmt(rnd.ami.arith) + "</strong> against <strong>" + fmt(half.ami.arith) + "</strong>. " +
+       "The <em>its own E[hom]</em> column is each row's exact chance level for its own margins, " +
+       "which is why the random row is not a surprise: it scored " + fmt(rnd.ix.hom) +
+       " against an expectation of " + fmt(rnd.chanceHom) + ", so it is a perfectly ordinary draw " +
+       "from a distribution centred a long way above zero.")
+    : "&nbsp;";
+
+  // ---------------------------------------------------------------- the threshold table
+  $("tblThr").innerHTML = tbl(
+    ["metric", "score of the half-right control", "first k' at which pure chance beats it",
+     "chance level at k' = " + c.n],
+    thr.rows.map(function(r){
+      const cls = r.firstKp === null ? "same3" : "";
+      return { cls, cells: [r.label, fmt(r.control),
+        r.firstKp === null ? "<span class='ok'>never</span>"
+                           : "<span class='bad'>" + r.firstKp + "</span>",
+        fmt(r.chanceAtN)] };
+    }));
+  const firstHom = thr.rows[0].firstKp;
+  $("flagThr").innerHTML =
+    "These are exact numbers rather than measurements: the chance level is a closed form, so the " +
+    "crossing point is found by evaluating it, not by simulating. " +
+    (firstHom ? "Homogeneity needs <strong>" + firstHom + "</strong> clusters" : "Homogeneity never gets there at this control") +
+    " and the arithmetic normalisation needs <strong>" +
+    (thr.rows[3].firstKp === null ? "more than " + c.n : thr.rows[3].firstKp) + "</strong>, so the " +
+    "vulnerability is not that these metrics are broken, it is that they break down once k' is a " +
+    "noticeable fraction of n &mdash; single-cell, community detection, near-duplicate work. The " +
+    "chance-corrected rows say <em>never</em>, and that is a statement about every k' at once " +
+    "rather than the ones that were tried.";
+
+  // ---------------------------------------------------------------- the enumeration
+  $("tblEnum").innerHTML = tbl(
+    ["margins", "tables", "&Sigma;w &minus; 1", "E[MI] enumerated", "E[MI] closed form", "agreement",
+     "E[S] enumerated", "A&middot;B/P", "E[adj. Rand]", "sd(ARI)", "q95(ARI)", "q99(ARI)",
+     "mean NMI geo", "q95 NMI geo"],
+    en.map(function(r){
+      if (r.nd.over) return { cls: "", cells: [r.label + " <span class='dim'>(" + r.b.join("/") + ")</span>",
+        "<span class='warn'>over " + grp(ENUM_CAP) + "</span>", "&ndash;",
+        "&ndash;", fmt(r.eMI, 6), "&ndash;", "&ndash;", fmt(r.eS, 4), "0 exactly",
+        "&ndash;", "&ndash;", "&ndash;", "&ndash;", "&ndash;"] };
+      return { cls: "", cells: [r.label + " <span class='dim'>(" + r.b.join("/") + ")</span>",
+        grp(r.nd.tables), sci(r.nd.wsum - 1),
+        "<span class='same'>" + fmt(r.nd.mi.mean, 10) + "</span>",
+        "<span class='same'>" + fmt(r.eMI, 10) + "</span>",
+        sci(Math.abs(r.nd.mi.mean - r.eMI)),
+        fmt(r.nd.S.mean, 6), fmt(r.eS, 6), sci(r.nd.ari.mean),
+        fmt(r.nd.ari.sd), "<strong>" + fmt(r.nd.ari.q95) + "</strong>", fmt(r.nd.ari.q99),
+        fmt(r.nd.nmiGeo.mean), fmt(r.nd.nmiGeo.q95)] };
+    }));
+  const en0 = en.find(r => !r.nd.over);
+  $("flagEnum").innerHTML = en0
+    ? ("Zero on average is not zero in fact. Over all <strong>" + grp(en0.nd.tables) +
+       "</strong> tables with " + en0.label.toLowerCase() + " margins on " + c.nSmall + " items, the " +
+       "adjusted Rand index has mean <strong>" + sci(en0.nd.ari.mean) + "</strong> &mdash; the " +
+       "adjustment is exact &mdash; and a standard deviation of <strong>" + fmt(en0.nd.ari.sd) +
+       "</strong>, with 5% of the mass above <strong>" + fmt(en0.nd.ari.q95) + "</strong> and 1% " +
+       "above <strong>" + fmt(en0.nd.ari.q99) + "</strong>. So a reported ARI of " +
+       fmt(en0.nd.ari.q95 - 0.005, 2) + " on " + c.nSmall + " items is what chance produces one " +
+       "time in twenty. The two shaded columns are the same expectation computed by a triple sum " +
+       "over the hypergeometric support and by a walk over the table space; they share no code and " +
+       "agree to " + sci(Math.abs(en0.nd.mi.mean - en0.eMI)) + ". And because the null is " +
+       "<em>discrete</em>, the upper tail sitting exactly at that 95th percentile is <strong>" +
+       fmt(en0.nd.ari.tail(en0.nd.ari.q95), 5) + "</strong> rather than 0.050 &mdash; the attainable " +
+       "levels are a ladder, which is Day 72's lesson arriving in a different problem. Rows marked <em>over " +
+       grp(ENUM_CAP) + "</em> hit the enumeration ceiling &mdash; the closed-form expectation is " +
+       "still exact there, only the quantiles are missing.")
+    : "&nbsp;";
+
+  // ---------------------------------------------------------------- the two paths
+  const pathHead = ["items shifted one class along", "k'", "homogeneity", "exact p", "NMI geo",
+                    "exact p", "adj. Rand", "exact p", "q95(ARI) under the null", "reject at &alpha;"];
+  const pRow = r => [r.j, r.s.T.c, fmt(r.s.ix.hom), r.pHom === null ? "&ndash;" : fmt(r.pHom, 5),
+    fmt(r.s.ix.nmiGeo), r.pGeo === null ? "&ndash;" : fmt(r.pGeo, 5),
+    fmt(r.s.ix.ari), r.pAri === null ? "&ndash;" : fmt(r.pAri, 5),
+    r.q95 === null ? "&ndash;" : fmt(r.q95),
+    r.pAri === null ? "&ndash;" : (r.pAri <= c.alpha ? "<span class='ok'>yes</span>" : "<span class='bad'>no</span>")];
+  $("tblPath").innerHTML = tbl(pathHead, path.rows.map(pRow));
+  const nRow = r => [pct(r.f, 0) + " reassigned", r.s.T.c, fmt(r.s.ix.hom),
+    r.pHom === null ? "&ndash;" : fmt(r.pHom, 5), fmt(r.s.ix.nmiGeo),
+    r.pGeo === null ? "&ndash;" : fmt(r.pGeo, 5), fmt(r.s.ix.ari),
+    r.pAri === null ? "&ndash;" : fmt(r.pAri, 5), r.q95 === null ? "&ndash;" : fmt(r.q95),
+    r.pAri === null ? "&ndash;" : (r.pAri <= c.alpha ? "<span class='ok'>yes</span>" : "<span class='bad'>no</span>")];
+  $("tblNoise").innerHTML = tbl(
+    ["labels reassigned at random"].concat(pathHead.slice(1)), noise.rows.map(nRow));
+  const cross = noise.rows.find(r => r.pAri !== null && r.pAri > c.alpha);
+  const mid = path.rows[path.rows.length - 1];
+  $("flagPath").innerHTML =
+    "The cyclic path is symmetric and the page asserts it: shifting <em>every</em> label one class " +
+    "along is a relabelling, and every index is invariant to relabelling, so the score at j and at " +
+    c.nSmall + " &minus; j is the same number to 2.2e-16. That is why it turns back up, and why it " +
+    "bottoms out at ARI <strong>" + fmt(mid.s.ix.ari) + "</strong> with an exact p of <strong>" +
+    (mid.pAri === null ? "&ndash;" : fmt(mid.pAri, 5)) + "</strong> &mdash; a cyclic shift keeps far " +
+    "too much structure to look like chance, which is a property of the corruption and not of the " +
+    "metric. The random arm underneath does reach chance: the exact p crosses &alpha; = " +
+    fmt(c.alpha, 3) + " at " + (cross ? "<strong>" + pct(cross.f, 0) + "</strong> of labels " +
+    "reassigned" : "no point in this table") + ". Both p-values are exact, and the whole apparatus " +
+    "is an enumeration that costs a few milliseconds &mdash; which is the point: there is no reason " +
+    "to be guessing at whether 0.14 is a lot.";
+
+  // ---------------------------------------------------------------- refinements
+  $("tblRef").innerHTML = tbl(
+    ["true classes split into pieces of", "k'", "MI &minus; H(U)", "E[MI]", "AMI numerator",
+     "AMI denominator (min)", "AMI min", "AMI geo", "AMI arith", "homogeneity", "purity", "adj. Rand"],
+    ref.map(function(r){
+      const cls = r.piece === 1 ? "same2" : "";
+      return { cls, cells: [r.piece === 1 ? "1 <strong>(singletons)</strong>" : r.piece, r.s.T.c,
+        sci(r.miGap), fmt(r.s.eMI, 6), sci(r.num, 3), sci(r.denMin, 3),
+        "<strong>" + fmt(r.s.ami.min, 12) + "</strong>", fmt(r.s.ami.geo), fmt(r.s.ami.arith),
+        fmt(r.s.ix.hom, 6), fmt(r.s.ix.purity, 6), fmt(r.s.ix.ari, 6)] };
+    }));
+  const last = ref[ref.length - 1];
+  $("flagRef").innerHTML =
+    "Every row is a clustering that never merges two true classes, so <code>MI = H(U)</code> exactly " +
+    "&mdash; the third column is the residual and it is at the last bit. Homogeneity and purity are " +
+    "therefore <strong>1.000000</strong> all the way down to " + last.s.T.c + " clusters of one " +
+    "item, and so is <strong>AMI under min normalisation</strong>, because its numerator " +
+    "<code>MI &minus; E[MI]</code> and its denominator <code>min(H(U),H(V)) &minus; E[MI]</code> are " +
+    "<em>the same number</em> when <code>MI = H(U) = min(H(U),H(V))</code>. Read the two columns " +
+    "next to each other and they are equal digit for digit. In the violet row both are " +
+    sci(last.num, 3) + " and " + sci(last.denMin, 3) + " &mdash; both exactly zero in real " +
+    "arithmetic, because with every cluster of size one <code>E[MI] = H(U)</code> too &mdash; so the " +
+    "printed <strong>" + fmt(last.s.ami.min, 6) + "</strong> is one rounding error divided by " +
+    "another and means nothing at all. The geometric and arithmetic normalisations fall to " +
+    fmt(last.s.ami.geo) + " and " + fmt(last.s.ami.arith) + ", and the adjusted Rand index to " +
+    fmt(last.s.ix.ari) + ", which are the answers a reader wants.";
+
+  // ---------------------------------------------------------------- two nulls
+  $("tblNulls").innerHTML = tbl(
+    ["k'", "exact E[NMI min], fixed margins", "sampled, fixed margins", "s.e.", "gap in s.e.",
+     "sampled, labels drawn uniformly", "non-empty clusters", "sampled adj. Rand"],
+    nulls.map(r => [r.kp, "<strong>" + fmt(r.exact) + "</strong>", fmt(r.fixed), fmt(r.se, 4),
+      fmt(Math.abs(r.fixed - r.exact) / Math.max(1e-9, r.se), 2),
+      fmt(r.free), fmt(r.nonempty, 1), sci(r.freeAri)]));
+  const bigN = nulls[nulls.length - 1];
+  $("flagNulls").innerHTML =
+    "Two experiments, both fairly described as &ldquo;the clustering knows nothing&rdquo;. Fixing " +
+    "the cluster sizes and permuting which items land where reproduces the closed form to within a " +
+    "standard error in every row, which is the check. Drawing a label uniformly per item does not: " +
+    "at k' = " + bigN.kp + " it leaves about " + fmt(c.n === 0 ? 0 : bigN.kp - bigN.nonempty, 1) +
+    " clusters empty, so the realised k' is " + fmt(bigN.nonempty, 1) + " and the realised score is " +
+    "<strong>" + fmt(bigN.free) + "</strong> against the fixed-margin <strong>" + fmt(bigN.exact) +
+    "</strong>. Neither is wrong; quoting one where the other applies is how a chance level ends up " +
+    pct(1 - bigN.free / bigN.exact, 1) + " too low. The adjusted Rand index is within a whisker of 0 " +
+    "under both, which is what a chance-corrected index is supposed to do.";
+
+  // ---------------------------------------------------------------- identities
+  $("tblId").innerHTML = tbl(["identity", "worst residual", "asserted at", ""],
+    ids.map(r => [r.label, sci(r.residual, 2), sci(r.tol, 0),
+      r.ok ? "<span class='ok'>holds</span>" : "<span class='bad'>FAILS</span>"]));
+  $("flagId").innerHTML =
+    "Two of these are worth knowing rather than merely checking. <strong>V-measure is NMI with " +
+    "arithmetic normalisation</strong> &mdash; the harmonic mean of <code>MI/H(U)</code> and " +
+    "<code>MI/H(V)</code> is <code>2MI/(H(U)+H(V))</code>, so two metrics that appear in different " +
+    "papers under different names are one function, and the residual is " +
+    sci(ids[0].residual, 2) + ". And <strong>NMI under min normalisation is just the larger of " +
+    "homogeneity and completeness</strong>, at 0e+0 &mdash; which is exactly why it inherits both " +
+    "of their degenerate maxima. The refinement identities are asserted at 1e-13 rather than 1e-15 " +
+    "for a stated reason: MI at singletons is a sum of " + c.n + " separate logarithms while H(U) is " +
+    "a sum of " + c.k + ", and the summation order alone costs a few times 1e-15.";
+
+  // ---------------------------------------------------------------- seeds
+  const gap = s => Math.abs(s.mean - guard.exact) / Math.max(1e-9, s.se);
+  $("tblGuard").innerHTML = tbl(
+    ["seed stream", "sampled E[NMI min]", "s.e.", "exact target", "gap in s.e."],
+    [["multiplicative hash", fmt(guard.hashed.mean), fmt(guard.hashed.se, 4), fmt(guard.exact),
+      fmt(gap(guard.hashed), 2)],
+     ["arithmetic stride (Day 69's)", fmt(guard.stride.mean), fmt(guard.stride.se, 4),
+      fmt(guard.exact), fmt(gap(guard.stride), 2)]]);
+  $("flagGuard").innerHTML =
+    "Day 69 measured a coverage that read like a finding and was a seed stride feeding " +
+    "Box&ndash;Muller. Days 70, 71 and 72 all re-measured it and none of them reproduced it. This is " +
+    "the fourth re-measurement and the first on a <em>categorical</em> sampler &mdash; a " +
+    "Fisher&ndash;Yates shuffle rather than a normal draw &mdash; against an exact target rather " +
+    "than another simulation. Both streams land within " +
+    fmt(Math.max(gap(guard.hashed), gap(guard.stride)), 2) + " standard errors of " +
+    fmt(guard.exact) + ". Printed with the standard error beside it rather than summarised as a " +
+    "verdict, because that is the only form in which the number means anything.";
+
+  // ---------------------------------------------------------------- in-page checks
+  const checks = [];
+  function T(label, fn){
+    let ok = false;
+    try { ok = !!fn(); } catch (e) { ok = false; }
+    checks.push({ label: label, ok: ok });
+  }
+  const sing = scoreOf(w.u, singletons(c.n));
+  const blob = scoreOf(w.u, oneBlob(c.n));
+  const enOk = en.filter(r => !r.nd.over);
+
+  T("the enumeration is complete: the multiple hypergeometric weights sum to 1 to " +
+    sci(Math.max.apply(null, enOk.map(r => Math.abs(r.nd.wsum - 1)))) + " on " +
+    grp(enOk.reduce((a, r) => a + r.nd.tables, 0)) + " tables",
+    function(){ return enOk.length >= 2 && enOk.every(r => Math.abs(r.nd.wsum - 1) < 1e-12); });
+  T("E[MI] by enumeration equals the closed form to " +
+    sci(Math.max.apply(null, enOk.map(r => Math.abs(r.nd.mi.mean - r.eMI)))) +
+    " &mdash; two programs sharing no code",
+    function(){ return enOk.every(r => Math.abs(r.nd.mi.mean - r.eMI) < 1e-13); });
+  T("E[S] by enumeration equals A&middot;B/P exactly (worst " +
+    sci(Math.max.apply(null, enOk.map(r => Math.abs(r.nd.S.mean - r.eS)))) + " on counts of order " +
+    grp(enOk[0].eS) + ")",
+    function(){ return enOk.every(r => Math.abs(r.nd.S.mean - r.eS) < 1e-9 * Math.max(1, r.eS)); });
+  T("E[adjusted Rand] is 0 over every enumerated table space, to " +
+    sci(Math.max.apply(null, enOk.map(r => Math.abs(r.nd.ari.mean)))),
+    function(){ return enOk.every(r => Math.abs(r.nd.ari.mean) < 1e-13); });
+  T("E[NMI] = E[MI]/norm, because under fixed margins the normaliser is a constant",
+    function(){
+      return enOk.every(function(r){
+        const nSm = [...r.a].reduce((s, v) => s + v, 0);
+        const hUs = entropy([...r.a], nSm), hVs = entropy([...r.b], nSm);
+        return Math.abs(r.nd.nmiGeo.mean - r.nd.mi.mean / Math.sqrt(hUs * hVs)) < 1e-14 &&
+               Math.abs(r.nd.hom.mean - r.nd.mi.mean / hUs) < 1e-14;
+      });
+    });
+  T("&hellip; and the chance level of the information family is strictly increasing in k'",
+    function(){
+      for (let i = 1; i < ladder.length; i++) if (ladder[i].eMI <= ladder[i - 1].eMI) return false;
+      return ladder.every(r => r.ari === 0);
+    });
+  T("every identity in the table above holds at its stated tolerance",
+    function(){ return ids.every(r => r.ok); });
+  T("at the singleton partition homogeneity, purity and NMI(min) are all exactly 1 while the " +
+    "adjusted Rand index and Fowlkes&ndash;Mallows are exactly 0",
+    function(){
+      return Math.abs(sing.ix.hom - 1) < 1e-12 && sing.ix.purity === 1 &&
+             Math.abs(sing.ix.nmiMin - 1) < 1e-12 &&
+             Math.abs(sing.ix.ari) < 1e-15 && sing.ix.fm === 0;
+    });
+  T("&hellip; and its geometric NMI is the closed form &radic;(H(U)/ln n) = " +
+    fmt(Math.sqrt(w.hU / w.logN)) + ", to " +
+    sci(Math.abs(sing.ix.nmiGeo - Math.sqrt(w.hU / w.logN))),
+    function(){ return Math.abs(sing.ix.nmiGeo - Math.sqrt(w.hU / w.logN)) < 1e-12 &&
+                       Math.abs(sing.ix.comp - w.hU / w.logN) < 1e-12; });
+  T("&hellip; and there E[MI] equals H(U), so AMI(min) is a genuine 0/0: numerator " +
+    sci(sing.ami.num, 2) + ", denominator " + sci(sing.ami.den.min, 2) + ", printed as " +
+    fmt(sing.ami.min, 6),
+    function(){
+      return Math.abs(sing.eMI - sing.ix.hU) < 1e-11 && Math.abs(sing.ami.num) < 1e-11 &&
+             Math.abs(sing.ami.den.min) < 1e-11 && Math.abs(sing.ami.geo) < 1e-11;
+    });
+  T("the one-cluster answer is the mirror image: completeness exactly 1, everything else 0",
+    function(){
+      return Math.abs(blob.ix.comp - 1) < 1e-15 && blob.ix.mi === 0 && blob.ix.hom === 0 &&
+             blob.ix.ari === 0 && blob.ami.min === null;
+    });
+  T("homogeneity, purity, NMI(min) and AMI(min) all put their maximum over k' = 1&hellip;" + c.n +
+    " on a degenerate answer, and completeness does too",
+    function(){
+      return ["hom", "purity", "nmiMin", "amiMin"].every(k => argOf(k).kp === c.n) &&
+             argOf("comp").kp === 1;
+    });
+  T("&hellip; while the adjusted Rand index and AMI put their maximum at neither end, which is " +
+    "structural rather than lucky: their score for both degenerate answers is exactly 0",
+    function(){
+      return ["ari", "amiArith"].every(k => argOf(k).kp > 1 && argOf(k).kp < c.n) &&
+             Math.abs(w.sweep[c.n - 1].ix.ari) < 1e-15 && Math.abs(w.sweep[0].ix.ari) < 1e-15 &&
+             Math.abs(w.sweep[c.n - 1].ami.arith) < 1e-11;
+    });
+  T("the floor a clustering has to beat at k' = n is a closed form, and only the chance-corrected " +
+    "ones have a floor of zero: &radic;(H(U)/ln n) = " + fmt(Math.sqrt(w.hU / w.logN)) +
+    " for geometric NMI, " + fmt(2 * w.hU / (w.hU + w.logN)) + " for arithmetic, 1 for homogeneity",
+    function(){
+      const deg = w.sweep[c.n - 1];
+      return Math.abs(deg.ix.nmiGeo - Math.sqrt(w.hU / w.logN)) < 1e-12 &&
+             Math.abs(deg.ix.nmiArith - 2 * w.hU / (w.hU + w.logN)) < 1e-12 &&
+             Math.abs(deg.ix.vmeasure - deg.ix.nmiArith) < 1e-14 &&
+             Math.abs(deg.ix.hom - 1) < 1e-12;
+    });
+  T("&hellip; and at this separation the chance-corrected pair agree with each other on k' = " +
+    argOf("ari").kp,
+    function(){ return argOf("ari").kp === argOf("amiArith").kp; });
+  T("AMI(min) is exactly 1 for every refinement of the truth, worst deviation " +
+    sci(Math.max.apply(null, ref.filter(r => r.piece > 1).map(r => Math.abs(r.s.ami.min - 1)))),
+    function(){
+      const rs = ref.filter(r => r.piece > 1);
+      return rs.length >= 2 && rs.every(r => Math.abs(r.s.ami.min - 1) < 1e-13);
+    });
+  T("&hellip; because MI = H(U) there, to " +
+    sci(Math.max.apply(null, ref.map(r => Math.abs(r.miGap)))) + ", so numerator and denominator " +
+    "are the same number",
+    function(){
+      return ref.every(r => Math.abs(r.miGap) < 1e-13) &&
+             ref.filter(r => r.piece > 1).every(r => Math.abs(r.num - r.denMin) < 1e-13);
+    });
+  T("there is a k' at which the exact chance level of homogeneity beats the half-right control, " +
+    "and no k' at which the chance level of the adjusted Rand index does",
+    function(){
+      return thr.rows[0].firstKp !== null && thr.rows[4].firstKp === null &&
+             thr.rows[5].firstKp === null;
+    });
+  T("the exact 95th percentile of the adjusted Rand index under the null is " +
+    fmt(enOk[0].nd.ari.q95) + " at n = " + c.nSmall + ", so a chance level of exactly zero is not " +
+    "the same thing as a score of zero",
+    function(){ return enOk[0].nd.ari.q95 > 0.02 && Math.abs(enOk[0].nd.ari.mean) < 1e-13; });
+  T("&hellip; and the null is discrete, so the exact upper tail AT that percentile is " +
+    fmt(enOk[0].nd.ari.tail(enOk[0].nd.ari.q95), 5) + " and not 0.050 &mdash; the attainable levels " +
+    "are a ladder",
+    function(){
+      const t = enOk[0].nd.ari.tail(enOk[0].nd.ari.q95);
+      return t > 0.05 && t < 0.5 && enOk[0].nd.ari.tail(enOk[0].nd.ari.q99) > 0.01;
+    });
+  T("the cyclic corruption path is symmetric: the score at j and at " + c.nSmall +
+    " &minus; j is the same number, because shifting every label is a relabelling",
+    function(){
+      const u = path.u;
+      let worst = 0;
+      for (let j = 0; j <= c.nSmall; j += 3){
+        const a = scoreOf(u, corrupt(u, 3, j)), b = scoreOf(u, corrupt(u, 3, c.nSmall - j));
+        for (const md of metricList()){
+          const x = md[2](a), y = md[2](b);
+          if (x !== null && y !== null) worst = Math.max(worst, Math.abs(x - y));
+        }
+      }
+      return worst < 1e-14;
+    });
+  T("the exact p-value falls monotonically as the cyclic path is corrupted, up to its midpoint",
+    function(){
+      const half = path.rows.filter(r => r.j <= c.nSmall / 2 && r.pAri !== null);
+      for (let i = 1; i < half.length; i++) if (half[i].pAri < half[i - 1].pAri) return false;
+      return half.length >= 4;
+    });
+  T("the random corruption path starts significant and ends not, with the exact p crossing &alpha;",
+    function(){
+      const first = noise.rows[0], lastN = noise.rows[noise.rows.length - 1];
+      return first.pAri !== null && first.pAri < c.alpha && lastN.pAri > c.alpha;
+    });
+  T("the sampled fixed-margin null is within 3 standard errors of the closed form at every k'",
+    function(){ return nulls.every(r => Math.abs(r.fixed - r.exact) < 3 * r.se + 0.002); });
+  T("&hellip; and the uniformly drawn labelling sits BELOW it wherever it leaves clusters empty",
+    function(){
+      return nulls.every(r => r.nonempty <= r.kp + 1e-9) &&
+             nulls.filter(r => r.kp - r.nonempty > 0.5).every(r => r.free < r.exact);
+    });
+  T("the sampled adjusted Rand index of a random labelling is within 3 standard errors of 0",
+    function(){
+      return nulls.every(r => Math.abs(r.freeAri) < 3 * 0.02 / Math.sqrt(c.reps) + 0.004);
+    });
+  T("both seed streams land within 3 standard errors of the exact target &mdash; nothing to inherit " +
+    "from Day 69",
+    function(){
+      return Math.abs(guard.hashed.mean - guard.exact) < 3 * guard.hashed.se + 0.004 &&
+             Math.abs(guard.stride.mean - guard.exact) < 3 * guard.stride.se + 0.004;
+    });
+  T("the k-means dynamic program is monotone in k, hits exactly 0 at k = n, and matches a " +
+    "brute-force search over every cut position at k = 3",
+    function(){
+      for (let kp = 2; kp <= c.n; kp++) if (w.km.wcss[kp] > w.km.wcss[kp - 1] + 1e-9) return false;
+      if (Math.abs(w.km.wcss[c.n]) > 1e-9) return false;
+      let best = Infinity;
+      for (let i = 1; i < c.n - 1; i++) for (let j = i + 1; j < c.n; j++)
+        best = Math.min(best, w.km.cost(0, i) + w.km.cost(i, j) + w.km.cost(j, c.n));
+      return Math.abs(best - w.km.wcss[3]) < 1e-9;
+    });
+  T("&hellip; and the clustering it returns at each k really has k clusters, with the labels " +
+    "contiguous in sorted order",
+    function(){
+      for (const kp of [2, 3, c.k, Math.round(c.n / 2)]){
+        const v = w.km.labelsFor(kp);
+        if (countsOf([...v]).length !== kp) return false;
+        for (let i = 1; i < c.n; i++) if (v[i] !== v[i - 1] && v[i] !== v[i - 1] + 1) return false;
+      }
+      return true;
+    });
+  T("the unadjusted Rand index reads " + fmt(w.sweep[c.n - 1].ix.ri) + " for the clustering whose " +
+    "adjusted Rand index is exactly 0",
+    function(){
+      return Math.abs(w.sweep[c.n - 1].ix.ari) < 1e-15 && w.sweep[c.n - 1].ix.ri > 0.5;
+    });
+  T("the folklore chi-square chance level is wrong by more than 10% somewhere in the ladder, in " +
+    "both directions",
+    function(){
+      const rel = ladder.map(r => r.chi2 / r.eMI - 1);
+      return Math.max.apply(null, rel) > 0.1 && Math.min.apply(null, rel) < -0.05;
+    });
+  T("the adjusted indices can go negative, which the unadjusted ones cannot",
+    function(){
+      const bad = board.filter(s => s.ix.ari < 0 || (s.ami.arith !== null && s.ami.arith < 0));
+      return bad.length >= 1 && board.every(s => s.ix.ri >= 0 && s.ix.hom >= -1e-15);
+    });
+  T("the truth scores exactly 1 on every metric, and the whole board is inside [&minus;1, 1]",
+    function(){
+      const truth = board[0];
+      return metricList().every(function(md){
+        const v = md[2](truth);
+        return v === null || Math.abs(v - 1) < 1e-12;
+      }) && board.every(s => metricList().every(function(md){
+        const v = md[2](s);
+        return v === null || (v >= -1.0000001 && v <= 1.0000001);
+      }));
+    });
+
+  const passed = checks.filter(k => k.ok).length;
+  $("selftest").innerHTML =
+    "<p style='margin:0 0 8px; font-weight:800' class='" + (passed === checks.length ? "ok" : "bad") +
+    "'>" + passed + " / " + checks.length + " checks passed</p><ul class='checks'>" +
+    checks.map(k => "<li>" + (k.ok ? "<span class='ok'>PASS</span>" : "<span class='bad'>FAIL</span>") +
+      " &nbsp;" + k.label + "</li>").join("") + "</ul>";
+
+  // ---------------------------------------------------------------- the lede, filled from the run
+  const kpLad = ladder.find(r => r.kp === c.kp) || ladder[ladder.length - 1];
+  $("hlChance").textContent = fmt(kpLad.hom);
+  $("hlN2").textContent = c.n;
+  $("hlKp").textContent = rnd ? rnd.T.c : c.kp;
+  $("hlRand").textContent = rnd ? fmt(rnd.ix.hom) : "&ndash;";
+  $("hlHalf").textContent = half ? fmt(half.ix.hom) : "&ndash;";
+  $("hlAri").textContent = (rnd && half) ? (fmt(rnd.ix.ari) + " against " + fmt(half.ix.ari)) : "";
+  $("hlRatio").textContent = (rnd && half) ? fmt(half.ix.ari - rnd.ix.ari, 2) : "";
+  $("hlThr").textContent = thr.rows[0].firstKp === null ? "no k'" : thr.rows[0].firstKp;
+  $("hlThrG").textContent = thr.rows[2].firstKp === null ? "no k'" : thr.rows[2].firstKp;
+  $("hlThrA").textContent = thr.rows[3].firstKp === null ? "no k'" : thr.rows[3].firstKp;
+  $("hlN").textContent = c.n;
+  $("hlK").textContent = c.k;
+  $("hlArg").textContent = "k = " + argOf("hom").kp;
+  $("hlArg5").textContent = argOf("ari").kp;
+  $("hlNoise").textContent = fmt(last.s.ami.min, 4);
+  $("hlTables").textContent = grp(enOk[0].nd.tables);
+  $("hlAgree").textContent = sci(Math.abs(enOk[0].nd.mi.mean - enOk[0].eMI));
+  $("hlAriZero").textContent = sci(Math.abs(enOk[0].nd.ari.mean));
+}
+
+// A full render is a couple of seconds of exact sums and enumerations, so slider drags are debounced.
+let pending = null;
+function scheduleRender(){
+  if (pending) clearTimeout(pending);
+  pending = setTimeout(function(){ pending = null; render(); }, 220);
+}
+["sN", "sK", "sSkew", "sSep", "sKp", "sMoved", "sSmall", "sAlpha", "sReps", "sSeeds"]
+  .forEach(function(id){ $(id).addEventListener("input", scheduleRender); });
+render();
+</script>
+</body>
+</html>
