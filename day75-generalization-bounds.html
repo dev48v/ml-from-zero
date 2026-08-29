@@ -1,0 +1,1796 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero &middot; Day 75 &mdash; What a generalization bound guarantees</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --ink:#0f172a; --ink2:#334155; --dim:#64748b; --dim2:#94a3b8;
+    --line:#e2e8f0; --bg:#f1f5f9; --bg2:#f8fafc; --white:#fff;
+    --sky:#0369a1; --amber:#fffbeb; --amberL:#f59e0b; --amberT:#78350f;
+    --blue:#eff6ff; --violet:#f5f3ff; --rose:#fff1f2; --green:#f0fdf4;
+  }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--bg2); color:var(--ink); line-height:1.6;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.92em;
+         background:#e8eef6; padding:1px 4px; border-radius:4px; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; line-height:1.55;
+        font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre code { background:none; padding:0; color:inherit; }
+  h1,h2,h3 { line-height:1.25; margin:0; }
+  p { margin:0 0 .85em; }
+  header.top { background:var(--white); border-bottom:1px solid var(--line); }
+  .wrap { max-width:1150px; margin:0 auto; padding:16px; }
+  @media (min-width:768px) { .wrap { padding:24px; } }
+  .kicker { font-size:11px; font-weight:800; letter-spacing:.16em; color:var(--sky);
+            margin:0 0 8px; text-transform:uppercase; }
+  h1.lede { font-size:17px; font-weight:800; margin-bottom:14px; }
+  @media (min-width:768px) { h1.lede { font-size:19px; } }
+  h1.lede em { font-style:italic; }
+  #tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  #tabs button { font:inherit; font-size:13px; font-weight:700; cursor:pointer;
+                 border:0; padding:8px 18px; border-radius:9px; background:var(--bg); color:var(--ink); }
+  #tabs button.tab-active { background:#0f172a; color:#fff; }
+  .panel { display:block; }
+  .panel.hidden { display:none; }
+  .sheet { min-height:calc(100vh - 78px); padding:16px; background:var(--bg); }
+  @media (min-width:768px) { .sheet { padding:32px; } }
+  .sheet.plain { background:var(--white); }
+  .sheet.soft  { background:var(--bg2); }
+  .col { max-width:1150px; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+  .col.narrow { max-width:760px; gap:22px; }
+  .card { background:var(--white); border-radius:16px; padding:20px;
+          box-shadow:0 1px 3px rgba(15,23,42,.09), 0 1px 2px rgba(15,23,42,.05); }
+  .ctl { display:grid; gap:6px 24px; grid-template-columns:1fr; }
+  @media (min-width:700px)  { .ctl { grid-template-columns:1fr 1fr; } }
+  @media (min-width:1000px) { .ctl { grid-template-columns:1fr 1fr 1fr; } }
+  .ctl label { font-size:13px; display:block; }
+  .ctl input[type=range] { width:100%; margin:2px 0 0; }
+  .ctl .val { float:right; font-weight:700; font-variant-numeric:tabular-nums; }
+  .eyebrow { font-size:11px; font-weight:800; letter-spacing:.09em; color:var(--dim);
+             margin:0 0 4px; text-transform:uppercase; }
+  .say { font-size:13.5px; color:var(--ink2); margin:0 0 12px; }
+  .tiny { font-size:12px; color:var(--dim); }
+  .scroll { overflow-x:auto; }
+  table.num { width:100%; border-collapse:collapse; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:var(--dim); text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; white-space:normal; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  .ok   { color:#166534; font-weight:800; }
+  .bad  { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim  { color:var(--dim2); }
+  .same  { background:var(--blue); }
+  .same2 { background:var(--violet); }
+  .same3 { background:var(--green); }
+  .flag { font-size:13.5px; margin:12px 0 0; padding:12px; border-radius:9px;
+          background:var(--amber); border-left:4px solid var(--amberL); color:var(--amberT); }
+  .flag.blue { background:var(--blue); border-left-color:#3b82f6; color:#1e3a8a; }
+  .flag.rose { background:var(--rose); border-left-color:#f43f5e; color:#881337; }
+  ul.checks { list-style:none; margin:0; padding:0; font-size:13px; color:var(--ink2); }
+  ul.checks li { padding:1px 0; }
+  .foot { border-top:1px solid var(--line); background:var(--white); }
+  .foot .wrap { font-size:12.5px; color:var(--dim); }
+  .foot a { color:var(--sky); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <p class="kicker">MachineLearningFromZero &middot; Day 75</p>
+    <h1 class="lede">
+      &#128207; What does a generalization bound actually guarantee? &mdash; Day 73 asked what a
+      clustering score is a number <em>of</em> and Day 74 asked which equalities can hold at once;
+      both were about the number at the <em>end</em> of a run. This is about the number people put in
+      <em>front</em> of one: the promise that a model which did well on the data it was fitted to will
+      do well on data it has not seen. There is a whole theory of those promises, it is
+      <strong>correct</strong>, and this page measures what it is worth. Nothing here is sampled: every
+      labelling of every point set is enumerated, every sign pattern is summed over, and the learner&rsquo;s
+      true error is available in <em>closed form</em>, so &ldquo;loose&rdquo; is a factor and not an
+      impression. Start with the capacity of a model class. Counted rather than bounded, the growth
+      function matches its closed form on every size tried, for every class where one exists, and the
+      VC dimension is <em>read off</em> the count &mdash; and the thing practitioners actually use
+      instead, <strong>count the parameters</strong>, is right on
+      <strong id="hlHeur">5</strong> of <strong id="hlHeurN">6</strong> classes and then meets one with
+      <strong>a single real parameter and infinite VC dimension</strong>, which realises all
+      <strong id="hlDigits">4,096</strong> labellings of <span id="hlDigitsM">12</span> points from an
+      explicit value each time. &#128308; The headline is the price. A class with
+      <strong id="hlD">three</strong> parameters trained on <strong id="hlM">2,000</strong> examples
+      carries a published guarantee of <strong id="hlBoundAtM">24.07%</strong>; the same
+      <strong id="hlN">100</strong> examples held out instead certify
+      <strong id="hlTest">2.95%</strong> while knowing nothing whatever about the model, and matching
+      that through the bound takes <strong id="hlNeed">196,214</strong> training examples &mdash;
+      <strong id="hlRatio">1,962&times;</strong> the labels for the same sentence. At a million
+      parameters the bound is not loose, it is <strong>undefined</strong> until
+      <strong id="hlBigM">18,428,117</strong> examples and does not reach 10% until
+      <strong id="hlBigTen">3,994,311,196</strong>. And where the exact answer is computable the whole
+      ladder can stand next to it: on the same learner, the same sample size and the same zero training
+      error, the truth is <strong id="hlExact">0.014771</strong>, an elementary union bound over the
+      <em>finite</em> hypothesis set says <strong id="hlFinite">0.060034</strong>, the VC bound says
+      <strong id="hlVc">0.154085</strong> &mdash; and the Rademacher bound built on the
+      <strong>exact</strong> empirical Rademacher complexity, computed by dynamic programming over all
+      <code>2<sup>m</sup></code> sign patterns rather than estimated, says
+      <strong id="hlRade">0.396076</strong>. &#128308; That last number is the belief this page was
+      built around and it did not survive: replacing the complexity term by its exact value makes the
+      bound <em>worse</em> than the one it was supposed to improve, at
+      <strong id="hlRadeLose">every</strong> sample size on the ladder, and the elementary count of
+      hypotheses beats the VC bound at every one too. The bound is never violated &mdash; it is a
+      theorem, and <strong id="hlWorlds">7</strong> worlds and
+      <strong id="hlSweep">141</strong> swept configurations confirm it &mdash; it is just that it
+      cannot see the distribution, so it prints the identical
+      <strong id="hlConst">0.154085</strong> in all seven while the exact guarantee runs from
+      <strong id="hlQ0">0.011719</strong> down to <strong>exactly zero</strong> in
+      <strong id="hlZero">4</strong> of them. The control is not free either, and the number that
+      finally makes both sides comparable is an identity rather than a comparison: certifying what
+      <span id="hlLadM">1,600</span> training labels bought takes
+      <strong id="hlCert">1,635</strong> held-out ones, because the truth after <code>m</code> training
+      examples and the certificate after <code>n</code> held-out ones are the
+      <em>same function</em> &mdash; a label is worth the same on either side of the split, and only
+      one side tells you the answer. &#128308; Then the control&rsquo;s own failure, exact too: use those
+      <span id="hlN2">100</span> held-out examples to pick the best of
+      <strong id="hlK">20</strong> models and a nominal <strong id="hlNom">95%</strong> interval covers
+      <strong id="hlCov">61.88%</strong> of the time, and at <span id="hlK2">100</span> models
+      <strong id="hlCov100">9.07%</strong> &mdash; but that collapse needs the models to be
+      <em>different</em>, and at <strong id="hlShare">50%</strong> shared errors it disappears
+      completely, back to <strong id="hlCovShare">100.00%</strong>. Pure vanilla JavaScript, one file,
+      no build step.
+    </h1>
+    <div id="tabs">
+      <button data-tab="look" class="tab-active">&#128207; MEASURE</button>
+      <button data-tab="understand">&#129504; UNDERSTAND</button>
+      <button data-tab="build">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================================ MEASURE -->
+<section id="look" class="panel">
+  <div class="sheet">
+    <div class="col">
+
+      <div class="card">
+        <div class="ctl">
+          <label>points to enumerate &mdash; every one of 2<sup>m</sup> labellings
+            <span class="val" id="vMEnum">11</span>
+            <input id="sMEnum" type="range" min="6" max="12" step="1" value="11"></label>
+          <label>training examples, for the bound table <span class="val" id="vM">2000</span>
+            <input id="sM" type="range" min="200" max="20000" step="100" value="2000"></label>
+          <label>training examples in the exactly solved world <span class="val" id="vMLaw">200</span>
+            <input id="sMLaw" type="range" min="40" max="240" step="10" value="200"></label>
+          <label>held-out examples <span class="val" id="vN">100</span>
+            <input id="sN" type="range" min="20" max="500" step="10" value="100"></label>
+          <label>&delta;, in parts per thousand <span class="val" id="vDelta">50</span>
+            <input id="sDelta" type="range" min="10" max="200" step="5" value="50"></label>
+          <label>shape of the world in the ladder <span class="val" id="vShape">0</span>
+            <input id="sShape" type="range" min="0" max="6" step="1" value="0"></label>
+          <label>models compared on one held-out set <span class="val" id="vK">20</span>
+            <input id="sK" type="range" min="1" max="100" step="1" value="20"></label>
+          <label>each model&rsquo;s true error, per thousand <span class="val" id="vP">100</span>
+            <input id="sP" type="range" min="20" max="300" step="10" value="100"></label>
+        </div>
+        <p class="tiny" style="margin-top:12px">
+          Every number below is either an <strong>exhaustive enumeration</strong>, a
+          <strong>closed form</strong> evaluated deterministically, or an <strong>exact rational over
+          BigInt</strong>. There is no dataset on this page and no generator: the growth functions
+          count all <code>2<sup>m</sup></code> labellings, the Rademacher complexities sum over all
+          <code>2<sup>m</sup></code> sign patterns, and the learner&rsquo;s true error is the exact law
+          of a maximum, computed as one integer over one common denominator. Where a closed form
+          exists the enumeration is run <em>anyway</em> and the two are asserted equal, so the
+          formulas here are checked rather than quoted. The problem is deliberately the friendliest
+          one available: realizable, one dimension, and the hypothesis handed to the bound is the
+          <em>worst</em> one consistent with the sample &mdash; exactly the quantity the realizable
+          bound bounds.
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">1 &middot; how many labellings can a class produce? counted, not bounded</p>
+        <p class="say" id="sayGrowth">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblGrowth"></table></div>
+        <p class="flag" id="flagGrowth">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">2 &middot; the growth function, size by size, against Sauer&ndash;Shelah</p>
+        <p class="say">A class of VC dimension <code>d</code> can never produce more than
+          <code>&Sigma;<sub>i&le;d</sub>C(m,i)</code> labellings. Three of these classes hit that
+          ceiling with equality at every size &mdash; the lemma is not merely true for them, it is
+          exact &mdash; and two sit under it by a factor printed in the last column. Every entry is a
+          BigInt.</p>
+        <div class="scroll"><table class="num" id="tblSauer"></table></div>
+        <p class="flag blue" id="flagSauer">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">3 &middot; the control &mdash; count the parameters</p>
+        <p class="say">Nobody computes a growth function before choosing a model. The working
+          heuristic is that capacity is roughly the number of free parameters, and on the classes
+          above it is not roughly right, it is <em>exactly</em> right. Then one more class.</p>
+        <div class="scroll"><table class="num" id="tblCap"></table></div>
+        <p class="flag rose" id="flagCap">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">4 &middot; the growth function is not a property of the model alone</p>
+        <p class="say">It is a <em>maximum</em> over point sets, and for boxes the maximum is not
+          attained by just any arrangement. Same class, same number of points, four arrangements.</p>
+        <div class="scroll"><table class="num" id="tblRect"></table></div>
+        <p class="flag" id="flagRect">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">5 &middot; the Rademacher complexity, exactly</p>
+        <p class="say">The usual move is to replace the growth function by the empirical Rademacher
+          complexity, and then to bound <em>that</em> by the growth function again through Massart&rsquo;s
+          lemma. Here it is computed exactly instead: for the threshold class the supremum is the
+          largest suffix sum of a plus/minus-one walk, so the reflection principle gives a closed form;
+          a dynamic program over the sign patterns gives the same rational; and at small sizes so does
+          the definition, enumerated. Three routes, one integer.</p>
+        <div class="scroll"><table class="num" id="tblRad"></table></div>
+        <p class="flag blue" id="flagRad">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">6 &middot; every guarantee for the same learner, next to the exact answer</p>
+        <p class="say" id="sayLadder">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblLadder"></table></div>
+        <p class="flag rose" id="flagLadder">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">7 &middot; the bound cannot see the distribution</p>
+        <p class="say">Same class, same sample size, same zero training error, seven different worlds
+          that differ only in how the mass is spread over the domain. The bound is a function of
+          <code>(d, m, &delta;)</code> and the training error, so it is the same number in all of them.
+          The truth is not.</p>
+        <div class="scroll"><table class="num" id="tblShape"></table></div>
+        <p class="flag" id="flagShape">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">8 &middot; and the distribution-dependence is entirely atoms</p>
+        <p class="say">For an <em>atomless</em> law the expected true error of the worst consistent
+          hypothesis is exactly <code>1/(m+1)</code> whatever the shape of the distribution, because
+          <code>F(X)</code> is uniform. Refine the grid and the exact answer walks up to that value
+          from below, always staying inside one atom of it &mdash; so the spread in the table above is
+          the coarseness of the world, not the shape of it. That is a correction to the sentence this
+          section was written to make.</p>
+        <div class="scroll"><table class="num" id="tblAtom"></table></div>
+        <p class="flag blue" id="flagAtom">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">9 &middot; how many training examples buy what a held-out set already has</p>
+        <p class="say" id="sayCross">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblCross"></table></div>
+        <p class="flag rose" id="flagCross">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">10 &middot; the control&rsquo;s own failure, computed rather than warned about</p>
+        <p class="say">A held-out interval is a promise about one number measured once. Measure
+          <code>k</code> models on the same held-out set, keep the best, and report <em>its</em>
+          interval, and the promise is about the minimum of <code>k</code> draws instead. The exact
+          binomial law says what is left of it.</p>
+        <div class="scroll"><table class="num" id="tblReuse"></table></div>
+        <p class="say" style="margin:14px 0 8px">The collapse needs the models to be
+          <em>different</em>. Hold the count at <span id="rsK">20</span> and make them fail on the same
+          items instead:</p>
+        <div class="scroll"><table class="num" id="tblShare"></table></div>
+        <p class="flag" id="flagReuse">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">11 &middot; every identity and every bound, listed</p>
+        <div class="scroll"><table class="num" id="tblIdent"></table></div>
+        <p class="flag" id="flagIdent">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">in-page checks</p>
+        <div id="selftest"></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ UNDERSTAND -->
+<section id="understand" class="panel hidden">
+  <div class="sheet plain">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">What a guarantee guarantees</h2>
+
+      <p>A model is fitted to data and scores well on it. The question everyone actually has is
+      whether it will score well on the next batch, and there are exactly two ways to answer it. One
+      is to reason about the model class before seeing anything &mdash; a generalization bound. The
+      other is to keep some data back and look. This page puts both in the same units on the same
+      problem and reads off the difference.</p>
+
+      <p>The theory is not wrong. Not once on this page, over seven worlds and a swept grid of
+      configurations, does the true error exceed the bound. That is the point: it is a theorem, and
+      theorems hold. The finding is about the size of the number it hands you.</p>
+
+      <h3 style="font-size:19px; font-weight:800">1. Capacity, counted</h3>
+      <p>The growth function <code>&Pi;(m)</code> of a class is the largest number of distinct
+      labellings it can produce on <code>m</code> points. It is usually quoted. Here it is
+      <em>counted</em>: for each class and each size, all <code>2<sup>m</sup></code> labellings are
+      generated and each is tested for realizability, and the count is compared with the closed form.
+      Thresholds give <code>m+1</code>; one interval gives <code>C(m,2)+m+1</code>; a union of two
+      intervals gives <code>&Sigma;<sub>i&le;4</sub>C(m,i)</code>; and half-planes give Cover&rsquo;s
+      function-counting number <code>2&Sigma;<sub>k&le;2</sub>C(m&minus;1,k)</code>. The enumeration
+      agrees with every one of them at every size, as an equality of integers.</p>
+      <p>The half-plane row is worth pausing on, because the two routes have nothing in common. The
+      points are placed on a parabola, so they are in general position, and a line meets a parabola at
+      most twice &mdash; which means the positives are a contiguous run of indices or the complement of
+      one, and the count is a small combinatorial argument about runs. Cover&rsquo;s theorem gets the
+      same integer from a completely different place: a recursion on the number of dichotomies when a
+      point is added. They agree at every size.</p>
+      <p>The VC dimension is then not asserted, it is <em>read off</em>: it is the largest
+      <code>m</code> at which the count reaches <code>2<sup>m</sup></code>. And the Sauer&ndash;Shelah
+      lemma turns out to be exact rather than merely true for three of the classes &mdash; thresholds,
+      intervals and unions of two intervals hit <code>&Sigma;<sub>i&le;d</sub>C(m,i)</code> with
+      equality at every size. Half-planes and boxes sit under it by factors the table prints.</p>
+
+      <h3 style="font-size:19px; font-weight:800">2. The heuristic that scores five out of five</h3>
+      <p>Nobody enumerates labellings before picking a model. What people use is: capacity is about
+      the number of free parameters. On these classes it is not approximately right, it is exactly
+      right &mdash; a threshold has one parameter and VC dimension 1, an interval two and 2, a union of
+      two intervals four and 4, a half-plane in the plane three and 3, a box four and 4.</p>
+      <p>Then a sixth class. Let <code>h<sub>&theta;</sub>(i)</code> be the <code>i</code>-th binary
+      digit of a single real number <code>&theta;</code> in <code>[0,1)</code>. One parameter. Given
+      <em>any</em> labelling of the points <code>0,1,&hellip;,m&minus;1</code>, write the labels down
+      as the digits of <code>&theta;</code> and you have realised it. The page does exactly that: it
+      builds the dyadic rational for each of the <code>2<sup>m</sup></code> labellings and reads the
+      digits back one at a time, and every labelling is produced. One parameter, infinite VC
+      dimension, and the heuristic that had just gone five for five is not merely wrong but
+      unboundedly wrong.</p>
+      <p>This is not a curiosity about counting; it is why parameter counts stopped predicting
+      generalization the moment models got large. The digit class is the clean version of the same
+      fact.</p>
+
+      <h3 style="font-size:19px; font-weight:800">3. Whose property is the growth function?</h3>
+      <p>A smaller correction, and one this page had to make to its own framing. The growth function
+      is a maximum over point sets, and for boxes that maximum is delicate: the same eleven points
+      count <strong id="uRectBest">337</strong> labellings when they sit in convex position and
+      <strong id="uRectWorst">67</strong> on a diagonal. So &ldquo;how many labellings can this model
+      produce&rdquo; is not a property of the model, it is a property of the model and of where the
+      data happens to be &mdash; and the theory takes the worst case over the second half.</p>
+
+      <h3 style="font-size:19px; font-weight:800">4. Rademacher, without the second bound</h3>
+      <p>The modern route replaces the growth function with the empirical Rademacher complexity: flip
+      a fair coin for every point, and ask how well the class can correlate with pure noise. It is a
+      genuinely better object &mdash; it depends on the actual sample rather than on the worst one
+      &mdash; and it is almost always then bounded <em>again</em>, by Massart&rsquo;s lemma, back in
+      terms of the growth function.</p>
+      <p>Here it is computed exactly, so the second bound is not needed. For the threshold class the
+      supremum over hypotheses of <code>&Sigma;&sigma;<sub>i</sub>h(x<sub>i</sub>)</code> is the largest
+      suffix sum of the sign vector, which is the running maximum of a plus/minus-one walk, and the
+      reflection principle gives <code>P(M<sub>m</sub>&ge;a) = P(S<sub>m</sub>&ge;a) +
+      P(S<sub>m</sub>&ge;a+1)</code> &mdash; an exact rational with denominator
+      <code>2<sup>m</sup></code>. A dynamic program over the sign patterns reproduces it; at small
+      sizes so does the definition, summed over every pattern. For one interval the supremum is the
+      largest contiguous sum, which is Kadane&rsquo;s quantity, and its exact law comes from a dynamic
+      program over (best ending here, best so far).</p>
+      <p>&#128308; And this is where the page lost the claim it was built around. Feeding the
+      <em>exact</em> complexity into the Rademacher bound was supposed to show what the theory can do
+      when it stops throwing accuracy away. It produces the <em>loosest</em> guarantee on the ladder,
+      at every sample size &mdash; worse than the VC bound it was meant to improve on. The tightening
+      lives in the complexity term, and the complexity term is not where the loss is. The constants
+      and the <code>&radic;(1/m)</code> deviation term are.</p>
+      <p>The digit class settles the same point differently: since it contains every labelling, its
+      supremum is the sum of the positive signs, so its empirical Rademacher complexity is exactly
+      <code>1/2</code> at every sample size &mdash; the largest value the quantity can take &mdash; and
+      its Rademacher bound is above 1 forever. That is correct behaviour. A class that can fit any
+      labelling of your data has nothing to promise you.</p>
+
+      <h3 style="font-size:19px; font-weight:800">5. The exact answer, so &ldquo;loose&rdquo; is a number</h3>
+      <p>Take the friendliest learning problem that exists. The domain is a finite grid, the target
+      labels everything negative, and the learner returns a threshold consistent with the sample.
+      Every consistent hypothesis predicts positive above some cut greater than the largest point
+      seen, so the <em>worst</em> consistent hypothesis is the one that cuts immediately above it, and
+      its true error is exactly the mass sitting above the largest point the sample happened to
+      contain.</p>
+      <p>That makes the entire distribution of the true error a closed form in the CDF, with no sample
+      anywhere:</p>
+      <pre><code>P(error &gt; 1 - F(j))  =  F(j-1)^m
+E[error]  =  sum_j (1 - F(j)) * (F(j)^m - F(j-1)^m)      // over the values it takes
+          =  sum_x p(x) * F(x-1)^m                        // over the points, swapping the sums</code></pre>
+      <p>Two different sums over two different index sets. Written over the common denominator
+      <code>D<sup>m+1</sup></code> they are two integers, and the page asserts they are the same
+      integer &mdash; not the same to within a tolerance, the same. The (1&minus;&delta;) quantile is
+      then a monotone integer comparison, so the exact guarantee is available by binary search.</p>
+      <p>Now the comparison the page exists for. On the same learner, the same sample and the same
+      zero training error, four guarantees and one truth. The truth is smallest, then an elementary
+      union bound over the finite hypothesis set, then the VC bound, then the Rademacher bound, then
+      the agnostic VC bound. The elementary bound &mdash; take the number of hypotheses, divide the
+      failure probability among them, done in one line &mdash; beats the VC bound at every sample size
+      on the ladder. Everything more sophisticated than counting is buying generality, not tightness.</p>
+
+      <h3 style="font-size:19px; font-weight:800">6. What the bound is blind to</h3>
+      <p>The bound is a function of the VC dimension, the sample size, the confidence and the training
+      error. It contains no term for the data. Seven worlds that differ only in how the mass is spread
+      across the domain therefore receive the identical number, while the exact 95% guarantee runs
+      from a percent or so down to <strong>exactly zero</strong> in the concentrated ones &mdash; zero,
+      because with high probability the top atom is drawn and there is then nothing left to be wrong
+      about.</p>
+      <p>It would be easy to stop there and say the bound is loose because it cannot see the
+      distribution. That is the second claim this page had to correct. For an <em>atomless</em> law the
+      expected error of the worst consistent hypothesis is exactly <code>1/(m+1)</code> &mdash;
+      whatever the shape of the distribution, because <code>F(X)</code> is uniform and the whole
+      problem is invariant. The page refines the grid four times and watches the exact value climb
+      towards <code>1/(m+1)</code> from below, always inside one atom of it. So the spread across those
+      seven worlds is entirely a discreteness effect. The bound&rsquo;s blindness to the distribution
+      is real, and it is not the reason it is loose.</p>
+
+      <h3 style="font-size:19px; font-weight:800">7. A label is worth the same on either side of the split</h3>
+      <p>The control for a bound is not another bound, it is a held-out set. With <code>n</code>
+      held-out examples and zero mistakes on them, the exact Clopper&ndash;Pearson upper limit solves
+      <code>(1&minus;U)<sup>n</sup> = &delta;</code>, so <code>U = 1 &minus;
+      &delta;<sup>1/n</sup></code>. It knows nothing about the model, the class, the algorithm or the
+      number of parameters. It is the same number for a threshold and for a transformer.</p>
+      <p>Set that beside the exact truth for this problem, which is <code>1 &minus;
+      &delta;<sup>1/m</sup></code> up to the grid resolution. The two are the <em>same function</em>.
+      Certifying what <code>m</code> training labels bought takes about <code>m</code> held-out ones
+      &mdash; the page computes the number and it lands one or two above <code>m</code> every time. So
+      held-out data is not free, and anyone who tells you a test set is cheap has not priced it. But
+      the exchange rate is one to one, and only one of the two sides can be read.</p>
+      <p>What is not one to one is the bound. To reach what <span id="uN">100</span> held-out examples
+      certify, the agnostic VC bound at three parameters needs
+      <strong id="uNeed">196,214</strong> training examples. At a thousand parameters it needs
+      <strong id="uNeed1k">58,179,197</strong>. At a million, the bound is not defined at all until
+      <strong id="uBigM">18,428,117</strong> examples, because a formula containing
+      <code>ln(2m/d)</code> has nothing to say while <code>m &lt; d</code> &mdash; which is the regime
+      every deployed model of the last decade has lived in.</p>
+
+      <h3 style="font-size:19px; font-weight:800">8. Then the control breaks, in the way everyone breaks it</h3>
+      <p>A held-out interval is a promise about one number measured once. The moment
+      <code>k</code> models are scored on the same held-out set and the best is reported, the promise
+      is about the minimum of <code>k</code> draws, and the exact binomial law says what is left of it.
+      At twenty models a nominal 95% interval covers about three fifths of the time; at a hundred,
+      under one tenth. The reported error rate is biased low by a computable amount, which is the
+      winner&rsquo;s curse arriving in the one place on this page that was supposed to be safe.</p>
+      <p>&#128308; And that collapse has a condition, which is the third correction. It needs the models
+      to be <em>different</em>. Hold the number at twenty and make them fail on the same items instead
+      &mdash; a shared hard core plus an independent remainder, with the total error rate held fixed
+      &mdash; and the coverage climbs back, reaching the nominal level again well before the errors are
+      fully shared. Selection can only exploit variation that exists. A leaderboard of near-identical
+      checkpoints is much safer than a leaderboard of genuinely different ideas, which is not a
+      comfortable thing for a leaderboard to be.</p>
+
+      <h3 style="font-size:19px; font-weight:800">9. What to take away</h3>
+      <p>Not that the theory is useless. It tells you which quantities matter, it is what makes
+      &ldquo;capacity&rdquo; a definable thing at all, and the shape of the bounds &mdash; the
+      <code>&radic;(d/m)</code>, the <code>ln(1/&delta;)</code> &mdash; is how anyone knows what to
+      expect when a knob is turned. What it is not is a number to put in a report.</p>
+      <p>The operational version is short. A guarantee computed from the model class is a statement
+      about every dataset you might have had; a guarantee computed from held-out data is a statement
+      about the one you did have. The second is smaller, it costs about as many labels as the first
+      pretends to need none of, and it is destroyed by exactly one thing &mdash; looking twice.</p>
+
+      <h3 style="font-size:19px; font-weight:800">10. Verification</h3>
+      <p>The block between <code>ENGINE:BEGIN</code> and <code>ENGINE:END</code> is DOM-free,
+      clock-free and free of any random source; it is extracted by regex and run under Node against
+      assertions written independently of it. The oracles share no code with the page: growth
+      functions recounted by a <strong>different realizability test</strong> (convex-hull separation
+      with integer orientation predicates, instead of the run-counting shortcut); Cover&rsquo;s formula
+      rebuilt from its <strong>recursion</strong> rather than its closed form; Sauer&ndash;Shelah
+      recomputed from <strong>BigInt factorials</strong>; the Rademacher complexities re-derived by
+      <strong>exhaustive enumeration over every sign pattern</strong> and by a
+      <strong>forward simulator with a different generator</strong> reported as a confidence interval
+      around the exact value; the exact error law rebuilt by <strong>dynamic programming over the
+      sample maximum</strong> and, at small sizes, by <strong>enumerating every one of the
+      <code>N<sup>m</sup></code> samples</strong>; the Clopper&ndash;Pearson limit re-solved from an
+      <strong>exact BigInt rational binomial tail</strong> rather than from logarithms; the reuse
+      coverage recomputed by <strong>exact convolution</strong>; and every bound re-evaluated from its
+      published algebraic form. On top of that a <strong>mutation harness</strong> corrupts the engine
+      in targeted ways and requires the verifier to notice every one.</p>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ BUILD -->
+<section id="build" class="panel hidden">
+  <div class="sheet soft">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">&#128296; How it is built</h2>
+
+      <h3 style="font-size:19px; font-weight:800">1. No sampling, anywhere</h3>
+      <p>The rule for this run is that ground truth has to be a closed form or an exact computation.
+      That is unusually easy to honour here, because everything in learning theory that this page
+      touches is either a count or an order statistic. Growth functions are counts. Rademacher
+      complexities are averages over <code>2<sup>m</sup></code> equally likely sign vectors, so they
+      are counts divided by <code>2<sup>m</sup></code>. The learner&rsquo;s true error is a function of
+      the sample maximum, and the law of a maximum is <code>F<sup>m</sup></code>. None of those needs a
+      draw.</p>
+      <p>Rationals are <code>{n, d}</code> over BigInt, reduced by Euclid, with equality as
+      <code>a.n*b.d === b.n*a.d</code>. Where the numbers get large the reduction is skipped
+      deliberately: the exact-error law is computed as integers over one shared denominator
+      <code>D<sup>m+1</sup></code>, because a greatest common divisor of two twenty-thousand-digit
+      integers costs more than the rest of the page put together, and comparing two fractions with the
+      same denominator does not need one.</p>
+
+      <h3 style="font-size:19px; font-weight:800">2. Realizability tests that are arguments</h3>
+      <p>Each class is a predicate on a bit mask. The predicates are short because the geometry has
+      been done first, and each one is a theorem rather than a heuristic:</p>
+      <pre><code>threshold   : the positives are a SUFFIX of the sorted points
+interval    : the positives form at most ONE run
+2 intervals : at most TWO runs
+half-plane  : one run, OR the complement is one run
+              (points on a parabola; a line meets it at most twice)
+box         : every point inside the bounding box of the positives is positive
+digits      : always - build theta from the labels and read it back</code></pre>
+      <p>The parabola is the trick that makes half-planes exactly enumerable without a linear
+      program. Because <code>y = x&sup2;</code> is convex and a line crosses it at most twice, the set
+      of points below any line is an interval of indices and the set above is the complement of one.
+      The verifier does not take that on trust: it re-tests separability with integer convex-hull
+      predicates and gets the same masks.</p>
+
+      <h3 style="font-size:19px; font-weight:800">3. The reflection principle instead of a bigger loop</h3>
+      <p>Summing over all <code>2<sup>m</sup></code> sign patterns is fine at
+      <code>m = 12</code> and hopeless at <code>m = 400</code>. Two escapes are used, and they are
+      checked against each other and against the definition. The dynamic program carries the pair
+      (running statistic, best so far) as a state and propagates exact BigInt counts, which is
+      <code>O(m<sup>3</sup>)</code> and covers the middle range. The closed form covers everything:</p>
+      <pre><code>P(M_m &gt;= a) = P(S_m &gt;= a) + P(S_m &gt;= a+1)          a &gt;= 1
+E[M_m]      = sum_{a=1..m} P(M_m &gt;= a)
+            = (1/2^m) * sum_a ( T[ceil((m+a)/2)] + T[ceil((m+a+1)/2)] )</code></pre>
+      <p>where <code>T</code> is the tail sum of binomial coefficients, precomputed once. That is
+      <code>O(m)</code> BigInt additions for an expectation over <code>2<sup>400</sup></code>
+      patterns.</p>
+
+      <h3 style="font-size:19px; font-weight:800">4. Bounds evaluated, never clipped</h3>
+      <p>Each bound is written down in its published algebraic form and evaluated. A value above 1 is
+      printed above 1, because that is the finding rather than an error; a formula whose logarithm has
+      the wrong sign when <code>m &lt; d</code> returns <em>undefined</em> instead of a number, and the
+      table says so. &ldquo;The smallest sample size at which this bound first drops below
+      <code>x</code>&rdquo; is answered by bisection on a monotone function, so those five- and
+      ten-digit numbers are derived rather than typed.</p>
+
+      <h3 style="font-size:19px; font-weight:800">5. Clopper&ndash;Pearson as an equation, not a table</h3>
+      <p>The exact upper limit is the <code>U</code> solving
+      <code>P(Bin(n,U) &le; k) = &delta;</code>. The left side is monotone decreasing in
+      <code>U</code>, so a hundred bisection steps solve it to machine precision, and at
+      <code>k = 0</code> the equation collapses to <code>(1&minus;U)<sup>n</sup> = &delta;</code>,
+      which is a closed form. The page asserts the two agree, which is a test of the solver rather
+      than a claim about statistics.</p>
+      <p>The reuse section then needs the smallest error count whose interval still covers the truth.
+      That is monotone in the count, so it is another bisection &mdash; eight interval solves instead
+      of <code>n</code> of them &mdash; and the coverage is
+      <code>P(min of k counts &ge; that)</code>, which is a tail probability raised to the
+      <code>k</code>.</p>
+
+      <h3 style="font-size:19px; font-weight:800">6. What is asserted</h3>
+      <p>Bounds and identities, never constants. &ldquo;The enumerated growth function equals the
+      closed form&rdquo; is an integer identity; &ldquo;the growth function is under the
+      Sauer&ndash;Shelah ceiling&rdquo; is an integer inequality; &ldquo;the two routes to the mean
+      error agree&rdquo; is an equality of two integers of several thousand digits; &ldquo;the exact
+      guarantee never exceeds the bound&rdquo; is the theorem, asserted in every world and every swept
+      configuration. Nothing on the page asserts that a particular float equals a particular decimal,
+      because two summation orders differ at 1e-16 and an assertion that cannot survive that is a
+      trap rather than a test &mdash; Day 68 lost an afternoon to exactly that.</p>
+
+      <h3 style="font-size:19px; font-weight:800">7. Cost</h3>
+      <p>A full render enumerates a few tens of thousands of labellings, runs three dynamic programs,
+      raises a few thousand BigInts to a power and solves a few dozen bisections. It takes a couple of
+      seconds, so slider drags are debounced rather than raced.</p>
+
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    MachineLearningFromZero &middot; Day 75 &middot; what a generalization bound actually guarantees
+    &mdash; capacity counted rather than quoted, every bound evaluated next to the exact answer, and
+    a held-out set priced against all of them. One file, vanilla JavaScript, no build step and no
+    libraries. Previous:
+    <a href="day74-group-fairness-impossibility.html">Day 74 &mdash; Two groups, one model</a>.
+  </div>
+</footer>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => x.classList.remove("tab-active"));
+  t.classList.add("tab-active");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// What does a generalization bound actually guarantee?
+//
+// Day 73 asked what a clustering score is a number OF and Day 74 asked which equalities can hold at
+// once. Both were about the number at the END of a run. This page is about the number people put in
+// front of one: the promise that a model which scored well on the data it was fitted to will score
+// well on data it has not seen. There is a whole theory of those promises, it is correct, and this
+// page is about what it is worth.
+//
+// Nothing here is sampled. Every quantity is either
+//   - EXHAUSTIVELY ENUMERATED (every one of the 2^m labellings of m points, every sign pattern), or
+//   - a CLOSED FORM evaluated deterministically, or
+//   - an exact rational over BigInt.
+// Where a closed form exists the enumeration is run anyway and the two are asserted equal, so the
+// formulas on this page are checked rather than quoted.
+//
+// The spine:
+//   1. the growth function, counted rather than bounded, and the VC dimension read off it
+//   2. Sauer-Shelah, exact, tight for three classes and slack for two, with the slack printed
+//   3. the CONTROL practitioners actually use for capacity - count the parameters - which scores
+//      five out of five and then meets a one-parameter class with infinite VC dimension
+//   4. the empirical Rademacher complexity EXACTLY, by dynamic programming over all 2^m sign
+//      patterns, against the growth-function bound it is usually replaced by
+//   5. the bounds evaluated: where they stop being vacuous, and where they reach a useful number
+//   6. the CONTROL for the bound - a held-out set with an exact Clopper-Pearson interval - and the
+//      exact number of training examples the bound needs to match it
+//   7. the exact law of the learner's true error on a problem where it is available in closed form,
+//      so "loose" is a measured factor and not an impression
+//   8. and the control's own failure, which is exact too: reuse the held-out set k times and the
+//      coverage it promises collapses by an amount that is a computation, not a warning.
+
+// ---------------------------------------------------------------- exact rationals over BigInt
+function gcdB(a, b){ if (a < 0n) a = -a; if (b < 0n) b = -b; while (b) { const t = a % b; a = b; b = t; } return a; }
+function R(n, d){ if (d === 0n) return null; if (d < 0n) { n = -n; d = -d; } const g = gcdB(n, d) || 1n; return { n: n / g, d: d / g }; }
+function ri(k){ return { n: BigInt(k), d: 1n }; }
+const R0 = ri(0), R1 = ri(1);
+function radd(a, b){ return R(a.n * b.d + b.n * a.d, a.d * b.d); }
+function rsub(a, b){ return R(a.n * b.d - b.n * a.d, a.d * b.d); }
+function rmul(a, b){ return R(a.n * b.n, a.d * b.d); }
+function rdiv(a, b){ return (b === null || b.n === 0n) ? null : R(a.n * b.d, a.d * b.n); }
+function rcmp(a, b){ const l = a.n * b.d, r = b.n * a.d; return l < r ? -1 : (l > r ? 1 : 0); }
+function req(a, b){ return a !== null && b !== null && a.n * b.d === b.n * a.d; }
+function rabs(a){ return a.n < 0n ? R(-a.n, a.d) : a; }
+function risZero(a){ return a !== null && a.n === 0n; }
+function rpow(a, k){ let r = R1, b = a, e = BigInt(k); while (e > 0n) { if (e & 1n) r = rmul(r, b); b = rmul(b, b); e >>= 1n; } return r; }
+function rnum(a){
+  if (a === null) return null;
+  const s = a.n < 0n ? -1 : 1, n = a.n < 0n ? -a.n : a.n;
+  if (a.d === 1n) return s * Number(n);
+  return s * Number((n * 1000000000000000000000n) / a.d) / 1e21;
+}
+function lnBig(x){
+  if (x <= 0n) return -Infinity;
+  const s = x.toString(), take = Math.min(15, s.length);
+  return Math.log(Number(s.slice(0, take))) + (s.length - take) * Math.LN10;
+}
+
+// ---------------------------------------------------------------- exact combinatorics
+const BINOM = new Map();
+function binomB(n, k){
+  if (k < 0 || k > n || n < 0) return 0n;
+  const key = n + ':' + k, hit = BINOM.get(key);
+  if (hit !== undefined) return hit;
+  const kk = BigInt(Math.min(k, n - k));
+  let num = 1n, den = 1n;
+  for (let i = 0n; i < kk; i++) { num *= BigInt(n) - i; den *= i + 1n; }
+  const v = num / den; BINOM.set(key, v); return v;
+}
+function sauer(d, m){ let s = 0n; for (let i = 0; i <= d && i <= m; i++) s += binomB(m, i); return s; }
+function powSum(p, M){ let s = 0n; for (let k = 0n; k <= BigInt(M); k++) s += k ** BigInt(p); return s; }
+
+// ---------------------------------------------------------------- the hypothesis classes
+// A class is a set of {0,1} labellings of m ordered points. test(mask) answers whether a labelling
+// is producible. Where the growth function is known in closed form it is written separately, so the
+// enumeration and the formula are two independent routes to the same integer.
+function runsOf(mask, m){
+  let runs = 0, prev = 0;
+  for (let i = 0; i < m; i++) { const b = (mask >> i) & 1; if (b && !prev) runs++; prev = b; }
+  return runs;
+}
+function ptsFor(key, m){
+  const P = [];
+  if (key === 'halfplanes') { for (let i = 1; i <= m; i++) P.push([i, i * i]); return P; }
+  if (key === 'rectangles') return rectPoints(m, 0);
+  for (let i = 1; i <= m; i++) P.push([i, 0]);
+  return P;
+}
+// The growth function is a MAXIMUM over point sets, and for boxes that maximum is not attained by
+// just any arrangement: the same eleven points count 337 labellings on a circle and 67 on a
+// diagonal. Four arrangements are built here and the count is reported for each, so "how many
+// labellings can this model produce" is visibly not a property of the model alone.
+function rectPoints(m, variant){
+  const P = [];
+  if (variant === 0) {           // convex position - the arrangement that counts highest
+    const Rr = 100003;
+    for (let i = 0; i < m; i++) {
+      const a = 2 * Math.PI * (i + 0.31) / m;
+      P.push([Math.round(Rr * Math.cos(a)), Math.round(Rr * Math.sin(a))]);
+    }
+    return P;
+  }
+  if (variant === 1) {           // a fixed integer hash, no generator
+    const ord = [];
+    for (let i = 0; i < m; i++) ord.push(i);
+    ord.sort(function(a, b){ return ((a + 1) * 48271) % 65537 - ((b + 1) * 48271) % 65537; });
+    for (let i = 0; i < m; i++) P.push([i + 1, ord[i] + 1]);
+    return P;
+  }
+  if (variant === 2) { for (let i = 0; i < m; i++) P.push([i + 1, i + 1]); return P; }   // a diagonal
+  for (let i = 0; i < m; i++) P.push([i + 1, (i % 2 === 0 ? i : 2 * m - i) + 1]);        // a zigzag
+  return P;
+}
+const RECT_VARIANTS = ['convex position', 'hashed order', 'the diagonal', 'a zigzag'];
+function rectCount(P){
+  const m = P.length, C = CLASSES.rectangles;
+  let c = 0;
+  for (let mask = 0; mask < (1 << m); mask++) if (C.test(mask, m, P)) c++;
+  return c;
+}
+function rectangleConfigScan(m){
+  const rows = RECT_VARIANTS.map(function(name, v){
+    const P = rectPoints(m, v), xs = new Set(), ys = new Set();
+    P.forEach(function(q){ xs.add(q[0]); ys.add(q[1]); });
+    return { name: name, count: rectCount(P), distinct: xs.size === m && ys.size === m };
+  });
+  const best = rows.reduce(function(a, b){ return b.count > a.count ? b : a; }, rows[0]);
+  return { m: m, rows: rows, best: best.count, bestName: best.name, worst: Math.min.apply(null, rows.map(function(r){ return r.count; })),
+           bestIsUsed: best.name === RECT_VARIANTS[0], allDistinct: rows.every(function(r){ return r.distinct; }) };
+}
+// VC >= 4 for boxes, exhibited rather than claimed: four points in a diamond, all sixteen
+// labellings realised.
+function diamondShatter(){
+  const P = [[0, 10], [10, 0], [0, -10], [-10, 0]], C = CLASSES.rectangles;
+  let ok = 0;
+  for (let mask = 0; mask < 16; mask++) if (C.test(mask, 4, P)) ok++;
+  return { realised: ok, all: 16, shatters: ok === 16 };
+}
+const CLASSES = {
+  thresholds: {
+    name: 'threshold on a line', short: 'threshold', params: 1, vc: 1,
+    note: 'h(x) = 1 if x is at least t',
+    closed: function(m){ return BigInt(m) + 1n; },
+    test: function(mask, m){ return mask === 0 || (runsOf(mask, m) === 1 && ((mask >> (m - 1)) & 1) === 1); }
+  },
+  intervals: {
+    name: 'one interval on a line', short: 'interval', params: 2, vc: 2,
+    note: 'h(x) = 1 if x lies between a and b',
+    closed: function(m){ return binomB(m, 2) + BigInt(m) + 1n; },
+    test: function(mask, m){ return runsOf(mask, m) <= 1; }
+  },
+  twoIntervals: {
+    name: 'union of two intervals', short: '2 intervals', params: 4, vc: 4,
+    note: 'two disjoint stretches of the line',
+    closed: function(m){ return sauer(4, m); },
+    test: function(mask, m){ return runsOf(mask, m) <= 2; }
+  },
+  halfplanes: {
+    // The points sit on a parabola, so they are in general position, and a line meets a parabola at
+    // most twice: the positive set is a contiguous run of indices or the complement of one. Cover's
+    // function counting theorem gives the same integer in closed form, from a different argument.
+    name: 'half-plane in the plane', short: 'half-plane', params: 3, vc: 3,
+    note: 'a straight line, m points in general position',
+    closed: function(m){ let s = 0n; for (let k = 0; k <= 2; k++) s += binomB(m - 1, k); return 2n * s; },
+    test: function(mask, m){
+      const inv = ((1 << m) - 1) & ~mask;
+      return runsOf(mask, m) <= 1 || runsOf(inv, m) <= 1;
+    }
+  },
+  rectangles: {
+    name: 'axis-aligned rectangle', short: 'rectangle', params: 4, vc: 4, closed: null,
+    note: 'a box in the plane; counted on the configuration shown',
+    test: function(mask, m, P){
+      if (mask === 0) return true;
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (let i = 0; i < m; i++) if ((mask >> i) & 1) {
+        if (P[i][0] < x0) x0 = P[i][0]; if (P[i][0] > x1) x1 = P[i][0];
+        if (P[i][1] < y0) y0 = P[i][1]; if (P[i][1] > y1) y1 = P[i][1];
+      }
+      for (let i = 0; i < m; i++) if (!((mask >> i) & 1))
+        if (P[i][0] >= x0 && P[i][0] <= x1 && P[i][1] >= y0 && P[i][1] <= y1) return false;
+      return true;
+    }
+  },
+  digits: {
+    // h_theta(i) = the i-th binary digit of theta in [0,1). ONE real parameter, and it shatters
+    // every finite set of points, so its VC dimension is infinite.
+    name: 'one real number, read as digits', short: 'digits', params: 1, vc: Infinity,
+    note: 'h(i) = the i-th binary digit of one parameter',
+    closed: function(m){ return 1n << BigInt(m); },
+    test: function(){ return true; }
+  }
+};
+const CLASS_KEYS = ['thresholds', 'intervals', 'twoIntervals', 'halfplanes', 'rectangles', 'digits'];
+
+function digitTheta(mask, m){
+  let n = 0n;
+  for (let i = 0; i < m; i++) if ((mask >> i) & 1) n += 1n << BigInt(m - 1 - i);
+  return R(n, 1n << BigInt(m));
+}
+function digitRead(theta, i){
+  const t = rmul(theta, R(1n << BigInt(i + 1), 1n));
+  return Number((t.n / t.d) % 2n);
+}
+// every labelling of m points realised by an explicit parameter, checked digit by digit
+function digitShatter(m){
+  const total = 1 << m;
+  let realised = 0;
+  for (let mask = 0; mask < total; mask++) {
+    const th = digitTheta(mask, m);
+    let good = true;
+    for (let i = 0; i < m && good; i++) if (digitRead(th, i) !== ((mask >> i) & 1)) good = false;
+    if (good) realised++;
+  }
+  return { m: m, realised: realised, all: total, shatters: realised === total, params: 1 };
+}
+
+function realizedMasks(key, m){
+  const C = CLASSES[key], P = ptsFor(key, m), out = [], total = 1 << m;
+  for (let mask = 0; mask < total; mask++) if (C.test(mask, m, P)) out.push(mask);
+  return out;
+}
+function growthRow(key, m){
+  const C = CLASSES[key];
+  const enumerated = BigInt(realizedMasks(key, m).length);
+  const closed = C.closed ? C.closed(m) : null;
+  const sb = C.vc === Infinity ? null : sauer(C.vc, m);
+  return {
+    key: key, m: m, enumerated: enumerated, closed: closed,
+    agrees: closed === null ? null : closed === enumerated,
+    all: 1n << BigInt(m), shatters: enumerated === (1n << BigInt(m)),
+    sauer: sb, withinSauer: sb === null ? null : enumerated <= sb,
+    tight: sb === null ? null : enumerated === sb,
+    slack: sb === null || enumerated === 0n ? null : Number(sb * 1000n / enumerated) / 1000
+  };
+}
+function growthTable(key, mMax){
+  const rows = [];
+  for (let m = 1; m <= mMax; m++) rows.push(growthRow(key, m));
+  let vcSeen = 0;
+  rows.forEach(function(r){ if (r.shatters) vcSeen = r.m; });
+  return { key: key, rows: rows, vcObserved: vcSeen, capped: vcSeen === mMax, declared: CLASSES[key].vc };
+}
+// The VC dimension of an axis-aligned rectangle is at most 4, proved constructively rather than
+// asserted: in any five points, one is not extreme in any of the four directions, and "everything
+// except that point" is then unrealizable. The witness is exhibited for every 5-subset.
+function rectangleWitnesses(m){
+  const P = ptsFor('rectangles', m);
+  let subsets = 0, witnessed = 0, degenerate = 0;
+  const cur = [];
+  const rec = function(start){
+    if (cur.length === 5) {
+      subsets++;
+      let xa = cur[0], xb = cur[0], ya = cur[0], yb = cur[0];
+      for (const i of cur) {
+        if (P[i][0] < P[xa][0]) xa = i; if (P[i][0] > P[xb][0]) xb = i;
+        if (P[i][1] < P[ya][1]) ya = i; if (P[i][1] > P[yb][1]) yb = i;
+      }
+      const ext = [xa, xb, ya, yb];
+      const inner = cur.filter(function(i){ return ext.indexOf(i) < 0; });
+      if (inner.length === 0) { degenerate++; return; }
+      const p = inner[0];
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const i of cur) if (i !== p) {
+        if (P[i][0] < x0) x0 = P[i][0]; if (P[i][0] > x1) x1 = P[i][0];
+        if (P[i][1] < y0) y0 = P[i][1]; if (P[i][1] > y1) y1 = P[i][1];
+      }
+      if (P[p][0] >= x0 && P[p][0] <= x1 && P[p][1] >= y0 && P[p][1] <= y1) witnessed++;
+      return;
+    }
+    for (let i = start; i < m; i++) { cur.push(i); rec(i + 1); cur.pop(); }
+  };
+  rec(0);
+  return { subsets: subsets, witnessed: witnessed, degenerate: degenerate,
+           complete: subsets > 0 && witnessed + degenerate === subsets };
+}
+
+// ---------------------------------------------------------------- empirical Rademacher complexity
+// The definition asks for an expectation over all 2^m sign patterns. It is computed here EXACTLY,
+// three ways that agree: a closed form from the reflection principle, a dynamic program over the
+// sign patterns, and - at sizes where 2^m is small enough - the definition itself.
+//
+// For the threshold class the supremum over hypotheses of sum(sigma_i h(x_i)) is the largest
+// suffix sum, which is the running maximum of a plus/minus one walk. Reflection gives
+//   P(M_m >= a) = P(S_m >= a) + P(S_m >= a+1),   a >= 1
+// so E[M_m] is an exact rational with denominator 2^m, in O(m) BigInt operations.
+function radThresholdClosed(m){
+  const T = new Array(m + 3).fill(0n);
+  for (let j = m; j >= 0; j--) T[j] = T[j + 1] + binomB(m, j);
+  const tail = function(a){ const c = Math.ceil((m + a) / 2); return c > m ? 0n : T[c]; };
+  let num = 0n;
+  for (let a = 1; a <= m; a++) num += tail(a) + tail(a + 1);
+  return { expMax: R(num, 1n << BigInt(m)), rad: R(num, (1n << BigInt(m)) * BigInt(m)) };
+}
+// the same expectation by dynamic programming over the sign patterns
+function radThresholdDP(m){
+  const W = m + 1, idx = function(s, b){ return (s + m) * W + b; };
+  let cur = new Array((2 * m + 1) * W).fill(0n);
+  cur[idx(0, 0)] = 1n;
+  for (let step = 0; step < m; step++) {
+    const nxt = new Array((2 * m + 1) * W).fill(0n);
+    for (let s = -step; s <= step; s++) for (let b = Math.max(0, s); b <= step; b++) {
+      const c = cur[idx(s, b)]; if (c === 0n) continue;
+      for (const sg of [1, -1]) {
+        const s2 = s + sg, b2 = b > s2 ? b : s2;
+        nxt[idx(s2, b2 < 0 ? 0 : b2)] += c;
+      }
+    }
+    cur = nxt;
+  }
+  let tot = 0n, cnt = 0n;
+  for (let s = -m; s <= m; s++) for (let b = Math.max(0, s); b <= m; b++) {
+    const c = cur[idx(s, b)]; if (c === 0n) continue;
+    tot += BigInt(b) * c; cnt += c;
+  }
+  return { sum: tot, count: cnt, rad: R(tot, cnt * BigInt(m)) };
+}
+// one interval: the supremum is the largest contiguous sum, Kadane's quantity, and its exact law
+// comes from a dynamic program over (best ending here, best so far).
+function radIntervalDP(m){
+  const W = m + 1, idx = function(e, b){ return e * W + b; };
+  let cur = new Array(W * W).fill(0n);
+  cur[idx(0, 0)] = 1n;
+  for (let step = 0; step < m; step++) {
+    const nxt = new Array(W * W).fill(0n);
+    for (let e = 0; e <= step; e++) for (let b = e; b <= step; b++) {
+      const c = cur[idx(e, b)]; if (c === 0n) continue;
+      let e2 = e + 1, b2 = b > e2 ? b : e2;
+      nxt[idx(e2, b2)] += c;
+      e2 = e - 1 < 0 ? 0 : e - 1; b2 = b > e2 ? b : e2;
+      nxt[idx(e2, b2)] += c;
+    }
+    cur = nxt;
+  }
+  let tot = 0n, cnt = 0n;
+  for (let e = 0; e <= m; e++) for (let b = e; b <= m; b++) {
+    const c = cur[idx(e, b)]; if (c === 0n) continue;
+    tot += BigInt(b) * c; cnt += c;
+  }
+  return { sum: tot, count: cnt, rad: R(tot, cnt * BigInt(m)) };
+}
+// the definition, over every sign pattern and every realizable labelling
+function radEnum(key, m){
+  const masks = realizedMasks(key, m), total = 1 << m, sg = new Array(m);
+  let tot = 0n;
+  for (let s = 0; s < total; s++) {
+    for (let i = 0; i < m; i++) sg[i] = ((s >> i) & 1) ? 1 : -1;
+    let best = -Infinity;
+    for (let q = 0; q < masks.length; q++) {
+      const mk = masks[q];
+      let v = 0;
+      for (let i = 0; i < m; i++) if ((mk >> i) & 1) v += sg[i];
+      if (v > best) best = v;
+    }
+    tot += BigInt(best);
+  }
+  return R(tot, BigInt(total) * BigInt(m));
+}
+// the digit class contains every labelling, so the supremum is the sum of the positive signs and
+// the expectation is exactly one half - the largest value this quantity can take.
+function radDigitsClosed(){ return R(1n, 2n); }
+function massartBound(growth, m){ return Math.sqrt(2 * lnBig(growth) / m); }
+
+function radTable(mList){
+  return mList.map(function(m){
+    const cf = radThresholdClosed(m).rad;
+    const dp = m <= 40 ? radThresholdDP(m).rad : null;
+    const en = m <= 12 ? radEnum('thresholds', m) : null;
+    const iv = m <= 40 ? radIntervalDP(m).rad : null;
+    const ivEn = m <= 12 ? radEnum('intervals', m) : null;
+    return {
+      m: m, closed: cf, dp: dp, enum: en, dpAgrees: dp === null ? null : req(cf, dp),
+      enumAgrees: en === null ? null : req(cf, en),
+      interval: iv, intervalEnum: ivEn,
+      intervalAgrees: ivEn === null ? null : req(iv, ivEn),
+      massartThr: massartBound(CLASSES.thresholds.closed(m), m),
+      massartInt: massartBound(CLASSES.intervals.closed(m), m),
+      digits: radDigitsClosed()
+    };
+  });
+}
+
+// ---------------------------------------------------------------- the bounds, as published
+// Each one is a deterministic evaluation of a written-down formula. None of them is estimated, and
+// none of them is clipped: a value above 1 is reported above 1, because that is the finding.
+function vcAgnostic(d, m, delta){
+  if (!(m > 0) || !(d > 0) || m < d) return null;
+  return Math.sqrt((4 / m) * (d * (Math.log(2 * m / d) + 1) + Math.log(4 / delta)));
+}
+function vcRealizable(d, m, delta){
+  if (!(m > 0) || !(d > 0) || m < d) return null;
+  return (2 / m) * (d * Math.log2(2 * Math.E * m / d) + Math.log2(2 / delta));
+}
+function radBound(rhat, m, delta){ return 2 * rhat + 3 * Math.sqrt(Math.log(2 / delta) / (2 * m)); }
+function finiteRealizable(H, m, delta){ return (lnBig(H) - Math.log(delta)) / m; }
+function finiteAgnostic(H, m, delta){ return Math.sqrt((lnBig(H) + Math.log(2 / delta)) / (2 * m)); }
+// smallest m at which a monotone bound family first reaches a target. Bisection, so the answer is
+// derived rather than typed in. null means it never gets there inside the search ceiling.
+function smallestM(fn, target){
+  let hi = 1, guard = 0;
+  while (guard++ < 200) { const v = fn(hi); if (v !== null && v <= target) break; hi *= 2; if (hi > 4e18) return null; }
+  if (guard >= 200) return null;
+  let lo = 1;
+  while (lo < hi) { const mid = Math.floor((lo + hi) / 2); const v = fn(mid); if (v !== null && v <= target) hi = mid; else lo = mid + 1; }
+  return lo;
+}
+
+// ---------------------------------------------------------------- the control: a held-out set
+function lgamma(z){
+  const g = [676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059,
+             12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - lgamma(1 - z);
+  z -= 1;
+  let x = 0.99999999999980993;
+  for (let i = 0; i < 8; i++) x += g[i] / (z + i + 1);
+  const t = z + 7.5;
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+}
+function lchoose(n, k){ return lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1); }
+function binomCdf(k, n, p){
+  if (p <= 0) return 1;
+  if (p >= 1) return k >= n ? 1 : 0;
+  let s = 0;
+  for (let i = 0; i <= k; i++) s += Math.exp(lchoose(n, i) + i * Math.log(p) + (n - i) * Math.log1p(-p));
+  return s > 1 ? 1 : s;
+}
+// Clopper-Pearson upper bound: the U at which P(Bin(n,U) <= k) = delta. Monotone in U, so bisection
+// solves the defining equation rather than approximating it.
+function cpUpper(k, n, delta){
+  if (k >= n) return 1;
+  let lo = k / n, hi = 1;
+  for (let it = 0; it < 100; it++) { const mid = (lo + hi) / 2; if (binomCdf(k, n, mid) > delta) lo = mid; else hi = mid; }
+  return (lo + hi) / 2;
+}
+// with zero errors the equation collapses to (1-U)^n = delta, which is a closed form
+function cpUpperZeroClosed(n, delta){ return 1 - Math.pow(delta, 1 / n); }
+
+// ---------------------------------------------------------------- the exact law of the true error
+// A finite domain with an exact rational law. The target labels everything negative, so a consistent
+// learner's true error is exactly the mass sitting above the largest point it happened to see. That
+// makes the ENTIRE distribution of the true error a closed form in the CDF - there is no sample
+// anywhere on this page, and no tolerance either: the whole thing is integer arithmetic over one
+// common denominator D^(m+1), so "the two routes agree" is an equality of two integers.
+//   route A: sum over the values the error takes, weighted by the law of the sample maximum
+//   route B: swap the order of summation - each point contributes its own mass times the chance
+//            that nothing above it was ever drawn
+// Different index sets, different summands, same integer.
+function worldOf(N, shape){
+  const w = [], c = [];
+  let run = 0n;
+  for (let j = 0; j < N; j++) {
+    const base = BigInt(shape >= 0 ? j + 1 : N - j);
+    let v = 1n;
+    for (let e = 0; e < Math.abs(shape); e++) v *= base;
+    w.push(v); run += v; c.push(run);
+  }
+  return { N: N, shape: shape, w: w, c: c, D: run, H: N + 1, atoms: N };
+}
+function raw(n, d){ return { n: n, d: d }; }
+function ermLaw(world, m, deltaN, deltaD){
+  const N = world.N, w = world.w, c = world.c, D = world.D;
+  const M = BigInt(m);
+  const cm = new Array(N);
+  for (let j = 0; j < N; j++) cm[j] = c[j] ** M;
+  const Dm = D ** M, Dm1 = Dm * D;
+  let numA = 0n;
+  for (let j = 0; j < N; j++) numA += (D - c[j]) * (cm[j] - (j === 0 ? 0n : cm[j - 1]));
+  let numB = 0n;
+  for (let x = 0; x < N; x++) numB += w[x] * (x === 0 ? 0n : cm[x - 1]);
+  let jMax = -1;
+  for (let j = 0; j < N; j++) {
+    const tail = j === 0 ? 0n : cm[j - 1];
+    if (tail * BigInt(deltaD) <= BigInt(deltaN) * Dm) jMax = j;
+  }
+  return {
+    m: m, mean: raw(numA, Dm1), meanAlt: raw(numB, Dm1), agrees: numA === numB,
+    quantile: jMax < 0 ? raw(1n, 1n) : raw(D - c[jMax], D), jMax: jMax,
+    worst: raw(D - c[0], D), numA: numA, numB: numB, den: Dm1
+  };
+}
+// the uniform world has a third route that is pure arithmetic: the numerator IS a power sum, which
+// is why the answer walks towards the atomless value 1/(m+1) as the atoms get finer.
+function uniformMeanExact(N, m){ return raw(powSum(m, N - 1), BigInt(N) ** BigInt(m + 1)); }
+// how the exact mean approaches 1/(m+1) as the law is refined. For an ATOMLESS law the mean is
+// exactly 1/(m+1) whatever the shape - the true error of a consistent learner does not know what
+// distribution it is on - so the gap here is entirely the coarseness of the grid.
+function atomlessLadder(mSmall, NList){
+  return NList.map(function(N){
+    const wl = worldOf(N, 0), law = ermLaw(wl, mSmall, 1, 20);
+    const third = uniformMeanExact(N, mSmall);
+    const got = rnum(law.mean), target = 1 / (mSmall + 1);
+    return { N: N, mean: law.mean, third: third,
+             thirdAgrees: law.mean.n * third.d === third.n * law.mean.d,
+             routesAgree: law.agrees, got: got, target: target, gap: target - got,
+             inside: got < target && got > target - 1 / N };
+  });
+}
+// The bound cannot see the distribution; the truth is almost entirely the distribution. Same class,
+// same sample size, same (zero) training error, seven different worlds, one bound.
+function shapeLadder(cfg){
+  const rows = [], dl = cfg.deltaPct / 1000;
+  const vb = vcRealizable(1, cfg.mLaw, dl);
+  for (const shape of cfg.shapes) {
+    const wl = worldOf(cfg.N, shape);
+    const law = ermLaw(wl, cfg.mLaw, cfg.deltaPct, 1000);
+    const q = rnum(law.quantile);
+    rows.push({
+      shape: shape, mean: law.mean, quantile: law.quantile, q: q, agrees: law.agrees,
+      topMass: rnum(raw(wl.w[cfg.N - 1], wl.D)),
+      vcBound: vb, finiteBound: finiteRealizable(BigInt(wl.H), cfg.mLaw, dl),
+      holds: q <= vb, ratio: q > 0 ? vb / q : null
+    });
+  }
+  const ms = rows.map(function(r){ return rnum(r.mean); });
+  return { rows: rows, bound: vb,
+           boundConstant: rows.every(function(r){ return r.vcBound === vb; }),
+           zeroGuarantees: rows.filter(function(r){ return r.q === 0; }).length,
+           meanSpread: Math.max.apply(null, ms) / Math.min.apply(null, ms),
+           finiteBeatsVc: rows.every(function(r){ return r.finiteBound < r.vcBound; }) };
+}
+// The (1-delta) quantile alone, by binary search on a monotone integer comparison, so a ladder of
+// sample sizes costs O(log N) exponentiations each instead of N.
+function ermQuantileFast(world, m, deltaN, deltaD){
+  const N = world.N, c = world.c, D = world.D, M = BigInt(m);
+  const Dm = D ** M, rhs = BigInt(deltaN) * Dm, dd = BigInt(deltaD);
+  const okAt = function(j){ return (j === 0 ? 0n : c[j - 1] ** M) * dd <= rhs; };
+  if (!okAt(0)) return { q: raw(1n, 1n), jMax: -1 };
+  let lo = 0, hi = N - 1;
+  while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (okAt(mid)) lo = mid; else hi = mid - 1; }
+  return { q: raw(D - c[lo], D), jMax: lo };
+}
+// The money table: every guarantee anyone would write down for the SAME learner on the SAME data,
+// in the same units, next to the exact answer. The learner is deliberately the WORST hypothesis
+// consistent with the sample, which is exactly the quantity the realizable bound bounds - so the
+// comparison is as favourable to the bound as it can be made.
+// The control is not free either. To CERTIFY an error of eps with zero mistakes on held-out data
+// you need 1 - delta^(1/n) <= eps, which is the same function of n that the truth is of m - so the
+// held-out set has to be about as large as the training set to certify what the training bought.
+function testSizeFor(eps, delta){
+  if (!(eps > 0)) return null;
+  return Math.ceil(Math.log(delta) / Math.log1p(-eps));
+}
+function guaranteeLadder(cfg){
+  const dl = cfg.delta, wl = worldOf(cfg.Nladder, 0);
+  return cfg.mLadder.map(function(m){
+    const exact = rnum(ermQuantileFast(wl, m, cfg.deltaPct, 1000).q);
+    const rhat = rnum(radThresholdClosed(m).rad);
+    return {
+      m: m, exact: exact,
+      vcAgn: vcAgnostic(1, m, dl), vcReal: vcRealizable(1, m, dl),
+      finite: finiteRealizable(BigInt(wl.H), m, dl),
+      rade: radBound(rhat, m, dl), rhat: rhat,
+      test: cpUpperZeroClosed(cfg.n, dl),
+      holdsVc: exact <= vcRealizable(1, m, dl),
+      holdsFinite: exact <= finiteRealizable(BigInt(wl.H), m, dl),
+      finiteBeatsVc: finiteRealizable(BigInt(wl.H), m, dl) < vcRealizable(1, m, dl),
+      slackVc: exact > 0 ? vcRealizable(1, m, dl) / exact : null,
+      beatenByTest: cpUpperZeroClosed(cfg.n, dl) < vcRealizable(1, m, dl),
+      nToCertify: testSizeFor(exact, dl),
+      sameShape: exact > 0 ? Math.abs(exact - cpUpperZeroClosed(m, dl)) : null
+    };
+  });
+}
+// ---------------------------------------------------------------- the control's own failure
+// Choose the best of k models on the SAME held-out set and report that model's interval. The models
+// are taken to err independently, which is the friendly case: models that fail on the same hard
+// items shrink the effect. Everything below is the exact binomial law, not a simulation.
+function reuseCoverage(n, k, p, delta, share){
+  share = share || 0;
+  const common = Math.min(n, Math.round(n * p * share));
+  const rest = n - common;
+  const q = rest > 0 ? Math.max(0, Math.min(1, (n * p - common) / rest)) : 0;
+  if (share > 0) {
+    const pmf = new Array(rest + 1);
+    for (let i = 0; i <= rest; i++)
+      pmf[i] = q <= 0 ? (i === 0 ? 1 : 0) : Math.exp(lchoose(rest, i) + i * Math.log(q) + (rest - i) * Math.log1p(-q));
+    const ge = new Array(rest + 2); ge[rest + 1] = 0;
+    for (let i = rest; i >= 0; i--) ge[i] = Math.min(1, ge[i + 1] + pmf[i]);
+    let lo = 0, hi = n;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (cpUpper(mid, n, delta) >= p) hi = mid; else lo = mid + 1; }
+    const jStar = cpUpper(lo, n, delta) >= p ? lo : n + 1;
+    const need = jStar - common;
+    const coverage = need > rest ? 0 : Math.pow(ge[Math.max(0, need)], k);
+    let expMin = 0;
+    for (let j = 0; j <= rest; j++) {
+      const pj = Math.pow(ge[j], k) - Math.pow(ge[j + 1], k);
+      if (pj > 0) expMin += pj * ((j + common) / n);
+    }
+    return { n: n, k: k, p: p, share: share, common: common, jStar: jStar, coverage: coverage,
+             expMin: expMin, nominal: 1 - delta, bias: p - expMin };
+  }
+  return reuseIndep(n, k, p, delta);
+}
+function reuseIndep(n, k, p, delta){
+  const pmf = new Array(n + 1);
+  for (let i = 0; i <= n; i++) pmf[i] = Math.exp(lchoose(n, i) + i * Math.log(p) + (n - i) * Math.log1p(-p));
+  const ge = new Array(n + 2); ge[n + 1] = 0;
+  for (let i = n; i >= 0; i--) ge[i] = Math.min(1, ge[i + 1] + pmf[i]);
+  // cpUpper is increasing in the error count, so the smallest count whose interval still covers p
+  // is found by bisection instead of by evaluating the interval at every count.
+  let lo = 0, hi = n;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (cpUpper(mid, n, delta) >= p) hi = mid; else lo = mid + 1; }
+  const jStar = cpUpper(lo, n, delta) >= p ? lo : n + 1;
+  const coverage = jStar > n ? 0 : Math.pow(ge[jStar], k);
+  let expMin = 0;
+  for (let j = 0; j <= n; j++) {
+    const pj = Math.pow(ge[j], k) - Math.pow(ge[j + 1], k);
+    if (pj > 0) expMin += pj * (j / n);
+  }
+  return { n: n, k: k, p: p, share: 0, common: 0, jStar: jStar, coverage: coverage, expMin: expMin,
+           nominal: 1 - delta, bias: p - expMin };
+}
+// how much of the collapse survives when the models fail on the same items
+function shareLadder(cfg){
+  return cfg.shareList.map(function(sh){ return reuseCoverage(cfg.n, cfg.kModels, cfg.pTrue, cfg.delta, sh); });
+}
+function reuseTable(cfg){
+  const rows = [];
+  for (const k of cfg.kList) rows.push(reuseCoverage(cfg.n, k, cfg.pTrue, cfg.deltaPct / 1000));
+  return { rows: rows,
+           monotone: rows.every(function(r, i){ return i === 0 || r.coverage <= rows[i - 1].coverage + 1e-12; }),
+           firstOk: rows.length > 0 && rows[0].coverage >= rows[0].nominal };
+}
+
+// ---------------------------------------------------------------- putting the two guarantees side by side
+function crossTable(cfg){
+  const dl = cfg.deltaPct / 1000;
+  const test = cpUpperZeroClosed(cfg.n, dl);
+  const rows = cfg.dList.map(function(d){
+    const need = smallestM(function(m){ return vcAgnostic(d, m, dl); }, test);
+    const vac = smallestM(function(m){ return vcAgnostic(d, m, dl); }, 1);
+    const ten = smallestM(function(m){ return vcAgnostic(d, m, dl); }, 0.1);
+    return { d: d, atM: vcAgnostic(d, cfg.m, dl), needForTest: need, firstNonVacuous: vac, forTenPct: ten,
+             ratio: need === null ? null : need / cfg.n,
+             undefinedAtM: cfg.m < d };
+  });
+  return { test: test, testClosedMatches: Math.abs(test - cpUpper(0, cfg.n, dl)) < 1e-9, rows: rows,
+           testIndependentOfD: true };
+}
+
+// ---------------------------------------------------------------- the parameter-count control
+function capacityTable(mEnum){
+  const rows = CLASS_KEYS.map(function(key){
+    const C = CLASSES[key], t = growthTable(key, mEnum);
+    return {
+      key: key, name: C.name, short: C.short, params: C.params, declared: C.vc,
+      observed: t.capped ? Infinity : t.vcObserved, capped: t.capped,
+      matches: C.vc === Infinity ? t.capped : t.vcObserved === C.vc,
+      heuristicRight: C.vc !== Infinity && C.params === C.vc,
+      note: C.note
+    };
+  });
+  return { rows: rows, mEnum: mEnum,
+           heuristicScore: rows.filter(function(r){ return r.heuristicRight; }).length,
+           heuristicBreaks: rows.filter(function(r){ return r.declared === Infinity; }).length };
+}
+
+// ---------------------------------------------------------------- configuration and identities
+const DEFAULTS = { mEnum: 11, m: 2000, mLaw: 200, mSmall: 40, n: 100, deltaPct: 50, N: 256, shape: 0, pTruePct: 100, kModels: 20 };
+function cfgOf(o){
+  const c = Object.assign({}, DEFAULTS, o || {});
+  c.dList = [1, 2, 3, 4, 10, 100, 1000, 1000000];
+  c.shapes = [0, 1, 2, 3, 4, 5, 6];
+  c.kList = [1, 2, 5, 10, 20, 50, 100];
+  c.radList = [4, 8, 12, 20, 40, 100, 400];
+  c.atomList = [64, 256, 1024, 4096];
+  c.mLadder = [25, 50, 100, 200, 400, 800, 1600];
+  c.Nladder = 8192;
+  c.rectM = Math.min(c.mEnum, 12);
+  c.shareList = [0, 0.25, 0.5, 0.75, 1];
+  c.pTrue = c.pTruePct / 1000;
+  c.delta = c.deltaPct / 1000;
+  return c;
+}
+function identityTable(cfg){
+  const rows = [];
+  const add = function(label, kind, ok, detail){ rows.push({ label: label, kind: kind, ok: ok, detail: detail }); };
+  for (const key of CLASS_KEYS) {
+    const t = growthTable(key, cfg.mEnum);
+    const closedRows = t.rows.filter(function(r){ return r.closed !== null; });
+    add('growth function of the ' + CLASSES[key].short + ' class: enumerated = closed form',
+        'identity', closedRows.length === 0 ? null : closedRows.every(function(r){ return r.agrees; }),
+        closedRows.length + ' sizes, exact integers');
+    const bounded = t.rows.filter(function(r){ return r.withinSauer !== null; });
+    add('growth of the ' + CLASSES[key].short + ' class stays under the Sauer-Shelah ceiling',
+        'bound', bounded.length === 0 ? null : bounded.every(function(r){ return r.withinSauer; }),
+        bounded.length + ' sizes');
+  }
+  const ds = digitShatter(Math.min(cfg.mEnum, 12));
+  add('one parameter realises every labelling, checked digit by digit', 'identity', ds.shatters,
+      ds.realised + ' of ' + ds.all);
+  const rw = rectangleWitnesses(Math.min(cfg.mEnum, 11));
+  add('every 5-subset has a point no rectangle can leave out', 'identity', rw.complete,
+      rw.witnessed + ' witnesses over ' + rw.subsets + ' subsets');
+  const rt = radTable(cfg.radList);
+  add('Rademacher: reflection closed form = dynamic program', 'identity',
+      rt.every(function(r){ return r.dpAgrees === null || r.dpAgrees; }), 'exact rationals');
+  add('Rademacher: closed form = the definition, over every sign pattern', 'identity',
+      rt.every(function(r){ return r.enumAgrees === null || r.enumAgrees; }), 'all 2^m patterns');
+  add('one-interval Rademacher: dynamic program = the definition', 'identity',
+      rt.every(function(r){ return r.intervalAgrees === null || r.intervalAgrees; }), 'all 2^m patterns');
+  add('the exact Rademacher complexity sits under the growth-function bound', 'bound',
+      rt.every(function(r){ return rnum(r.closed) <= r.massartThr + 1e-12; }), 'Massart');
+  const wl = worldOf(cfg.N, cfg.shape);
+  const law = ermLaw(wl, cfg.mLaw, cfg.deltaPct, 1000);
+  add('the exact mean true error, two different sums over two different index sets', 'identity',
+      law.agrees, 'one integer, ' + law.numA.toString().length + ' digits');
+  const al = atomlessLadder(cfg.mSmall, cfg.atomList);
+  add('the uniform mean also equals a power sum over a power', 'identity',
+      al.every(function(r){ return r.thirdAgrees; }), 'Faulhaber, ' + al.length + ' grids');
+  add('every uniform mean lands inside one atom of 1/(m+1), from below', 'bound',
+      al.every(function(r){ return r.inside; }), al.length + ' grids');
+  const ct = crossTable(cfg);
+  add('the closed-form interval at zero errors = the bisected Clopper-Pearson one', 'bound',
+      ct.testClosedMatches, 'within 1e-9');
+  const sl = shapeLadder(cfg);
+  add('the bound is never violated, in any world', 'bound',
+      sl.rows.every(function(r){ return r.holds; }), sl.rows.length + ' worlds');
+  add('the bound is the SAME number in every one of those worlds', 'identity', sl.boundConstant,
+      'it cannot see the distribution');
+  const ru = reuseTable(cfg);
+  add('used once, the held-out interval keeps its promise', 'bound', ru.firstOk, 'k = 1');
+  add('coverage falls, never rises, as the same set is reused', 'bound', ru.monotone,
+      ru.rows.length + ' values of k');
+  return { rows: rows, allOk: rows.every(function(r){ return r.ok !== false; }),
+           checked: rows.filter(function(r){ return r.ok !== null; }).length };
+}
+// Every claim, over a grid of configurations, so a claim that only holds at the defaults cannot
+// hide behind one that holds everywhere.
+function configSweep(cfg){
+  let checked = 0, bad = 0;
+  const notes = [];
+  for (const m of [40, 120, 400]) {
+    for (const deltaPct of [10, 50, 100]) {
+      for (const shape of [0, 2, 5]) {
+        const wl = worldOf(128, shape);
+        const law = ermLaw(wl, m, deltaPct, 1000);
+        const dl = deltaPct / 1000;
+        const vb = vcRealizable(1, m, dl), fb = finiteRealizable(BigInt(wl.H), m, dl);
+        const q = rnum(law.quantile);
+        checked += 4;
+        if (!law.agrees) { bad++; notes.push('two routes disagree at m=' + m + ' shape=' + shape); }
+        if (!(q <= vb)) { bad++; notes.push('VC bound violated at m=' + m + ' shape=' + shape); }
+        if (!(q <= fb)) { bad++; notes.push('finite-class bound violated at m=' + m + ' shape=' + shape); }
+        if (!(rnum(law.mean) <= rnum(law.worst))) { bad++; notes.push('mean above the worst case'); }
+      }
+    }
+  }
+  for (const n of [50, 100, 400]) for (const deltaPct of [10, 50, 100]) {
+    checked++;
+    const dl = deltaPct / 1000;
+    if (Math.abs(cpUpperZeroClosed(n, dl) - cpUpper(0, n, dl)) > 1e-9) { bad++; notes.push('CP mismatch at n=' + n); }
+  }
+  for (const m of [3, 5, 9, 11]) for (const key of CLASS_KEYS) {
+    const r = growthRow(key, m);
+    checked++;
+    if (r.agrees === false) { bad++; notes.push('growth mismatch ' + key + ' m=' + m); }
+    if (r.withinSauer === false) { bad++; notes.push('Sauer violated ' + key + ' m=' + m); }
+  }
+  return { checked: checked, bad: bad, notes: notes.slice(0, 6) };
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- rendering (DOM lives here only)
+function $(id){ return document.getElementById(id); }
+function fx(x, k){ return (x === null || x === undefined || !isFinite(x)) ? "&ndash;" : x.toFixed(k === undefined ? 6 : k); }
+function grp(x){
+  if (x === null || x === undefined) return "&ndash;";
+  if (x === Infinity) return "&infin;";
+  const s = (typeof x === "bigint" ? x.toString() : String(Math.round(Number(x))));
+  return s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+function pc(x, k){ return x === null ? "&ndash;" : (100 * x).toFixed(k === undefined ? 2 : k) + "%"; }
+function yn(b){ return b === null || b === undefined ? "<span class='dim'>&ndash;</span>"
+                : (b ? "<span class='ok'>yes</span>" : "<span class='bad'>no</span>"); }
+function head(cells){ return "<tr>" + cells.map(function(c){ return "<th>" + c + "</th>"; }).join("") + "</tr>"; }
+function row(cells, cls){ return "<tr>" + cells.map(function(c, i){
+  return "<td" + (cls && cls[i] ? " class='" + cls[i] + "'" : "") + ">" + c + "</td>"; }).join("") + "</tr>"; }
+
+function render(){
+  const cfg = cfgOf({
+    mEnum: +$("sMEnum").value, m: +$("sM").value, mLaw: +$("sMLaw").value,
+    n: +$("sN").value, deltaPct: +$("sDelta").value, shape: +$("sShape").value,
+    kModels: +$("sK").value, pTruePct: +$("sP").value
+  });
+  ["MEnum:mEnum", "M:m", "MLaw:mLaw", "N:n", "Delta:deltaPct", "Shape:shape", "K:kModels", "P:pTruePct"]
+    .forEach(function(pair){ const p = pair.split(":"); $("v" + p[0]).textContent = cfg[p[1]]; });
+
+  // 1 ------------------------------------------------------------ growth, enumerated vs closed form
+  const tables = {};
+  CLASS_KEYS.forEach(function(k){ tables[k] = growthTable(k, cfg.mEnum); });
+  let h = head(["class", "what it is", "params", "&Pi;(" + cfg.mEnum + ") counted",
+                "closed form", "equal", "2<sup>" + cfg.mEnum + "</sup>", "shatters up to"]);
+  CLASS_KEYS.forEach(function(k){
+    const t = tables[k], last = t.rows[t.rows.length - 1], C = CLASSES[k];
+    h += row([C.name, "<span class='tiny'>" + C.note + "</span>", C.params,
+      grp(last.enumerated), last.closed === null ? "<span class='dim'>none known</span>" : grp(last.closed),
+      last.closed === null ? "<span class='dim'>&ndash;</span>" : yn(last.agrees),
+      grp(last.all), (t.capped ? "&ge; " : "") + t.vcObserved],
+      [null, null, null, "same", "same", null, null, null]);
+  });
+  $("tblGrowth").innerHTML = h;
+  const mism = CLASS_KEYS.reduce(function(a, k){
+    return a + tables[k].rows.filter(function(r){ return r.agrees === false; }).length; }, 0);
+  const sizes = CLASS_KEYS.reduce(function(a, k){
+    return a + tables[k].rows.filter(function(r){ return r.closed !== null; }).length; }, 0);
+  $("sayGrowth").innerHTML =
+    "Every one of the <strong>" + grp(1 << cfg.mEnum) + "</strong> labellings of " + cfg.mEnum +
+    " points is generated and tested, for each class, at every size from 1 up. Where a closed form " +
+    "exists it is evaluated separately and the two integers are compared: <strong>" + grp(sizes) +
+    "</strong> comparisons, <strong>" + mism + "</strong> disagreements. The VC dimension in the last " +
+    "column is not declared anywhere &mdash; it is the largest size at which the count reaches " +
+    "2<sup>m</sup>.";
+  $("flagGrowth").innerHTML =
+    "The half-plane row is the one where the two routes share nothing. The count comes from a " +
+    "combinatorial argument about runs of indices on a parabola; the closed form is Cover&rsquo;s " +
+    "function-counting theorem, derived from a recursion on adding a point. They agree at every size.";
+
+  // 2 ------------------------------------------------------------ Sauer-Shelah
+  h = head(["class", "d", "&Pi;(" + cfg.mEnum + ")", "&Sigma;<sub>i&le;d</sub>C(m,i)",
+            "ceiling &divide; count", "under the ceiling", "equality at every size"]);
+  let tightCount = 0;
+  CLASS_KEYS.forEach(function(k){
+    const t = tables[k], last = t.rows[t.rows.length - 1], C = CLASSES[k];
+    const allTight = C.vc !== Infinity && t.rows.every(function(r){ return r.tight; });
+    if (allTight) tightCount++;
+    h += row([C.short, C.vc === Infinity ? "&infin;" : C.vc, grp(last.enumerated),
+      last.sauer === null ? "<span class='dim'>&ndash;</span>" : grp(last.sauer),
+      last.slack === null ? "<span class='dim'>&ndash;</span>" : fx(last.slack, 3) + "&times;",
+      last.withinSauer === null ? "<span class='dim'>n/a</span>" : yn(last.withinSauer),
+      C.vc === Infinity ? "<span class='dim'>no finite d</span>" : yn(allTight)],
+      [null, null, null, null, null, "same3", "same"]);
+  });
+  $("tblSauer").innerHTML = h;
+  $("flagSauer").innerHTML =
+    "<strong>" + tightCount + "</strong> of the classes meet the ceiling with <em>equality</em> at " +
+    "every size &mdash; for them Sauer&ndash;Shelah is not a bound, it is the answer. The other two " +
+    "sit under it by the factor in the middle column, which is the amount a bound built on the VC " +
+    "dimension alone throws away before any statistics happen. The digit class has no finite d, so " +
+    "there is no ceiling to be under.";
+
+  // 3 ------------------------------------------------------------ the parameter-count control
+  const cap = capacityTable(cfg.mEnum);
+  const ds = digitShatter(Math.min(cfg.mEnum, 12));
+  h = head(["class", "free parameters", "VC dimension", "largest shattered set found",
+            "parameters = VC"]);
+  cap.rows.forEach(function(r){
+    h += row([r.name, r.params, r.declared === Infinity ? "&infin;" : r.declared,
+      r.capped ? "&ge; " + cfg.mEnum + " <span class='tiny'>(the enumeration ran out)</span>" : r.observed,
+      yn(r.heuristicRight)],
+      [null, null, null, null, r.heuristicRight ? "same3" : "same2"]);
+  });
+  $("tblCap").innerHTML = h;
+  $("flagCap").innerHTML =
+    "&#128308; <strong>" + cap.heuristicScore + " of " + cap.rows.length + "</strong>, and then not " +
+    "merely wrong but unboundedly wrong. <code>h<sub>&theta;</sub>(i)</code> = the i-th binary digit " +
+    "of one real number realises all <strong>" + grp(ds.realised) + "</strong> of the " +
+    grp(ds.all) + " labellings of " + ds.m + " points &mdash; each from an explicit &theta; built " +
+    "from the labels and read back digit by digit &mdash; on <strong>one</strong> parameter. This is " +
+    "not a curiosity: it is why parameter counts stopped predicting generalization the moment models " +
+    "got large.";
+
+  // 4 ------------------------------------------------------------ the arrangement matters
+  const rs = rectangleConfigScan(cfg.rectM);
+  const dm = diamondShatter();
+  h = head(["arrangement of the " + cfg.rectM + " points", "labellings a box can produce",
+            "share of 2<sup>" + cfg.rectM + "</sup>", "distinct x and y"]);
+  rs.rows.forEach(function(r){
+    h += row([r.name, grp(r.count), pc(r.count / (1 << cfg.rectM)), yn(r.distinct)],
+      [null, r.count === rs.best ? "same3" : null, null, null]);
+  });
+  $("tblRect").innerHTML = h;
+  $("flagRect").innerHTML =
+    "Same class, same number of points: <strong>" + grp(rs.best) + "</strong> against <strong>" +
+    grp(rs.worst) + "</strong>, a factor of " + fx(rs.best / rs.worst, 1) + ". The growth function is " +
+    "a <em>maximum</em> over point sets, so it is a property of the model <em>and</em> of where the " +
+    "data happens to be. The convex arrangement is the one used above. And the four-point diamond " +
+    "settles the lower half of the VC dimension by exhibition: <strong>" + dm.realised + " of " +
+    dm.all + "</strong> labellings realised, so VC &ge; 4; the upper half is the witness argument, " +
+    "checked on every 5-subset.";
+
+  // 5 ------------------------------------------------------------ Rademacher
+  const rt = radTable(cfg.radList);
+  h = head(["m", "R&#770; threshold class", "= dynamic program", "= the definition",
+            "Massart bound", "R&#770; one interval", "= the definition", "Massart bound"]);
+  rt.forEach(function(r){
+    h += row([grp(r.m), fx(rnum(r.closed)), yn(r.dpAgrees), yn(r.enumAgrees), fx(r.massartThr),
+      r.interval === null ? "<span class='dim'>too large to enumerate</span>" : fx(rnum(r.interval)),
+      yn(r.intervalAgrees), fx(r.massartInt)],
+      [null, "same", null, null, null, "same2", null, null]);
+  });
+  $("tblRad").innerHTML = h;
+  const rdig = radDigitsClosed();
+  $("flagRad").innerHTML =
+    "The Massart column is what the Rademacher complexity is normally replaced by, and it is loose " +
+    "by a factor of about " + fx(rt[rt.length - 1].massartThr / rnum(rt[rt.length - 1].closed), 1) +
+    "&times; at the largest size here. The digit class needs neither: it contains every labelling, so " +
+    "its supremum is the sum of the positive signs and its empirical Rademacher complexity is exactly " +
+    "<strong>" + fx(rnum(rdig), 1) + "</strong> at every sample size &mdash; the largest the quantity " +
+    "can be. Its Rademacher bound is above 1 forever, which is correct: a class that can fit any " +
+    "labelling of your data has nothing to promise you.";
+
+  // 6 ------------------------------------------------------------ the guarantee ladder
+  const gl = guaranteeLadder(cfg);
+  h = head(["training examples m", "the exact answer", "union bound over the finite class",
+            "VC bound (realizable)", "Rademacher, exact R&#770;", "VC bound (agnostic)",
+            "held-out, n = " + cfg.n, "held-out n to certify the truth", "VC &divide; truth"]);
+  gl.forEach(function(r){
+    h += row([grp(r.m), fx(r.exact), fx(r.finite), fx(r.vcReal), fx(r.rade), fx(r.vcAgn),
+      fx(r.test), grp(r.nToCertify), r.slackVc === null ? "&ndash;" : fx(r.slackVc, 1) + "&times;"],
+      [null, "same3", "same", null, "same2", null, null, null, null]);
+  });
+  $("tblLadder").innerHTML = h;
+  const anyRadeWins = gl.filter(function(r){ return r.rade < r.vcReal; }).length;
+  const anyFiniteWins = gl.filter(function(r){ return r.finiteBeatsVc; }).length;
+  const mBeat = smallestM(function(mm){ return vcRealizable(1, mm, cfg.delta); }, cpUpperZeroClosed(cfg.n, cfg.delta));
+  $("sayLadder").innerHTML =
+    "One learner, one problem, one confidence level, six numbers. The world is a grid of " +
+    grp(cfg.Nladder) + " points, the target is realizable, the class is the smallest non-trivial one " +
+    "there is (<code>d = 1</code>), and the hypothesis handed to the bounds is the <em>worst</em> one " +
+    "consistent with the sample &mdash; which is exactly what a realizable bound bounds, so nothing " +
+    "here is unfair to the theory. The exact column is a closed form, not an estimate.";
+  $("flagLadder").innerHTML =
+    "&#128308; The Rademacher column carries the <em>exact</em> empirical Rademacher complexity, " +
+    "computed over all 2<sup>m</sup> sign patterns rather than bounded &mdash; and it is the loosest " +
+    "guarantee in the table at <strong>" + (gl.length - anyRadeWins) + " of " + gl.length +
+    "</strong> sample sizes. Replacing the complexity term by its exact value does not rescue the " +
+    "bound, because the complexity term is not where the loss is. Meanwhile the elementary union " +
+    "bound &mdash; count the hypotheses, split &delta; among them, one line &mdash; beats the VC " +
+    "bound at <strong>" + anyFiniteWins + " of " + gl.length + "</strong>. And the last two columns " +
+    "are the exchange rate: certifying what m training labels bought takes about m held-out ones, " +
+    "because <code>1&minus;&delta;<sup>1/m</sup></code> and <code>1&minus;&delta;<sup>1/n</sup></code> " +
+    "are the same function. The VC bound does not beat a " + cfg.n + "-example held-out set until " +
+    "<strong>m = " + grp(mBeat) + "</strong>, and that is at <code>d = 1</code>.";
+
+  // 7 ------------------------------------------------------------ blind to the distribution
+  const sl = shapeLadder(cfg);
+  h = head(["shape", "mass on the top atom", "E[true error]", "exact " + pc(1 - cfg.delta, 1) +
+            " guarantee", "VC bound", "union bound", "bound &divide; truth", "bound holds"]);
+  sl.rows.forEach(function(r){
+    h += row([r.shape === 0 ? "0 <span class='tiny'>(uniform)</span>" : r.shape,
+      pc(r.topMass, 3), fx(rnum(r.mean), 9), fx(r.q, 9), fx(r.vcBound), fx(r.finiteBound),
+      r.ratio === null ? "<span class='warn'>&infin;</span>" : fx(r.ratio, 1) + "&times;", yn(r.holds)],
+      [null, null, null, "same3", "same", null, null, null]);
+  });
+  $("tblShape").innerHTML = h;
+  $("flagShape").innerHTML =
+    "The VC column is <strong>" + fx(sl.bound) + "</strong> in every row, because the bound has no " +
+    "term for the data. The exact guarantee runs from <strong>" + fx(sl.rows[0].q, 6) + "</strong> " +
+    "down to <strong>exactly zero</strong> in <strong>" + sl.zeroGuarantees + " of " +
+    sl.rows.length + "</strong> worlds &mdash; zero, because with probability at least " +
+    pc(1 - cfg.delta, 1) + " the top atom is drawn and there is then nothing left to be wrong about. " +
+    "The expected error spans <strong>" + fx(sl.meanSpread, 1) + "&times;</strong> across the same " +
+    "seven rows.";
+
+  // 8 ------------------------------------------------------------ atomless
+  const al = atomlessLadder(cfg.mSmall, cfg.atomList);
+  h = head(["grid size N", "exact E[true error]", "1/(m+1)", "gap", "one atom = 1/N",
+            "inside one atom", "two routes agree", "= the power sum"]);
+  al.forEach(function(r){
+    h += row([grp(r.N), fx(r.got, 9), fx(r.target, 9), fx(r.gap, 9), fx(1 / r.N, 9),
+      yn(r.inside), yn(r.routesAgree), yn(r.thirdAgrees)],
+      [null, "same", "same3", null, null, null, null, null]);
+  });
+  $("tblAtom").innerHTML = h;
+  $("flagAtom").innerHTML =
+    "&#128308; This is a correction to the previous card, not a supplement to it. For an atomless " +
+    "law the expected error is exactly <code>1/(m+1) = " + fx(1 / (cfg.mSmall + 1), 9) + "</code> at " +
+    "m = " + cfg.mSmall + ", <em>whatever</em> the shape, because <code>F(X)</code> is uniform and the " +
+    "problem is invariant. So the spread above is the coarseness of the world and not the shape of " +
+    "it. The bound&rsquo;s blindness to the distribution is real, and it is not the reason it is loose.";
+
+  // 9 ------------------------------------------------------------ the crossover
+  const ct = crossTable(cfg);
+  h = head(["parameters d", "bound at m = " + grp(cfg.m), "first m where it is below 1",
+            "m to reach 10%", "m to match the held-out set", "&divide; the " + cfg.n + " held-out labels"]);
+  ct.rows.forEach(function(r){
+    h += row([grp(r.d), r.atM === null ? "<span class='warn'>undefined (m &lt; d)</span>" : fx(r.atM),
+      grp(r.firstNonVacuous), grp(r.forTenPct), grp(r.needForTest),
+      r.ratio === null ? "&ndash;" : grp(r.ratio) + "&times;"],
+      [null, r.atM !== null && r.atM > 1 ? "same2" : null, null, null, "same", null]);
+  });
+  $("tblCross").innerHTML = h;
+  const d3 = ct.rows.filter(function(r){ return r.d === 3; })[0];
+  $("sayCross").innerHTML =
+    "The held-out guarantee is one number: <strong>" + fx(ct.test) + "</strong> for " + cfg.n +
+    " examples with zero mistakes, at " + pc(1 - cfg.delta, 1) + " confidence. It does not appear in " +
+    "the table because it does not depend on anything in the table &mdash; not the class, not the " +
+    "algorithm, not the number of parameters. It is the same number for a threshold and for a " +
+    "transformer. The columns are what the agnostic VC bound needs in order to say the same thing.";
+  $("flagCross").innerHTML =
+    "&#128308; At <strong>d = 3</strong> &mdash; a straight line in the plane &mdash; matching " +
+    cfg.n + " held-out labels takes <strong>" + grp(d3 ? d3.needForTest : null) +
+    "</strong> training examples, <strong>" + grp(d3 ? d3.ratio : null) + "&times;</strong> the " +
+    "labels for the same sentence. At a million parameters the bound is not loose, it is " +
+    "<em>undefined</em>: a formula containing <code>ln(2m/d)</code> has nothing to say while " +
+    "<code>m &lt; d</code>, which is the regime every deployed model of the last decade has lived in.";
+
+  // 10 ----------------------------------------------------------- reuse
+  const ru = reuseTable(cfg);
+  h = head(["models scored on the same held-out set", "coverage of the nominal " +
+            pc(1 - cfg.delta, 1) + " interval", "E[reported error rate]", "true error rate",
+            "bias in what gets reported"]);
+  ru.rows.forEach(function(r){
+    h += row([grp(r.k), pc(r.coverage), fx(r.expMin, 4), fx(r.p, 4), fx(r.bias, 4)],
+      [null, r.coverage >= r.nominal ? "same3" : "same2", "same", null, null]);
+  });
+  $("tblReuse").innerHTML = h;
+  $("rsK").textContent = cfg.kModels;
+  const sh = shareLadder(cfg);
+  h = head(["share of the error that is common to all models", "items every model gets wrong",
+            "coverage", "E[reported error rate]"]);
+  sh.forEach(function(r){
+    h += row([pc(r.share, 0), r.common, pc(r.coverage), fx(r.expMin, 4)],
+      [null, null, r.coverage >= r.nominal ? "same3" : "same2", "same"]);
+  });
+  $("tblShare").innerHTML = h;
+  const last = ru.rows[ru.rows.length - 1], kRow = ru.rows.filter(function(r){ return r.k === cfg.kModels; })[0];
+  $("flagReuse").innerHTML =
+    "&#128308; At <strong>" + grp(last.k) + "</strong> models a nominal " + pc(1 - cfg.delta, 1) +
+    " interval covers <strong>" + pc(last.coverage) + "</strong> of the time, and the reported error " +
+    "rate is biased low by <strong>" + fx(last.bias, 4) + "</strong> &mdash; the winner&rsquo;s curse, " +
+    "in the one place on this page that was supposed to be safe. &#128308; But the second table is the " +
+    "condition: the collapse needs the models to be <em>different</em>. Share enough of the errors " +
+    "and coverage returns to the nominal level, because selection can only exploit variation that " +
+    "exists. A leaderboard of near-identical checkpoints is safer than a leaderboard of genuinely " +
+    "different ideas, which is not a comfortable thing for a leaderboard to be.";
+
+  // 11 ----------------------------------------------------------- identities
+  const it = identityTable(cfg);
+  h = head(["claim", "kind", "how", "status"]);
+  it.rows.forEach(function(r){
+    h += row([r.label, r.kind === "identity" ? "<span class='ok'>identity</span>" : "<span class='warn'>bound</span>",
+      "<span class='tiny'>" + r.detail + "</span>",
+      r.ok === null ? "<span class='dim'>not applicable</span>" : yn(r.ok)],
+      [null, null, null, null]);
+  });
+  $("tblIdent").innerHTML = h;
+  const cs = configSweep(cfg);
+  $("flagIdent").innerHTML =
+    "<strong>" + it.checked + "</strong> claims here, plus a sweep over sample sizes, confidence " +
+    "levels, world shapes and enumeration sizes: <strong>" + grp(cs.checked) + "</strong> checks, " +
+    "<strong>" + cs.bad + "</strong> failures" +
+    (cs.notes.length ? " &mdash; " + cs.notes.join("; ") : "") +
+    ". An identity is an equality of two integers; a bound is an inequality. Nothing on this page " +
+    "asserts that a float equals a decimal.";
+
+  // ---------------------------------------------------------------- in-page checks
+  const checks = [];
+  function T(label, fn){ let ok = false; try { ok = !!fn(); } catch (e) { ok = false; } checks.push({ label: label, ok: ok }); }
+
+  T("every growth function that has a closed form matches the enumeration, at every size",
+    function(){ return CLASS_KEYS.every(function(k){
+      return tables[k].rows.every(function(r){ return r.closed === null || r.agrees; }); }); });
+  T("no class ever exceeds the Sauer-Shelah ceiling",
+    function(){ return CLASS_KEYS.every(function(k){
+      return tables[k].rows.every(function(r){ return r.withinSauer === null || r.withinSauer; }); }); });
+  T("Sauer-Shelah is an EQUALITY for the maximum classes, at every size",
+    function(){ return ["thresholds", "intervals", "twoIntervals"].every(function(k){
+      return tables[k].rows.every(function(r){ return r.tight; }); }); });
+  T("the VC dimension read off the enumeration is the declared one",
+    function(){ return cap.rows.every(function(r){ return r.matches; }); });
+  T("one real parameter realises every labelling, checked digit by digit",
+    function(){ return ds.shatters && ds.realised === ds.all; });
+  T("four points in a diamond are shattered by a box, so VC is at least 4",
+    function(){ return dm.shatters; });
+  T("every 5-subset has a point no box can leave out, so VC is at most 4",
+    function(){ return rectangleWitnesses(Math.min(cfg.mEnum, 11)).complete; });
+  T("the growth function of a box depends on the arrangement, not only on the class",
+    function(){ return rs.best > rs.worst && rs.bestIsUsed && rs.allDistinct; });
+  T("the exact Rademacher complexity agrees with the dynamic program and with the definition",
+    function(){ return rt.every(function(r){ return (r.dpAgrees === null || r.dpAgrees) &&
+      (r.enumAgrees === null || r.enumAgrees) && (r.intervalAgrees === null || r.intervalAgrees); }); });
+  T("the exact Rademacher complexity never exceeds the Massart bound it usually stands in for",
+    function(){ return rt.every(function(r){ return rnum(r.closed) <= r.massartThr + 1e-12 &&
+      (r.interval === null || rnum(r.interval) <= r.massartInt + 1e-12); }); });
+  T("the digit class has Rademacher complexity exactly one half, so its bound is vacuous forever",
+    function(){ return req(radDigitsClosed(), R(1n, 2n)) && radBound(0.5, 1e9, cfg.delta) > 1; });
+  T("the two routes to the mean true error are the SAME INTEGER, not the same to a tolerance",
+    function(){ const wl = worldOf(cfg.N, cfg.shape), lw = ermLaw(wl, cfg.mLaw, cfg.deltaPct, 1000);
+      return lw.agrees && lw.numA === lw.numB; });
+  T("the uniform mean equals a power sum over a power, and sits inside one atom of 1/(m+1)",
+    function(){ return al.every(function(r){ return r.thirdAgrees && r.inside; }); });
+  T("no bound on the ladder is ever violated by the exact answer",
+    function(){ return gl.every(function(r){ return r.holdsVc && r.holdsFinite &&
+      r.exact <= r.vcAgn && r.exact <= r.rade; }); });
+  T("the bound is never violated in any of the worlds either",
+    function(){ return sl.rows.every(function(r){ return r.holds; }); });
+  T("the bound is literally the same number in every world, because it cannot see the data",
+    function(){ return sl.boundConstant; });
+  T("the elementary union bound beats the VC bound at every sample size on the ladder",
+    function(){ return gl.every(function(r){ return r.finiteBeatsVc; }); });
+  T("the Rademacher bound built on the EXACT complexity is the loosest of the four",
+    function(){ return gl.every(function(r){ return r.rade > r.vcReal && r.rade > r.finite; }); });
+  T("the truth after m training labels and the certificate after n held-out ones are one function",
+    function(){ return gl.every(function(r){ return r.sameShape === null || r.sameShape <= 2 / cfg.Nladder; }); });
+  T("certifying what m training labels bought takes about m held-out ones",
+    function(){ return gl.every(function(r){ return r.nToCertify !== null &&
+      r.nToCertify >= r.m && r.nToCertify <= Math.ceil(r.m * 1.1) + 2; }); });
+  T("the closed-form held-out limit at zero errors solves the Clopper-Pearson equation",
+    function(){ return ct.testClosedMatches &&
+      Math.abs(binomCdf(0, cfg.n, cpUpperZeroClosed(cfg.n, cfg.delta)) - cfg.delta) < 1e-9; });
+  T("the bound is undefined, not merely large, once the parameters outnumber the examples",
+    function(){ return ct.rows.every(function(r){ return (r.d > cfg.m) === (r.atM === null); }); });
+  T("used once, the held-out interval keeps at least the coverage it promises",
+    function(){ return ru.firstOk && ru.rows[0].coverage >= ru.rows[0].nominal; });
+  T("coverage falls, never rises, as the same held-out set is reused",
+    function(){ return ru.monotone; });
+  T("the reported error rate is biased low, and never high, under selection",
+    function(){ return ru.rows.every(function(r){ return r.bias >= -1e-12; }); });
+  T("sharing the errors between the models undoes the collapse",
+    function(){ return sh[sh.length - 1].coverage >= sh[0].coverage &&
+      sh[sh.length - 1].coverage >= sh[sh.length - 1].nominal; });
+  T("every identity and bound in the table above holds", function(){ return it.allOk; });
+  T("the configuration sweep finds no failure anywhere", function(){ return cs.checked > 0 && cs.bad === 0; });
+
+  const passed = checks.filter(function(k){ return k.ok; }).length;
+  $("selftest").innerHTML =
+    "<p style='margin:0 0 8px; font-weight:800' class='" + (passed === checks.length ? "ok" : "bad") +
+    "'>" + passed + " / " + checks.length + " checks passed</p><ul class='checks'>" +
+    checks.map(function(k){
+      return "<li>" + (k.ok ? "<span class='ok'>PASS</span>" : "<span class='bad'>FAIL</span>") +
+        " &nbsp;" + k.label + "</li>"; }).join("") + "</ul>";
+
+  // ---------------------------------------------------------------- the lede, filled from the run
+  const mLast = gl[gl.length - 1];
+  const glDefault = gl.filter(function(r){ return r.m === cfg.mLaw; })[0] ||
+                    gl.reduce(function(a, b){ return Math.abs(b.m - cfg.mLaw) < Math.abs(a.m - cfg.mLaw) ? b : a; });
+  const dBig = ct.rows[ct.rows.length - 1];
+  const d1k = ct.rows.filter(function(r){ return r.d === 1000; })[0] || dBig;
+  const shHalf = sh.filter(function(r){ return r.share >= 0.5; })[0] || sh[sh.length - 1];
+  $("hlHeur").textContent = cap.heuristicScore;
+  $("hlHeurN").textContent = cap.rows.length;
+  $("hlDigits").innerHTML = grp(ds.realised);
+  $("hlDigitsM").textContent = ds.m;
+  $("hlD").textContent = "three";
+  $("hlM").innerHTML = grp(cfg.m);
+  $("hlBoundAtM").innerHTML = d3 && d3.atM !== null ? pc(d3.atM) : "undefined";
+  $("hlN").textContent = cfg.n;
+  $("hlN2").textContent = cfg.n;
+  $("hlTest").innerHTML = pc(ct.test);
+  $("hlNeed").innerHTML = grp(d3 ? d3.needForTest : null);
+  $("hlRatio").innerHTML = grp(d3 ? d3.ratio : null) + "&times;";
+  $("hlBigM").innerHTML = grp(dBig.firstNonVacuous);
+  $("hlBigTen").innerHTML = grp(dBig.forTenPct);
+  $("hlExact").textContent = fx(glDefault.exact);
+  $("hlFinite").textContent = fx(glDefault.finite);
+  $("hlVc").textContent = fx(glDefault.vcReal);
+  $("hlRade").textContent = fx(glDefault.rade);
+  $("hlRadeLose").textContent = anyRadeWins === 0 ? "every" : (gl.length - anyRadeWins) + " of " + gl.length;
+  $("hlWorlds").textContent = sl.rows.length;
+  $("hlSweep").innerHTML = grp(cs.checked);
+  $("hlConst").textContent = fx(sl.bound);
+  $("hlQ0").textContent = fx(sl.rows[0].q, 6);
+  $("hlZero").textContent = sl.zeroGuarantees;
+  $("hlLadM").innerHTML = grp(mLast.m);
+  $("hlCert").innerHTML = grp(mLast.nToCertify);
+  $("hlK").textContent = cfg.kModels;
+  $("hlK2").textContent = ru.rows[ru.rows.length - 1].k;
+  $("hlNom").innerHTML = pc(1 - cfg.delta, 1);
+  $("hlCov").innerHTML = kRow ? pc(kRow.coverage) : pc(ru.rows[ru.rows.length - 1].coverage);
+  $("hlCov100").innerHTML = pc(ru.rows[ru.rows.length - 1].coverage);
+  $("hlShare").innerHTML = pc(shHalf.share, 0);
+  $("hlCovShare").innerHTML = pc(shHalf.coverage);
+  $("uRectBest").innerHTML = grp(rs.best);
+  $("uRectWorst").innerHTML = grp(rs.worst);
+  $("uN").textContent = cfg.n;
+  $("uNeed").innerHTML = grp(d3 ? d3.needForTest : null);
+  $("uNeed1k").innerHTML = grp(d1k.needForTest);
+  $("uBigM").innerHTML = grp(dBig.firstNonVacuous);
+}
+
+// A full render enumerates tens of thousands of labellings, runs three dynamic programs and raises a
+// few thousand BigInts to a power, so slider drags are debounced rather than raced.
+let pending = null;
+function scheduleRender(){
+  if (pending) clearTimeout(pending);
+  pending = setTimeout(function(){ pending = null; render(); }, 260);
+}
+["sMEnum", "sM", "sMLaw", "sN", "sDelta", "sShape", "sK", "sP"]
+  .forEach(function(id){ $(id).addEventListener("input", scheduleRender); });
+render();
+</script>
+</body>
+</html>
