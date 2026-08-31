@@ -77,6 +77,9 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 71 — Selection on the outcome](https://dev48.infy.uk/ml/day71-outcome-dependent-sampling.html) — `day71-outcome-dependent-sampling.html`
 - [MachineLearningFromZero · Day 72 — Is the test set big enough?](https://dev48.infy.uk/ml/day72-model-comparison-power.html) — `day72-model-comparison-power.html`
 - [MachineLearningFromZero · Day 73 — Clustering Metrics vs Chance](https://dev48.infy.uk/ml/day73-clustering-metric-chance.html) — `day73-clustering-metric-chance.html`
+- [MachineLearningFromZero · Day 74 — Two groups, one model](https://dev48.infy.uk/ml/day74-group-fairness-impossibility.html) — `day74-group-fairness-impossibility.html`
+- [MachineLearningFromZero · Day 75 — What a generalization bound guarantees](https://dev48.infy.uk/ml/day75-generalization-bounds.html) — `day75-generalization-bounds.html`
+- [MachineLearningFromZero · Day 76 — What epsilon actually buys](https://dev48.infy.uk/ml/day76-differential-privacy.html) — `day76-differential-privacy.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

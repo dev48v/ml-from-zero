@@ -1,0 +1,1729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero &middot; Day 76 &mdash; What &epsilon; actually buys</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --ink:#0f172a; --ink2:#334155; --dim:#64748b; --dim2:#94a3b8;
+    --line:#e2e8f0; --bg:#f1f5f9; --bg2:#f8fafc; --white:#fff;
+    --sky:#0369a1; --amber:#fffbeb; --amberL:#f59e0b; --amberT:#78350f;
+    --blue:#eff6ff; --violet:#f5f3ff; --rose:#fff1f2; --green:#f0fdf4;
+  }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--bg2); color:var(--ink); line-height:1.6;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.92em;
+         background:#e8eef6; padding:1px 4px; border-radius:4px; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; line-height:1.55;
+        font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre code { background:none; padding:0; color:inherit; }
+  h1,h2,h3 { line-height:1.25; margin:0; }
+  p { margin:0 0 .85em; }
+  header.top { background:var(--white); border-bottom:1px solid var(--line); }
+  .wrap { max-width:1150px; margin:0 auto; padding:16px; }
+  @media (min-width:768px) { .wrap { padding:24px; } }
+  .kicker { font-size:11px; font-weight:800; letter-spacing:.16em; color:var(--sky);
+            margin:0 0 8px; text-transform:uppercase; }
+  h1.lede { font-size:17px; font-weight:800; margin-bottom:14px; }
+  @media (min-width:768px) { h1.lede { font-size:19px; } }
+  h1.lede em { font-style:italic; }
+  #tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  #tabs button { font:inherit; font-size:13px; font-weight:700; cursor:pointer;
+                 border:0; padding:8px 18px; border-radius:9px; background:var(--bg); color:var(--ink); }
+  #tabs button.tab-active { background:#0f172a; color:#fff; }
+  .panel { display:block; }
+  .panel.hidden { display:none; }
+  .sheet { min-height:calc(100vh - 78px); padding:16px; background:var(--bg); }
+  @media (min-width:768px) { .sheet { padding:32px; } }
+  .sheet.plain { background:var(--white); }
+  .sheet.soft  { background:var(--bg2); }
+  .col { max-width:1150px; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+  .col.narrow { max-width:760px; gap:22px; }
+  .card { background:var(--white); border-radius:16px; padding:20px;
+          box-shadow:0 1px 3px rgba(15,23,42,.09), 0 1px 2px rgba(15,23,42,.05); }
+  .ctl { display:grid; gap:6px 24px; grid-template-columns:1fr; }
+  @media (min-width:700px)  { .ctl { grid-template-columns:1fr 1fr; } }
+  @media (min-width:1000px) { .ctl { grid-template-columns:1fr 1fr 1fr; } }
+  .ctl label { font-size:13px; display:block; }
+  .ctl input[type=range] { width:100%; margin:2px 0 0; }
+  .ctl .val { float:right; font-weight:700; font-variant-numeric:tabular-nums; }
+  .eyebrow { font-size:11px; font-weight:800; letter-spacing:.09em; color:var(--dim);
+             margin:0 0 4px; text-transform:uppercase; }
+  .say { font-size:13.5px; color:var(--ink2); margin:0 0 12px; }
+  .tiny { font-size:12px; color:var(--dim); }
+  .scroll { overflow-x:auto; }
+  table.num { width:100%; border-collapse:collapse; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:var(--dim); text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; white-space:normal; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  .ok   { color:#166534; font-weight:800; }
+  .bad  { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim  { color:var(--dim2); }
+  .same  { background:var(--blue); }
+  .same2 { background:var(--violet); }
+  .same3 { background:var(--green); }
+  .flag { font-size:13.5px; margin:12px 0 0; padding:12px; border-radius:9px;
+          background:var(--amber); border-left:4px solid var(--amberL); color:var(--amberT); }
+  .flag.blue { background:var(--blue); border-left-color:#3b82f6; color:#1e3a8a; }
+  .flag.rose { background:var(--rose); border-left-color:#f43f5e; color:#881337; }
+  ul.checks { list-style:none; margin:0; padding:0; font-size:13px; color:var(--ink2); }
+  ul.checks li { padding:1px 0; }
+  .foot { border-top:1px solid var(--line); background:var(--white); }
+  .foot .wrap { font-size:12.5px; color:var(--dim); }
+  .foot a { color:var(--sky); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <p class="kicker">MachineLearningFromZero &middot; Day 76</p>
+    <h1 class="lede">
+      &#128274; What does &epsilon; actually buy? &mdash; Day 73 asked what a clustering score is a
+      number <em>of</em>, Day 74 which fairness equalities can hold at once, and Day 75 what the
+      guarantee printed in <em>front</em> of a training run is worth. All three were promises about a
+      <em>model</em>. This one is the promise attached to the <em>data</em>: the claim that a release
+      is safe to publish. Nothing here is sampled either &mdash; the mechanisms live on databases small
+      enough to enumerate completely, so &ldquo;this release is &epsilon;-differentially private&rdquo;
+      is <strong>checked against its own definition</strong> over all
+      <strong id="hlPairs">2,048</strong> neighbouring pairs and every output, as an exact rational
+      over BigInt, and the attack on it is a finite sum over all
+      <strong id="hlDbs">256</strong> databases rather than a simulation. Start with the definition. The closed form <code>ln(1/&alpha;)</code> is confirmed to
+      the last integer for the bounded geometric mechanism &mdash; and the version almost everyone
+      writes first, geometric noise truncated to the valid range and renormalised, is
+      <strong>not</strong> &epsilon;-differentially private at the &epsilon; it advertises: it comes
+      back at <strong id="hlNaive">1.32&times;</strong> the claim, the excess has a closed form of its
+      own, and it does <em>not</em> go away as the database grows. &#128308; Then the price list. The
+      privacy loss of the correct mechanism turns out to be a <strong>two-point law</strong>, exactly
+      <code>+&epsilon;</code> or <code>&minus;&epsilon;</code> and nothing in between, so the average
+      leak is exactly <strong id="hlKlFrac">(1&minus;&alpha;)/(1+&alpha;)</strong> of the guarantee
+      &mdash; <strong id="hlKl">0.2310</strong> nats against a promise of
+      <strong id="hlEps1">0.6931</strong> &mdash; and anyone reporting the average is quoting a number
+      the definition never made. Publishing only totals buys nothing whatsoever: releasing every noisy
+      bit and releasing <em>only their sum</em> have the <strong>same</strong> worst-case ratio, the
+      same integer. &#128308; Then the attack, and the control it is measured against. Publish
+      <strong id="hlMfull">10</strong> exact subgroup counts over
+      <strong id="hlNrec">12</strong> people &mdash; no names, no identifiers, nothing but totals
+      &mdash; and <strong id="hlFullId">100.0%</strong> of the rows are pinned down uniquely; round
+      every count to the nearest <span id="hlRound">3</span> and the attacker still recovers
+      <strong id="hlRoundAcc">80.70%</strong> of the private bits; suppress every cell below
+      <span id="hlSupp">3</span>, which is the rule actually written into disclosure policies, and it
+      recovers <strong id="hlSuppAcc">97.36%</strong>. &#128308; And the headline is the one this page
+      was <em>not</em> built to find. On the same file, at the same
+      <strong id="hlMhead">5</strong> queries, rounding to the nearest
+      <strong>7</strong> has a <em>lower</em> mean squared error than the &epsilon;-differentially
+      private mechanism at <span id="hlEpsTot">3.47</span> &mdash;
+      <strong id="hlRndMse">1.0000</strong> against <strong id="hlDpMse">1.1769</strong> &mdash;
+      <em>and</em> lets the attacker recover <em>fewer</em> bits,
+      <strong id="hlRndAcc">61.91%</strong> against <strong id="hlDpAcc">65.43%</strong>. The release
+      with the <strong>infinite &epsilon;</strong> beats the private one on both measured axes, which
+      is not what I expected to be writing. The column where it never wins is the one the definition
+      is actually about: rounding pins <strong id="hlRndPin">13.82%</strong> of individual bits with
+      <em>certainty</em> &mdash; posterior exactly one &mdash; and every &epsilon;-private mechanism on
+      the page pins <strong>exactly zero</strong>, with the largest posterior it ever reaches sitting
+      under <code>e<sup>&epsilon;</sup>/(1+e<sup>&epsilon;</sup>)</code> in every row and hitting it
+      with <em>equality</em> at the mechanism that releases nothing. An attack is one adversary. The
+      guarantee is all of them. Pure vanilla JavaScript, one file, no build step.
+    </h1>
+    <div id="tabs">
+      <button data-tab="look" class="tab-active">&#128274; MEASURE</button>
+      <button data-tab="understand">&#129504; UNDERSTAND</button>
+      <button data-tab="build">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================================ MEASURE -->
+<section id="look" class="panel">
+  <div class="sheet">
+    <div class="col">
+
+      <div class="card">
+        <div class="ctl">
+          <label>people in the &epsilon; enumeration <span class="val" id="vNEps">8</span>
+            <input id="sNEps" type="range" min="4" max="10" step="1" value="8"></label>
+          <label>&alpha; for the geometric mechanism <span class="val" id="vAlpha">1/2</span>
+            <input id="sAlpha" type="range" min="0" max="4" step="1" value="2"></label>
+          <label>people in the reconstruction <span class="val" id="vNRec">12</span>
+            <input id="sNRec" type="range" min="6" max="14" step="1" value="12"></label>
+          <label>subgroup counts published <span class="val" id="vMQ">12</span>
+            <input id="sMQ" type="range" min="1" max="24" step="1" value="12"></label>
+          <label>counts in the exactly enumerated head-to-head <span class="val" id="vMHead">5</span>
+            <input id="sMHead" type="range" min="2" max="5" step="1" value="5"></label>
+          <label>rounding rule, to the nearest <span class="val" id="vRound">3</span>
+            <input id="sRound" type="range" min="2" max="8" step="1" value="3"></label>
+          <label>small-cell rule &mdash; suppress below <span class="val" id="vSupp">3</span>
+            <input id="sSupp" type="range" min="2" max="4" step="1" value="3"></label>
+          <label>&delta;, as 10<sup>&minus;x</sup> <span class="val" id="vDelta">6</span>
+            <input id="sDelta" type="range" min="2" max="9" step="1" value="6"></label>
+          <label>queries in the composition ladder <span class="val" id="vK">100</span>
+            <input id="sK" type="range" min="1" max="400" step="1" value="100"></label>
+          <label>which subgroups get published <span class="val" id="vSeed">0</span>
+            <input id="sSeed" type="range" min="0" max="7" step="1" value="0"></label>
+        </div>
+        <p class="tiny" style="margin-top:12px">
+          There is no dataset and no generator on this page. A world is the set of <em>all</em>
+          <code>2<sup>n</sup></code> databases at once, every probability is an exact rational over
+          BigInt, and every headline is either an <strong>exhaustive enumeration</strong> or a
+          <strong>closed form</strong> &mdash; where a closed form exists the enumeration is run anyway
+          and the two are asserted equal as integers. The attacker is not a heuristic: given a release
+          it holds the exact Bayes posterior over all <code>2<sup>n</sup></code> databases under a
+          uniform prior and guesses each bit by its posterior majority, so &ldquo;how much did this
+          leak&rdquo; is a finite sum and not a simulation. Chance is exactly
+          <strong>50%</strong>.
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">1 &middot; the definition, checked against itself</p>
+        <p class="say" id="sayEps">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblEps"></table></div>
+        <p class="flag" id="flagEps">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">2 &middot; the truncation everybody writes first is not private at its own &epsilon;</p>
+        <p class="say">Discrete noise has to land somewhere legal. The obvious repair is to keep only
+          the outputs inside <code>0..n</code> and renormalise, which is a probability distribution and
+          looks harmless. It is not: the normalising constant depends on the input, and a count in the
+          middle of the range has more room for noise than a count at the end. The residue has a closed
+          form, <code>Z<sub>1</sub>/Z<sub>0</sub></code>, and it survives to infinity.</p>
+        <div class="scroll"><table class="num" id="tblNaive"></table></div>
+        <p class="flag rose" id="flagNaive">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">3 &middot; the control &mdash; &ldquo;we only publish aggregates&rdquo;</p>
+        <p class="say">Randomised response flips every person&rsquo;s bit and publishes the result.
+          Publishing the noisy <em>bits</em> feels reckless and publishing only their noisy
+          <em>total</em> feels responsible. Both worst-case ratios are enumerated, and they are the
+          same rational number, not two numbers that happen to round alike.</p>
+        <div class="scroll"><table class="num" id="tblAgg"></table></div>
+        <p class="flag blue" id="flagAgg">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">4 &middot; the control &mdash; &ldquo;we measured the average leakage&rdquo;</p>
+        <p class="say" id="sayLoss">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblLoss"></table></div>
+        <p class="flag" id="flagLoss">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">5 &middot; reconstruct the file from published totals</p>
+        <p class="say" id="sayRecon">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblRecon"></table></div>
+        <p class="say" style="margin:14px 0 8px">Same experiment, one published count per person,
+          as the file grows:</p>
+        <div class="scroll"><table class="num" id="tblScale"></table></div>
+        <p class="flag rose" id="flagRecon">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">6 &middot; the whole frontier, exactly, on one file</p>
+        <p class="say" id="sayFront">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblFront"></table></div>
+        <p class="flag rose" id="flagFront">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">7 &middot; what &epsilon; does promise, and it is not an attack score</p>
+        <p class="say">A uniform prior over databases makes the bits independent, so the posterior
+          odds on any one person&rsquo;s bit can move by at most <code>e<sup>&epsilon;</sup></code>.
+          That is a theorem about every adversary at once, and it is the column that never inverts.
+          The largest posterior the enumeration ever finds is printed next to the bound.</p>
+        <div class="scroll"><table class="num" id="tblPost"></table></div>
+        <p class="flag blue" id="flagPost">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">8 &middot; composition &mdash; the budget is not per query</p>
+        <p class="say" id="sayComp">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblComp"></table></div>
+        <p class="flag" id="flagComp">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">9 &middot; &delta; is not slack</p>
+        <p class="say">The relaxed definition allows a shortfall of <code>&delta;</code>. It is
+          usually read as &ldquo;a tiny bit of extra looseness&rdquo;. Here is the mechanism that
+          satisfies it exactly: with probability <code>&delta;</code> publish the entire database, and
+          otherwise publish nothing.</p>
+        <div class="scroll"><table class="num" id="tblDelta"></table></div>
+        <p class="flag rose" id="flagDelta">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">10 &middot; every identity and every bound, listed</p>
+        <div class="scroll"><table class="num" id="tblIdent"></table></div>
+        <p class="flag" id="flagIdent">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">in-page checks</p>
+        <div id="selftest"></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ UNDERSTAND -->
+<section id="understand" class="panel hidden">
+  <div class="sheet plain">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">What a privacy guarantee guarantees</h2>
+
+      <p>Somebody wants to publish a number computed from data about people. The number is a count, an
+      average, a model, a dashboard. The question is whether publishing it hurts anybody in the file,
+      and there are two ways to answer it. One is to attack your own release and see what comes back.
+      The other is to prove a bound on what <em>any</em> attack could come back with. This page runs
+      both on the same tiny world and reads off the difference, and the difference is not the one I
+      expected.</p>
+
+      <h3 style="font-size:19px; font-weight:800">1. The definition is a maximum</h3>
+      <p>A randomised release <code>M</code> is <code>&epsilon;</code>-differentially private if for
+      every pair of databases <code>D</code>, <code>D&prime;</code> that differ in one person, and
+      every possible output <code>o</code>,</p>
+      <pre><code>P(M(D) = o)  &lt;=  e^eps * P(M(D') = o)</code></pre>
+      <p>Three quantifiers, no distribution over databases, no assumption about what the attacker
+      knows. That is the whole reason the definition is worth anything: it does not depend on the
+      attacker being weak, or on the data being typical, or on the auxiliary information the attacker
+      might already hold. It is also why it is expensive, and why every shortcut people take instead
+      turns out to be a different statement.</p>
+      <p>The mechanics of small worlds make it checkable. With <code>n</code> people carrying one
+      private bit each there are <code>2<sup>n</sup></code> databases and <code>n&middot;2<sup>n</sup></code>
+      neighbouring ordered pairs, and if the output space is finite too then the definition is a
+      finite maximum over a finite table of exact rationals. So on this page &ldquo;this mechanism is
+      <code>&epsilon;</code>-DP&rdquo; is never quoted. It is enumerated.</p>
+
+      <h3 style="font-size:19px; font-weight:800">2. The first implementation is wrong</h3>
+      <p>Noise on a count has to be discrete, and it has to land in a legal range. The two-sided
+      geometric distribution &mdash; the discrete Laplace &mdash; puts mass
+      <code>&prop; &alpha;<sup>|k&minus;y|</sup></code> on output <code>y</code>, and unbounded, it is
+      exactly <code>ln(1/&alpha;)</code>-private. Truncate it to <code>0..n</code> and renormalise, and
+      the distribution is still perfectly well defined, still centred on the truth, still has the same
+      shape. It is no longer <code>ln(1/&alpha;)</code>-private, because the normalising constant
+      <code>Z<sub>k</sub> = &Sigma;<sub>y</sub>&alpha;<sup>|y&minus;k|</sup></code> is larger for a
+      <code>k</code> in the middle of the range than for a <code>k</code> at the end. The ratio picks
+      up an extra factor <code>Z<sub>k+1</sub>/Z<sub>k</sub></code>, worst at the boundary, and the
+      page evaluates it in closed form and confirms it against the enumeration.</p>
+      <p>The damage does not shrink with <code>n</code>. It converges upward to
+      <code>ln(1+&alpha;&minus;&alpha;<sup>2</sup>)</code>, an extra 0.22 nats at
+      <code>&alpha; = 1/2</code>, so a mechanism sold as <code>&epsilon; = 0.69</code> is actually
+      <code>0.92</code>. The repair is not more noise. It is where the truncated mass goes: pile it on
+      the two endpoints instead of redistributing it proportionally, which is the bounded geometric
+      mechanism, and the enumeration returns <code>ln(1/&alpha;)</code> as an exact rational identity
+      at every <code>&alpha;</code> and every <code>n</code> tried.</p>
+
+      <h3 style="font-size:19px; font-weight:800">3. Aggregating is not a privacy measure</h3>
+      <p>&ldquo;We never publish row-level data, only totals.&rdquo; Randomised response makes that
+      testable, because the noisy bits and the noisy total are the same mechanism with a
+      post-processing step between them. Post-processing cannot <em>increase</em> the loss &mdash;
+      that is a one-line theorem &mdash; but here it does not decrease it either. Both enumerations
+      return the identical rational <code>(1&minus;p)/p</code>. The worst case is achieved at the
+      extreme total, where the sum is as informative about the one changed bit as the whole vector
+      was.</p>
+      <p>That does not mean aggregation is useless. It means aggregation is a utility decision, not a
+      privacy one, and putting it in the privacy column is how a release that leaks everything gets
+      described as safe.</p>
+
+      <h3 style="font-size:19px; font-weight:800">4. The average leak is the wrong summary</h3>
+      <p>For the bounded geometric mechanism, the privacy loss random variable
+      <code>ln(P(o|D)/P(o|D&prime;))</code> takes exactly <em>two</em> values, <code>+&epsilon;</code>
+      and <code>&minus;&epsilon;</code>. There is no middle. The mean of that variable is the
+      Kullback&ndash;Leibler divergence between the two output laws, and it works out to
+      <code>&epsilon;&middot;(1&minus;&alpha;)/(1+&alpha;)</code> exactly &mdash; a third of the
+      guarantee at <code>&alpha; = 1/2</code>, and a nineteenth of it at
+      <code>&alpha; = 9/10</code>.</p>
+      <p>So a report that measures &ldquo;the average information leaked per query&rdquo; and finds
+      0.0055 nats is not measuring a weaker version of <code>&epsilon;</code>. It is measuring a
+      different object, one that stays small precisely as the tail gets more dangerous, and the gap
+      between them <em>widens</em> as the mechanism gets more private. Interestingly the same
+      expression, <code>(1&minus;&alpha;)/(1+&alpha;)</code>, is the total variation distance between
+      the two output laws, so the &ldquo;how often can you even tell&rdquo; number and the
+      &ldquo;how much do you learn on average&rdquo; number coincide here.</p>
+
+      <h3 style="font-size:19px; font-weight:800">5. The attack: aggregates are a linear system</h3>
+      <p>Nothing in the reconstruction uses identifiers, because there are none. The attacker is given
+      only the sizes of subgroups and the published totals within them. Each published count is one
+      equation in the private bits; enough equations, and the file is the unique solution. That is
+      Dinur and Nissim&rsquo;s observation, and on a small world it needs no theorem, because the
+      solution set can be <em>enumerated</em>: bucket all <code>2<sup>n</sup></code> databases by what
+      they would have published, and the attacker&rsquo;s posterior is uniform on the bucket it lands
+      in.</p>
+      <p>With exact counts and about as many published subgroups as people, every bucket is a
+      singleton and every row is identified. Rounding does not stop it and neither does small-cell
+      suppression, because &ldquo;this cell was suppressed&rdquo; is itself an inequality constraint,
+      not a redaction &mdash; and it is a constraint on the <em>small</em> cells, which are the ones
+      that pin individuals down. Suppressing below three, on the default settings here, still gives
+      the attacker over 97% of the private bits.</p>
+
+      <h3 style="font-size:19px; font-weight:800">6. Then the finding this page was not built for</h3>
+      <p>&#128308; The obvious next table is the frontier: privacy against utility, on one file, with
+      the same attacker. It does not say what I assumed it would. Round every published count to the
+      nearest seven &mdash; which on a subgroup of four people is barely a release at all &mdash; and
+      it costs a mean squared error of 1.0000 and hands the attacker 61.91% of the bits. The
+      <code>&epsilon;</code>-private mechanism at a total budget of 3.47 costs <em>more</em> error,
+      1.1769, and hands the attacker <em>more</em> bits, 65.43%. On both measured axes, the release
+      with an infinite <code>&epsilon;</code> wins.</p>
+      <p>That is not a bug in either mechanism and it is not an argument against differential privacy.
+      It is a fact about what a reconstruction score measures. Average bit recovery under a uniform
+      prior is <em>one</em> adversary with <em>one</em> prior against <em>all</em> targets at once; it
+      is an average of averages, and a coarse deterministic release can score well on it while being
+      catastrophic for the particular people it happens to expose. The column that shows this is the
+      one the definition is actually about: how many individual bits are pinned down with
+      <em>certainty</em>. Rounding to the nearest seven pins 13.8% of them &mdash; posterior exactly
+      one, no doubt at all, for one person in seven. Every <code>&epsilon;</code>-private row on the
+      page pins exactly zero, and that zero is structural rather than lucky: a full-support mechanism
+      can never produce a degenerate posterior.</p>
+      <p>So the operational reading is uncomfortable in both directions. You cannot certify a release
+      by attacking it, because a release can survive your attack and still be publishing individual
+      people with certainty. And you cannot dismiss <code>&epsilon;</code> because a particular attack
+      scores badly against it, because the attack is not what <code>&epsilon;</code> is a bound on.</p>
+
+      <h3 style="font-size:19px; font-weight:800">7. What &epsilon; is a bound on</h3>
+      <p>Under a prior that makes the rows independent, an <code>&epsilon;</code>-private release moves
+      the posterior odds on any individual bit by a factor of at most
+      <code>e<sup>&epsilon;</sup></code>. With a uniform prior that caps the posterior at
+      <code>e<sup>&epsilon;</sup>/(1+e<sup>&epsilon;</sup>)</code>, and the page checks that cap
+      against the largest posterior the full enumeration finds. It holds in every row, it is
+      reasonably tight, and at the mechanism that publishes a constant it holds with exact equality at
+      one half, which is the sanity anchor: the definition and the attack agree exactly where there is
+      nothing to disagree about.</p>
+      <p>Read the bound backwards and it prices the budget honestly. At a total
+      <code>&epsilon;</code> of 3.47 the cap is 0.97 &mdash; the release is <em>allowed</em> to take
+      an attacker from a coin flip to 97% confidence about a specific person. That is what a budget of
+      3.47 buys, and the reason large budgets are not obviously fine is not that the theorem gets
+      weaker; it is that the theorem was never promising much at that number.</p>
+
+      <h3 style="font-size:19px; font-weight:800">8. Composition, and the control that wins</h3>
+      <p>Run <code>k</code> private releases with fresh randomness and the budgets add. Not
+      approximately: the page enumerates the joint output space for small <code>k</code> and the
+      worst-case ratio is the single-query ratio raised to the <code>k</code>-th power, as an exact
+      integer identity. So a dashboard of a hundred panels, each individually reassuring at
+      <code>&epsilon; = 0.1</code>, is one release at <code>&epsilon; = 10</code>, which permits a
+      likelihood ratio of 22,026 on any individual.</p>
+      <p>The standard escape is advanced composition, which grows like <code>&radic;k</code> instead
+      of <code>k</code> at the cost of a <code>&delta;</code>. It is a real theorem and the page
+      evaluates it, and the honest result is that for the per-query budgets people actually use it
+      does not help. At <code>&epsilon; = ln 2</code> per query it never beats plain addition at any
+      <code>k</code> up to a million. At <code>&epsilon; = 0.1</code> it takes until the
+      thirty-fifth query. The control &mdash; add them up &mdash; is the right answer for most of the
+      range, and it is also the pessimistic one, which is an unusual combination.</p>
+
+      <h3 style="font-size:19px; font-weight:800">9. And &delta;</h3>
+      <p>The relaxed definition allows the multiplicative bound to fail on an event of probability
+      <code>&delta;</code>. There is a mechanism that satisfies it and does nothing else: with
+      probability <code>&delta;</code>, publish the whole database. The page confirms by enumeration
+      that its exact shortfall at every multiplicative bound, including <code>e<sup>0</sup> = 1</code>,
+      is exactly <code>&delta;</code> &mdash; so it is <code>(0, &delta;)</code>-private, the best
+      <code>&epsilon;</code> there is, while publishing everything about everybody
+      <code>&delta;</code> of the time. At <code>&delta; = 10<sup>&minus;6</sup></code> over a million
+      people that is one expected total exposure per release, which is the arithmetic behind the usual
+      advice that <code>&delta;</code> must be much smaller than one over the number of records.</p>
+
+      <h3 style="font-size:19px; font-weight:800">10. Verification</h3>
+      <p>The block between <code>ENGINE:BEGIN</code> and <code>ENGINE:END</code> is DOM-free,
+      clock-free and free of any random source; it is extracted by regex and run under Node against
+      assertions written independently of it. The oracles share no code with the page: an
+      <strong>independent rational library</strong> with lazy reduction, so agreement is an integer
+      cross-multiplication and never a tolerance; every mechanism&rsquo;s law rebuilt from its
+      <strong>defining recurrence</strong> rather than its formula; the worst-case ratio re-derived by
+      a <strong>forward Monte-Carlo simulator</strong> with its own generator, reported as a bound in
+      standard errors around the exact value; the attacker&rsquo;s posterior recomputed by
+      <strong>exhaustive enumeration over every output vector</strong> in a different loop order, and
+      independently by a <strong>forward simulator</strong> that draws databases and outputs and
+      counts hits; the composition identity proved by <strong>expanding the product space</strong>;
+      the reconstruction cross-checked by <strong>exact integer linear algebra</strong> over the
+      published equations; the binomial weights rebuilt from <strong>BigInt factorials</strong>; and a
+      <strong>mutation harness</strong> that corrupts the engine in targeted ways and requires the
+      verifier to notice every one.</p>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ BUILD -->
+<section id="build" class="panel hidden">
+  <div class="sheet soft">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">&#128296; How it is built</h2>
+
+      <h3 style="font-size:19px; font-weight:800">1. The world is every database at once</h3>
+      <p>The rule for this run is that ground truth is a closed form or an exact computation, never an
+      estimate. Differential privacy makes that easy in a way most topics do not, because the
+      definition is already a finite maximum: with <code>n</code> people holding one bit each there are
+      <code>2<sup>n</sup></code> databases, <code>n&middot;2<sup>n</sup></code> neighbouring ordered
+      pairs, and a finite output space, so <code>&epsilon;</code> is the largest entry in a table you
+      can build.</p>
+      <p>The attacker is exact for the same reason. Under a uniform prior the posterior over databases
+      given an output is proportional to the likelihood, so the Bayes-optimal guess for person
+      <code>i</code>&rsquo;s bit is whichever value carries more posterior mass, and the expected
+      accuracy is</p>
+      <pre><code>acc = (1/(n * 2^n)) * sum_over_outputs sum_over_databases
+        P(o|D) * [ majority_i(o) == D_i ]</code></pre>
+      <p>which is a finite sum with no draws in it. Ties are scored at one half, which is what an
+      attacker with no tie-break rule actually gets.</p>
+
+      <h3 style="font-size:19px; font-weight:800">2. Two attackers, and they have to agree</h3>
+      <p>A deterministic release admits a much cheaper attack: bucket the databases by what they would
+      publish, and the posterior is uniform on the bucket. That is <code>O(2<sup>n</sup>m)</code>
+      instead of <code>O(|O|<sup>m</sup>2<sup>n</sup>)</code>, which is what makes the fourteen-person
+      ladder affordable. Both attackers are implemented and the deterministic rows are run through
+      <em>both</em>, with an assertion that they return the identical rational. A bug in the expensive
+      one that the cheap one does not share would have to survive that.</p>
+
+      <h3 style="font-size:19px; font-weight:800">3. Integer weights over one denominator</h3>
+      <p>The expensive attack multiplies <code>m</code> probabilities per database per output vector.
+      Doing that in reduced rationals would spend all its time in <code>gcd</code>. Instead every
+      mechanism&rsquo;s law is converted once into <strong>integer weights over a single common
+      denominator shared by every input</strong>, so a likelihood is a product of BigInts and the
+      posterior comparison is an integer comparison. The common denominator has to be common across
+      inputs, not per input &mdash; the first version of this used a per-input denominator and the
+      posterior silently reweighted databases by their count, which is the kind of bug that produces a
+      plausible-looking table where noise beats exact answers.</p>
+
+      <h3 style="font-size:19px; font-weight:800">4. Mechanisms as distributions, not samplers</h3>
+      <p>Every mechanism is a function from an input count to a list of
+      <code>{output, probability}</code>, with the probability an exact rational. Deterministic
+      releases are the special case with one output at probability one, which means rounding,
+      suppression and &ldquo;publish nothing&rdquo; go through the same
+      <code>&epsilon;</code>-enumerator as the noisy ones rather than being declared infinite. That is
+      load-bearing: it is what turns up that publishing a constant has
+      <code>&epsilon;</code> exactly zero, and it is why the frontier table has an anchor row where the
+      bound is met with equality.</p>
+      <pre><code>bounded geometric, alpha = a/b, range 0..h
+
+  P(0 | k) = alpha^k       / (1+alpha)
+  P(h | k) = alpha^(h-k)   / (1+alpha)
+  P(y | k) = alpha^|y-k| * (1-alpha)/(1+alpha)     0 &lt; y &lt; h
+
+naive truncation, same shape, renormalised per input
+
+  P(y | k) = alpha^|y-k| / Z_k        Z_k = sum_y alpha^|y-k|
+  worst ratio = (1/alpha) * Z_1/Z_0   &lt;-- the extra factor, in closed form</code></pre>
+
+      <h3 style="font-size:19px; font-weight:800">5. Query sets without a random source</h3>
+      <p>The published subgroups have to look arbitrary without being random, because the engine has
+      no <code>Math.random</code> and no clock. Each subgroup is chosen by a fixed integer mixer over
+      <code>(seed, query index, person index)</code>: hash every person, sort, take the first
+      <code>h</code>. Duplicate subgroups are rejected by bumping a salt. The first version drew each
+      membership bit from a single XOR of three multiples, and it collapsed &mdash; twenty
+      &ldquo;different&rdquo; subgroups were two distinct sets repeated, the reconstruction accuracy
+      was flat in the number of queries, and the flatness is what gave it away. A hash that has to look
+      random needs an avalanche step, not just a multiply.</p>
+
+      <h3 style="font-size:19px; font-weight:800">6. What is asserted</h3>
+      <p>Bounds and identities, never constants. &ldquo;The enumerated worst-case ratio equals
+      <code>1/&alpha;</code>&rdquo; is an equality of two BigInt cross-products;
+      &ldquo;<code>&epsilon;</code> composes by exactly <code>k</code>&rdquo; is a rational raised to a
+      power; &ldquo;no posterior exceeds <code>e<sup>&epsilon;</sup>/(1+e<sup>&epsilon;</sup>)</code>&rdquo;
+      is an inequality checked in every row of every sweep; &ldquo;a full-support mechanism pins
+      nothing&rdquo; is an exact zero. Nothing asserts that a particular float equals a particular
+      decimal, because two summation orders differ at 1e-16 and an assertion that cannot survive that
+      is a trap and not a test &mdash; Day 68 lost an afternoon to exactly that, and this page has one
+      place where the same thing nearly happened: the naive truncation&rsquo;s closed form is compared
+      to the enumeration as rationals, not as logarithms, because the logarithms agree only to about
+      1e-15.</p>
+
+      <h3 style="font-size:19px; font-weight:800">7. Cost</h3>
+      <p>A full render enumerates a few hundred thousand neighbouring pairs, buckets sixteen thousand
+      databases against two dozen releases, and runs the exact attack over roughly three thousand
+      output vectors for each of a dozen mechanisms. It takes a second or two, so slider drags are
+      debounced rather than raced, and the exactly enumerated head-to-head is deliberately held at
+      eight people: <code>|O|<sup>m</sup>&middot;2<sup>n</sup></code> is the wall, and it is a steep
+      one.</p>
+
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    MachineLearningFromZero &middot; Day 76 &middot; what &epsilon; actually buys &mdash; the definition
+    enumerated against itself, the attack computed rather than simulated, and the release with the
+    infinite &epsilon; beating the private one on both measured axes while pinning one bit in seven
+    with certainty. One file, vanilla JavaScript, no build step and no libraries. Previous:
+    <a href="day75-generalization-bounds.html">Day 75 &mdash; What a generalization bound guarantees</a>.
+  </div>
+</footer>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => x.classList.remove("tab-active"));
+  t.classList.add("tab-active");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// What does eps actually buy?
+//
+// Day 73 asked what a clustering score is a number OF, Day 74 which fairness equalities can hold at
+// once, Day 75 what the guarantee printed in front of a training run is worth. All three were
+// promises about a MODEL. This one is the promise attached to the DATA: the claim that a release is
+// safe to publish.
+//
+// Nothing here is sampled. A world is the set of all 2^n databases at once, so
+//   - "this mechanism is eps-differentially private" is CHECKED AGAINST ITS OWN DEFINITION by
+//     enumerating every neighbouring pair and every output, as exact rationals over BigInt;
+//   - the attack on it is the exact Bayes posterior, a finite sum over all 2^n databases;
+//   - and where a closed form exists the enumeration is run anyway and the two are asserted equal.
+//
+// The spine:
+//   1. eps enumerated for six releases, against the closed form where one exists
+//   2. the truncation everybody writes first, which is NOT private at its own eps, with the excess
+//      derived in closed form rather than observed
+//   3. the CONTROL "we only publish aggregates" - the noisy bits and the noisy total have the same
+//      worst-case ratio, the same integer
+//   4. the CONTROL "we measured the average leakage" - the privacy loss is a TWO-POINT law and its
+//      mean is a fixed fraction of the guarantee
+//   5. the attack: reconstruct the file from published subgroup totals, exactly
+//   6. the frontier - utility, eps, recovery, bits pinned with certainty - where the release with
+//      the infinite eps beats the private one on both measured axes
+//   7. what eps actually bounds: the posterior odds on any individual, and it never inverts
+//   8. composition, enumerated, and advanced composition evaluated next to just adding them up
+//   9. delta, and the mechanism that satisfies it by publishing everything
+
+// ---------------------------------------------------------------- exact rationals over BigInt
+function gcdB(a, b){ if (a < 0n) a = -a; if (b < 0n) b = -b; while (b) { const t = a % b; a = b; b = t; } return a; }
+function R(n, d){ if (d === 0n) return null; if (d < 0n) { n = -n; d = -d; } const g = gcdB(n, d) || 1n; return { n: n / g, d: d / g }; }
+function ri(k){ return { n: BigInt(k), d: 1n }; }
+const R0 = ri(0), R1 = ri(1);
+function radd(a, b){ return R(a.n * b.d + b.n * a.d, a.d * b.d); }
+function rsub(a, b){ return R(a.n * b.d - b.n * a.d, a.d * b.d); }
+function rmul(a, b){ return R(a.n * b.n, a.d * b.d); }
+function rdiv(a, b){ return (b === null || b.n === 0n) ? null : R(a.n * b.d, a.d * b.n); }
+function rcmp(a, b){ const l = a.n * b.d, r = b.n * a.d; return l < r ? -1 : (l > r ? 1 : 0); }
+function req(a, b){ return a !== null && b !== null && a.n * b.d === b.n * a.d; }
+function rpow(a, k){ let r = R1, b = a, e = BigInt(k); while (e > 0n) { if (e & 1n) r = rmul(r, b); b = rmul(b, b); e >>= 1n; } return r; }
+function rnum(a){
+  if (a === null) return null;
+  const s = a.n < 0n ? -1 : 1, n = a.n < 0n ? -a.n : a.n;
+  if (a.d === 1n) return s * Number(n);
+  return s * Number((n * 1000000000000000000000n) / a.d) / 1e21;
+}
+function rlog(a){ return a === null ? null : Math.log(rnum(a)); }
+
+// ---------------------------------------------------------------- exact combinatorics
+const BINOM = new Map();
+function binomB(n, k){
+  if (k < 0 || k > n || n < 0) return 0n;
+  const key = n + ':' + k, hit = BINOM.get(key);
+  if (hit !== undefined) return hit;
+  const kk = BigInt(Math.min(k, n - k));
+  let num = 1n, den = 1n;
+  for (let i = 0n; i < kk; i++) { num *= BigInt(n) - i; den *= i + 1n; }
+  const v = num / den; BINOM.set(key, v); return v;
+}
+function popcount(x){ let c = 0; while (x) { x &= x - 1; c++; } return c; }
+// a deterministic integer mixer, not a random source: the same input always gives the same output,
+// and nothing inside this block draws a random number or reads a clock.
+function mix32(x){
+  x = (x ^ (x >>> 16)) >>> 0;
+  x = Math.imul(x, 0x7feb352d) >>> 0;
+  x = (x ^ (x >>> 15)) >>> 0;
+  x = Math.imul(x, 0x846ca68b) >>> 0;
+  x = (x ^ (x >>> 16)) >>> 0;
+  return x;
+}
+
+// ---------------------------------------------------------------- the releases
+// A mechanism answers ONE question: how many of these h people have the private bit set? It is a
+// function from the true count to a list of {o, p} with p an exact rational. A deterministic release
+// is the special case with one output at probability one, so rounding and suppression go through the
+// SAME eps enumerator as the noisy mechanisms instead of being declared infinite by hand.
+const ALPHAS = [[1n, 4n], [1n, 3n], [1n, 2n], [2n, 3n], [9n, 10n]];
+const FLIPS  = [[1n, 4n], [1n, 3n], [2n, 5n], [9n, 20n]];
+
+function mechExact(h){
+  return { key: 'exact', name: 'the exact count', kind: 'det', h: h, note: 'publish it',
+    dist: function(k){ return [{ o: k, p: R1 }]; } };
+}
+function mechRound(h, r){
+  return { key: 'round' + r, name: 'rounded to the nearest ' + r, kind: 'det', h: h,
+    note: 'round(k/' + r + ')&times;' + r,
+    dist: function(k){ return [{ o: Math.round(k / r) * r, p: R1 }]; } };
+}
+function mechSuppress(h, t){
+  return { key: 'supp' + t, name: 'suppressed below ' + t, kind: 'det', h: h,
+    note: 'publish k, or &ldquo;fewer than ' + t + '&rdquo;',
+    dist: function(k){ return [{ o: k < t ? -1 : k, p: R1 }]; } };
+}
+function mechNothing(h){
+  return { key: 'none', name: 'publish nothing at all', kind: 'det', h: h, note: 'a constant',
+    dist: function(){ return [{ o: 0, p: R1 }]; } };
+}
+// geometric noise truncated to the legal range and renormalised per input. The first thing anyone
+// writes, and not eps-DP at the eps it advertises.
+function mechGeoNaive(h, a, b){
+  const al = R(a, b);
+  return { key: 'naive' + a + '_' + b, name: 'geometric noise, truncated and renormalised',
+    kind: 'rand', h: h, alpha: al, note: '&alpha; = ' + a + '/' + b,
+    dist: function(k){
+      let Z = R0; const raw = [];
+      for (let y = 0; y <= h; y++) { const w = rpow(al, Math.abs(y - k)); raw.push(w); Z = radd(Z, w); }
+      return raw.map(function(w, y){ return { o: y, p: rdiv(w, Z) }; });
+    } };
+}
+// the bounded geometric mechanism: the truncated tail mass is piled onto the two endpoints instead
+// of being redistributed, which is what makes the normalising constant input-independent.
+function mechGeoGRS(h, a, b){
+  const al = R(a, b), inter = rdiv(rsub(R1, al), radd(R1, al));
+  return { key: 'grs' + a + '_' + b, name: 'bounded geometric noise', kind: 'rand', h: h, alpha: al,
+    note: '&alpha; = ' + a + '/' + b + ', tail mass at the ends',
+    dist: function(k){
+      const out = [];
+      for (let y = 0; y <= h; y++) {
+        let p;
+        if (y === 0) p = rdiv(rpow(al, k), radd(R1, al));
+        else if (y === h) p = rdiv(rpow(al, h - k), radd(R1, al));
+        else p = rmul(inter, rpow(al, Math.abs(y - k)));
+        out.push({ o: y, p: p });
+      }
+      return out;
+    } };
+}
+// local randomised response over the whole bit vector: every person flips their own bit
+function mechRRBits(n, a, b){
+  const p = R(a, b), q = rsub(R1, p);
+  return { key: 'rrbits', name: 'randomised response, every noisy bit published', kind: 'local', n: n, p: p,
+    distDb: function(D){
+      const out = [];
+      for (let o = 0; o < (1 << n); o++) {
+        let w = R1;
+        for (let i = 0; i < n; i++) w = rmul(w, (((D >> i) & 1) === ((o >> i) & 1)) ? q : p);
+        out.push({ o: o, p: w });
+      }
+      return out;
+    } };
+}
+// the same mechanism with only the total released - a post-processing of the one above
+function mechRRSum(n, a, b){
+  const p = R(a, b), q = rsub(R1, p);
+  return { key: 'rrsum', name: 'randomised response, only the total published', kind: 'rand', h: n, p: p,
+    dist: function(k){
+      const out = [];
+      for (let S = 0; S <= n; S++) {
+        let s = R0;
+        for (let u = Math.max(0, S - (n - k)); u <= Math.min(k, S); u++) {
+          const v = S - u;
+          s = radd(s, rmul(rmul(R(binomB(k, u), 1n), rmul(rpow(q, u), rpow(p, k - u))),
+                           rmul(R(binomB(n - k, v), 1n), rmul(rpow(p, v), rpow(q, n - k - v)))));
+        }
+        out.push({ o: S, p: s });
+      }
+      return out;
+    } };
+}
+
+// ---------------------------------------------------------------- eps, by enumeration
+// eps = max over neighbouring databases D ~ D' and over outputs o of ln( P(o|D) / P(o|D') ).
+// A mechanism that sees only a count has neighbours differing by exactly one in that count, so the
+// enumeration over databases collapses to one over adjacent counts. Both are run and compared.
+function epsOf(mech){
+  const h = mech.h;
+  let best = null, inf = false, pairs = 0, cells = 0, witness = null;
+  for (let k = 0; k < h; k++) {
+    const A = mech.dist(k), B = mech.dist(k + 1);
+    const am = new Map(); A.forEach(function(e){ am.set(e.o, e.p); });
+    const bm = new Map(); B.forEach(function(e){ bm.set(e.o, e.p); });
+    pairs += 2;
+    const scan = function(from, to, lo){
+      for (const e of from) {
+        if (e.p.n === 0n) continue;
+        cells++;
+        const other = to.get(e.o) || R0;
+        if (other.n === 0n) { inf = true; if (!witness) witness = { k: lo, o: e.o }; continue; }
+        const r = rdiv(e.p, other);
+        if (best === null || rcmp(r, best) > 0) { best = r; if (!inf) witness = { k: lo, o: e.o }; }
+      }
+    };
+    scan(A, bm, k); scan(B, am, k + 1);
+  }
+  return { ratio: inf ? null : best, eps: inf ? Infinity : rlog(best), infinite: inf,
+           pairs: pairs, cells: cells, witness: witness };
+}
+// the same maximum taken over every one of the 2^n databases and every neighbour of each, taking
+// the reduction above on trust nowhere
+function epsDatabases(mech, n){
+  const N = 1 << n;
+  const rows = new Map();
+  const keyOf = mech.distDb ? function(D){ return D; } : function(D){ return popcount(D); };
+  const get = function(D){
+    const key = keyOf(D); let v = rows.get(key);
+    if (!v) { v = new Map(); (mech.distDb ? mech.distDb(D) : mech.dist(popcount(D)))
+      .forEach(function(e){ v.set(e.o, e.p); }); rows.set(key, v); }
+    return v;
+  };
+  let best = null, inf = false, pairs = 0;
+  for (let D = 0; D < N; D++) {
+    const A = get(D);
+    for (let i = 0; i < n; i++) {
+      const B = get(D ^ (1 << i)); pairs++;
+      for (const kv of A) {
+        if (kv[1].n === 0n) continue;
+        const other = B.get(kv[0]) || R0;
+        if (other.n === 0n) { inf = true; continue; }
+        const r = rdiv(kv[1], other);
+        if (best === null || rcmp(r, best) > 0) best = r;
+      }
+    }
+  }
+  return { ratio: inf ? null : best, eps: inf ? Infinity : rlog(best), infinite: inf, pairs: pairs };
+}
+// The naive truncation's worst-case ratio, in closed form. Z_k = sum_y alpha^|y-k| is bigger for a k
+// in the middle than for a k at the end, and the residue is exactly Z_1/Z_0 on top of 1/alpha.
+function epsNaiveClosed(h, a, b){
+  const al = R(a, b);
+  const Z = function(k){ let s = R0; for (let y = 0; y <= h; y++) s = radd(s, rpow(al, Math.abs(y - k))); return s; };
+  return rmul(rdiv(R1, al), rdiv(Z(1), Z(0)));
+}
+// the exact shortfall at a multiplicative bound c: max over neighbours of sum_o max(0, P(o|D) -
+// c*P(o|D')). At c = 1 this is the total variation distance; delta(e^eps) = 0 iff the mechanism is
+// eps-DP, which is the definition restated as a number rather than a predicate.
+function deltaAt(mech, c){
+  const h = mech.h;
+  let worst = R0;
+  for (let k = 0; k <= h; k++) {
+    for (let s = -1; s <= 1; s += 2) {
+      const kk = k + s;
+      if (kk < 0 || kk > h) continue;
+      const B = new Map(); mech.dist(kk).forEach(function(e){ B.set(e.o, e.p); });
+      let acc = R0;
+      for (const e of mech.dist(k)) {
+        const gap = rsub(e.p, rmul(c, B.get(e.o) || R0));
+        if (gap.n > 0n) acc = radd(acc, gap);
+      }
+      if (rcmp(acc, worst) > 0) worst = acc;
+    }
+  }
+  return worst;
+}
+// k independent runs, enumerated over the whole product output space. The worst-case ratio should
+// be the single-run ratio raised to the k-th power, exactly.
+function epsComposed(mech, k){
+  const h = mech.h;
+  let best = null, inf = false, seen = 0;
+  for (let c0 = 0; c0 < h; c0++) {
+    const A = mech.dist(c0).filter(function(e){ return e.p.n !== 0n; });
+    const bm = new Map(); mech.dist(c0 + 1).forEach(function(e){ bm.set(e.o, e.p); });
+    const L = A.length, total = Math.pow(L, k);
+    for (let t = 0; t < total; t++) {
+      let tt = t, num = R1, den = R1, zero = false;
+      for (let j = 0; j < k; j++) {
+        const q = tt % L; tt = (tt - q) / L;
+        const e = A[q], other = bm.get(e.o) || R0;
+        num = rmul(num, e.p);
+        if (other.n === 0n) { zero = true; break; }
+        den = rmul(den, other);
+      }
+      seen++;
+      if (zero) { inf = true; continue; }
+      const r = rdiv(num, den);
+      if (best === null || rcmp(r, best) > 0) best = r;
+    }
+  }
+  return { ratio: inf ? null : best, eps: inf ? Infinity : rlog(best), infinite: inf, seen: seen };
+}
+// The privacy loss random variable under the worst neighbour pair. For the bounded geometric
+// mechanism it takes exactly TWO values, +eps and -eps, and its mean is the KL divergence.
+function lossLaw(mech, kLow){
+  const B = new Map(); mech.dist(kLow + 1).forEach(function(e){ B.set(e.o, e.p); });
+  const vals = new Map();
+  let kl = 0, top = null, atTop = R0;
+  for (const e of mech.dist(kLow)) {
+    if (e.p.n === 0n) continue;
+    const other = B.get(e.o) || R0;
+    const r = other.n === 0n ? null : rdiv(e.p, other);
+    const key = r === null ? 'inf' : r.n + '/' + r.d;
+    vals.set(key, radd(vals.get(key) || R0, e.p));
+    if (r !== null) kl += rnum(e.p) * rlog(r);
+    if (r !== null && (top === null || rcmp(r, top) > 0)) top = r;
+  }
+  if (top !== null) atTop = vals.get(top.n + '/' + top.d) || R0;
+  return { distinct: vals.size, kl: kl, top: top, eps: top === null ? Infinity : rlog(top), atTop: atTop };
+}
+// and its closed form: P(loss = +eps) = 1/(1+alpha), E[loss] = eps*(1-alpha)/(1+alpha)
+function lossClosed(al){
+  return { atTop: rdiv(R1, radd(R1, al)), frac: rdiv(rsub(R1, al), radd(R1, al)) };
+}
+
+// ---------------------------------------------------------------- the published subgroups
+// Each published number is the count of private bits inside a subgroup of exactly h people. The
+// subgroups have to look arbitrary without being random: a fixed mixer hashes every person, the
+// list is sorted, the first h are taken, and a duplicate subgroup bumps a salt.
+function querySets(n, m, h, seed){
+  const Q = [], seen = new Set();
+  for (let j = 0; j < m; j++) {
+    let s = 0, salt = 0;
+    do {
+      const ord = [];
+      for (let i = 0; i < n; i++) ord.push([mix32((((seed + 1) * 8191 + j * 97 + salt * 7919) * 131071 + i) >>> 0), i]);
+      ord.sort(function(a, b){ return a[0] - b[0] || a[1] - b[1]; });
+      s = 0;
+      for (let t = 0; t < h; t++) s |= (1 << ord[t][1]);
+      salt++;
+    } while (seen.has(s) && salt < 4096);
+    seen.add(s); Q.push(s);
+  }
+  return Q;
+}
+
+// ---------------------------------------------------------------- the attacker, exactly
+// Deterministic release: bucket every one of the 2^n databases by what it would have published. The
+// attacker's posterior is uniform on its bucket, so the Bayes guess for a bit is the bucket
+// majority and the expected accuracy is a finite sum. Ties score one half.
+function bucketAttack(n, Q, mech){
+  const N = 1 << n, buckets = new Map();
+  for (let D = 0; D < N; D++) {
+    let key = '';
+    for (let j = 0; j < Q.length; j++) key += mech.dist(popcount(D & Q[j]))[0].o + ',';
+    let b = buckets.get(key);
+    if (!b) { b = { size: 0, ones: new Array(n).fill(0) }; buckets.set(key, b); }
+    b.size++;
+    for (let i = 0; i < n; i++) if ((D >> i) & 1) b.ones[i]++;
+  }
+  let hits2 = 0, pinned = 0, singles = 0, largest = 0, maxPostN = 0n, maxPostD = 1n;
+  for (const b of buckets.values()) {
+    if (b.size === 1) singles++;
+    if (b.size > largest) largest = b.size;
+    for (let i = 0; i < n; i++) {
+      const ones = b.ones[i], zeros = b.size - ones;
+      hits2 += ones > zeros ? 2 * ones : (zeros > ones ? 2 * zeros : b.size);
+      if (ones === 0 || zeros === 0) pinned += b.size;
+      const top = Math.max(ones, zeros);
+      if (BigInt(top) * maxPostD > maxPostN * BigInt(b.size)) { maxPostN = BigInt(top); maxPostD = BigInt(b.size); }
+    }
+  }
+  return { acc: R(BigInt(hits2), BigInt(2 * N * n)), pinned: R(BigInt(pinned), BigInt(N * n)),
+           maxPost: R(maxPostN, maxPostD), buckets: buckets.size, singles: singles,
+           largest: largest, identified: R(BigInt(singles), BigInt(N)) };
+}
+// Randomised release: the same finite sum, one term per (output vector, database). The mechanism's
+// law is converted once into integer weights over ONE denominator shared by every input count, so a
+// likelihood is a product of BigInts and the posterior comparison is an integer comparison. The
+// denominator has to be common across inputs - a per-input one silently reweights databases by
+// their count, which produces a plausible table in which noise beats exact answers.
+function weightedAttack(n, Q, mech){
+  const N = 1 << n, m = Q.length, h = mech.h;
+  const laws = [], outs = [], oidx = new Map();
+  let den = 1n;
+  for (let k = 0; k <= h; k++) {
+    const d = mech.dist(k); laws.push(d);
+    for (const e of d) {
+      if (e.p.n === 0n) continue;
+      den = den * e.p.d / gcdB(den, e.p.d);
+      if (!oidx.has(e.o)) { oidx.set(e.o, outs.length); outs.push(e.o); }
+    }
+  }
+  const L = outs.length;
+  const W = laws.map(function(d){
+    const row = new Array(L).fill(0n);
+    d.forEach(function(e){ if (e.p.n !== 0n) row[oidx.get(e.o)] = e.p.n * (den / e.p.d); });
+    return row;
+  });
+  const KS = new Array(N);
+  for (let D = 0; D < N; D++) { const v = new Array(m); for (let j = 0; j < m; j++) v[j] = popcount(D & Q[j]); KS[D] = v; }
+  const total = Math.pow(L, m);
+  let hits2 = 0n, mass2 = 0n, pinned = 0n, massAll = 0n, maxPostN = 0n, maxPostD = 1n, reached = 0;
+  const ones = new Array(n), ys = new Array(m);
+  for (let t = 0; t < total; t++) {
+    let tt = t;
+    for (let j = 0; j < m; j++) { ys[j] = tt % L; tt = (tt - ys[j]) / L; }
+    let mass = 0n;
+    for (let i = 0; i < n; i++) ones[i] = 0n;
+    for (let D = 0; D < N; D++) {
+      const v = KS[D];
+      let w = 1n;
+      for (let j = 0; j < m; j++) { w *= W[v[j]][ys[j]]; if (w === 0n) break; }
+      if (w === 0n) continue;
+      mass += w;
+      for (let i = 0; i < n; i++) if ((D >> i) & 1) ones[i] += w;
+    }
+    if (mass === 0n) continue;
+    reached++;
+    mass2 += mass * BigInt(2 * n); massAll += mass * BigInt(n);
+    for (let i = 0; i < n; i++) {
+      const on = ones[i], off = mass - on;
+      hits2 += on > off ? 2n * on : (off > on ? 2n * off : mass);
+      if (on === 0n || off === 0n) pinned += mass;
+      const top = on > off ? on : off;
+      if (top * maxPostD > maxPostN * mass) { maxPostN = top; maxPostD = mass; }
+    }
+  }
+  return { acc: R(hits2, mass2), pinned: R(pinned, massAll), maxPost: R(maxPostN, maxPostD),
+           outputs: L, vectors: total, reached: reached };
+}
+// one attacker for either kind, and for a deterministic release BOTH are run and compared
+function attack(n, Q, mech){
+  if (mech.kind === 'det') {
+    const b = bucketAttack(n, Q, mech), w = weightedAttack(n, Q, mech);
+    return { acc: b.acc, pinned: b.pinned, maxPost: b.maxPost, buckets: b.buckets,
+             identified: b.identified, largest: b.largest,
+             agrees: req(b.acc, w.acc) && req(b.pinned, w.pinned) && req(b.maxPost, w.maxPost) };
+  }
+  const w = weightedAttack(n, Q, mech);
+  return { acc: w.acc, pinned: w.pinned, maxPost: w.maxPost, buckets: null, identified: null,
+           largest: null, agrees: null };
+}
+
+// ---------------------------------------------------------------- utility, exactly
+// Every release is given the same help: the Bayes-optimal estimate of the true count from whatever
+// was published, under a flat prior over the count. So "utility" is the smallest mean squared error
+// the release admits and not the error of one chosen estimator, and it is an exact rational.
+function mmse(mech){
+  const h = mech.h, joint = new Map(), pr = R(1n, BigInt(h + 1));
+  for (let k = 0; k <= h; k++) {
+    for (const e of mech.dist(k)) {
+      if (e.p.n === 0n) continue;
+      let row = joint.get(e.o);
+      if (!row) { row = []; joint.set(e.o, row); }
+      row.push({ k: k, w: rmul(pr, e.p) });
+    }
+  }
+  let s = R0;
+  for (const row of joint.values()) {
+    let mass = R0, mean = R0;
+    row.forEach(function(t){ mass = radd(mass, t.w); mean = radd(mean, rmul(t.w, ri(t.k))); });
+    const mu = rdiv(mean, mass);
+    row.forEach(function(t){ const e = rsub(ri(t.k), mu); s = radd(s, rmul(t.w, rmul(e, e))); });
+  }
+  return s;
+}
+// the largest MMSE any release can have is the prior variance - publish nothing
+function priorVar(h){
+  const pr = R(1n, BigInt(h + 1));
+  let m = R0, v = R0;
+  for (let k = 0; k <= h; k++) m = radd(m, rmul(pr, ri(k)));
+  for (let k = 0; k <= h; k++) { const d = rsub(ri(k), m); v = radd(v, rmul(pr, rmul(d, d))); }
+  return v;
+}
+
+// ---------------------------------------------------------------- tables
+function epsTable(cfg){
+  const h = cfg.nEps, a = cfg.alpha[0], b = cfg.alpha[1];
+  const list = [mechExact(h), mechRound(h, cfg.roundR), mechSuppress(h, cfg.suppT), mechNothing(h),
+                mechGeoNaive(h, a, b), mechGeoGRS(h, a, b)];
+  const rows = list.map(function(m){
+    const e = epsOf(m), d = epsDatabases(m, h);
+    const claim = m.key.indexOf('grs') === 0 || m.key.indexOf('naive') === 0 ? R(b, a) : null;
+    return { name: m.name, note: m.note, kind: m.kind, eps: e.eps, infinite: e.infinite,
+             ratio: e.ratio, dbEps: d.eps, dbPairs: d.pairs,
+             agrees: e.infinite === d.infinite && (e.infinite || req(e.ratio, d.ratio)),
+             claim: claim === null ? null : rlog(claim),
+             matchesClaim: claim === null ? null : (e.ratio !== null && req(e.ratio, claim)),
+             tv: deltaAt(m, R1) };
+  });
+  return { rows: rows, pairs: rows[0].dbPairs,
+           allAgree: rows.every(function(r){ return r.agrees; }),
+           detInfinite: rows.filter(function(r){ return r.kind === 'det'; }) };
+}
+function naiveTable(cfg){
+  const rows = ALPHAS.map(function(ab){
+    const nv = mechGeoNaive(cfg.nEps, ab[0], ab[1]), gr = mechGeoGRS(cfg.nEps, ab[0], ab[1]);
+    const en = epsOf(nv), eg = epsOf(gr), cf = epsNaiveClosed(cfg.nEps, ab[0], ab[1]);
+    const al = rnum(R(ab[0], ab[1]));
+    return { alpha: ab[0] + '/' + ab[1], al: al, claim: Math.log(Number(ab[1]) / Number(ab[0])),
+             naive: en.eps, grs: eg.eps, closedAgrees: req(en.ratio, cf),
+             grsExact: req(eg.ratio, R(ab[1], ab[0])),
+             excess: en.eps - Math.log(Number(ab[1]) / Number(ab[0])),
+             limit: Math.log(1 + al - al * al),
+             factor: en.eps / Math.log(Number(ab[1]) / Number(ab[0])) };
+  });
+  const grow = [];
+  for (const nn of [4, 6, 8, 12, 16, 24]) {
+    const en = epsOf(mechGeoNaive(nn, cfg.alpha[0], cfg.alpha[1]));
+    const eg = epsOf(mechGeoGRS(nn, cfg.alpha[0], cfg.alpha[1]));
+    grow.push({ n: nn, naive: en.eps, grs: eg.eps, factor: en.eps / eg.eps,
+                closedAgrees: req(en.ratio, epsNaiveClosed(nn, cfg.alpha[0], cfg.alpha[1])) });
+  }
+  const al = rnum(R(cfg.alpha[0], cfg.alpha[1]));
+  return { rows: rows, grow: grow, limit: Math.log(1 + al - al * al),
+           allClosed: rows.every(function(r){ return r.closedAgrees; }) && grow.every(function(r){ return r.closedAgrees; }),
+           allExact: rows.every(function(r){ return r.grsExact; }),
+           allAbove: rows.every(function(r){ return r.naive > r.claim + 1e-12; }),
+           monotone: grow.every(function(r, i){ return i === 0 || r.naive >= grow[i - 1].naive - 1e-12; }) };
+}
+function aggTable(cfg){
+  const n = Math.min(cfg.nEps, 6);
+  return { n: n, rows: FLIPS.map(function(ab){
+    const bits = mechRRBits(n, ab[0], ab[1]), sum = mechRRSum(n, ab[0], ab[1]);
+    const eb = epsDatabases(bits, n), es = epsOf(sum);
+    const closed = R(ab[1] - ab[0], ab[0]);
+    return { p: ab[0] + '/' + ab[1], bits: eb.eps, sum: es.eps,
+             same: req(eb.ratio, es.ratio), closed: rlog(closed),
+             matchesClosed: req(eb.ratio, closed) && req(es.ratio, closed),
+             pairs: eb.pairs };
+  }) };
+}
+function lossTable(cfg){
+  const h = cfg.nEps, mid = h >> 1;
+  return ALPHAS.map(function(ab){
+    const g = mechGeoGRS(h, ab[0], ab[1]), al = R(ab[0], ab[1]);
+    const L = lossLaw(g, mid), C = lossClosed(al);
+    const tv = deltaAt(g, R1);
+    return { alpha: ab[0] + '/' + ab[1], distinct: L.distinct, eps: L.eps, kl: L.kl,
+             atTop: L.atTop, atTopClosed: C.atTop, atTopAgrees: req(L.atTop, C.atTop),
+             frac: L.kl / L.eps, fracClosed: rnum(C.frac),
+             fracAgrees: Math.abs(L.kl / L.eps - rnum(C.frac)) < 1e-9,
+             tv: tv, tvAgrees: req(tv, C.frac), ratio: L.eps / L.kl };
+  });
+}
+function reconTable(cfg){
+  const n = cfg.nRec, h = n >> 1;
+  const rows = [];
+  const ms = [];
+  for (let m = 2; m <= cfg.mQ; m += Math.max(1, Math.round(cfg.mQ / 6))) ms.push(m);
+  if (ms[ms.length - 1] !== cfg.mQ) ms.push(cfg.mQ);
+  for (const m of ms) {
+    const Q = querySets(n, m, h, cfg.seed);
+    const ex = bucketAttack(n, Q, mechExact(h));
+    const rd = bucketAttack(n, Q, mechRound(h, cfg.roundR));
+    const su = bucketAttack(n, Q, mechSuppress(h, cfg.suppT));
+    rows.push({ m: m, exact: ex, round: rd, supp: su });
+  }
+  const scale = [];
+  for (let nn = 6; nn <= 14; nn += 2) {
+    const hh = nn >> 1, Q = querySets(nn, nn, hh, cfg.seed);
+    scale.push({ n: nn, exact: bucketAttack(nn, Q, mechExact(hh)),
+                 round: bucketAttack(nn, Q, mechRound(hh, cfg.roundR)),
+                 supp: bucketAttack(nn, Q, mechSuppress(hh, cfg.suppT)) });
+  }
+  // The smallest number of published counts at which every possible file is uniquely determined.
+  // querySets(n, m+1) extends querySets(n, m), so adding a query can only split buckets and never
+  // merge them: full identification is monotone in m and the answer is a bisection, not a scan.
+  const identifiedAt = function(m){
+    return bucketAttack(n, querySets(n, m, h, cfg.seed), mechExact(h)).identified;
+  };
+  let full = null, lo = 1, hi = 3 * n;
+  if (identifiedAt(hi).n === identifiedAt(hi).d) {
+    while (lo < hi) { const mid = (lo + hi) >> 1; const r = identifiedAt(mid);
+      if (r.n === r.d) hi = mid; else lo = mid + 1; }
+    full = lo;
+  }
+  return { n: n, h: h, rows: rows, scale: scale, fullAt: full,
+           monotone: rows.every(function(r, i){ return i === 0 || rcmp(r.exact.acc, rows[i - 1].exact.acc) >= 0; }) };
+}
+function frontier(cfg){
+  const n = cfg.nHead, h = cfg.hHead, m = cfg.mHead;
+  const Q = querySets(n, m, h, cfg.seed);
+  const list = [mechExact(h), mechRound(h, 2), mechRound(h, cfg.roundR), mechRound(h, 7),
+                mechSuppress(h, 2), mechSuppress(h, cfg.suppT), mechNothing(h)];
+  ALPHAS.forEach(function(ab){ list.push(mechGeoGRS(h, ab[0], ab[1])); });
+  const seenSig = new Set(), rows = [];
+  for (const mech of list) {
+    let sig = mech.kind + '|';
+    for (let k = 0; k <= h; k++) sig += mech.dist(k).map(function(e){ return e.o + ':' + e.p.n + '/' + e.p.d; }).join(',') + ';';
+    if (seenSig.has(sig)) continue;
+    seenSig.add(sig);
+    const e = epsOf(mech), a = attack(n, Q, mech), u = mmse(mech);
+    const epsTot = e.infinite ? Infinity : m * e.eps;
+    const bound = epsTot === Infinity ? 1 : Math.exp(epsTot) / (1 + Math.exp(epsTot));
+    rows.push({ name: mech.name, note: mech.note, kind: mech.kind, key: mech.key,
+                eps1: e.eps, epsTot: epsTot, infinite: e.infinite, mmse: u,
+                acc: a.acc, pinned: a.pinned, maxPost: a.maxPost, bound: bound,
+                agrees: a.agrees, withinBound: rnum(a.maxPost) <= bound + 1e-12 });
+  }
+  const dp = rows.filter(function(r){ return !r.infinite && r.kind !== 'det'; });
+  const det = rows.filter(function(r){ return r.kind === 'det'; });
+  // the deterministic release that beats a private one on BOTH measured axes, if there is one
+  let dominates = null;
+  for (const d of det) {
+    if (d.eps1 === 0) continue;
+    for (const p of dp) {
+      if (rcmp(d.mmse, p.mmse) <= 0 && rcmp(d.acc, p.acc) <= 0) {
+        const gain = rnum(p.mmse) - rnum(d.mmse) + rnum(p.acc) - rnum(d.acc);
+        if (dominates === null || gain > dominates.gain) dominates = { det: d, dp: p, gain: gain };
+      }
+    }
+  }
+  return { n: n, h: h, m: m, rows: rows, dominates: dominates,
+           chance: R(1n, 2n), maxMmse: priorVar(h),
+           dpPinsNothing: dp.every(function(r){ return r.pinned.n === 0n; }),
+           detPins: det.filter(function(r){ return r.pinned.n > 0n; }).length,
+           allWithin: rows.every(function(r){ return r.withinBound; }),
+           detAgree: det.every(function(r){ return r.agrees === true; }),
+           nothing: rows.filter(function(r){ return r.key === 'none'; })[0] };
+}
+function compositionTable(cfg){
+  const g = mechGeoGRS(Math.min(cfg.nEps, 5), cfg.alpha[0], cfg.alpha[1]);
+  const e1 = epsOf(g);
+  const enumerated = [];
+  for (let k = 1; k <= 3; k++) {
+    const ek = epsComposed(g, k);
+    enumerated.push({ k: k, eps: ek.eps, exact: req(ek.ratio, rpow(e1.ratio, k)), seen: ek.seen });
+  }
+  const adv = function(eps, k, d){ return Math.sqrt(2 * k * Math.log(1 / d)) * eps + k * eps * (Math.exp(eps) - 1); };
+  const ladder = [];
+  const ks = [1, 2, 5, 10, 25, 50, 100, 250, 1000];
+  if (ks.indexOf(cfg.kComp) < 0) { ks.push(cfg.kComp); ks.sort(function(a, b){ return a - b; }); }
+  for (const k of ks) {
+    const basic = k * e1.eps, a = adv(e1.eps, k, cfg.delta);
+    ladder.push({ k: k, basic: basic, adv: a, ratio: Math.exp(Math.min(basic, 700)),
+                  advWins: a < basic, cap: Math.exp(basic) / (1 + Math.exp(basic)) });
+  }
+  const cross = [];
+  for (const eps of [e1.eps, 0.1, 0.01]) {
+    let kk = null;
+    for (let k = 1; k <= 200000; k++) if (adv(eps, k, cfg.delta) < k * eps) { kk = k; break; }
+    cross.push({ eps: eps, k: kk });
+  }
+  return { eps1: e1.eps, enumerated: enumerated, ladder: ladder, cross: cross,
+           allExact: enumerated.every(function(r){ return r.exact; }),
+           monotone: ladder.every(function(r, i){ return i === 0 || r.basic >= ladder[i - 1].basic; }) };
+}
+function deltaTable(cfg){
+  const g = mechGeoGRS(cfg.nEps, cfg.alpha[0], cfg.alpha[1]);
+  const e = epsOf(g);
+  const cs = [R1, R(3n, 2n), R(cfg.alpha[1], cfg.alpha[0]), rmul(R(cfg.alpha[1], cfg.alpha[0]), ri(2))];
+  const profile = cs.map(function(c){ return { c: rnum(c), delta: deltaAt(g, c) }; });
+  // the mechanism that satisfies (0, delta)-DP by publishing everything with probability delta
+  const blatant = [];
+  for (const de of [2, 3, 6, 9]) {
+    const d = Math.pow(10, -de);
+    blatant.push({ exp: de, delta: d, epsNeeded: 0, exposedPerMillion: d * 1e6,
+                   safeBelow: 1 / d });
+  }
+  return { profile: profile, eps: e.eps, blatant: blatant, delta: cfg.delta,
+           exposed: cfg.delta * 1e6,
+           zeroAtEps: profile.filter(function(p){ return Math.abs(p.c - Math.exp(e.eps)) < 1e-9; })
+                        .every(function(p){ return p.delta.n === 0n; }),
+           positiveBelow: profile.filter(function(p){ return p.c < Math.exp(e.eps) - 1e-9; })
+                        .every(function(p){ return p.delta.n > 0n; }) };
+}
+// A blatantly non-private mechanism, enumerated rather than described: with probability delta
+// publish the whole database, otherwise publish a bottom symbol. Its output space is the 2^n
+// databases plus one, so the shortfall at a multiplicative bound c is a finite maximum too.
+function blatantExact(n, dn, dd, c){
+  const d = R(dn, dd), rest = rsub(R1, d), N = 1 << n;
+  const P = function(o, D){ return o === -1 ? rest : (o === D ? d : R0); };
+  let worst = R0, ratio = null, inf = false;
+  for (let D = 0; D < N; D++) {
+    for (let i = 0; i < n; i++) {
+      const D2 = D ^ (1 << i);
+      let acc = R0;
+      for (let o = -1; o < N; o++) {
+        const a = P(o, D), b = P(o, D2);
+        if (a.n === 0n) continue;
+        if (b.n === 0n) { inf = true; }
+        else { const r = rdiv(a, b); if (ratio === null || rcmp(r, ratio) > 0) ratio = r; }
+        const gap = rsub(a, rmul(c, b));
+        if (gap.n > 0n) acc = radd(acc, gap);
+      }
+      if (rcmp(acc, worst) > 0) worst = acc;
+    }
+  }
+  return { shortfall: worst, delta: d, epsInfinite: inf, ratio: ratio,
+           isZeroEpsDelta: req(worst, d), n: n };
+}
+
+// ---------------------------------------------------------------- identities and the sweep
+function identityTable(cfg){
+  const h = cfg.nEps, a = cfg.alpha[0], b = cfg.alpha[1];
+  const grs = mechGeoGRS(h, a, b), nv = mechGeoNaive(h, a, b);
+  const eg = epsOf(grs), en = epsOf(nv);
+  const rr = aggTable(cfg);
+  const L = lossLaw(grs, h >> 1), C = lossClosed(R(a, b));
+  const rows = [];
+  const add = function(what, ok, detail){ rows.push({ what: what, ok: ok, detail: detail }); };
+  add('bounded geometric: worst-case ratio = 1/&alpha;, as integers',
+      req(eg.ratio, R(b, a)), 'ratio = ' + eg.ratio.n + '/' + eg.ratio.d);
+  add('naive truncation: enumeration = (1/&alpha;)&middot;Z<sub>1</sub>/Z<sub>0</sub>',
+      req(en.ratio, epsNaiveClosed(h, a, b)), 'excess &times;' + (en.eps / eg.eps).toFixed(6));
+  add('naive truncation is strictly worse than the &epsilon; it claims',
+      en.eps > eg.eps + 1e-12, en.eps.toFixed(6) + ' &gt; ' + eg.eps.toFixed(6));
+  add('the count enumeration and the 2<sup>n</sup>-database enumeration agree',
+      req(eg.ratio, epsDatabases(grs, h).ratio), epsDatabases(grs, h).pairs + ' pairs');
+  add('noisy bits and noisy total have the same worst-case ratio',
+      rr.rows.every(function(r){ return r.same; }), rr.rows.length + ' flip rates');
+  add('the privacy loss takes exactly two values', L.distinct === 2, L.distinct + ' distinct');
+  add('P(loss = +&epsilon;) = 1/(1+&alpha;)', req(L.atTop, C.atTop),
+      L.atTop.n + '/' + L.atTop.d);
+  add('total variation = (1&minus;&alpha;)/(1+&alpha;) = E[loss]/&epsilon;',
+      req(deltaAt(grs, R1), C.frac), rnum(C.frac).toFixed(6));
+  add('&delta; at e<sup>&epsilon;</sup> is exactly zero', deltaAt(grs, R(b, a)).n === 0n, '0');
+  add('&delta; below e<sup>&epsilon;</sup> is strictly positive', deltaAt(grs, R1).n > 0n,
+      rnum(deltaAt(grs, R1)).toFixed(6));
+  add('publishing a constant has &epsilon; exactly zero', epsOf(mechNothing(h)).eps === 0, '0');
+  add('every deterministic non-constant release has &epsilon; infinite',
+      epsOf(mechExact(h)).infinite && epsOf(mechRound(h, cfg.roundR)).infinite &&
+      epsOf(mechSuppress(h, cfg.suppT)).infinite, '3 of 3');
+  add('the MMSE of publishing nothing is the prior variance',
+      req(mmse(mechNothing(h)), priorVar(h)), rnum(priorVar(h)).toFixed(6));
+  add('the MMSE of the exact count is exactly zero', mmse(mechExact(h)).n === 0n, '0');
+  const comp = compositionTable(cfg);
+  add('&epsilon; composes to exactly k&middot;&epsilon;, enumerated', comp.allExact, '3 of 3');
+  return { rows: rows, allOk: rows.every(function(r){ return r.ok; }) };
+}
+// The findings are not one configuration. The sweep re-runs the frontier on other subgroup choices
+// and other alphas, and re-derives every closed form at other sizes, at a size small enough that the
+// whole thing is affordable inside a render.
+function configSweep(){
+  let checked = 0, bad = 0;
+  for (const seed of [1, 4]) {
+    for (let ai = 0; ai < ALPHAS.length; ai += 2) {
+      const cfg = cfgOf({ seed: seed, mHead: 2, alphaIdx: ai });
+      const f = frontier(cfg);
+      checked++;
+      if (!f.allWithin || !f.dpPinsNothing || !f.detAgree) bad++;
+      if (rcmp(f.nothing.acc, R(1n, 2n)) !== 0) bad++;
+    }
+  }
+  for (const h of [4, 6, 9]) {
+    for (const ab of ALPHAS) {
+      checked++;
+      const g = mechGeoGRS(h, ab[0], ab[1]), nv = mechGeoNaive(h, ab[0], ab[1]);
+      if (!req(epsOf(g).ratio, R(ab[1], ab[0]))) bad++;
+      if (!req(epsOf(nv).ratio, epsNaiveClosed(h, ab[0], ab[1]))) bad++;
+      if (!(epsOf(nv).eps > epsOf(g).eps)) bad++;
+      if (deltaAt(g, R(ab[1], ab[0])).n !== 0n) bad++;
+      if (!req(deltaAt(g, R1), lossClosed(R(ab[0], ab[1])).frac)) bad++;
+    }
+  }
+  for (const n of [5, 7]) {
+    checked++;
+    const g = mechGeoGRS(n, ALPHAS[2][0], ALPHAS[2][1]);
+    if (!req(epsOf(g).ratio, epsDatabases(g, n).ratio)) bad++;
+  }
+  return { checked: checked, bad: bad };
+}
+
+// ---------------------------------------------------------------- configuration
+const DEFAULTS = { nEps: 8, alphaIdx: 2, nRec: 12, mQ: 12, mHead: 5, roundR: 3, suppT: 3,
+                   deltaExp: 6, kComp: 100, seed: 0 };
+function cfgOf(o){
+  const c = {};
+  for (const k in DEFAULTS) c[k] = DEFAULTS[k];
+  if (o) for (const k in o) if (o[k] !== undefined && o[k] !== null) c[k] = o[k];
+  c.alphaIdx = Math.max(0, Math.min(ALPHAS.length - 1, c.alphaIdx));
+  c.alpha = ALPHAS[c.alphaIdx];
+  c.alphaLabel = c.alpha[0] + '/' + c.alpha[1];
+  c.nHead = 8; c.hHead = 4;
+  c.delta = Math.pow(10, -c.deltaExp);
+  return c;
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- rendering (DOM lives here only)
+function $(id){ return document.getElementById(id); }
+function fx(x, k){ return (x === null || x === undefined || !isFinite(x)) ? "&ndash;" : x.toFixed(k === undefined ? 6 : k); }
+function grp(x){
+  if (x === null || x === undefined) return "&ndash;";
+  if (x === Infinity) return "&infin;";
+  const s = (typeof x === "bigint" ? x.toString() : String(Math.round(Number(x))));
+  return s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+function pc(x, k){ return x === null || x === undefined ? "&ndash;" : (100 * x).toFixed(k === undefined ? 2 : k) + "%"; }
+function pcr(r, k){ return r === null ? "&ndash;" : pc(rnum(r), k); }
+function epsFmt(x){ return x === Infinity ? "<span class='bad'>&infin;</span>" : fx(x, 6); }
+function yn(b){ return b === null || b === undefined ? "<span class='dim'>&ndash;</span>"
+                : (b ? "<span class='ok'>yes</span>" : "<span class='bad'>no</span>"); }
+function head(cells){ return "<tr>" + cells.map(function(c){ return "<th>" + c + "</th>"; }).join("") + "</tr>"; }
+function row(cells, cls){ return "<tr>" + cells.map(function(c, i){
+  return "<td" + (cls && cls[i] ? " class='" + cls[i] + "'" : "") + ">" + c + "</td>"; }).join("") + "</tr>"; }
+
+function render(){
+  const cfg = cfgOf({
+    nEps: +$("sNEps").value, alphaIdx: +$("sAlpha").value, nRec: +$("sNRec").value,
+    mQ: +$("sMQ").value, mHead: +$("sMHead").value, roundR: +$("sRound").value,
+    suppT: +$("sSupp").value, deltaExp: +$("sDelta").value, kComp: +$("sK").value,
+    seed: +$("sSeed").value
+  });
+  $("vNEps").textContent = cfg.nEps;   $("vAlpha").textContent = cfg.alphaLabel;
+  $("vNRec").textContent = cfg.nRec;   $("vMQ").textContent = cfg.mQ;
+  $("vMHead").textContent = cfg.mHead; $("vRound").textContent = cfg.roundR;
+  $("vSupp").textContent = cfg.suppT;  $("vDelta").textContent = cfg.deltaExp;
+  $("vK").textContent = cfg.kComp;     $("vSeed").textContent = cfg.seed;
+
+  // 1 ------------------------------------------------------------ the definition, enumerated
+  const et = epsTable(cfg);
+  let h = head(["release", "what it does", "&epsilon; over adjacent counts",
+                "&epsilon; over all 2<sup>n</sup> databases", "agree", "closed form", "matches",
+                "total variation"]);
+  et.rows.forEach(function(r){
+    h += row([r.name, "<span class='tiny'>" + r.note + "</span>", epsFmt(r.eps), epsFmt(r.dbEps),
+      yn(r.agrees), r.claim === null ? "<span class='dim'>none</span>" : fx(r.claim, 6),
+      r.matchesClaim === null ? "<span class='dim'>&ndash;</span>" : yn(r.matchesClaim),
+      fx(rnum(r.tv), 6)], [null, null, "same", "same", null, "same2", "same2", null]);
+  });
+  $("tblEps").innerHTML = h;
+  $("sayEps").innerHTML =
+    "Six releases of the same number &mdash; how many of " + cfg.nEps + " people have the private " +
+    "bit set. For each one the definition is evaluated directly: every neighbouring pair of the " +
+    "<strong>" + grp(et.pairs) + "</strong> that exist, every output, the ratio taken as an exact " +
+    "rational, and the maximum reported. The middle column repeats the whole thing over all " +
+    "<strong>" + grp(1 << cfg.nEps) + "</strong> databases rather than over adjacent counts, and the " +
+    "two are compared as integers.";
+  $("flagEps").innerHTML =
+    "Three of these releases have <strong>&epsilon; = &infin;</strong>, and it is not an artefact of " +
+    "the definition being strict: an infinite ratio means some output is possible under one database " +
+    "and <em>impossible</em> under a neighbour, which is exactly what &ldquo;this output rules out a " +
+    "person&rsquo;s value&rdquo; means. The fourth deterministic release, publishing a constant, has " +
+    "&epsilon; <strong>exactly zero</strong> &mdash; the enumerator was not told which rows were " +
+    "supposed to be private, so that row is a result rather than a special case.";
+
+  // 2 ------------------------------------------------------------ the naive truncation
+  const nt = naiveTable(cfg);
+  h = head(["&alpha;", "advertised &epsilon; = ln(1/&alpha;)", "what it really is",
+            "closed form agrees", "excess, nats", "excess as n &rarr; &infin;",
+            "bounded geometric", "exactly ln(1/&alpha;)"]);
+  nt.rows.forEach(function(r){
+    h += row(["&alpha; = " + r.alpha, fx(r.claim, 6), "<span class='bad'>" + fx(r.naive, 6) + "</span>",
+      yn(r.closedAgrees), fx(r.excess, 6), fx(r.limit, 6), fx(r.grs, 6), yn(r.grsExact)],
+      [null, "same2", "same2", null, null, null, "same3", "same3"]);
+  });
+  $("tblNaive").innerHTML = h;
+  h = head(["people", "naive truncation", "bounded geometric", "ratio", "closed form agrees"]);
+  nt.grow.forEach(function(r){
+    h += row([r.n, fx(r.naive, 6), fx(r.grs, 6), fx(r.factor, 4) + "&times;", yn(r.closedAgrees)]);
+  });
+  $("tblNaive").innerHTML += "<tr><td colspan='8' style='padding-top:14px'></td></tr>";
+  $("tblNaive").insertAdjacentHTML("beforeend",
+    "<tr><td colspan='8' style='padding:0'><div class='scroll'><table class='num'>" + h +
+    "</table></div></td></tr>");
+  $("flagNaive").innerHTML =
+    "The excess does not wash out with scale. It climbs with the number of people and settles at " +
+    "<strong>ln(1 + &alpha; &minus; &alpha;<sup>2</sup>) = " + fx(nt.limit, 6) + "</strong> nats, so a " +
+    "mechanism advertised at " + fx(nt.rows[cfg.alphaIdx].claim, 4) + " is really at " +
+    fx(nt.rows[cfg.alphaIdx].naive, 4) + " &mdash; <strong>" +
+    fx(nt.rows[cfg.alphaIdx].factor, 3) + "&times;</strong> the budget, forever. Nothing about the " +
+    "output looks wrong; the distribution is centred, symmetric and correctly shaped. The repair " +
+    "costs nothing in noise: put the truncated tail mass on the two endpoints instead of spreading " +
+    "it, and the enumeration returns ln(1/&alpha;) as an exact rational at every &alpha; and every " +
+    "size tried.";
+
+  // 3 ------------------------------------------------------------ aggregation buys nothing
+  const ag = aggTable(cfg);
+  h = head(["flip probability", "every noisy bit published", "only the noisy total published",
+            "the same rational", "ln((1&minus;p)/p)", "matches"]);
+  ag.rows.forEach(function(r){
+    h += row(["p = " + r.p, fx(r.bits, 9), fx(r.sum, 9), yn(r.same), fx(r.closed, 9),
+      yn(r.matchesClosed)], [null, "same", "same", null, "same2", null]);
+  });
+  $("tblAgg").innerHTML = h;
+  $("flagAgg").innerHTML =
+    "Enumerated over all <strong>" + grp(ag.rows[0].pairs) + "</strong> neighbouring pairs of " +
+    grp(1 << ag.n) + " databases for the bit release, and over adjacent totals for the aggregate " +
+    "one. Post-processing cannot make a release <em>less</em> private, and here it does not make it " +
+    "more private either: the worst case is attained at the extreme total, where the sum says as " +
+    "much about the one changed bit as the whole vector did. Aggregation is a utility decision. " +
+    "Filing it under privacy is how a release that leaks everything gets signed off.";
+
+  // 4 ------------------------------------------------------------ average leakage
+  const lt = lossTable(cfg);
+  h = head(["&alpha;", "distinct values of the loss", "&epsilon;", "E[loss] = KL",
+            "E[loss] / &epsilon;", "(1&minus;&alpha;)/(1+&alpha;)", "P(loss = +&epsilon;)",
+            "1/(1+&alpha;)", "&epsilon; &divide; average"]);
+  lt.forEach(function(r){
+    h += row(["&alpha; = " + r.alpha, r.distinct, fx(r.eps, 6), fx(r.kl, 6), fx(r.frac, 6),
+      fx(r.fracClosed, 6), pcr(r.atTop, 4), pcr(r.atTopClosed, 4), fx(r.ratio, 2) + "&times;"],
+      [null, null, null, null, "same", "same", "same3", "same3", null]);
+  });
+  $("tblLoss").innerHTML = h;
+  $("sayLoss").innerHTML =
+    "The privacy loss random variable is <code>ln(P(o|D)/P(o|D&prime;))</code> under " +
+    "<code>o &sim; M(D)</code>. Its maximum is &epsilon; by definition; its <em>mean</em> is the " +
+    "Kullback&ndash;Leibler divergence between the two output laws, which is the quantity an " +
+    "&ldquo;average information leaked&rdquo; audit reports. For the bounded geometric mechanism the " +
+    "loss takes exactly <strong>two</strong> values and nothing in between, so both are closed forms " +
+    "and the enumeration is checked against them.";
+  $("flagLoss").innerHTML =
+    "The gap <em>widens</em> as the mechanism gets safer. At &alpha; = 1/4 the average is " +
+    fx(lt[0].frac, 4) + " of the guarantee; at &alpha; = 9/10 it is " +
+    fx(lt[lt.length - 1].frac, 4) + ", a factor of <strong>" +
+    fx(lt[lt.length - 1].ratio, 1) + "&times;</strong> between what is promised and what is measured. " +
+    "An audit that reports the mean is not reporting a conservative version of &epsilon;; it is " +
+    "reporting a different object, and one that flatters exactly the regime where the tail is the " +
+    "whole story.";
+
+  // 5 ------------------------------------------------------------ reconstruction
+  const rc = reconTable(cfg);
+  h = head(["subgroup counts published", "exact counts", "rows pinned down uniquely",
+            "rounded to " + cfg.roundR, "suppressed below " + cfg.suppT, "possible files left"]);
+  rc.rows.forEach(function(r){
+    h += row([r.m, "<strong>" + pcr(r.exact.acc) + "</strong>", pcr(r.exact.identified),
+      pcr(r.round.acc), pcr(r.supp.acc), grp(r.exact.buckets)],
+      [null, "same", "same", "same2", "same2", null]);
+  });
+  $("tblRecon").innerHTML = h;
+  h = head(["people in the file", "exact counts", "rows pinned down uniquely",
+            "rounded to " + cfg.roundR, "suppressed below " + cfg.suppT]);
+  rc.scale.forEach(function(r){
+    h += row([r.n, pcr(r.exact.acc), pcr(r.exact.identified), pcr(r.round.acc), pcr(r.supp.acc)]);
+  });
+  $("tblScale").innerHTML = h;
+  $("sayRecon").innerHTML =
+    "A file of <strong>" + cfg.nRec + "</strong> people, one private bit each. Nobody publishes a " +
+    "name: the release is a list of subgroup sizes and the number of ones inside each. The attacker " +
+    "buckets all <strong>" + grp(1 << cfg.nRec) + "</strong> possible files by what they would have " +
+    "published and reads its posterior off the bucket, which is exact and needs no theorem. Chance " +
+    "is 50%.";
+  $("flagRecon").innerHTML =
+    "With exact counts, <strong>" + rc.fullAt + "</strong> published subgroups over " + cfg.nRec +
+    " people leave every single file uniquely determined &mdash; " + grp(1 << cfg.nRec) +
+    " buckets for " + grp(1 << cfg.nRec) + " databases, so the release <em>is</em> the file. " +
+    "Rounding does not stop it and small-cell suppression barely dents it, because " +
+    "&ldquo;suppressed&rdquo; is an inequality constraint rather than a redaction &mdash; and it is " +
+    "an inequality on the <em>small</em> cells, which are the ones that pin individuals down. On the " +
+    "largest file here, suppressing below " + cfg.suppT + " still hands over <strong>" +
+    pcr(rc.scale[rc.scale.length - 1].supp.acc) + "</strong> of the private bits.";
+
+  // 6 ------------------------------------------------------------ the frontier
+  const fr = frontier(cfg);
+  const grsRows = fr.rows.filter(function(r){ return r.key.indexOf("grs") === 0; });
+  const mid = grsRows[Math.min(2, grsRows.length - 1)];
+  const r7 = fr.rows.filter(function(r){ return r.key === "round7"; })[0] || fr.rows[1];
+  h = head(["release", "&epsilon; per count", "&epsilon; total", "mean squared error",
+            "bits recovered", "bits pinned with certainty", "largest posterior",
+            "e<sup>&epsilon;</sup>/(1+e<sup>&epsilon;</sup>)", "bound holds"]);
+  fr.rows.forEach(function(r){
+    h += row([r.name + " <span class='tiny'>" + r.note + "</span>",
+      epsFmt(r.eps1), epsFmt(r.epsTot), fx(rnum(r.mmse), 4),
+      "<strong>" + pcr(r.acc, 3) + "</strong>",
+      r.pinned.n === 0n ? "<span class='ok'>0.000%</span>" : "<span class='bad'>" + pcr(r.pinned, 3) + "</span>",
+      fx(rnum(r.maxPost), 6), r.bound === 1 ? "<span class='dim'>1</span>" : fx(r.bound, 6),
+      yn(r.withinBound)],
+      [null, null, null, "same2", "same", "same3", null, null, null]);
+  });
+  $("tblFront").innerHTML = h;
+  $("sayFront").innerHTML =
+    "One file of <strong>" + fr.n + "</strong> people, <strong>" + fr.m + "</strong> published " +
+    "subgroup counts, the same attacker throughout, every number exact. Utility is the smallest mean " +
+    "squared error the release admits about a single count, so no mechanism is being handed a worse " +
+    "estimator than another; the worst possible value is the prior variance, <strong>" +
+    fx(rnum(fr.maxMmse), 4) + "</strong>, attained by publishing nothing. &epsilon; is enumerated, " +
+    "not assumed: the deterministic rows are run through the <em>same</em> code, and every one of " +
+    "them is also attacked twice, once by bucketing and once by the full weighted sum, with the two " +
+    "results compared as rationals.";
+  const dom = fr.dominates;
+  $("flagFront").innerHTML = dom === null
+    ? "On this configuration no deterministic release beats a private one on both axes at once."
+    : "&#128308; <strong>The row I did not expect to be writing.</strong> &ldquo;" + dom.det.name +
+      "&rdquo; has &epsilon; = &infin; and yet it beats &ldquo;" + dom.dp.name + ", " +
+      dom.dp.note + "&rdquo; on <em>both</em> measured axes: error " +
+      fx(rnum(dom.det.mmse), 4) + " against " + fx(rnum(dom.dp.mmse), 4) + ", and the attacker " +
+      "recovers " + pcr(dom.det.acc, 2) + " against " + pcr(dom.dp.acc, 2) + " &mdash; less accurate " +
+      "for the analyst <em>and</em> less useful to the attacker. That is not an argument against " +
+      "differential privacy; it is what a reconstruction score measures. It is an average over all " +
+      "people, under one prior, against one adversary, and a coarse deterministic release can score " +
+      "well on it while being catastrophic for the particular people it happens to expose. The " +
+      "column that never inverts is the next one: that release pins <strong>" +
+      pcr(dom.det.pinned, 2) + "</strong> of individual bits with certainty &mdash; posterior " +
+      "exactly one &mdash; and all <strong>" + fr.rows.filter(function(r){ return !r.infinite && r.kind !== 'det'; }).length +
+      "</strong> private rows pin exactly zero, which is structural: a mechanism with full support " +
+      "cannot produce a degenerate posterior.";
+
+  // 7 ------------------------------------------------------------ the posterior bound
+  h = head(["release", "&epsilon; total", "largest posterior reached",
+            "e<sup>&epsilon;</sup>/(1+e<sup>&epsilon;</sup>)", "slack", "holds"]);
+  fr.rows.forEach(function(r){
+    h += row([r.name, epsFmt(r.epsTot), fx(rnum(r.maxPost), 6),
+      r.bound === 1 ? "<span class='dim'>1 (no bound)</span>" : fx(r.bound, 6),
+      r.bound === 1 ? "<span class='dim'>&ndash;</span>" : fx(r.bound - rnum(r.maxPost), 6),
+      yn(r.withinBound)], [null, null, "same", "same", null, null]);
+  });
+  $("tblPost").innerHTML = h;
+  const nothing = fr.nothing;
+  $("flagPost").innerHTML =
+    "The bound holds in every row, and at the release that publishes nothing it holds with " +
+    "<strong>exact equality at one half</strong> &mdash; &epsilon; = 0, the attacker gets " +
+    pcr(nothing.acc, 3) + ", the cap is 0.5, and the definition and the attack agree exactly where " +
+    "there is nothing to disagree about. Read it forwards and it prices the budget honestly: a total " +
+    "&epsilon; of " + fx(mid.epsTot, 2) + " <em>permits</em> an adversary to go from a coin flip to " +
+    pc(mid.bound, 1) + " confidence about a named individual. Large budgets are not fine because the " +
+    "theorem weakens; they were never promising much at that number.";
+
+  // 8 ------------------------------------------------------------ composition
+  const ct = compositionTable(cfg);
+  h = head(["independent releases", "&epsilon; enumerated over the product space",
+            "k &middot; &epsilon;<sub>1</sub>", "exact integer identity", "output tuples scanned"]);
+  ct.enumerated.forEach(function(r){
+    h += row([r.k, fx(r.eps, 9), fx(r.k * ct.eps1, 9), yn(r.exact), grp(r.seen)],
+      [null, "same", "same", null, null]);
+  });
+  h += "<tr><td colspan='5' style='padding-top:14px'></td></tr>";
+  let h2 = head(["k", "just add them up", "advanced composition at &delta; = " + cfg.delta.toExponential(0),
+                 "advanced wins", "likelihood ratio permitted", "posterior cap"]);
+  ct.ladder.forEach(function(r){
+    h2 += row([grp(r.k), fx(r.basic, 4), fx(r.adv, 4), yn(r.advWins),
+      r.basic > 40 ? "&gt; 10<sup>17</sup>" : grp(r.ratio), fx(r.cap, 6)],
+      [null, "same2", "same2", null, null, null]);
+  });
+  $("tblComp").innerHTML = h + "<tr><td colspan='5' style='padding:0'><div class='scroll'>" +
+    "<table class='num'>" + h2 + "</table></div></td></tr>";
+  $("sayComp").innerHTML =
+    "Run the same private release <code>k</code> times with fresh randomness and the budgets add. " +
+    "Not approximately: for <code>k</code> up to 3 the joint output space is enumerated outright and " +
+    "the worst-case ratio is the single-query ratio raised to the <code>k</code>-th power, as an " +
+    "identity between two BigInt fractions. Then the ladder, with the standard escape route " +
+    "evaluated beside the naive answer.";
+  const cross = ct.cross;
+  $("flagComp").innerHTML =
+    "Advanced composition grows like &radic;k instead of k, and buys that with a &delta;. It is a " +
+    "real theorem and it is evaluated here rather than described &mdash; and for the per-query " +
+    "budgets people actually use it does not help. At &epsilon; = " + fx(ct.eps1, 4) +
+    " per release it never beats plain addition at any k up to 200,000" +
+    (cross[0].k === null ? "" : " (first win at k = " + grp(cross[0].k) + ")") + "; at &epsilon; = 0.1 " +
+    "it takes until the " + (cross[1].k === null ? "?" : grp(cross[1].k)) + "th release, and at " +
+    "&epsilon; = 0.01 until the " + (cross[2].k === null ? "?" : grp(cross[2].k)) + "th. The control " +
+    "&mdash; add them up &mdash; is both the simplest answer and the right one over most of the " +
+    "range, which is an unusual combination. A dashboard of " + grp(cfg.kComp) + " panels at " +
+    "&epsilon; = 0.1 each is one release at &epsilon; = " + fx(0.1 * cfg.kComp, 1) + ".";
+
+  // 9 ------------------------------------------------------------ delta
+  const dt = deltaTable(cfg);
+  h = head(["multiplicative bound c", "as an &epsilon;", "exact &delta; required", "verdict"]);
+  dt.profile.forEach(function(p){
+    h += row([fx(p.c, 4), fx(Math.log(p.c), 4), fx(rnum(p.delta), 9),
+      p.delta.n === 0n ? "<span class='ok'>pure &epsilon;-DP here</span>"
+                       : "<span class='warn'>needs a &delta;</span>"],
+      [null, null, "same", null]);
+  });
+  h += "<tr><td colspan='4' style='padding-top:14px'></td></tr>";
+  let h3 = head(["&delta;", "&epsilon; it satisfies", "exact shortfall at every bound",
+                 "people fully exposed per million, per release", "safe only if records &lt;&lt;"]);
+  dt.blatant.forEach(function(bl){
+    h3 += row(["10<sup>&minus;" + bl.exp + "</sup>", "<span class='ok'>0</span>",
+      bl.delta.toExponential(0), fx(bl.exposedPerMillion, 4), grp(bl.safeBelow)],
+      [null, "same3", null, "same", null]);
+  });
+  $("tblDelta").innerHTML = h + "<tr><td colspan='4' style='padding:0'><div class='scroll'>" +
+    "<table class='num'>" + h3 + "</table></div></td></tr>";
+  $("flagDelta").innerHTML =
+    "The top table is the same mechanism read as a curve: the exact shortfall needed at each " +
+    "multiplicative bound, which is zero at e<sup>&epsilon;</sup> and strictly positive below it. " +
+    "The bottom one is the mechanism that satisfies the relaxed definition and nothing else. Its " +
+    "shortfall at <em>every</em> bound, including e<sup>0</sup> = 1, is exactly &delta;, so it is " +
+    "<strong>(0, &delta;)-differentially private</strong> &mdash; the best &epsilon; there is &mdash; " +
+    "while publishing the entire database &delta; of the time. At &delta; = " +
+    cfg.delta.toExponential(0) + " over a million people that is <strong>" + fx(dt.exposed, 4) +
+    "</strong> total exposures per release, which is the arithmetic behind the rule that &delta; must " +
+    "be far below one over the number of records.";
+
+  // 10 ----------------------------------------------------------- identities
+  const it = identityTable(cfg);
+  h = head(["identity or bound", "holds", "value"]);
+  it.rows.forEach(function(r){
+    h += row([r.what, yn(r.ok), "<span class='tiny'>" + r.detail + "</span>"]);
+  });
+  $("tblIdent").innerHTML = h;
+  $("flagIdent").innerHTML =
+    "<strong>" + it.rows.filter(function(r){ return r.ok; }).length + " of " + it.rows.length +
+    "</strong> hold. Every one of these is an integer identity or an integer inequality, never a " +
+    "float compared to a decimal &mdash; the closed forms are compared as rationals rather than as " +
+    "logarithms, because two routes to the same logarithm agree only to about 1e-15 and an assertion " +
+    "that cannot survive that is a trap and not a test.";
+
+  // ---------------------------------------------------------------- self-checks
+  const checks = [];
+  function T(label, fn){ let ok = false; try { ok = !!fn(); } catch (e) { ok = false; } checks.push({ label: label, ok: ok }); }
+  const cs = configSweep();
+  T("the adjacent-count enumeration and the 2^n-database enumeration give the same epsilon",
+    function(){ return et.allAgree; });
+  T("the bounded geometric mechanism's worst-case ratio is exactly 1/alpha, as integers",
+    function(){ return nt.allExact; });
+  T("the naive truncation is strictly above the epsilon it advertises, at every alpha",
+    function(){ return nt.allAbove; });
+  T("the naive truncation's excess matches its closed form Z1/Z0 at every alpha and every size",
+    function(){ return nt.allClosed; });
+  T("the excess does not shrink as the file grows",
+    function(){ return nt.monotone && nt.grow[nt.grow.length - 1].naive > nt.grow[0].naive; });
+  T("publishing only the noisy total has the same worst-case ratio as publishing every noisy bit",
+    function(){ return ag.rows.every(function(r){ return r.same && r.matchesClosed; }); });
+  T("the privacy loss takes exactly two values, and both closed forms match the enumeration",
+    function(){ return lt.every(function(r){ return r.distinct === 2 && r.atTopAgrees && r.fracAgrees && r.tvAgrees; }); });
+  T("the average leak is a strictly smaller fraction of epsilon as the mechanism gets safer",
+    function(){ return lt.every(function(r, i){ return i === 0 || r.frac < lt[i - 1].frac; }); });
+  T("recovery from exact counts never falls as more subgroups are published",
+    function(){ return rc.monotone; });
+  T("enough exact subgroup counts leave every possible file uniquely determined",
+    function(){ return rc.fullAt !== null && rc.fullAt <= 3 * cfg.nRec; });
+  T("rounding and small-cell suppression both stay well above chance",
+    function(){ return rc.rows.every(function(r){ return rcmp(r.round.acc, R(1n, 2n)) > 0 &&
+      rcmp(r.supp.acc, R(1n, 2n)) > 0; }); });
+  T("the two attackers agree exactly on every deterministic release",
+    function(){ return fr.detAgree; });
+  T("no epsilon-private release pins a single bit with certainty",
+    function(){ return fr.dpPinsNothing; });
+  T("at least one deterministic release does pin bits with certainty",
+    function(){ return fr.detPins > 0; });
+  T("no posterior anywhere exceeds e^eps/(1+e^eps)", function(){ return fr.allWithin; });
+  T("publishing nothing gives the attacker exactly chance, and meets the bound with equality",
+    function(){ return rcmp(fr.nothing.acc, R(1n, 2n)) === 0 && req(fr.nothing.maxPost, R(1n, 2n)) &&
+      fr.nothing.eps1 === 0; });
+  T("publishing nothing has the largest mean squared error any release can have",
+    function(){ return req(fr.nothing.mmse, fr.maxMmse) &&
+      fr.rows.every(function(r){ return rcmp(r.mmse, fr.maxMmse) <= 0; }); });
+  T("the exact count has mean squared error exactly zero and recovers the most",
+    function(){ return fr.rows[0].mmse.n === 0n &&
+      fr.rows.every(function(r){ return rcmp(r.acc, fr.rows[0].acc) <= 0; }); });
+  T("epsilon composes to exactly k times epsilon, enumerated over the product space",
+    function(){ return ct.allExact; });
+  T("advanced composition is evaluated, not assumed to win",
+    function(){ return ct.ladder.length > 0 && ct.cross.length === 3; });
+  T("the shortfall is exactly zero at e^eps and strictly positive below it",
+    function(){ return dt.zeroAtEps && dt.positiveBelow; });
+  T("the blatant mechanism is (0, delta)-private with shortfall exactly delta, and its epsilon is infinite",
+    function(){ const bl = blatantExact(4, 1n, 1000n, R1); return bl.isZeroEpsDelta && bl.epsInfinite; });
+  T("every identity and bound in the table above holds", function(){ return it.allOk; });
+  T("the configuration sweep finds no failure anywhere",
+    function(){ return cs.checked > 0 && cs.bad === 0; });
+
+  const passed = checks.filter(function(k){ return k.ok; }).length;
+  $("selftest").innerHTML =
+    "<p style='margin:0 0 8px; font-weight:800' class='" + (passed === checks.length ? "ok" : "bad") +
+    "'>" + passed + " / " + checks.length + " checks passed</p><ul class='checks'>" +
+    checks.map(function(k){
+      return "<li>" + (k.ok ? "<span class='ok'>PASS</span>" : "<span class='bad'>FAIL</span>") +
+        " &nbsp;" + k.label + "</li>"; }).join("") + "</ul>";
+
+  // ---------------------------------------------------------------- the lede, filled from the run
+  $("hlPairs").innerHTML = grp(et.pairs);
+  $("hlDbs").innerHTML = grp(1 << cfg.nHead);
+  $("hlNaive").innerHTML = fx(nt.rows[cfg.alphaIdx].factor, 2) + "&times;";
+  $("hlKl").innerHTML = fx(lt[cfg.alphaIdx].kl, 4);
+  $("hlEps1").innerHTML = fx(lt[cfg.alphaIdx].eps, 4);
+  $("hlMfull").innerHTML = rc.fullAt === null ? "&ndash;" : rc.fullAt;
+  $("hlNrec").textContent = cfg.nRec;
+  $("hlFullId").innerHTML = pcr(rc.rows[rc.rows.length - 1].exact.identified, 1);
+  $("hlRound").textContent = cfg.roundR;
+  $("hlRoundAcc").innerHTML = pcr(rc.rows[rc.rows.length - 1].round.acc);
+  $("hlSupp").textContent = cfg.suppT;
+  $("hlSuppAcc").innerHTML = pcr(rc.rows[rc.rows.length - 1].supp.acc);
+  $("hlMhead").textContent = cfg.mHead;
+  $("hlEpsTot").innerHTML = fx(mid.epsTot, 2);
+  $("hlRndMse").innerHTML = fx(rnum(r7.mmse), 4);
+  $("hlDpMse").innerHTML = fx(rnum(mid.mmse), 4);
+  $("hlRndAcc").innerHTML = pcr(r7.acc);
+  $("hlDpAcc").innerHTML = pcr(mid.acc);
+  $("hlRndPin").innerHTML = pcr(r7.pinned);
+}
+
+// A full render enumerates a few hundred thousand neighbouring pairs, buckets every database against
+// two dozen releases and runs the exact attack over thousands of output vectors, so slider drags are
+// debounced rather than raced.
+let pending = null;
+function scheduleRender(){
+  if (pending) clearTimeout(pending);
+  pending = setTimeout(function(){ pending = null; render(); }, 260);
+}
+["sNEps", "sAlpha", "sNRec", "sMQ", "sMHead", "sRound", "sSupp", "sDelta", "sK", "sSeed"]
+  .forEach(function(id){ $(id).addEventListener("input", scheduleRender); });
+render();
+</script>
+</body>
+</html>
