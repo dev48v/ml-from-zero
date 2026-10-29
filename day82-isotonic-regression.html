@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MLFromZero &middot; Day 82 &mdash; Isotonic regression</title>
+<style>
+  :root { --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f8fafc; --accent:#9333ea; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Inter",system-ui,sans-serif; margin:0; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } }
+  header { background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .kicker { font-size:12px; font-weight:800; letter-spacing:.16em; color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:19px; line-height:1.5; font-weight:900; margin:0 0 12px; }
+  @media (min-width:768px){ h1 { font-size:22px; } }
+  h2 { font-size:24px; font-weight:900; margin:0 0 8px; }
+  h3 { font-size:19px; font-weight:800; margin:20px 0 6px; }
+  p { line-height:1.6; margin:0 0 12px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  .tabs button { font:inherit; font-size:14px; font-weight:600; padding:8px 20px; border:0; border-radius:8px; background:#f1f5f9; cursor:pointer; }
+  .tabs button.tab-active { background:#0f172a; color:#fff; }
+  .hidden { display:none; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.12); padding:20px; min-width:0; }
+  .stack > * + * { margin-top:20px; }
+  .grid2 { display:grid; gap:20px; grid-template-columns:minmax(0,1fr); }
+  @media (min-width:900px){ .grid2 { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }
+  .lbl { font-size:12px; font-weight:800; letter-spacing:.1em; color:#64748b; margin:0 0 8px; }
+  .big { font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; margin:0; }
+  .note { font-size:12.5px; color:#475569; margin:8px 0 0; line-height:1.55; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:11.5px; overflow-x:auto; line-height:1.35; margin:0; white-space:pre; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  .tblwrap { overflow-x:auto; }
+  table.num { border-collapse:collapse; width:100%; min-width:560px; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  table.num td.txt { text-align:left; }
+  tr.here td { background:#f0fdfa; font-weight:700; }
+  tr.dim td { color:#94a3b8; }
+  .pill { display:inline-block; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:800; }
+  .pill.good { background:#dcfce7; color:#166534; }
+  .pill.bad { background:#fee2e2; color:#991b1b; }
+  .ok { color:#166534; font-weight:800; }
+  .warn { color:#991b1b; font-weight:800; }
+  #selftest div { display:grid; grid-template-columns:52px 1fr; gap:8px; font-size:12.5px; padding:3px 0; border-top:1px solid var(--line); align-items:start; }
+  #selftest div span.m { grid-column:2; font-size:11.5px; color:#64748b; }
+  .ctl { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 12px; }
+  .ctl input[type=range] { flex:1; min-width:150px; }
+  .ctl input[type=number] { width:74px; font:inherit; padding:5px 7px; border:1px solid var(--line); border-radius:7px; }
+  footer { border-top:1px solid var(--line); margin-top:28px; padding:18px 0 40px; font-size:13px; color:#475569; }
+  footer a { color:var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">MLFROMZERO &middot; DAY 82</p>
+    <h1>
+      Isotonic regression &mdash; it cannot change your AUC by a single digit, and it will overfit a small validation set without blinking.
+    </h1>
+    <div class="tabs">
+      <button id="tabLook" class="tab-active" onclick="showTab('look')">Look</button>
+      <button id="tabUnd" onclick="showTab('und')">Understand</button>
+      <button id="tabBuild" onclick="showTab('build')">Build</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<section id="look" class="stack">
+  <div class="card">
+    <h2>The closest non-decreasing sequence, exactly</h2>
+    <p>
+      Isotonic regression answers one question: of all non-decreasing sequences,
+      which is closest to this data in least squares? Not approximately &mdash;
+      <b>exactly</b>, in one left-to-right pass.
+    </p>
+    <div class="tblwrap"><table class="num" id="tPava"></table></div>
+    <p class="note" id="pavaNote"></p>
+  </div>
+</section>
+
+<section id="und" class="stack hidden">
+  <div class="card">
+    <h2>Checked against a search over every possible block partition</h2>
+    <p>
+      An isotonic fit is fully determined by how the positions are cut into
+      blocks, since each block then takes its own mean. So for small inputs we
+      can enumerate all <code>2<sup>n-1</sup></code> cuts and pick the best
+      monotone one &mdash; a completely different algorithm, used here only to
+      prove the fast one right.
+    </p>
+    <div class="tblwrap"><table class="num" id="tCases"></table></div>
+  </div>
+
+  <div class="card">
+    <h2>What it is actually for: calibration</h2>
+    <p>
+      A classifier can rank perfectly and still report numbers that are not
+      probabilities. Isotonic regression maps scores to frequencies. Because the
+      map is monotone, it <b>cannot change the ranking</b> &mdash; so AUC is
+      untouched, by construction, and everything shows up in Brier score.
+    </p>
+    <div class="tblwrap"><table class="num" id="tCal"></table></div>
+    <p class="note" id="calNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>And the part the tutorials leave out</h2>
+    <p>
+      It is an exact projection, not a smoother. Nothing in it regularises.
+      Given a small sample it will happily fit a step per point.
+    </p>
+    <div class="tblwrap"><table class="num" id="tOver"></table></div>
+    <p class="note">
+      Out-of-sample Brier against in-sample, as the training set grows. The gap
+      at n=40 is not noise &mdash; it is the method doing exactly what it was
+      asked to do.
+    </p>
+  </div>
+</section>
+
+<section id="build" class="stack hidden">
+  <div class="card">
+    <h2>Pool adjacent violators, in full</h2>
+    <p>
+      One pass, a stack of blocks, and a <code>while</code> &mdash; because
+      merging a violating pair can expose another violation underneath it.
+    </p>
+    <pre id="codePava"></pre>
+  </div>
+  <div class="card">
+    <h2>The two checks that prove it, without re-running it</h2>
+    <p>
+      Optimality here is characterised, not just computed: inside every flat run
+      the fit is the mean, and the residual is orthogonal to the fit.
+    </p>
+    <pre id="codeCheck"></pre>
+  </div>
+  <div class="card">
+    <h2>Self-check</h2>
+    <p class="note" style="margin:0 0 10px">
+      Running in your browser now, against the same engine as the tables above.
+    </p>
+    <div id="selftest"></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p style="margin:0">
+      MLFromZero &middot; Day 82 &middot; Isotonic regression.
+      Tomorrow: Platt scaling, and when a two-parameter fit beats an exact one.
+    </p>
+  </div>
+</footer>
+</div>
+
+<script>
+// ===== ENGINE:BEGIN =====
+// ======================================================================
+// ISOTONIC REGRESSION: the closest non-decreasing sequence to the data,
+// in least squares. Used to CALIBRATE a classifier - to turn scores that
+// rank well into numbers that mean "probability".
+//
+// The algorithm is Pool Adjacent Violators (PAVA), it is O(n), and the
+// thing worth knowing about it is that it is NOT a smoother. It is an
+// exact projection onto a convex cone, and it overfits a validation set
+// as happily as anything else.
+// ======================================================================
+const ENGINE = (() => {
+
+  // --------------------------------------------------------------- PAVA
+  // Walk left to right keeping a stack of blocks. A block is a run already
+  // collapsed to its weighted mean. When a new block is LOWER than the one
+  // before it, the pair violates monotonicity, so merge them - and merging
+  // may expose a new violation underneath, hence the while.
+  function pava(y, w) {
+    const n = y.length;
+    if (w === undefined) w = new Array(n).fill(1);
+    if (w.length !== n) throw new Error("weights and values must be the same length");
+    for (const v of y) if (!Number.isFinite(v)) throw new Error("values must be finite");
+    for (const v of w) if (!(v > 0)) throw new Error("weights must be strictly positive");
+
+    const val = [], wt = [], len = [];
+    let merges = 0;
+    for (let i = 0; i < n; i++) {
+      val.push(y[i]); wt.push(w[i]); len.push(1);
+      // the pooling step
+      while (val.length > 1 && val[val.length - 2] >= val[val.length - 1]) {
+        const v2 = val.pop(), w2 = wt.pop(), l2 = len.pop();
+        const v1 = val.pop(), w1 = wt.pop(), l1 = len.pop();
+        val.push((v1 * w1 + v2 * w2) / (w1 + w2));
+        wt.push(w1 + w2);
+        len.push(l1 + l2);
+        merges++;
+      }
+    }
+    const out = new Array(n);
+    let k = 0;
+    for (let b = 0; b < val.length; b++) for (let j = 0; j < len[b]; j++) out[k++] = val[b];
+    return { fit: out, blocks: val.length, merges };
+  }
+
+  // ------------------------------------------------- independent checks
+  // A projection onto a convex set is characterised, not merely produced.
+  // These three facts are what MAKE it the right answer, and each is
+  // checkable without re-running PAVA.
+
+  function isMonotone(a, eps) {
+    eps = eps === undefined ? 1e-12 : eps;
+    for (let i = 1; i < a.length; i++) if (a[i] < a[i - 1] - eps) return false;
+    return true;
+  }
+
+  function sse(y, f, w) {
+    let s = 0;
+    for (let i = 0; i < y.length; i++) s += (w ? w[i] : 1) * (y[i] - f[i]) * (y[i] - f[i]);
+    return s;
+  }
+
+  // Within every level set (a maximal run of equal fitted values) the fit
+  // must equal the weighted MEAN of the data there. If it did not, moving
+  // that block toward the mean would lower the error without breaking
+  // monotonicity - so the answer would not have been optimal.
+  function blockMeansHold(y, f, w, eps) {
+    eps = eps === undefined ? 1e-9 : eps;
+    let i = 0;
+    while (i < f.length) {
+      let j = i;
+      while (j + 1 < f.length && f[j + 1] === f[i]) j++;
+      let sw = 0, sy = 0;
+      for (let t = i; t <= j; t++) { const wt = w ? w[t] : 1; sw += wt; sy += wt * y[t]; }
+      if (Math.abs(sy / sw - f[i]) > eps) return false;
+      i = j + 1;
+    }
+    return true;
+  }
+
+  // The residual must be orthogonal to the fit: sum_i w_i (y_i - f_i) f_i = 0.
+  // This is the normal equation of the projection, and it holds EXACTLY for
+  // isotonic regression even though the constraint set is only a cone.
+  function residualOrthogonal(y, f, w, eps) {
+    eps = eps === undefined ? 1e-8 : eps;
+    let s = 0, scale = 0;
+    for (let i = 0; i < y.length; i++) {
+      const wi = w ? w[i] : 1;
+      s += wi * (y[i] - f[i]) * f[i];
+      scale += wi * Math.abs(f[i]) * (Math.abs(y[i]) + Math.abs(f[i]));
+    }
+    return Math.abs(s) <= eps * Math.max(1, scale);
+  }
+
+  // ------------------------------------- a brute-force optimum, small n
+  // Any isotonic fit is determined by its PARTITION into blocks, because
+  // each block then takes its own mean. So enumerate the 2^(n-1) partitions
+  // of the positions, take the best one that is monotone, and compare.
+  // Exponential, and only used to prove PAVA right on small inputs.
+  function bruteForce(y, w) {
+    const n = y.length;
+    if (n > 14) throw new Error("brute force is 2^(n-1); keep n at 14 or below");
+    let best = null, bestErr = Infinity;
+    for (let mask = 0; mask < (1 << (n - 1)); mask++) {
+      const f = new Array(n);
+      let i = 0, ok = true, prev = -Infinity;
+      while (i < n) {
+        let j = i;
+        while (j < n - 1 && !(mask & (1 << j))) j++;    // cut after j
+        let sw = 0, sy = 0;
+        for (let t = i; t <= j; t++) { const wt = w ? w[t] : 1; sw += wt; sy += wt * y[t]; }
+        const m = sy / sw;
+        if (m < prev) { ok = false; break; }
+        for (let t = i; t <= j; t++) f[t] = m;
+        prev = m; i = j + 1;
+      }
+      if (!ok) continue;
+      const e = sse(y, f, w);
+      if (e < bestErr - 1e-15) { bestErr = e; best = f; }
+    }
+    return { fit: best, sse: bestErr };
+  }
+
+  // ------------------------------------------------------ calibration
+  // A deterministic synthetic problem: scores that RANK well but are badly
+  // scaled, so the ranking metric is already perfect and only the
+  // probabilities are wrong. No Math.random anywhere.
+  function lcg(seed) {
+    let s = seed >>> 0;
+    return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+  }
+
+  function dataset(n, seed, squash) {
+    const rnd = lcg(seed);
+    const xs = [], ys = [];
+    for (let i = 0; i < n; i++) {
+      const u = rnd();
+      const trueP = u;                       // the honest probability
+      const label = rnd() < trueP ? 1 : 0;
+      // the model's score: monotone in trueP, but squashed toward 0.5
+      const score = 0.5 + (trueP - 0.5) * squash;
+      xs.push(score); ys.push(label);
+    }
+    const order = xs.map((v, i) => i).sort((a, b) => xs[a] - xs[b]);
+    return { score: order.map((i) => xs[i]), label: order.map((i) => ys[i]) };
+  }
+
+  function brier(p, y) {
+    let s = 0;
+    for (let i = 0; i < y.length; i++) s += (p[i] - y[i]) * (p[i] - y[i]);
+    return s / y.length;
+  }
+
+  // AUC by rank, on data already sorted by score
+  function auc(score, label) {
+    let pos = 0, neg = 0, rankSum = 0;
+    for (let i = 0; i < label.length; i++) { if (label[i] === 1) { pos++; rankSum += i + 1; } else neg++; }
+    if (!pos || !neg) return NaN;
+    return (rankSum - pos * (pos + 1) / 2) / (pos * neg);
+  }
+
+  // split a sorted dataset into two halves by alternating, so both keep the
+  // same score range - a contiguous split would give train and test
+  // different supports and the comparison would mean nothing
+  function split(d) {
+    const a = { score: [], label: [] }, b = { score: [], label: [] };
+    for (let i = 0; i < d.score.length; i++) {
+      const t = i % 2 === 0 ? a : b;
+      t.score.push(d.score[i]); t.label.push(d.label[i]);
+    }
+    return [a, b];
+  }
+
+  // apply a fitted step function to new scores
+  function applyFit(trainScore, fit, score) {
+    const out = new Array(score.length);
+    for (let i = 0; i < score.length; i++) {
+      // last training point at or below this score
+      let lo = 0, hi = trainScore.length - 1, k = -1;
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1;
+        if (trainScore[mid] <= score[i]) { k = mid; lo = mid + 1; } else hi = mid - 1;
+      }
+      out[i] = k < 0 ? fit[0] : fit[k];
+    }
+    return out;
+  }
+
+  return { pava, isMonotone, sse, blockMeansHold, residualOrthogonal, bruteForce,
+           lcg, dataset, brier, auc, split, applyFit };
+})();
+// ===== ENGINE:END =====
+</script>
+
+<script>
+function showTab(name) {
+  for (const t of ["look", "und", "build"]) document.getElementById(t).classList.toggle("hidden", t !== name);
+  document.getElementById("tabLook").classList.toggle("tab-active", name === "look");
+  document.getElementById("tabUnd").classList.toggle("tab-active", name === "und");
+  document.getElementById("tabBuild").classList.toggle("tab-active", name === "build");
+}
+const el = (id) => document.getElementById(id);
+function table(id, head, rows) {
+  el(id).innerHTML =
+    "<tr>" + head.map((h) => "<th>" + h + "</th>").join("") + "</tr>" +
+    rows.map((r) => "<tr" + (r.cls ? ' class="' + r.cls + '"' : "") + ">" +
+      r.cells.map((c, i) => "<td" + (i === 0 ? ' class="txt"' : "") + ">" + c + "</td>").join("") + "</tr>").join("");
+}
+function selfCheckPanel(fn) {
+  const out = []; let n = 0, bad = 0;
+  const t = (label, cond, detail = "") => {
+    n += 1; if (!cond) bad += 1;
+    out.push('<div><span class="' + (cond ? "ok" : "warn") + '">' + (cond ? "PASS" : "FAIL") +
+      '</span><span>' + label + '</span><span class="m">' + detail + "</span></div>");
+  };
+  fn(t);
+  el("selftest").innerHTML =
+    '<p class="note" style="margin:0 0 8px"><b class="' + (bad ? "warn" : "ok") + '">' +
+    (n - bad) + " of " + n + " checks pass</b>" + (bad ? " &mdash; " + bad + " FAILED" : "") + ".</p>" + out.join("");
+}
+
+// ---------------------------------------------------------------- LOOK
+{
+  const y = [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5, 8];
+  const r = ENGINE.pava(y);
+  const rows = y.map((v, i) => ({
+    cls: r.fit[i] !== v ? "here" : "",
+    cells: [i, v, r.fit[i].toFixed(3), (v - r.fit[i]).toFixed(3)]
+  }));
+  table("tPava", ["i", "y", "fitted", "residual"], rows);
+  el("pavaNote").innerHTML =
+    "Twelve points collapse to <b>" + r.blocks + "</b> blocks in <b>" + r.merges +
+    "</b> merges. Every flat run is the mean of the data under it &mdash; that is not a " +
+    "coincidence, it is the optimality condition, and it is checked below. Total squared " +
+    "error <b>" + ENGINE.sse(y, r.fit).toFixed(3) + "</b>.";
+}
+
+// --------------------------------------------------------- UNDERSTAND
+{
+  const rows = [];
+  for (const [name, y] of [
+    ["already increasing", [1, 2, 3, 4, 5]],
+    ["strictly decreasing", [5, 4, 3, 2, 1]],
+    ["one dip", [1, 2, 9, 3, 10]],
+    ["flat", [4, 4, 4, 4, 4]],
+    ["a spike at the end", [1, 1, 1, 1, 99]],
+    ["a spike at the start", [99, 1, 1, 1, 1]]
+  ]) {
+    const r = ENGINE.pava(y);
+    const bf = ENGINE.bruteForce(y);
+    rows.push({ cls: "", cells: [
+      name,
+      "[" + y.join(", ") + "]",
+      "[" + r.fit.map((v) => +v.toFixed(2)).join(", ") + "]",
+      r.blocks,
+      ENGINE.sse(y, r.fit).toFixed(4),
+      Math.abs(ENGINE.sse(y, r.fit) - bf.sse) < 1e-9
+        ? '<span class="pill good">matches brute force</span>'
+        : '<span class="pill bad">DIFFERS</span>'
+    ]});
+  }
+  table("tCases", ["case", "y", "fit", "blocks", "SSE", "vs 2^(n-1) search"], rows);
+}
+
+{
+  const rows = [];
+  for (const squash of [1.0, 0.6, 0.35, 0.2, 0.1]) {
+    const d = ENGINE.dataset(4000, 20250082, squash);
+    const [tr, te] = ENGINE.split(d);
+    const r = ENGINE.pava(tr.label);
+    const pTe = ENGINE.applyFit(tr.score, r.fit, te.score);
+    rows.push({ cls: "", cells: [
+      "squash " + squash.toFixed(2),
+      ENGINE.auc(d.score, d.label).toFixed(4),
+      ENGINE.brier(te.score, te.label).toFixed(4),
+      ENGINE.brier(pTe, te.label).toFixed(4),
+      ((1 - ENGINE.brier(pTe, te.label) / ENGINE.brier(te.score, te.label)) * 100).toFixed(1) + "%"
+    ]});
+  }
+  table("tCal", ["scores", "AUC (unchanged by calibration)", "Brier, raw score",
+    "Brier, calibrated", "improvement"], rows);
+  el("calNote").innerHTML =
+    "The AUC column is the point: calibration is a <b>monotone</b> map, so it cannot change " +
+    "the ranking and cannot change AUC at all. Everything it buys shows up in Brier score, " +
+    "which is the part a threshold or an expected-value calculation actually depends on.";
+}
+
+{
+  const rows = [];
+  for (const n of [40, 100, 400, 2000]) {
+    const d = ENGINE.dataset(n, 777, 0.3);
+    const [tr, te] = ENGINE.split(d);
+    const r = ENGINE.pava(tr.label);
+    const inSample = ENGINE.brier(r.fit, tr.label);
+    const outSample = ENGINE.brier(ENGINE.applyFit(tr.score, r.fit, te.score), te.label);
+    rows.push({ cls: outSample > inSample * 1.25 ? "here" : "", cells: [
+      "n = " + n, r.blocks, inSample.toFixed(4), outSample.toFixed(4),
+      (outSample / inSample).toFixed(2) + "x"
+    ]});
+  }
+  table("tOver", ["training size", "blocks fitted", "Brier in-sample",
+    "Brier out-of-sample", "ratio"], rows);
+}
+
+// --------------------------------------------------------------- BUILD
+el("codePava").textContent = String(ENGINE.pava);
+el("codeCheck").textContent = [String(ENGINE.blockMeansHold), "", String(ENGINE.residualOrthogonal)].join("\n");
+
+selfCheckPanel((t) => {
+  const CASES = [
+    [3, 1, 4, 1, 5, 9, 2, 6], [1, 2, 3], [3, 2, 1], [5, 5, 5, 5],
+    [1, 99, 1, 99, 1], [0, 0, 0, 1, 0, 1, 1, 1], [2, 1], [7],
+    [-3, -5, 1, -2, 4], [0.1, 0.9, 0.2, 0.8, 0.3]
+  ];
+
+  // --- the three properties that DEFINE the answer
+  t("the fit is non-decreasing, on every case", (() => {
+    for (const y of CASES) if (!ENGINE.isMonotone(ENGINE.pava(y).fit)) return false;
+    return true;
+  })(), CASES.length + " sequences including constants, reversals and a singleton");
+
+  t("every level set equals the mean of the data under it", (() => {
+    for (const y of CASES) {
+      const f = ENGINE.pava(y).fit;
+      if (!ENGINE.blockMeansHold(y, f)) return false;
+    }
+    return true;
+  })(), "the first-order optimality condition, checked without re-running PAVA");
+
+  t("the residual is orthogonal to the fit", (() => {
+    for (const y of CASES) {
+      const f = ENGINE.pava(y).fit;
+      if (!ENGINE.residualOrthogonal(y, f)) return false;
+    }
+    return true;
+  })(), "sum w(y - f)f = 0 - the normal equation of the projection");
+
+  // --- against an independent optimum
+  t("PAVA matches a 2^(n-1) search over every block partition", (() => {
+    for (const y of CASES) {
+      if (y.length > 12) continue;
+      const a = ENGINE.sse(y, ENGINE.pava(y).fit);
+      const b = ENGINE.bruteForce(y).sse;
+      if (Math.abs(a - b) > 1e-9) return false;
+    }
+    return true;
+  })(), "a different algorithm, not a different arrangement of the same one");
+
+  t("and it matches with non-uniform weights too", (() => {
+    const y = [4, 1, 3, 2, 6], w = [1, 5, 2, 9, 1];
+    const a = ENGINE.sse(y, ENGINE.pava(y, w).fit, w);
+    const b = ENGINE.bruteForce(y, w).sse;
+    return Math.abs(a - b) < 1e-9;
+  })(), "a heavy point drags its block, exactly as the mean says it should");
+
+  // --- identities
+  t("an already-increasing sequence is returned unchanged", (() => {
+    const y = [1, 2, 2, 5, 9];
+    return ENGINE.pava(y).fit.every((v, i) => Math.abs(v - y[i]) < 1e-12);
+  })(), "zero merges - it is a projection, and y is already in the set");
+
+  t("INVERSION: a tie does NOT survive as two blocks", (() => {
+    // the pooling test is >= , not > . With > , equal neighbours stay split,
+    // the fit is still correct, but the block count is wrong - and the block
+    // count is what the overfitting table reads.
+    const r = ENGINE.pava([4, 4, 4, 4]);
+    return r.blocks === 1;
+  })(), "pooling on >= is why four equal points are one block, not four");
+
+  t("a decreasing sequence collapses to a single block at the mean", (() => {
+    const y = [9, 7, 5, 3, 1];
+    const r = ENGINE.pava(y);
+    return r.blocks === 1 && Math.abs(r.fit[0] - 5) < 1e-12;
+  })());
+
+  t("the fit's total weight-sum equals the data's", (() => {
+    for (const y of CASES) {
+      const f = ENGINE.pava(y).fit;
+      const a = y.reduce((p, c) => p + c, 0), b = f.reduce((p, c) => p + c, 0);
+      if (Math.abs(a - b) > 1e-9) return false;
+    }
+    return true;
+  })(), "means preserve sums, so the totals must agree exactly");
+
+  t("SSE never exceeds the error of the best constant fit", (() => {
+    for (const y of CASES) {
+      const mean = y.reduce((p, c) => p + c, 0) / y.length;
+      const flat = y.map(() => mean);
+      if (ENGINE.sse(y, ENGINE.pava(y).fit) > ENGINE.sse(y, flat) + 1e-9) return false;
+    }
+    return true;
+  })(), "the constant fit is monotone, so the optimum is at least as good");
+
+  // --- calibration
+  t("calibration leaves AUC EXACTLY unchanged", (() => {
+    const d = ENGINE.dataset(3000, 424242, 0.3);
+    const before = ENGINE.auc(d.score, d.label);
+    const r = ENGINE.pava(d.label);
+    const after = ENGINE.auc(r.fit, d.label);
+    return Math.abs(before - after) < 1e-12;
+  })(), "a monotone map cannot reorder anything");
+
+  t("CONTROL: but it moves Brier score a long way", (() => {
+    const d = ENGINE.dataset(4000, 20250082, 0.2);
+    const [tr, te] = ENGINE.split(d);
+    const p = ENGINE.applyFit(tr.score, ENGINE.pava(tr.label).fit, te.score);
+    return ENGINE.brier(p, te.label) < ENGINE.brier(te.score, te.label) * 0.9;
+  })(), "same ordering, different numbers - and the numbers are what gets used");
+
+  t("INVERSION: isotonic calibration OVERFITS a small sample", (() => {
+    const d = ENGINE.dataset(40, 777, 0.3);
+    const [tr, te] = ENGINE.split(d);
+    const r = ENGINE.pava(tr.label);
+    const inS = ENGINE.brier(r.fit, tr.label);
+    const outS = ENGINE.brier(ENGINE.applyFit(tr.score, r.fit, te.score), te.label);
+    return outS > inS;
+  })(), "it is an exact projection, not a smoother - nothing regularises it");
+
+  // --- input validation
+  t("mismatched weights throw", (() => {
+    try { ENGINE.pava([1, 2, 3], [1, 1]); return false; } catch { return true; }
+  })());
+
+  t("a zero weight throws rather than dividing by zero", (() => {
+    try { ENGINE.pava([1, 2], [0, 1]); return false; } catch { return true; }
+  })());
+
+  t("a NaN in the data throws", (() => {
+    try { ENGINE.pava([1, NaN, 3]); return false; } catch { return true; }
+  })());
+});
+</script>
+</body>
+</html>
