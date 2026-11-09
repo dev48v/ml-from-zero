@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MLFromZero &middot; Day 81 &mdash; Shapley values</title>
+<style>
+  :root { --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f8fafc; --accent:#9333ea; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Inter",system-ui,sans-serif; margin:0; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } }
+  header { background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .kicker { font-size:12px; font-weight:800; letter-spacing:.16em; color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:19px; line-height:1.5; font-weight:900; margin:0 0 12px; }
+  @media (min-width:768px){ h1 { font-size:22px; } }
+  h2 { font-size:24px; font-weight:900; margin:0 0 8px; }
+  h3 { font-size:19px; font-weight:800; margin:20px 0 6px; }
+  p { line-height:1.6; margin:0 0 12px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  .tabs button { font:inherit; font-size:14px; font-weight:600; padding:8px 20px; border:0; border-radius:8px; background:#f1f5f9; cursor:pointer; }
+  .tabs button.tab-active { background:#0f172a; color:#fff; }
+  .hidden { display:none; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.12); padding:20px; min-width:0; }
+  .stack > * + * { margin-top:20px; }
+  .grid2 { display:grid; gap:20px; grid-template-columns:minmax(0,1fr); }
+  @media (min-width:900px){ .grid2 { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }
+  .lbl { font-size:12px; font-weight:800; letter-spacing:.1em; color:#64748b; margin:0 0 8px; }
+  .big { font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; margin:0; }
+  .note { font-size:12.5px; color:#475569; margin:8px 0 0; line-height:1.55; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:11.5px; overflow-x:auto; line-height:1.35; margin:0; white-space:pre; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  .tblwrap { overflow-x:auto; }
+  table.num { border-collapse:collapse; width:100%; min-width:560px; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  table.num td.txt { text-align:left; }
+  tr.here td { background:#faf5ff; font-weight:700; }
+  tr.dim td { color:#94a3b8; }
+  .pill { display:inline-block; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:800; }
+  .pill.good { background:#dcfce7; color:#166534; }
+  .pill.bad { background:#fee2e2; color:#991b1b; }
+  .ok { color:#166534; font-weight:800; }
+  .warn { color:#991b1b; font-weight:800; }
+  #selftest div { display:grid; grid-template-columns:52px 1fr; gap:8px; font-size:12.5px; padding:3px 0; border-top:1px solid var(--line); align-items:start; }
+  #selftest div span.m { grid-column:2; font-size:11.5px; color:#64748b; }
+  .waterfall div { display:grid; grid-template-columns:120px 1fr 72px; gap:8px; align-items:center; font-size:12.5px; padding:3px 0; }
+  .wbar { height:14px; border-radius:3px; position:relative; background:#f1f5f9; }
+  .wbar i { position:absolute; top:0; bottom:0; border-radius:3px; }
+  .wbar i.pos { background:#9333ea; }
+  .wbar i.neg { background:#f59e0b; }
+  .ctl { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 12px; }
+  .ctl button { font:inherit; font-size:13px; font-weight:700; padding:6px 13px; border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer; }
+  .ctl button.on { background:#0f172a; color:#fff; border-color:#0f172a; }
+  footer { border-top:1px solid var(--line); margin-top:28px; padding:18px 0 40px; font-size:13px; color:#475569; }
+  footer a { color:var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">MLFROMZERO &middot; DAY 81</p>
+    <h1>
+      Shapley values &mdash; the only attribution that adds up, and the obvious
+      alternative that hands two essential features a score of zero.
+    </h1>
+    <div class="tabs">
+      <button id="tabLook" class="tab-active" onclick="showTab('look')">Look</button>
+      <button id="tabUnd" onclick="showTab('und')">Understand</button>
+      <button id="tabBuild" onclick="showTab('build')">Build</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<section id="look" class="stack">
+  <div class="card">
+    <h2>A prediction, split between the things that caused it</h2>
+    <p>
+      You have a model and one prediction. The question everyone asks is: how much
+      of this number is down to each input? Shapley values answer it by asking a
+      much more careful question &mdash; <b>how much does this feature add, on
+      average, over every possible order in which the features could have arrived?</b>
+    </p>
+    <div class="ctl">
+      <span class="lbl" style="margin:0">MODEL</span>
+      <span id="modelBtns"></span>
+    </div>
+    <div class="grid2">
+      <div>
+        <p class="lbl">THE MODEL</p>
+        <pre id="modelSrc"></pre>
+        <p class="note" id="modelNote"></p>
+      </div>
+      <div class="stack">
+        <div class="grid2">
+          <div><p class="lbl">PREDICTION</p><p class="big" id="kPred">&mdash;</p><p class="note" id="kPredNote"></p></div>
+          <div><p class="lbl">BASELINE</p><p class="big" id="kBase">&mdash;</p><p class="note">the empty coalition</p></div>
+        </div>
+        <div>
+          <p class="lbl">ATTRIBUTION</p>
+          <div class="waterfall" id="water"></div>
+          <p class="note" id="waterNote"></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Shapley against the thing everyone reaches for first</h2>
+    <p>
+      The intuitive method is <b>leave-one-out</b>: drop a feature, see how much the
+      prediction moves, call that its importance. It is one line of code and it is
+      wrong in a specific, reproducible way.
+    </p>
+    <div class="tblwrap"><table class="num" id="tCompare"></table></div>
+    <p class="note" id="compareNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>The four properties, checked on every model here</h2>
+    <p>
+      Shapley values are not a heuristic that happens to work. They are the
+      <b>unique</b> attribution satisfying four requirements at once, and each one
+      is checkable.
+    </p>
+    <div class="tblwrap"><table class="num" id="tAxioms"></table></div>
+  </div>
+</section>
+
+<section id="und" class="stack hidden">
+  <div class="card">
+    <h2>The definition, and why the weights look so strange</h2>
+    <p>
+      For a feature <code>i</code>, the Shapley value is the average marginal
+      contribution of <code>i</code> over all orderings of the features:
+    </p>
+    <pre>phi_i = sum over S not containing i of
+            |S|! * (n - |S| - 1)! / n!  *  ( v(S + i) - v(S) )</pre>
+    <p>
+      The factorial weight is not decoration. It is exactly the fraction of the
+      <code>n!</code> orderings in which the set <code>S</code> arrives before
+      <code>i</code> and everything else after. Summing over coalitions with that
+      weight is the same as averaging over permutations &mdash; which is why the
+      implementation can do either, and why the two agree to the last bit.
+    </p>
+    <div class="tblwrap"><table class="num" id="tWeights"></table></div>
+    <p class="note" id="weightNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Where leave-one-out breaks</h2>
+    <p>
+      Take a model that fires only when <b>both</b> features are present. Drop
+      either one and the prediction falls to the floor &mdash; so leave-one-out
+      scores them both as fully responsible, and the scores sum to twice the
+      prediction. Now take a model with a <b>redundant copy</b> of a feature. Drop
+      either copy and nothing moves at all, so leave-one-out scores both at zero,
+      and the scores sum to nothing.
+    </p>
+    <div class="tblwrap"><table class="num" id="tBreak"></table></div>
+    <p class="note" id="breakNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Exact, and the sampled approximation</h2>
+    <p>
+      Exact Shapley costs <code>2^n</code> model evaluations. Past about twenty
+      features that is hopeless, so practice samples permutations instead. The
+      table shows how quickly the sampled estimate closes on the exact answer
+      &mdash; and that it is still an estimate, with error you should report.
+    </p>
+    <div class="tblwrap"><table class="num" id="tConverge"></table></div>
+    <p class="note" id="convergeNote"></p>
+  </div>
+</section>
+
+<section id="build" class="stack hidden">
+  <div class="card">
+    <h2>The implementation</h2>
+    <pre id="codeEngine"></pre>
+  </div>
+  <div class="card">
+    <h2>Self-check</h2>
+    <p class="note" style="margin:0 0 10px">
+      Running in your browser now, against the same engine as the tables above.
+    </p>
+    <div id="selftest"></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p style="margin:0">
+      MLFromZero &middot; Day 81 &middot; Shapley values.
+      Tomorrow: isotonic regression &mdash; calibration without assuming a shape.
+    </p>
+  </div>
+</footer>
+</div>
+
+<script>
+// ===== ENGINE:BEGIN =====
+const ENGINE = (() => {
+
+  // ======================================================================
+  // Exact Shapley values for a set function v(S), computed two independent
+  // ways so the page can show they agree:
+  //
+  //   byCoalitions  - the weighted-sum definition over all 2^n subsets
+  //   byPermutations - the average marginal contribution over all n! orders
+  //
+  // v(S) here is the model evaluated with the features in S present and the
+  // rest held at a baseline. That is the "interventional" convention: absent
+  // means "replaced by the baseline value", not "marginalised out".
+  // ======================================================================
+
+  const factorial = (n) => { let f = 1; for (let i = 2; i <= n; i++) f *= i; return f; };
+
+  // all subsets of {0..n-1} as bitmasks
+  function subsets(n) { const out = []; for (let m = 0; m < (1 << n); m++) out.push(m); return out; }
+
+  const has = (mask, i) => (mask & (1 << i)) !== 0;
+  const size = (mask) => { let c = 0; while (mask) { c += mask & 1; mask >>= 1; } return c; };
+
+  // ---------------------------------------------------- the weighted definition
+  function byCoalitions(v, n) {
+    const phi = new Array(n).fill(0);
+    const nf = factorial(n);
+    for (let i = 0; i < n; i++) {
+      for (const S of subsets(n)) {
+        if (has(S, i)) continue;
+        const s = size(S);
+        const w = (factorial(s) * factorial(n - s - 1)) / nf;
+        phi[i] += w * (v(S | (1 << i)) - v(S));
+      }
+    }
+    return phi;
+  }
+
+  // -------------------------------------------------- the permutation average
+  function permutations(n) {
+    const idx = []; for (let i = 0; i < n; i++) idx.push(i);
+    const out = [];
+    (function rec(cur, rest) {
+      if (!rest.length) { out.push(cur); return; }
+      for (let i = 0; i < rest.length; i++) {
+        rec(cur.concat(rest[i]), rest.slice(0, i).concat(rest.slice(i + 1)));
+      }
+    })([], idx);
+    return out;
+  }
+
+  function byPermutations(v, n) {
+    const phi = new Array(n).fill(0);
+    const perms = permutations(n);
+    for (const p of perms) {
+      let S = 0;
+      for (const i of p) {
+        const before = v(S);
+        S |= (1 << i);
+        phi[i] += v(S) - before;
+      }
+    }
+    return phi.map((x) => x / perms.length);
+  }
+
+  // ------------------------------------------------- the sampled approximation
+  // Park-Miller. below(n) multiplies before dividing - taking a high bit would
+  // be uniform and perfectly predictable, which a histogram cannot detect.
+  function rng(seed) {
+    let s = seed % 2147483647;
+    if (s <= 0) s += 2147483646;
+    const nextInt = () => (s = (s * 16807) % 2147483647);
+    return { nextInt, below: (n) => Math.floor((nextInt() * n) / 2147483648) };
+  }
+
+  function sampled(v, n, samples, seed = 1) {
+    const r = rng(seed);
+    const phi = new Array(n).fill(0);
+    for (let k = 0; k < samples; k++) {
+      // Fisher-Yates with the engine's own below()
+      const p = []; for (let i = 0; i < n; i++) p.push(i);
+      for (let i = n - 1; i > 0; i--) { const j = r.below(i + 1); const t = p[i]; p[i] = p[j]; p[j] = t; }
+      let S = 0;
+      for (const i of p) { const before = v(S); S |= (1 << i); phi[i] += v(S) - before; }
+    }
+    return phi.map((x) => x / samples);
+  }
+
+  // ------------------------------------------------------------ leave-one-out
+  // The intuitive alternative: how much does the prediction move if I drop this
+  // feature from the full set? One evaluation per feature, and no guarantees.
+  function leaveOneOut(v, n) {
+    const full = (1 << n) - 1;
+    const out = [];
+    for (let i = 0; i < n; i++) out.push(v(full) - v(full & ~(1 << i)));
+    return out;
+  }
+
+  // ---------------------------------------------------------------- the models
+  // Each is a plain function of the present-feature mask. Baseline is v(0).
+  const MODELS = [
+    {
+      name: "additive",
+      features: ["age", "income", "tenure"],
+      src: "v(S) = 3*age + 2*income + 1*tenure,\n       each counted only if present",
+      note: "No interaction at all. Every method agrees here, which is why additive examples prove nothing.",
+      v: (S) => (has(S, 0) ? 3 : 0) + (has(S, 1) ? 2 : 0) + (has(S, 2) ? 1 : 0)
+    },
+    {
+      name: "AND interaction",
+      features: ["has_card", "is_verified", "noise"],
+      src: "v(S) = 10 if has_card AND is_verified\n       else 0.  noise does nothing.",
+      note: "Neither feature does anything alone. Together they do everything. This is where leave-one-out falls over.",
+      v: (S) => (has(S, 0) && has(S, 1) ? 10 : 0)
+    },
+    {
+      name: "redundant copy",
+      features: ["signal", "signal_copy", "other"],
+      src: "v(S) = 8 if signal OR signal_copy\n       else 0, plus 2 if other",
+      note: "Two features carry the same information. Drop either and nothing moves - so leave-one-out scores both at zero.",
+      v: (S) => ((has(S, 0) || has(S, 1)) ? 8 : 0) + (has(S, 2) ? 2 : 0)
+    },
+    {
+      name: "a feature that hurts",
+      features: ["good", "bad", "neutral"],
+      src: "v(S) = 6 if good, minus 4 if bad.\n       neutral is a dummy.",
+      note: "Attribution must be allowed to be negative. A method that reports magnitudes only cannot say this.",
+      v: (S) => (has(S, 0) ? 6 : 0) - (has(S, 1) ? 4 : 0)
+    },
+    {
+      name: "diminishing returns",
+      features: ["a", "b", "c"],
+      src: "v(S) = 9 * sqrt(|S|) / sqrt(3)",
+      note: "Symmetric by construction: every feature must receive exactly the same value, and the first one added is worth the most.",
+      v: (S) => (9 * Math.sqrt(size(S))) / Math.sqrt(3)
+    }
+  ];
+
+  // ------------------------------------------------------------- the axioms
+  // Each returns {ok, detail} so the page can show WHY, not just a tick.
+  const EPS = 1e-9;
+
+  function efficiency(model) {
+    const n = model.features.length;
+    const phi = byCoalitions(model.v, n);
+    const total = phi.reduce((a, b) => a + b, 0);
+    const want = model.v((1 << n) - 1) - model.v(0);
+    return { ok: Math.abs(total - want) < EPS, got: total, want };
+  }
+
+  // a dummy feature is one that changes nothing, ever
+  function dummies(model) {
+    const n = model.features.length;
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      let isDummy = true;
+      for (const S of subsets(n)) {
+        if (has(S, i)) continue;
+        if (Math.abs(model.v(S | (1 << i)) - model.v(S)) > EPS) { isDummy = false; break; }
+      }
+      if (isDummy) out.push(i);
+    }
+    return out;
+  }
+
+  // two features are symmetric if swapping them never changes v
+  function symmetricPairs(model) {
+    const n = model.features.length;
+    const out = [];
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+      let same = true;
+      for (const S of subsets(n)) {
+        if (has(S, i) || has(S, j)) continue;
+        if (Math.abs(model.v(S | (1 << i)) - model.v(S | (1 << j))) > EPS) { same = false; break; }
+      }
+      if (same) out.push([i, j]);
+    }
+    return out;
+  }
+
+  // linearity: phi(v + w) = phi(v) + phi(w)
+  function linearityGap(modelA, modelB) {
+    const n = modelA.features.length;
+    const sum = (S) => modelA.v(S) + modelB.v(S);
+    const a = byCoalitions(modelA.v, n), b = byCoalitions(modelB.v, n);
+    const ab = byCoalitions(sum, n);
+    let worst = 0;
+    for (let i = 0; i < n; i++) worst = Math.max(worst, Math.abs(ab[i] - (a[i] + b[i])));
+    return worst;
+  }
+
+  return {
+    factorial, subsets, has, size, permutations,
+    byCoalitions, byPermutations, sampled, leaveOneOut, rng,
+    MODELS, efficiency, dummies, symmetricPairs, linearityGap, EPS
+  };
+})();
+// ===== ENGINE:END =====
+</script>
+
+<script>
+function showTab(name) {
+  for (const t of ["look", "und", "build"]) document.getElementById(t).classList.toggle("hidden", t !== name);
+  document.getElementById("tabLook").classList.toggle("tab-active", name === "look");
+  document.getElementById("tabUnd").classList.toggle("tab-active", name === "und");
+  document.getElementById("tabBuild").classList.toggle("tab-active", name === "build");
+}
+const el = (id) => document.getElementById(id);
+function table(id, head, rows) {
+  el(id).innerHTML =
+    "<tr>" + head.map((h) => "<th>" + h + "</th>").join("") + "</tr>" +
+    rows.map((r) => "<tr" + (r.cls ? ' class="' + r.cls + '"' : "") + ">" +
+      r.cells.map((c, i) => "<td" + (i === 0 ? ' class="txt"' : "") + ">" + c + "</td>").join("") + "</tr>").join("");
+}
+function selfCheckPanel(fn) {
+  const out = []; let n = 0, bad = 0;
+  const t = (label, cond, detail = "") => {
+    n += 1; if (!cond) bad += 1;
+    out.push('<div><span class="' + (cond ? "ok" : "warn") + '">' + (cond ? "PASS" : "FAIL") +
+      '</span><span>' + label + '</span><span class="m">' + detail + "</span></div>");
+  };
+  fn(t);
+  el("selftest").innerHTML =
+    '<p class="note" style="margin:0 0 8px"><b class="' + (bad ? "warn" : "ok") + '">' +
+    (n - bad) + " of " + n + " checks pass</b>" + (bad ? " &mdash; " + bad + " FAILED" : "") + ".</p>" + out.join("");
+}
+
+let PICK = 1;
+el("modelBtns").innerHTML = ENGINE.MODELS
+  .map((m, i) => '<button onclick="pick(' + i + ')" id="mb' + i + '">' + m.name + "</button>").join(" ");
+function pick(i) { PICK = i; render(); }
+
+function render() {
+  const M = ENGINE.MODELS[PICK];
+  const n = M.features.length;
+  const full = (1 << n) - 1;
+  const phi = ENGINE.byCoalitions(M.v, n);
+  const base = M.v(0), pred = M.v(full);
+
+  ENGINE.MODELS.forEach((_, i) => el("mb" + i).classList.toggle("on", i === PICK));
+  el("modelSrc").textContent = M.src;
+  el("modelNote").textContent = M.note;
+  el("kPred").textContent = pred.toFixed(2);
+  el("kPredNote").textContent = "with every feature present";
+  el("kBase").textContent = base.toFixed(2);
+
+  const span = Math.max(...phi.map((x) => Math.abs(x)), 1e-9);
+  el("water").innerHTML = M.features.map((f, i) => {
+    const w = (Math.abs(phi[i]) / span) * 100;
+    const cls = phi[i] >= 0 ? "pos" : "neg";
+    const side = phi[i] >= 0 ? "left:50%" : "right:50%";
+    return "<div><span>" + f + '</span><span class="wbar"><i class="' + cls + '" style="' + side +
+      ";width:" + (w / 2) + '%"></i></span><span style="text-align:right">' +
+      (phi[i] >= 0 ? "+" : "") + phi[i].toFixed(2) + "</span></div>";
+  }).join("");
+  const total = phi.reduce((a, b) => a + b, 0);
+  el("waterNote").innerHTML = "The bars sum to <b>" + total.toFixed(4) +
+    "</b>, and the prediction minus the baseline is <b>" + (pred - base).toFixed(4) +
+    "</b>. That is not a coincidence - it is the efficiency axiom, and it is the one leave-one-out cannot keep.";
+}
+
+// ---------------------------------------------------------------- the tables
+{
+  const rows = [];
+  for (const M of ENGINE.MODELS) {
+    const n = M.features.length, full = (1 << n) - 1;
+    const phi = ENGINE.byCoalitions(M.v, n);
+    const loo = ENGINE.leaveOneOut(M.v, n);
+    const want = M.v(full) - M.v(0);
+    const sPhi = phi.reduce((a, b) => a + b, 0);
+    const sLoo = loo.reduce((a, b) => a + b, 0);
+    rows.push({
+      cls: Math.abs(sLoo - want) > 1e-9 ? "here" : "",
+      cells: [M.name, want.toFixed(2), sPhi.toFixed(2), sLoo.toFixed(2),
+        Math.abs(sPhi - want) < 1e-9 ? '<span class="pill good">adds up</span>' : '<span class="pill bad">no</span>',
+        Math.abs(sLoo - want) < 1e-9 ? '<span class="pill good">adds up</span>'
+          : '<span class="pill bad">off by ' + (sLoo - want).toFixed(1) + "</span>"]
+    });
+  }
+  table("tCompare", ["model", "prediction - baseline", "Shapley total", "leave-one-out total",
+    "Shapley efficient?", "LOO efficient?"], rows);
+  const broken = ENGINE.MODELS.filter((M) => {
+    const n = M.features.length, full = (1 << n) - 1;
+    return Math.abs(ENGINE.leaveOneOut(M.v, n).reduce((a, b) => a + b, 0) - (M.v(full) - M.v(0))) > 1e-9;
+  });
+  el("compareNote").innerHTML =
+    "Shapley sums to the prediction on <b>all " + ENGINE.MODELS.length +
+    "</b> models. Leave-one-out fails on <b>" + broken.length + "</b> of them - " +
+    broken.map((m) => m.name).join(", ") +
+    " - and it fails in both directions: too much on interaction, nothing at all on redundancy.";
+}
+
+{
+  const rows = ENGINE.MODELS.map((M) => {
+    const n = M.features.length;
+    const eff = ENGINE.efficiency(M);
+    const phi = ENGINE.byCoalitions(M.v, n);
+    const dums = ENGINE.dummies(M);
+    const syms = ENGINE.symmetricPairs(M);
+    const dummyOk = dums.every((i) => Math.abs(phi[i]) < 1e-9);
+    const symOk = syms.every(([i, j]) => Math.abs(phi[i] - phi[j]) < 1e-9);
+    const linGap = ENGINE.linearityGap(M, ENGINE.MODELS[0]);
+    return {
+      cls: "",
+      cells: [M.name,
+        eff.ok ? '<span class="pill good">yes</span>' : '<span class="pill bad">no</span>',
+        dums.length ? (dummyOk ? '<span class="pill good">0.00</span>' : '<span class="pill bad">no</span>')
+                    : '<span style="color:#94a3b8">none</span>',
+        syms.length ? (symOk ? '<span class="pill good">equal</span>' : '<span class="pill bad">no</span>')
+                    : '<span style="color:#94a3b8">none</span>',
+        linGap < 1e-9 ? '<span class="pill good">exact</span>' : linGap.toExponential(1)]
+    };
+  });
+  table("tAxioms", ["model", "efficiency: they sum to the prediction",
+    "dummy: a useless feature scores 0", "symmetry: equal features score equally",
+    "linearity: phi(v+w) = phi(v) + phi(w)"], rows);
+}
+
+{
+  const n = 3, nf = ENGINE.factorial(n);
+  const rows = [];
+  for (let s = 0; s <= n - 1; s++) {
+    const w = (ENGINE.factorial(s) * ENGINE.factorial(n - s - 1)) / nf;
+    const count = ENGINE.factorial(n - 1) / (ENGINE.factorial(s) * ENGINE.factorial(n - 1 - s));
+    rows.push({
+      cls: s === 0 || s === n - 1 ? "here" : "",
+      cells: ["|S| = " + s, count, w.toFixed(4), (w * count).toFixed(4),
+        s === 0 ? "arriving first" : s === n - 1 ? "arriving last" : "arriving in the middle"]
+    });
+  }
+  table("tWeights", ["coalition size", "how many such S", "weight each", "total weight", "what it means"], rows);
+  const tot = rows.reduce((a, r) => a + parseFloat(r.cells[3]), 0);
+  el("weightNote").innerHTML =
+    "The weights over all coalitions sum to <b>" + tot.toFixed(4) +
+    "</b>. They have to: they are a probability distribution over the position at which feature i arrives. " +
+    "First and last are the heaviest, which is why an interaction term is split evenly rather than " +
+    "awarded to whichever feature you happened to test first.";
+}
+
+{
+  const rows = [];
+  for (const M of ENGINE.MODELS.slice(1, 4)) {
+    const n = M.features.length, full = (1 << n) - 1;
+    const phi = ENGINE.byCoalitions(M.v, n);
+    const loo = ENGINE.leaveOneOut(M.v, n);
+    for (let i = 0; i < n; i++) {
+      rows.push({
+        cls: Math.abs(phi[i] - loo[i]) > 1e-9 ? "here" : "dim",
+        cells: [M.name + " / " + M.features[i], phi[i].toFixed(2), loo[i].toFixed(2),
+          (loo[i] - phi[i]).toFixed(2),
+          Math.abs(phi[i]) > 1e-9 && Math.abs(loo[i]) < 1e-9 ? '<span class="pill bad">LOO says it does nothing</span>'
+          : Math.abs(loo[i] - phi[i]) > 1e-9 ? '<span class="pill bad">overstated</span>'
+          : '<span class="pill good">agrees</span>']
+      });
+    }
+  }
+  table("tBreak", ["model / feature", "Shapley", "leave-one-out", "difference", "verdict"], rows);
+  const silent = rows.filter((r) => String(r.cells[4]).includes("does nothing")).length;
+  el("breakNote").innerHTML =
+    "<b>" + silent + " features</b> are scored at exactly zero by leave-one-out despite carrying real " +
+    "signal. A feature-importance plot built this way would show them as irrelevant, and someone would " +
+    "delete them.";
+}
+
+{
+  const M = ENGINE.MODELS[1];
+  const n = M.features.length;
+  const exact = ENGINE.byCoalitions(M.v, n);
+  const rows = [10, 50, 200, 1000, 5000].map((k) => {
+    const est = ENGINE.sampled(M.v, n, k, 12345);
+    const err = Math.max(...est.map((x, i) => Math.abs(x - exact[i])));
+    const tot = est.reduce((a, b) => a + b, 0);
+    return {
+      cls: k === 5000 ? "here" : "",
+      cells: [k.toLocaleString("en-US"), est.map((x) => x.toFixed(2)).join(" / "),
+        err.toFixed(4), tot.toFixed(4),
+        Math.abs(tot - (M.v((1 << n) - 1) - M.v(0))) < 1e-9
+          ? '<span class="pill good">still exact</span>' : '<span class="pill bad">drifted</span>']
+    };
+  });
+  table("tConverge", ["permutations sampled", "estimate", "worst error vs exact",
+    "sum", "efficiency"], rows);
+  el("convergeNote").innerHTML =
+    "The sampled estimator keeps efficiency <b>exactly</b> at every sample count - each permutation's " +
+    "marginal contributions telescope to v(full) - v(empty) no matter which order you drew. " +
+    "What it does not keep is per-feature accuracy, and that is the number to report.";
+}
+
+el("codeEngine").textContent = [
+  "// the definition: a weighted sum over every coalition",
+  String(ENGINE.byCoalitions), "",
+  "// the same thing, as an average over every ordering",
+  String(ENGINE.byPermutations), "",
+  "// the alternative everyone reaches for first",
+  String(ENGINE.leaveOneOut)
+].join("\n");
+
+render();
+
+// --------------------------------------------------------------- the self-check
+selfCheckPanel((t) => {
+  const MS = ENGINE.MODELS;
+  const close = (a, b, e = 1e-9) => Math.abs(a - b) < e;
+
+  // --- the two definitions must agree exactly
+  t("the coalition sum and the permutation average agree on every model", (() => {
+    for (const M of MS) {
+      const n = M.features.length;
+      const a = ENGINE.byCoalitions(M.v, n), b = ENGINE.byPermutations(M.v, n);
+      for (let i = 0; i < n; i++) if (!close(a[i], b[i], 1e-9)) return false;
+    }
+    return true;
+  })(), MS.length + " models, two unrelated derivations");
+
+  t("the factorial weights really are a probability distribution", (() => {
+    for (const n of [2, 3, 4, 5]) {
+      const nf = ENGINE.factorial(n);
+      let tot = 0;
+      for (let s = 0; s <= n - 1; s++) {
+        const count = ENGINE.factorial(n - 1) / (ENGINE.factorial(s) * ENGINE.factorial(n - 1 - s));
+        tot += count * ((ENGINE.factorial(s) * ENGINE.factorial(n - s - 1)) / nf);
+      }
+      if (!close(tot, 1, 1e-12)) return false;
+    }
+    return true;
+  })(), "they sum to 1 for n = 2, 3, 4, 5");
+
+  t("there are exactly n! permutations and 2^n subsets", (() => {
+    for (const n of [1, 2, 3, 4]) {
+      if (ENGINE.permutations(n).length !== ENGINE.factorial(n)) return false;
+      if (ENGINE.subsets(n).length !== (1 << n)) return false;
+    }
+    return true;
+  })());
+
+  // --- AXIOM 1: efficiency
+  t("AXIOM efficiency: the values sum to the prediction minus the baseline",
+    MS.every((M) => ENGINE.efficiency(M).ok),
+    MS.map((M) => M.name + " " + ENGINE.efficiency(M).got.toFixed(2)).join(", "));
+
+  // --- AXIOM 2: dummy
+  t("AXIOM dummy: a feature that never changes anything scores exactly zero", (() => {
+    for (const M of MS) {
+      const phi = ENGINE.byCoalitions(M.v, M.features.length);
+      for (const i of ENGINE.dummies(M)) if (!close(phi[i], 0)) return false;
+    }
+    return true;
+  })(), "dummies found: " + MS.flatMap((M) => ENGINE.dummies(M).map((i) => M.features[i])).join(", "));
+
+  t("and the models really do contain dummies to test it on",
+    MS.some((M) => ENGINE.dummies(M).length > 0));
+
+  // --- AXIOM 3: symmetry
+  t("AXIOM symmetry: interchangeable features get identical values", (() => {
+    for (const M of MS) {
+      const phi = ENGINE.byCoalitions(M.v, M.features.length);
+      for (const [i, j] of ENGINE.symmetricPairs(M)) if (!close(phi[i], phi[j])) return false;
+    }
+    return true;
+  })());
+
+  t("the diminishing-returns model is fully symmetric, and every value matches", (() => {
+    const M = MS[4];
+    const phi = ENGINE.byCoalitions(M.v, 3);
+    return close(phi[0], phi[1]) && close(phi[1], phi[2]) && phi[0] > 0;
+  })(), "three equal shares of " + ENGINE.MODELS[4].v(7).toFixed(2));
+
+  // --- AXIOM 4: linearity
+  t("AXIOM linearity: attributing a sum of models is the sum of the attributions", (() => {
+    for (const A of MS) for (const B of MS) {
+      if (A.features.length !== B.features.length) continue;
+      if (ENGINE.linearityGap(A, B) > 1e-9) return false;
+    }
+    return true;
+  })(), "every ordered pair of the models");
+
+  // --- the AND interaction, the headline case
+  t("on an AND model, neither feature does anything alone", (() => {
+    const v = MS[1].v;
+    return v(1) === 0 && v(2) === 0 && v(3) === 10;
+  })());
+
+  t("Shapley splits that interaction evenly between the two", (() => {
+    const phi = ENGINE.byCoalitions(MS[1].v, 3);
+    return close(phi[0], 5) && close(phi[1], 5) && close(phi[2], 0);
+  })(), "5 / 5 / 0 out of a prediction of 10");
+
+  t("CONTROL: leave-one-out gives them 10 EACH, summing to twice the prediction", (() => {
+    const loo = ENGINE.leaveOneOut(MS[1].v, 3);
+    return close(loo[0], 10) && close(loo[1], 10) &&
+           close(loo.reduce((a, b) => a + b, 0), 20);
+  })(), "20 attributed for a prediction of 10");
+
+  // --- the redundancy case, which fails the opposite way
+  t("on a redundant pair, Shapley splits the shared credit", (() => {
+    const phi = ENGINE.byCoalitions(MS[2].v, 3);
+    return close(phi[0], phi[1]) && phi[0] > 0 && close(phi[2], 2);
+  })(), "each copy gets " + ENGINE.byCoalitions(MS[2].v, 3)[0].toFixed(2));
+
+  t("CONTROL: leave-one-out scores BOTH copies at exactly zero", (() => {
+    const loo = ENGINE.leaveOneOut(MS[2].v, 3);
+    return close(loo[0], 0) && close(loo[1], 0);
+  })(), "a feature-importance plot would call them irrelevant");
+
+  t("so leave-one-out errs in BOTH directions, not just one", (() => {
+    const n = 3;
+    const andSum = ENGINE.leaveOneOut(MS[1].v, n).reduce((a, b) => a + b, 0);
+    const redSum = ENGINE.leaveOneOut(MS[2].v, n).reduce((a, b) => a + b, 0);
+    const andWant = MS[1].v(7) - MS[1].v(0), redWant = MS[2].v(7) - MS[2].v(0);
+    return andSum > andWant && redSum < redWant;
+  })(), "over-attributing interaction, under-attributing redundancy");
+
+  // --- negative attribution
+  t("a feature that lowers the prediction gets a negative value", (() => {
+    const phi = ENGINE.byCoalitions(MS[3].v, 3);
+    return phi[1] < 0 && close(phi[0], 6) && close(phi[1], -4);
+  })(), "attribution has a sign, and it must be allowed to");
+
+  // --- the sampled estimator
+  t("the sampled estimator keeps efficiency exactly, at every sample count", (() => {
+    const M = MS[1], n = 3, want = M.v(7) - M.v(0);
+    for (const k of [1, 5, 50, 500]) {
+      const est = ENGINE.sampled(M.v, n, k, 7);
+      if (!close(est.reduce((a, b) => a + b, 0), want, 1e-9)) return false;
+    }
+    return true;
+  })(), "marginal contributions telescope regardless of order");
+
+  t("and converges on the exact values as sampling grows", (() => {
+    const M = MS[1], n = 3;
+    const exact = ENGINE.byCoalitions(M.v, n);
+    const errAt = (k) => Math.max(...ENGINE.sampled(M.v, n, k, 12345).map((x, i) => Math.abs(x - exact[i])));
+    return errAt(5000) < errAt(10);
+  })(), "worst error at 10 samples vs 5000");
+
+  t("the estimator is reproducible from its seed", (() => {
+    const a = ENGINE.sampled(MS[1].v, 3, 100, 42).join(",");
+    const b = ENGINE.sampled(MS[1].v, 3, 100, 42).join(",");
+    return a === b;
+  })());
+
+  t("different seeds give different estimates", (() => {
+    return ENGINE.sampled(MS[1].v, 3, 30, 1).join(",") !== ENGINE.sampled(MS[1].v, 3, 30, 2).join(",");
+  })());
+
+  t("below(n) is in range and covers it", (() => {
+    const r = ENGINE.rng(3);
+    const seen = new Set();
+    for (let i = 0; i < 5000; i++) {
+      const v = r.below(7);
+      if (!Number.isInteger(v) || v < 0 || v > 6) return false;
+      seen.add(v);
+    }
+    return seen.size === 7;
+  })());
+
+  // --- the set helpers
+  t("size() counts bits correctly", (() => {
+    for (let m = 0; m < 64; m++) {
+      let c = 0, x = m; while (x) { c += x & 1; x >>= 1; }
+      if (ENGINE.size(m) !== c) return false;
+    }
+    return true;
+  })(), "checked on all 64 masks of 6 bits");
+
+  t("every permutation of n is distinct and covers every feature", (() => {
+    const ps = ENGINE.permutations(4);
+    const seen = new Set(ps.map((p) => p.join(",")));
+    return seen.size === 24 && ps.every((p) => new Set(p).size === 4);
+  })());
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero &middot; Day 79 &mdash; Threshold transfer</title>
+<style>
+  :root { --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f8fafc; --accent:#7c3aed; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Inter",system-ui,sans-serif; margin:0; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } }
+  header { background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .kicker { font-size:12px; font-weight:800; letter-spacing:.16em; color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:19px; line-height:1.5; font-weight:900; margin:0 0 12px; }
+  @media (min-width:768px){ h1 { font-size:22px; } }
+  h2 { font-size:24px; font-weight:900; margin:0 0 8px; }
+  h3 { font-size:19px; font-weight:800; margin:20px 0 6px; }
+  p { line-height:1.6; margin:0 0 12px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  .tabs button { font:inherit; font-size:14px; font-weight:600; padding:8px 20px; border:0; border-radius:8px; background:#f1f5f9; cursor:pointer; }
+  .tabs button.tab-active { background:#0f172a; color:#fff; }
+  .hidden { display:none; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.12); padding:20px; min-width:0; }
+  .stack > * + * { margin-top:20px; }
+  .grid2 { display:grid; gap:20px; grid-template-columns:minmax(0,1fr); }
+  .grid3 { display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+  .grid4 { display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+  @media (min-width:900px){ .grid2 { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+                            .grid4 { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+  .lbl { font-size:12px; font-weight:800; letter-spacing:.1em; color:#64748b; margin:0 0 8px; }
+  .big { font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; margin:0; }
+  .note { font-size:12.5px; color:#475569; margin:8px 0 0; line-height:1.55; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:11.5px; overflow-x:auto; line-height:1.35; margin:0; white-space:pre; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  .tblwrap { overflow-x:auto; }
+  table.num { border-collapse:collapse; width:100%; min-width:520px; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  table.num tr.here td { background:#eef2ff; font-weight:700; }
+  table.num tr.dim td { color:#94a3b8; }
+  table.num td.txt { text-align:left; font-size:11.5px; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:800; }
+  .good { background:#dcfce7; color:#166534; }
+  .stop { background:#fef3c7; color:#92400e; }
+  .bad { background:#fee2e2; color:#991b1b; }
+  .ok { color:#166534; font-weight:800; }
+  .warn { color:#991b1b; font-weight:800; }
+  select, input[type=range], input[type=text] { border:1px solid #cbd5e1; border-radius:8px; padding:7px 10px; font:inherit; font-size:13px; width:100%; margin-top:4px; background:#fff; }
+  input[type=range] { padding:0; }
+  label.f { font-size:13px; display:block; }
+  .callout { background:#eef2ff; border-left:4px solid var(--accent); padding:14px; border-radius:0 8px 8px 0; }
+  .callout p { font-size:13.5px; margin:0; }
+  a { color:var(--accent); }
+  .prose { max-width:760px; margin:0 auto; }
+  .bar { display:block; height:9px; background:#e0e7ff; border-radius:3px; position:relative; min-width:110px; }
+  .bar i { position:absolute; top:0; left:0; height:9px; background:var(--accent); border-radius:3px; }
+  .sc { font-size:12.5px; line-height:1.6; }
+  .sc div { display:flex; gap:8px; align-items:baseline; }
+  .sc .m { color:#94a3b8; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">MACHINELEARNINGFROMZERO &middot; DAY 79</p>
+    <h1>
+      &#127919; Threshold transfer &mdash; you tune a decision threshold on validation to hit
+      &ldquo;precision at least 90%&rdquo;, then deploy it somewhere the validation set was not.
+      <strong>Nothing here is sampled and no rate is a float</strong>: the score axis is 201 bins of
+      declared integer weights, all 201 thresholds are enumerated, and every rate is an exact rational
+      compared by BigInt cross-multiplication, so an argmax is never decided by rounding. &#128308;
+      <strong>Drop the prevalence from 10% to 2% and that threshold delivers 63.5% precision instead of
+      90.4% &mdash; while its TPR and FPR stay bit-identical</strong>, the same reduced fractions
+      <code>22663/29409</code> and <code>21043/499953</code>. The model did not change and the scores did
+      not change. The number just stopped meaning what it meant. &#128308; <strong>Two of the five tuning
+      rules pick a threshold that survives a prevalence shift completely unchanged, and they are exactly
+      the two defined only from class-conditional rates</strong> &mdash; Youden's J stays at 100 and
+      recall&ge;0.90 stays at 98, while maximise-F1 moves 127&rarr;146 and precision&ge;0.90 moves
+      148&rarr;169. &#128308; And re-tuning is not the escape it looks like: re-running
+      precision&ge;0.90 on the shifted world <em>does</em> restore 90% precision, at a recall of
+      <strong>1.90%</strong>. You meet the target by answering almost nothing. &#128308; The last one is
+      the practical problem: <strong>the only quantity you can monitor without labels cannot tell the two
+      shifts apart.</strong> A prevalence shift and a score shift are constructed here with the
+      <em>exactly</em> equal positive rate <code>780643/49995300</code>, and precision of 63.46% against
+      2.23% &mdash; a 28.5&times; gap behind an identical dashboard.
+    </h1>
+
+    <div class="tabs">
+      <button id="tabLook" class="tab-active" onclick="showTab('look')">&#128065; LOOK</button>
+      <button id="tabUnd" onclick="showTab('und')">&#129504; UNDERSTAND</button>
+      <button id="tabBuild" onclick="showTab('build')">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<main id="look" class="wrap stack">
+  <div class="callout">
+    <p>
+      <strong>Four worlds, one model.</strong> The classifier is never retrained and its scores are
+      never recomputed for a given input. Only the population changes: how many positives there are
+      (<em>prevalence shift</em>), where the negatives land on the score axis (<em>score shift</em>), or
+      both. Everything below is a consequence of moving the population, not of moving the model.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Tune here, deploy there</h2>
+    <div class="grid2" style="margin:12px 0">
+      <label class="f">Tuning rule
+        <select id="rule"></select>
+      </label>
+      <div>
+        <p class="lbl" style="margin-bottom:2px">THRESHOLD CHOSEN ON THE SOURCE</p>
+        <p class="note" style="margin:0" id="ruleNote"></p>
+      </div>
+    </div>
+    <div class="tblwrap"><table class="num" id="tTransfer"></table></div>
+    <p class="note">
+      The threshold is held fixed across every row. Where a column is constant down the table, that
+      quantity is invariant to the shift; where it moves, it was never a property of the model alone.
+    </p>
+  </div>
+
+  <div class="grid4">
+    <div class="card"><p class="lbl">PRECISION&ge;0.90 THRESHOLD, ON SOURCE</p><p class="big ok" id="kSrc">&mdash;</p>
+      <p class="note">what you signed up for</p></div>
+    <div class="card"><p class="lbl">THE SAME THRESHOLD AT 2% PREVALENCE</p><p class="big warn" id="kPrev">&mdash;</p>
+      <p class="note">scores untouched</p></div>
+    <div class="card"><p class="lbl">AND WITH THE SCORE SHIFT TOO</p><p class="big bad" id="kBoth">&mdash;</p></div>
+    <div class="card"><p class="lbl">TPR ACROSS ALL FOUR WORLDS</p><p class="big" id="kTpr" style="font-size:15px">&mdash;</p>
+      <p class="note">identical rational, not &ldquo;approximately&rdquo;</p></div>
+  </div>
+</main>
+
+<main id="und" class="wrap stack hidden">
+  <div class="card">
+    <h3 style="margin-top:0">1. TPR and FPR do not know what the prevalence is</h3>
+    <div class="tblwrap"><table class="num" id="tInvar"></table></div>
+    <p class="note">
+      One threshold (bin 120), six prevalences from 0.1% to 90%. The two class-conditional rates are
+      printed as reduced fractions and they are <strong>the same string in every row</strong>, because
+      each is conditioned on the class and the prevalence divides out of both. Precision over the same
+      six rows goes from <strong>0.0180 to 0.9940</strong>. This is not a subtle effect that needs a
+      confidence interval &mdash; it is an algebraic identity on one side and a fifty-fold swing on the
+      other, and it is the whole reason a transferred threshold misbehaves.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">2. Which rules pick a portable threshold</h3>
+    <div class="tblwrap"><table class="num" id="tRetune"></table></div>
+    <p class="note">
+      Re-running each rule on each world, and reading off where it lands. Under a pure prevalence shift
+      the two rules whose definitions mention only TPR and FPR &mdash; Youden's J and recall&ge;0.90
+      &mdash; return <strong>exactly the threshold they returned on the source</strong>, while the two
+      that mention precision or F1 move. That is not a coincidence to be checked empirically; it follows
+      from the identity above. <strong>Scope:</strong> recall&ge;0.90 is also unmoved by the score shift
+      here, but only because this shift moves the <em>negatives</em>. Recall does not look at negatives.
+      Move the positives instead and it moves like everything else.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">3. Re-tuning meets the target and hollows out the model</h3>
+    <div class="tblwrap"><table class="num" id="tCost"></table></div>
+    <p class="note">
+      &#128308; Re-running precision&ge;0.90 on each world does restore the number: 0.9088, 0.9041,
+      0.9022. The recall behind it goes <strong>0.4955 &rarr; 0.2412 &rarr; 0.2773 &rarr; 0.0190</strong>.
+      In the last world the threshold that satisfies the contract fires on 1.9% of the positives. A
+      precision target is a promise about the answers you give, and it can always be kept by giving
+      fewer &mdash; so a monitor that watches only precision will report a healthy system right up to
+      the point where the system is not answering.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">4. The label-free monitor cannot tell the two apart</h3>
+    <div class="tblwrap"><table class="num" id="tAmbig"></table></div>
+    <p class="note">
+      &#128308; In production you usually have no labels, so the one thing you can watch is how often
+      the model says yes. Take the source-tuned threshold and two different worlds: a prevalence shift
+      to 2%, and a score shift at prevalence <span id="ambPi">&mdash;</span>. The prevalence for the
+      second was <em>solved</em> from the rational equation
+      <code>rate = &pi;&middot;TPR + (1&minus;&pi;)&middot;FPR</code>, so the positive rate is not close,
+      it is the <strong>identical fraction</strong>. Precision is 63.46% in one and 2.23% in the other.
+      Every dashboard that watches the firing rate shows a flat line across both.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">What this covers, and what it does not</h3>
+    <p class="note" style="margin-top:0">
+      One score axis discretised into 201 bins; one shift direction (the negatives move up 12 bins, the
+      positives never move); one pair of class-conditional shapes; five tuning rules; four metrics. There
+      is <strong>no cost matrix</strong>, so &ldquo;which threshold is right&rdquo; is never answered
+      here &mdash; only which one is <em>stable</em>. There is no calibration model and no recalibration
+      method: the point is what breaks, not how to fix it. And there are no confidence intervals anywhere
+      on this page, because nothing is sampled &mdash; every number is an exact rational over a declared
+      integer population, so an interval would be a decoration rather than a statement.
+    </p>
+  </div>
+</main>
+
+<main id="build" class="wrap stack hidden">
+  <div class="card prose">
+    <h2>How it works</h2>
+    <pre>// a virtual population of q*WP*WN, so all four confusion cells are integers
+TP = p * Sp * WN;          FP = (q - p) * Sn * WP;
+FN = p * (WP - Sp) * WN;   TN = (q - p) * (WN - Sn) * WP;
+
+// TPR = TP/(TP+FN) = (p*Sp*WN) / (p*Sp*WN + p*(WP-Sp)*WN) = Sp/WP
+//   -> p and q cancel. That one line is the whole page.
+
+// and the argmax is decided exactly, never by comparing two floats
+const rcmp = (a, b) =&gt; { const l = a.n * b.d, r = b.n * a.d;
+                         return l &lt; r ? -1 : l &gt; r ? 1 : 0; };</pre>
+    <h3>Self-check</h3>
+    <p class="note">
+      Runs on load. Several are <strong>controls</strong>: an invariance claim is worth nothing without
+      the quantities that do move, so the checks that TPR is constant sit next to checks that precision
+      is not, and the ambiguity construction is verified as an exact equality rather than a rounding.
+    </p>
+    <div class="sc" id="selfcheck"></div>
+    <p style="margin-top:20px"><a href="../machinelearningfromzero.php">&larr; MachineLearningFromZero</a></p>
+  </div>
+</main>
+
+<script>
+// ===== ENGINE:BEGIN =====
+// ---------------------------------------------------------------------------
+// Threshold transfer: the number you tuned on validation, moved somewhere else.
+//
+// You pick a decision threshold on a validation set - to maximise F1, or to
+// hit "precision at least 90%" - and then you deploy it on a population that
+// is not the validation set. This asks what survives that move and what does
+// not, and it does it by ENUMERATION rather than simulation: the score axis is
+// 201 bins, every threshold is one of 201, and every rate is an exact rational
+// over integer class-conditional weights.
+//
+// Nothing is sampled. There is no RNG in this file at all. Every comparison
+// that decides a threshold is an exact BigInt cross-multiplication, never a
+// float comparison, so an argmax is never decided by rounding.
+//
+// DOM-free, clock-free, Math.random-free.
+// ---------------------------------------------------------------------------
+
+const BINS = 201;             // score = k / 200, k = 0..200
+const SCALE = 1000000n;       // each class's weights sum to ~1e6
+
+// --------------------------------------------------------- the two densities
+// A discretised Beta(a,b) built with integer arithmetic only: the unnormalised
+// weight of bin k is k^(a-1) * (200-k)^(b-1), then rescaled to sum to SCALE.
+// Declaring the population this way means the "data" is a fixed integer array
+// that anyone can read off the page, not a draw from a generator.
+function betaWeights(a, b) {
+  const raw = [];
+  for (let k = 0; k < BINS; k++) {
+    const u = BigInt(k), v = BigInt(BINS - 1 - k);
+    raw.push((u === 0n && a === 1 ? 1n : u ** BigInt(a - 1)) *
+             (v === 0n && b === 1 ? 1n : v ** BigInt(b - 1)));
+  }
+  const tot = raw.reduce((s, x) => s + x, 0n);
+  return raw.map((x) => (x * SCALE) / tot);
+}
+
+// Move mass toward higher scores by d bins; the top bin absorbs the overflow.
+// This is a change in the SCORE distribution, not in how many positives exist.
+function shiftUp(w, d) {
+  const out = new Array(BINS).fill(0n);
+  for (let k = 0; k < BINS; k++) {
+    const j = Math.min(BINS - 1, k + d);
+    out[j] += w[k];
+  }
+  return out;
+}
+
+// ------------------------------------------------------------ the confusion
+// A population is {wp, wn, p, q}: class-conditional weights plus a prevalence
+// p/q. Over a virtual population of q*WP*WN individuals every one of the four
+// confusion cells is an exact integer, so no count is ever rounded.
+function suffix(w) {
+  const s = new Array(BINS + 1).fill(0n);
+  for (let k = BINS - 1; k >= 0; k--) s[k] = s[k + 1] + w[k];
+  return s;
+}
+
+function population(wp, wn, p, q) {
+  const WP = wp.reduce((s, x) => s + x, 0n);
+  const WN = wn.reduce((s, x) => s + x, 0n);
+  return { wp, wn, p: BigInt(p), q: BigInt(q), WP, WN, sp: suffix(wp), sn: suffix(wn) };
+}
+
+function counts(pop, t) {
+  const { p, q, WP, WN, sp, sn } = pop;
+  const Sp = sp[t], Sn = sn[t];
+  return {
+    TP: p * Sp * WN,
+    FP: (q - p) * Sn * WP,
+    FN: p * (WP - Sp) * WN,
+    TN: (q - p) * (WN - Sn) * WP,
+  };
+}
+
+// A rate is kept as {n, d} and only turned into a float for display.
+const rate = (n, d) => ({ n, d });
+const val = (r) => (r.d === 0n ? null : Number(r.n) / Number(r.d));
+// exact comparison of two rationals with positive denominators
+const rcmp = (a, b) => {
+  if (a.d === 0n && b.d === 0n) return 0;
+  if (a.d === 0n) return -1;
+  if (b.d === 0n) return 1;
+  const l = a.n * b.d, r = b.n * a.d;
+  return l < r ? -1 : l > r ? 1 : 0;
+};
+
+function metrics(pop, t) {
+  const { TP, FP, FN, TN } = counts(pop, t);
+  const tpr = rate(TP, TP + FN);
+  const fpr = rate(FP, FP + TN);
+  return {
+    t,
+    TP, FP, FN, TN,
+    tpr, fpr,
+    precision: rate(TP, TP + FP),
+    recall: tpr,
+    f1: rate(2n * TP, 2n * TP + FP + FN),
+    // Youden's J as a single rational: TPR - FPR
+    youden: rate(tpr.n * fpr.d - fpr.n * tpr.d, tpr.d * fpr.d),
+    posRate: rate(TP + FP, TP + FP + FN + TN),
+  };
+}
+
+// ------------------------------------------------------------- the five rules
+// Each rule maps a population to a threshold. `fixed` ignores the population
+// entirely, which is the control: it is the only rule that cannot move.
+const NINE_TENTHS = { n: 9n, d: 10n };
+
+const RULES = [
+  {
+    key: "fixed", label: "score >= 0.50",
+    note: "the default nobody chose",
+    pick: () => 100,
+  },
+  {
+    key: "maxf1", label: "maximise F1",
+    note: "the most common tuning loop",
+    pick: (pop) => {
+      let best = 0, bv = metrics(pop, 0).f1;
+      for (let t = 1; t < BINS; t++) {
+        const v = metrics(pop, t).f1;
+        if (rcmp(v, bv) > 0) { bv = v; best = t; }
+      }
+      return best;
+    },
+  },
+  {
+    key: "youden", label: "maximise TPR &minus; FPR",
+    note: "Youden's J - defined only from the two class-conditional rates",
+    pick: (pop) => {
+      let best = 0, bv = metrics(pop, 0).youden;
+      for (let t = 1; t < BINS; t++) {
+        const v = metrics(pop, t).youden;
+        if (rcmp(v, bv) > 0) { bv = v; best = t; }
+      }
+      return best;
+    },
+  },
+  {
+    key: "prec90", label: "precision &ge; 0.90",
+    note: "the lowest threshold that clears the bar, so recall is as high as it can be",
+    pick: (pop) => {
+      for (let t = 0; t < BINS; t++) {
+        const m = metrics(pop, t);
+        if (m.precision.d > 0n && rcmp(m.precision, NINE_TENTHS) >= 0) return t;
+      }
+      return null;
+    },
+  },
+  {
+    key: "rec90", label: "recall &ge; 0.90",
+    note: "the highest threshold that clears the bar, so precision is as high as it can be",
+    pick: (pop) => {
+      let last = null;
+      for (let t = 0; t < BINS; t++) {
+        const m = metrics(pop, t);
+        if (rcmp(m.recall, NINE_TENTHS) >= 0) last = t;
+      }
+      return last;
+    },
+  },
+];
+
+// ---------------------------------------------------------- the four worlds
+// SOURCE is where the threshold is tuned. The three targets are the three
+// things people mean by "the data moved".
+const WP0 = betaWeights(5, 2);   // positives score high
+const WN0 = betaWeights(2, 5);   // negatives score low
+const SHIFT = 12;                // bins the negatives creep upward
+
+function worlds() {
+  return [
+    { key: "source", label: "source (validation)", note: "prevalence 10%",
+      pop: population(WP0, WN0, 100, 1000) },
+    { key: "prev", label: "prevalence shift", note: "10% &rarr; 2%, scores untouched",
+      pop: population(WP0, WN0, 20, 1000) },
+    { key: "score", label: "score shift", note: "negatives creep up 12 bins, prevalence untouched",
+      pop: population(WP0, shiftUp(WN0, SHIFT), 100, 1000) },
+    { key: "both", label: "both at once", note: "2% prevalence AND the score shift",
+      pop: population(WP0, shiftUp(WN0, SHIFT), 20, 1000) },
+  ];
+}
+
+// ---------------------------------------------------------------- the report
+function report() {
+  const W = worlds();
+  const src = W[0].pop;
+
+  // (1) transfer the NUMBER: tune on source, apply everywhere unchanged
+  const transferred = RULES.map((r) => {
+    const t = r.pick(src);
+    return {
+      key: r.key, label: r.label, note: r.note, t,
+      rows: W.map((w) => ({
+        world: w.key,
+        m: t === null ? null : metrics(w.pop, t),
+      })),
+    };
+  });
+
+  // (2) transfer the RULE: re-run the same rule on each target
+  const retuned = RULES.map((r) => ({
+    key: r.key, label: r.label,
+    rows: W.map((w) => {
+      const t = r.pick(w.pop);
+      return { world: w.key, t, m: t === null ? null : metrics(w.pop, t) };
+    }),
+  }));
+
+  return { worlds: W, transferred, retuned, rules: RULES, bins: BINS, shift: SHIFT };
+}
+
+// --------------------------------------------------- the label-free monitor
+// The only thing you can measure in production without labels is how often the
+// model says yes. This asks whether that number can tell the two shifts apart.
+//
+// Take the threshold tuned on source. Under the prevalence shift it fires at
+// some rate. Now find the prevalence, under the SCORE shift, that makes it
+// fire at EXACTLY the same rate - solving p/q from
+//     posRate = pi*TPR + (1-pi)*FPR
+// which is a rational equation with an exact rational answer. If such a
+// prevalence is a real probability, the two worlds are indistinguishable from
+// outside, and the question is only whether they behave the same.
+function ambiguity() {
+  const W = worlds();
+  const src = W[0].pop;
+  const t = RULES.find((r) => r.key === "prec90").pick(src);
+
+  const a = metrics(W[1].pop, t);                 // prevalence shift
+  const target = a.posRate;                       // the observable
+
+  // under the score-shifted score distributions, TPR and FPR at t are fixed
+  const shifted = population(WP0, shiftUp(WN0, SHIFT), 1, 2);
+  const sm = metrics(shifted, t);
+  const TPR = sm.tpr, FPR = sm.fpr;               // rationals, prevalence-free
+
+  // pi = (rate - FPR) / (TPR - FPR), all exact
+  const num = { n: target.n * FPR.d - FPR.n * target.d, d: target.d * FPR.d };
+  const den = { n: TPR.n * FPR.d - FPR.n * TPR.d, d: TPR.d * FPR.d };
+  const piN = num.n * den.d, piD = num.d * den.n;
+
+  // Use the EXACT rational prevalence, reduced - not a rounded decimal. Rounding
+  // it to five places leaves a residual of about 0.005% in the observable, and
+  // the whole point of the construction is that the two are indistinguishable,
+  // so the match has to be exact rather than close.
+  const g = gcd(piN, piD) || 1n;
+  const pn = piN / g, pd = piD / g;
+  const twin = population(WP0, shiftUp(WN0, SHIFT), Number(pn), Number(pd));
+  const b = metrics(twin, t);
+
+  return {
+    t,
+    exactPi: { n: pn, d: pd },
+    piDecimal: Number(pn) / Number(pd),
+    identical: rcmp(a.posRate, b.posRate) === 0,
+    a: { world: "prevalence shift, 10% &rarr; 2%", m: a },
+    b: { world: "score shift, prevalence " + ((Number(pn) / Number(pd)) * 100).toFixed(4) + "%", m: b },
+  };
+}
+
+// ------------------------------------------------------- prevalence invariance
+// The claim that carries the whole page: TPR and FPR at a fixed threshold do
+// not depend on prevalence AT ALL, exactly, because both are conditional on
+// the class. Everything else does. This returns the evidence rather than the
+// assertion.
+function invariance() {
+  const out = [];
+  for (const p of [1, 20, 100, 300, 500, 900]) {
+    const pop = population(WP0, WN0, p, 1000);
+    const m = metrics(pop, 120);
+    out.push({
+      prevalence: p / 1000,
+      tpr: m.tpr, fpr: m.fpr, precision: m.precision, f1: m.f1, youden: m.youden,
+      // reduced form, so two rationals that are equal LOOK equal
+      tprKey: reduce(m.tpr), fprKey: reduce(m.fpr), precKey: reduce(m.precision),
+    });
+  }
+  return out;
+}
+
+function gcd(a, b) { a = a < 0n ? -a : a; b = b < 0n ? -b : b; while (b) { const t = a % b; a = b; b = t; } return a; }
+function reduce(r) {
+  if (r.d === 0n) return "-";
+  const g = gcd(r.n, r.d) || 1n;
+  return (r.n / g) + "/" + (r.d / g);
+}
+
+const ENGINE = {
+  BINS, SHIFT, betaWeights, shiftUp, population, counts, metrics, rate, val, rcmp,
+  reduce, gcd, RULES, worlds, report, ambiguity, invariance, WP0, WN0,
+};
+if (typeof module !== "undefined" && module.exports) module.exports = ENGINE;
+
+// ===== ENGINE:END =====
+</script>
+
+<script>
+function showTab(name) {
+  for (const t of ["look", "und", "build"]) document.getElementById(t).classList.toggle("hidden", t !== name);
+  document.getElementById("tabLook").classList.toggle("tab-active", name === "look");
+  document.getElementById("tabUnd").classList.toggle("tab-active", name === "und");
+  document.getElementById("tabBuild").classList.toggle("tab-active", name === "build");
+}
+const el = (id) => document.getElementById(id);
+function table(id, head, rows) {
+  el(id).innerHTML =
+    "<tr>" + head.map((h) => "<th>" + h + "</th>").join("") + "</tr>" +
+    rows.map((r) => "<tr" + (r.cls ? ' class="' + r.cls + '"' : "") + ">" +
+      r.cells.map((c, i) => "<td" + (i === 0 ? ' class="txt"' : "") + ">" + c + "</td>").join("") + "</tr>").join("");
+}
+function selfCheckPanel(fn) {
+  const out = []; let n = 0, bad = 0;
+  const t = (label, cond, detail = "") => {
+    n += 1; if (!cond) bad += 1;
+    out.push('<div><span class="' + (cond ? "ok" : "warn") + '">' + (cond ? "PASS" : "FAIL") +
+      '</span><span>' + label + '</span><span class="m">' + detail + "</span></div>");
+  };
+  fn(t);
+  el("selfcheck").innerHTML =
+    '<p class="note" style="margin:0 0 8px"><b class="' + (bad ? "warn" : "ok") + '">' +
+    (n - bad) + " of " + n + " checks pass</b>" + (bad ? " &mdash; " + bad + " FAILED" : "") + ".</p>" + out.join("");
+}
+
+const R = ENGINE.report();
+const A = ENGINE.ambiguity();
+const f = (r, n) => (r && r.d ? (Number(r.n) / Number(r.d)).toFixed(n === undefined ? 4 : n) : "&mdash;");
+const pct = (r) => (r && r.d ? (Number(r.n) / Number(r.d) * 100).toFixed(2) + "%" : "&mdash;");
+const W = R.worlds;
+const wLabel = {};
+W.forEach((w) => { wLabel[w.key] = w.label; });
+
+const prec90 = R.transferred.find((x) => x.key === "prec90");
+el("kSrc").textContent = f(prec90.rows[0].m.precision);
+el("kPrev").textContent = f(prec90.rows[1].m.precision);
+el("kBoth").textContent = f(prec90.rows[3].m.precision);
+el("kTpr").innerHTML = "<code>" + ENGINE.reduce(prec90.rows[0].m.tpr) + "</code>";
+
+el("rule").innerHTML = R.transferred.map((r, i) =>
+  '<option value="' + i + '">' + r.label.replace(/&[a-z]+;/g, (m) =>
+    ({ "&minus;": "-", "&ge;": ">=" }[m] || m)) + "</option>").join("");
+
+function renderTransfer(i) {
+  const tr = R.transferred[i];
+  el("ruleNote").innerHTML = tr.t === null
+    ? "no threshold on this axis reaches the target"
+    : "bin <b>" + tr.t + "</b> (score " + (tr.t / (ENGINE.BINS - 1)).toFixed(3) + ") &mdash; " + tr.note;
+  table("tTransfer", ["world", "TPR", "FPR", "precision", "recall", "F1", "says yes"],
+    tr.rows.map((row, j) => ({
+      cls: j === 0 ? "here" : "",
+      cells: [wLabel[row.world] + (W[j].note ? ' <span class="note">' + W[j].note + "</span>" : ""),
+        f(row.m.tpr), f(row.m.fpr),
+        '<b class="' + (Number(row.m.precision.n) / Number(row.m.precision.d) < 0.5 ? "warn" : "ok") + '">' +
+          f(row.m.precision) + "</b>",
+        f(row.m.recall), f(row.m.f1), pct(row.m.posRate)],
+    })));
+}
+renderTransfer(R.transferred.findIndex((x) => x.key === "prec90"));
+el("rule").addEventListener("change", (e) => renderTransfer(parseInt(e.target.value, 10)));
+
+const INV = ENGINE.invariance();
+table("tInvar", ["prevalence", "TPR (reduced)", "FPR (reduced)", "precision", "F1", "Youden J"],
+  INV.map((r) => ({
+    cells: [(r.prevalence * 100).toFixed(1) + "%",
+      "<code>" + r.tprKey + "</code>", "<code>" + r.fprKey + "</code>",
+      "<b>" + f(r.precision) + "</b>", f(r.f1), f(r.youden)],
+  })));
+
+table("tRetune", ["tuning rule"].concat(W.map((w) => w.label)).concat(["portable under prevalence shift?"]),
+  R.retuned.map((tr) => {
+    const ts = tr.rows.map((r) => r.t);
+    const portable = ts[1] === ts[0];
+    return {
+      cls: portable && tr.key !== "fixed" ? "here" : "",
+      cells: [tr.label].concat(ts.map((t, j) =>
+        (t === null ? "&mdash;" : "bin " + t) + (j > 0 && t !== ts[0] ? ' <span class="warn">moved</span>' : "")))
+        .concat([tr.key === "fixed"
+          ? '<span class="pill">n/a &mdash; it cannot move</span>'
+          : portable ? '<span class="pill good">YES</span>' : '<span class="pill bad">no</span>']),
+    };
+  }));
+
+const rt = R.retuned.find((x) => x.key === "prec90");
+table("tCost", ["world", "re-tuned threshold", "precision achieved", "recall paid", "F1"],
+  rt.rows.map((row, j) => ({
+    cls: j === 3 ? "here" : "",
+    cells: [wLabel[row.world], "bin " + row.t,
+      '<b class="ok">' + f(row.m.precision) + "</b>",
+      '<b class="' + (Number(row.m.recall.n) / Number(row.m.recall.d) < 0.3 ? "bad" : "warn") + '">' +
+        f(row.m.recall) + "</b>",
+      f(row.m.f1)],
+  })));
+
+el("ambPi").innerHTML = "<code>" + ENGINE.reduce(A.exactPi) + "</code> = " +
+  (A.piDecimal * 100).toFixed(4) + "%";
+table("tAmbig", ["world", "positive rate (exact)", "positive rate", "precision", "recall"],
+  [A.a, A.b].map((c, j) => ({
+    cls: j === 1 ? "here" : "",
+    cells: [c.world, "<code>" + ENGINE.reduce(c.m.posRate) + "</code>", pct(c.m.posRate),
+      '<b class="' + (j ? "bad" : "warn") + '">' + f(c.m.precision) + "</b>", f(c.m.recall)],
+  })));
+
+selfCheckPanel((t) => {
+  const P = ENGINE.population, M = ENGINE.metrics, C = ENGINE.rcmp;
+
+  // --- the population is a declared integer object, not a draw
+  t("both class weight arrays are 201 integer bins",
+    ENGINE.WP0.length === 201 && ENGINE.WN0.length === 201 &&
+    ENGINE.WP0.every((x) => typeof x === "bigint") && ENGINE.WN0.every((x) => typeof x === "bigint"));
+  t("positives really do score higher than negatives", (() => {
+    const mean = (w) => w.reduce((s, x, k) => s + Number(x) * k, 0) / w.reduce((s, x) => s + Number(x), 0);
+    return mean(ENGINE.WP0) > mean(ENGINE.WN0);
+  })());
+  t("shifting a distribution preserves its total mass",
+    ENGINE.shiftUp(ENGINE.WN0, 12).reduce((s, x) => s + x, 0n) ===
+      ENGINE.WN0.reduce((s, x) => s + x, 0n));
+
+  // --- the confusion is exact
+  t("the four confusion cells sum to the whole population", (() => {
+    const p = P(ENGINE.WP0, ENGINE.WN0, 100, 1000);
+    for (const th of [0, 50, 120, 200]) {
+      const c = ENGINE.counts(p, th);
+      if (c.TP + c.FP + c.FN + c.TN !== p.q * p.WP * p.WN) return false;
+    }
+    return true;
+  })());
+  t("at threshold 0 everything is predicted positive", (() => {
+    const m = M(P(ENGINE.WP0, ENGINE.WN0, 100, 1000), 0);
+    return m.FN === 0n && m.TN === 0n && C(m.recall, { n: 1n, d: 1n }) === 0;
+  })());
+
+  // --- the identity, and the control beside it
+  t("TPR is IDENTICAL across six prevalences from 0.1% to 90%",
+    new Set(INV.map((r) => r.tprKey)).size === 1, INV[0].tprKey);
+  t("...and so is FPR", new Set(INV.map((r) => r.fprKey)).size === 1, INV[0].fprKey);
+  t("CONTROL: precision over the same six rows is NOT constant",
+    new Set(INV.map((r) => r.precKey)).size === 6);
+  t("CONTROL: and it moves by more than fifty-fold across them",
+    Number(INV[5].precision.n) / Number(INV[5].precision.d) >
+      50 * Number(INV[0].precision.n) / Number(INV[0].precision.d));
+
+  // --- the headline drop
+  t("precision>=0.90 clears 0.90 on the source it was tuned on",
+    C(prec90.rows[0].m.precision, { n: 9n, d: 10n }) >= 0, f(prec90.rows[0].m.precision));
+  t("the same threshold falls under 0.65 at 2% prevalence",
+    C(prec90.rows[1].m.precision, { n: 65n, d: 100n }) < 0, f(prec90.rows[1].m.precision));
+  t("CONTROL: while its TPR and FPR are unchanged to the last bit",
+    C(prec90.rows[0].m.tpr, prec90.rows[1].m.tpr) === 0 &&
+    C(prec90.rows[0].m.fpr, prec90.rows[1].m.fpr) === 0);
+
+  // --- portability
+  t("exactly two of the five rules keep their threshold under a prevalence shift",
+    R.retuned.filter((x) => x.key !== "fixed" && x.rows[1].t === x.rows[0].t).length === 2);
+  t("...and they are Youden and recall>=0.90",
+    R.retuned.filter((x) => x.key !== "fixed" && x.rows[1].t === x.rows[0].t)
+      .map((x) => x.key).sort().join(",") === "rec90,youden");
+  t("CONTROL: maximise-F1 and precision>=0.90 both move",
+    R.retuned.find((x) => x.key === "maxf1").rows[1].t !== R.retuned.find((x) => x.key === "maxf1").rows[0].t &&
+    R.retuned.find((x) => x.key === "prec90").rows[1].t !== R.retuned.find((x) => x.key === "prec90").rows[0].t);
+
+  // --- the cost of re-tuning
+  t("re-tuning restores >=0.90 precision in every world",
+    rt.rows.every((r) => C(r.m.precision, { n: 9n, d: 10n }) >= 0));
+  t("and in the worst world the recall it pays is under 2%",
+    C(rt.rows[3].m.recall, { n: 2n, d: 100n }) < 0, f(rt.rows[3].m.recall));
+
+  // --- the ambiguity, as an exact equality
+  t("the two indistinguishable worlds have the EXACT same positive rate",
+    A.identical && C(A.a.m.posRate, A.b.m.posRate) === 0, ENGINE.reduce(A.a.m.posRate));
+  t("...and their precisions differ by more than twenty-fold",
+    Number(A.a.m.precision.n) / Number(A.a.m.precision.d) >
+      20 * Number(A.b.m.precision.n) / Number(A.b.m.precision.d));
+  t("the solved prevalence is a real probability", A.piDecimal > 0 && A.piDecimal < 1);
+
+  // --- determinism
+  t("a repeated report gives identical thresholds",
+    JSON.stringify(ENGINE.report().retuned.map((x) => x.rows.map((r) => r.t))) ===
+    JSON.stringify(R.retuned.map((x) => x.rows.map((r) => r.t))));
+});
+
+</script>
+</body>
+</html>

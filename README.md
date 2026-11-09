@@ -80,6 +80,13 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [MachineLearningFromZero · Day 74 — Two groups, one model](https://dev48.infy.uk/ml/day74-group-fairness-impossibility.html) — `day74-group-fairness-impossibility.html`
 - [MachineLearningFromZero · Day 75 — What a generalization bound guarantees](https://dev48.infy.uk/ml/day75-generalization-bounds.html) — `day75-generalization-bounds.html`
 - [MachineLearningFromZero · Day 76 — What epsilon actually buys](https://dev48.infy.uk/ml/day76-differential-privacy.html) — `day76-differential-privacy.html`
+- [MachineLearningFromZero · Day 77 — Which metric can an honest model win?](https://dev48.in/ml/day77-proper-scoring-rules.html) — `day77-proper-scoring-rules.html`
+- [MachineLearningFromZero · Day 78 — Preprocessing leakage](https://dev48.in/ml/day78-preprocessing-leakage.html) — `day78-preprocessing-leakage.html`
+- [MachineLearningFromZero · Day 79 — Threshold transfer](https://dev48.in/ml/day79-threshold-transfer.html) — `day79-threshold-transfer.html`
+- [MachineLearningFromZero · Day 80 — Simpson's paradox in model evaluation](https://dev48.in/ml/day80-simpsons-paradox.html) — `day80-simpsons-paradox.html`
+- [MachineLearningFromZero · Day 81 — Shapley values](https://dev48.in/ml/day81-shapley-values.html) — `day81-shapley-values.html`
+- [MachineLearningFromZero · Day 82 — Isotonic regression](https://dev48.in/ml/day82-isotonic-regression.html) — `day82-isotonic-regression.html`
+- [MachineLearningFromZero · Day 83 — Partial Pooling (Hierarchical Models)](https://dev48.in/ml/day83-partial-pooling.html) — `day83-partial-pooling.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

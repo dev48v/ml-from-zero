@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MLFromZero &middot; Day 83 &mdash; Partial Pooling (Hierarchical Models)</title>
+<style>
+  :root { --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f8fafc; --accent:#9333ea; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Inter",system-ui,sans-serif; margin:0; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } }
+  header { background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .kicker { font-size:12px; font-weight:800; letter-spacing:.16em; color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:19px; line-height:1.5; font-weight:900; margin:0 0 12px; }
+  @media (min-width:768px){ h1 { font-size:22px; } }
+  h2 { font-size:24px; font-weight:900; margin:0 0 8px; }
+  h3 { font-size:19px; font-weight:800; margin:20px 0 6px; }
+  p { line-height:1.6; margin:0 0 12px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  .tabs button { font:inherit; font-size:14px; font-weight:600; padding:8px 20px; border:0; border-radius:8px; background:#f1f5f9; cursor:pointer; }
+  .tabs button.tab-active { background:#0f172a; color:#fff; }
+  .hidden { display:none; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.12); padding:20px; min-width:0; }
+  .stack > * + * { margin-top:20px; }
+  .grid2 { display:grid; gap:20px; grid-template-columns:minmax(0,1fr); }
+  @media (min-width:900px){ .grid2 { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }
+  .lbl { font-size:12px; font-weight:800; letter-spacing:.1em; color:#64748b; margin:0 0 8px; }
+  .big { font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; margin:0; }
+  .note { font-size:12.5px; color:#475569; margin:8px 0 0; line-height:1.55; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:11.5px; overflow-x:auto; line-height:1.35; margin:0; white-space:pre; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  .tblwrap { overflow-x:auto; }
+  table.num { border-collapse:collapse; width:100%; min-width:560px; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  table.num td.txt { text-align:left; }
+  tr.here td { background:#f0fdfa; font-weight:700; }
+  tr.dim td { color:#94a3b8; }
+  .pill { display:inline-block; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:800; }
+  .pill.good { background:#dcfce7; color:#166534; }
+  .pill.bad { background:#fee2e2; color:#991b1b; }
+  .ok { color:#166534; font-weight:800; }
+  .warn { color:#991b1b; font-weight:800; }
+  #selftest div { display:grid; grid-template-columns:52px 1fr; gap:8px; font-size:12.5px; padding:3px 0; border-top:1px solid var(--line); align-items:start; }
+  #selftest div span.m { grid-column:2; font-size:11.5px; color:#64748b; }
+  .ctl { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 12px; }
+  .ctl input[type=range] { flex:1; min-width:150px; }
+  .ctl input[type=number] { width:74px; font:inherit; padding:5px 7px; border:1px solid var(--line); border-radius:7px; }
+  .bar { height:10px; border-radius:999px; background:#e2e8f0; overflow:hidden; margin:6px 0 0; }
+  .bar i { display:block; height:100%; background:linear-gradient(90deg,#9333ea,#38bdf8); }
+  .step { font-size:11px; font-weight:800; letter-spacing:.14em; color:var(--accent); margin:0; }
+  footer { border-top:1px solid var(--line); margin-top:28px; padding:18px 0 40px; font-size:13px; color:#475569; }
+  footer a { color:var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">MLFROMZERO &middot; DAY 83</p>
+    <h1>
+      Partial pooling &mdash; the loudest group on your leaderboard is almost always the smallest one,
+      and shrinking it toward the average is not a fudge, it is the estimator with less total error.
+    </h1>
+    <div class="tabs">
+      <button id="tabLook" class="tab-active" onclick="showTab('look')">Look</button>
+      <button id="tabUnd" onclick="showTab('und')">Understand</button>
+      <button id="tabBuild" onclick="showTab('build')">Build</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<section id="look" class="stack">
+  <div class="card">
+    <h2>Forty groups, three estimators, one scoreboard</h2>
+    <p>
+      Forty shops. Each has a true quality score we are trying to recover, and a
+      handful &mdash; or several hundred &mdash; of rated deliveries to recover it
+      from. One shop has <b>1</b> rating. One has <b>860</b>. The data is
+      synthetic and seeded, which is the whole point: the <b>true</b> score of every
+      shop is known exactly, so each estimator can be scored against it rather than
+      against another estimate.
+    </p>
+    <div class="grid2">
+      <div>
+        <p class="lbl">TOTAL SQUARED ERROR vs the true scores</p>
+        <div class="tblwrap"><table class="num" id="tScoreTop"></table></div>
+        <p class="note" id="scoreNote"></p>
+      </div>
+      <div>
+        <p class="lbl">THE FITTED POPULATION</p>
+        <div class="tblwrap"><table class="num" id="tFitted"></table></div>
+        <p class="note">
+          Nothing here was told the truth. &sigma;&#770;&sup2; and &tau;&#770;&sup2; are
+          estimated from the same 4,345 observations the estimates are built from.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Watch one group shrink</h2>
+    <p>
+      Shop <b>#0</b> is the spotlight. Its true score sits well above the population
+      average, so it is exactly the kind of group a leaderboard loves. Drag its
+      sample size down and watch the estimator stop believing it.
+    </p>
+    <div class="ctl">
+      <label for="sN" style="font-size:13px;font-weight:700;min-width:140px">ratings for shop #0</label>
+      <input id="sN" type="range" min="0" max="100" value="0" />
+      <input id="nOut" type="number" readonly />
+    </div>
+    <div class="ctl">
+      <label for="sTau" style="font-size:13px;font-weight:700;min-width:140px">between-shop spread &tau;</label>
+      <input id="sTau" type="range" min="2" max="200" value="40" />
+      <input id="tauOut" type="number" readonly />
+    </div>
+    <div class="grid2">
+      <div>
+        <p class="lbl">SHRINKAGE WEIGHT &lambda; FOR SHOP #0</p>
+        <p class="big" id="bigLam">&mdash;</p>
+        <div class="bar"><i id="barLam" style="width:0%"></i></div>
+        <p class="note" id="lamNote"></p>
+      </div>
+      <div>
+        <p class="lbl">WHERE THE ESTIMATE LANDS</p>
+        <div class="tblwrap"><table class="num" id="tDemo"></table></div>
+        <p class="note" id="demoNote"></p>
+      </div>
+    </div>
+    <div class="tblwrap" style="margin-top:14px"><table class="num" id="tDemoAll"></table></div>
+  </div>
+
+  <div class="card">
+    <h2>Every group, side by side</h2>
+    <p>
+      Sorted by sample size. Read the <code>&lambda;</code> column against the
+      <code>n</code> column &mdash; that is the entire method in one glance.
+    </p>
+    <div class="tblwrap"><table class="num" id="tGroups"></table></div>
+    <p class="note" id="groupNote"></p>
+  </div>
+</section>
+
+<section id="und" class="stack hidden">
+
+  <div class="card">
+    <p class="step">STEP 1 OF 10</p>
+    <h2>Two extremes, and neither one is right</h2>
+    <p>
+      When data arrives in groups &mdash; shops, schools, patients, A/B variants,
+      servers &mdash; there are two obvious things to do and they are both wrong.
+      <b>Complete pooling</b> throws the group labels away and gives every group
+      the same global average; it is beautifully stable and it is blind to real
+      differences that exist. <b>No pooling</b> gives every group its own average
+      and nothing else; it respects every difference, including the ones that are
+      pure noise. The first answer has no variance and plenty of bias; the second
+      has no bias and an enormous amount of variance. The table below scores both
+      against the truth on the seeded data, and the interesting column is the last
+      one, because neither extreme is anywhere near it.
+    </p>
+    <div class="tblwrap"><table class="num" id="tExtremes"></table></div>
+    <p class="note" id="extremeNote"></p>
+  </div>
+
+  <div class="card">
+    <p class="step">STEP 2 OF 10</p>
+    <h2>A small group's average is mostly noise</h2>
+    <p>
+      The average of <code>n</code> observations, each carrying noise of variance
+      <code>&sigma;&sup2;</code>, has variance <code>&sigma;&sup2;/n</code>. That
+      is the single most useful fact in this whole topic. With
+      <code>&sigma; = 12</code>, a shop with one rating has a sample mean whose
+      standard deviation is <b>12 points</b> &mdash; wider than the entire spread
+      of true shop quality. A shop with 100 ratings has a standard deviation of
+      1.2 points. So the two numbers sitting next to each other in your leaderboard
+      are not the same kind of number at all: one is a measurement, the other is
+      very nearly a coin flip, and sorting them together treats them as equals.
+    </p>
+    <div class="tblwrap"><table class="num" id="tVar"></table></div>
+  </div>
+
+  <div class="card">
+    <p class="step">STEP 3 OF 10</p>
+    <h2>The groups are not strangers &mdash; they came from a population</h2>
+    <p>
+      Here is the modelling step everything else hangs on. Instead of treating the
+      forty true scores as forty unrelated unknowns, treat them as forty draws from
+      a <b>population of shops</b> with a mean <code>&mu;</code> and a spread
+      <code>&tau;</code>. That single assumption is what makes the other 39 shops
+      informative about this one: before you see any of shop #7's ratings you
+      already know it is probably somewhere near <code>&mu;</code>, because every
+      shop is. This is a <b>prior</b>, but an unusual one, because it is estimated
+      from the data itself rather than asserted &mdash; which is why the method is
+      called empirical Bayes. The observed spread of the group averages is bigger
+      than <code>&tau;</code>, because it contains both real differences and
+      sampling noise, and separating those two is step 5.
+    </p>
+    <div class="tblwrap"><table class="num" id="tPop"></table></div>
+    <p class="note" id="popNote"></p>
+  </div>
+
+  <div class="card">
+    <p class="step">STEP 4 OF 10</p>
+    <h2>The shrinkage weight is a ratio of two variances</h2>
+    <p>
+      Put the two previous steps together. You have a noisy measurement of shop
+      <code>g</code> with variance <code>&sigma;&sup2;/n<sub>g</sub></code>, and a
+      population that says the answer is probably near <code>&mu;</code>, with
+      spread <code>&tau;&sup2;</code>. The Gaussian posterior mean is the
+      precision-weighted average of the two, and it collapses into one line:
+      <code>&lambda;<sub>g</sub> = &tau;&sup2; / (&tau;&sup2; + &sigma;&sup2;/n<sub>g</sub>)</code>,
+      then <code>estimate = &lambda;<sub>g</sub> &middot; &#375;<sub>g</sub> + (1 &minus; &lambda;<sub>g</sub>) &middot; &mu;</code>.
+      Read it as a signal-to-total-noise ratio: &lambda; is the share of the
+      observed spread that is real. It is bounded in [0, 1] automatically, it goes
+      to 1 as <code>n</code> grows, and it goes to 0 as the group gets small or the
+      population gets tight &mdash; so complete pooling and no pooling are not
+      rivals of this method, they are its two endpoints.
+    </p>
+    <div class="tblwrap"><table class="num" id="tLam"></table></div>
+    <p class="note">
+      &lambda; for &sigma; = 12, across group sizes and population spreads. Every
+      entry is strictly between 0 and 1, strictly increasing left to right and
+      strictly increasing top to bottom.
+    </p>
+  </div>
+
+  <div class="card">
+    <p class="step">STEP 5 OF 10</p>
+    <h2>You have to estimate both variances, and that is the hard part</h2>
+    <p>
+      <code>&sigma;&sup2;</code> is easy: pool the within-group deviations and
+      divide by <code>N &minus; G</code> degrees of freedom &mdash; the
+      one-rating shops contribute nothing to it, which is correct, because a single
+      point has no spread. <code>&tau;&sup2;</code> is the hard one, because you
+      never observe the true scores, only noisy versions of them. The trick is a
+      method-of-moments identity: the weighted scatter of the group averages,
+      <code>Q</code>, has an expected value of <code>G &minus; 1</code> when all the
+      groups are truly identical, so any excess over <code>G &minus; 1</code> is
+      attributable to real between-group spread. Subtract, rescale, and clamp at
+      zero. That clamp is not decoration: a sample can genuinely look
+      <i>less</i> spread out than chance alone would predict, and in that case the
+      honest answer is <code>&tau;&#770;&sup2; = 0</code>, which collapses the method
+      to complete pooling.
+    </p>
+    <div class="tblwrap"><table class="num" id="tEst"></table></div>
+    <p class="note" id="estNote"></p>
+  </div>
+
+  <div class="card">
+    <p class="step">STEP 6 OF 10</p>
+    <h2>What that does to one group, measured</h2>
+    <p>
+      Take shop #0 &mdash; genuinely above average &mdash; and vary nothing except
+      how many ratings it has. The population parameters are re-estimated each time,
+      so this is not an illusion produced by holding something fixed. With one
+      rating the estimator keeps under a tenth of what the shop said about itself;
+      with several hundred it keeps essentially all of it. Notice there is no
+      threshold and no rule of thumb anywhere: the method does not decide a group
+      is "too small", it continuously discounts it in proportion to how much of its
+      number is noise. That is the difference between shrinkage and the usual fix of
+      filtering out groups below some arbitrary minimum sample size.
+    </p>
+    <div class="tblwrap"><table class="num" id="tSweep"></table></div>
+    <p class="note" id="sweepNote"></p>
+  </div>
+
+  <div class="card">
+    <p class="step">STEP 7 OF 10</p>
+    <h2>The scoreboard, over many seeded worlds</h2>
+    <p>
+      One world could be a fluke, so here is the same comparison repeated over
+      independently seeded worlds: new true scores, new ratings, same estimators.
+      Partial pooling is not winning by a nose. It also is not winning
+      <i>every</i> time against no pooling, and that matters &mdash; the guarantee
+      is about expected total error, not about every individual draw, and a page
+      that claimed otherwise would be lying to you.
+    </p>
+    <div class="tblwrap"><table class="num" id="tMC"></table></div>
+    <p class="note" id="mcNote"></p>
+  </div>
+
+  <div class="card">
+    <p class="step">STEP 8 OF 10</p>
+    <h2>Not a hack: this is the estimator that dominates</h2>
+    <p>
+      In 1961 James and Stein proved something that was genuinely unwelcome at the
+      time. For a normal mean in three or more dimensions, the obvious estimator
+      &mdash; use each group's own average, which is unbiased and is the maximum
+      likelihood estimate &mdash; is <b>inadmissible</b>. A shrunken estimator has
+      lower expected total squared error <i>for every possible set of true means</i>,
+      with no exception, no prior to be right about and no regularity condition to
+      check. That is a strictly stronger statement than "usually better". The
+      version below is the classical one with equal group sizes and a shrink factor
+      <code>c = 1 &minus; (G&minus;3)&sigma;&sup2;/n / &Sigma;(&#375;&minus;&mu;&#770;)&sup2;</code>,
+      and the table below scores it against the obvious estimator on sixty
+      independently seeded worlds.
+    </p>
+    <div class="tblwrap"><table class="num" id="tJS"></table></div>
+    <p class="note" id="jsNote"></p>
+  </div>
+
+  <div class="card">
+    <p class="step">STEP 9 OF 10</p>
+    <h2>Error moved out of variance and into bias, on purpose</h2>
+    <p>
+      This is the part that makes people uncomfortable, so it is worth measuring
+      rather than asserting. Fix the forty true scores once, then redraw only the
+      ratings, many times. For the one-rating shop, the no-pooling estimate is
+      almost perfectly <b>unbiased</b> and almost perfectly <b>useless</b>: its
+      error is nearly all variance. Partial pooling introduces a real, visible,
+      systematic bias &mdash; it pulls that shop toward the middle every single
+      time, and the bias does not average away &mdash; and in exchange the variance
+      collapses by two orders of magnitude. The total is smaller. Being unbiased
+      was never the objective; being close was.
+    </p>
+    <div class="tblwrap"><table class="num" id="tBias"></table></div>
+    <p class="note" id="biasNote"></p>
+  </div>
+
+  <div class="card">
+    <p class="step">STEP 10 OF 10</p>
+    <h2>The leaderboard lesson, and when this hurts</h2>
+    <p>
+      Rank the shops by their raw averages and pick the winner. Now rank them by the
+      shrunken estimates and pick again. Both lists are built from the same data,
+      and one of them keeps nominating shops with two ratings. The raw top five is
+      dominated by tiny groups not because tiny groups are good, but because tiny
+      groups have the widest distribution of outcomes and a maximum picks from the
+      tails.
+    </p>
+    <div class="tblwrap"><table class="num" id="tPick"></table></div>
+    <p class="note" id="pickNote"></p>
+    <h3>And the honest caveat</h3>
+    <p>
+      Partial pooling buys lower <i>total</i> error by accepting higher error on
+      some individual groups. A group that is genuinely extreme gets dragged toward
+      the middle, and if your decision is about that one group specifically &mdash;
+      a safety alert, a fraud case, a single hospital's mortality rate &mdash; the
+      shrunken number is the wrong one to argue from. The pooling assumption also
+      has to be true: it says the groups are exchangeable draws from one population,
+      and if they are not, shrinking toward a mean that no group belongs to makes
+      things worse. The table below shows the groups where partial pooling is
+      <i>beaten</i> by no pooling on this seed, and there are always some.
+    </p>
+    <div class="tblwrap"><table class="num" id="tLose"></table></div>
+    <p class="note" id="loseNote"></p>
+  </div>
+</section>
+
+<section id="build" class="stack hidden">
+  <div class="card">
+    <h2>The whole method, in one function</h2>
+    <p>
+      Everything above runs through this. No matrices, no sampler, no optimiser
+      &mdash; a ratio of two variances and a weighted average.
+    </p>
+    <pre id="codeShrink"></pre>
+  </div>
+  <div class="card">
+    <h2>Estimating the between-group variance</h2>
+    <p>
+      The one piece that is not obvious. <code>Q</code> is the weighted scatter of
+      the group averages; its expected value under "all groups identical" is
+      <code>G &minus; 1</code>; the excess is the real spread.
+    </p>
+    <pre id="codeTau"></pre>
+  </div>
+  <div class="card">
+    <h2>Putting it together</h2>
+    <pre id="codeFit"></pre>
+  </div>
+  <div class="card">
+    <h2>Self-check</h2>
+    <p class="note" style="margin:0 0 10px">
+      Running in your browser now, against the same engine as every table above.
+    </p>
+    <div id="selftest"></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p style="margin:0">
+      MLFromZero &middot; Day 83 &middot; Partial pooling (hierarchical models).
+      Tomorrow: what happens when the groups are not exchangeable at all.
+    </p>
+  </div>
+</footer>
+</div>
+
+<script>
+// ===== ENGINE:BEGIN =====
+// ======================================================================
+// PARTIAL POOLING / HIERARCHICAL SHRINKAGE
+//
+// Grouped data. Each group g has n_g observations and an unknown true mean
+// theta_g. Three estimators:
+//
+//   complete pooling : every group gets the global mean      (all bias)
+//   no pooling       : every group gets its own mean         (all variance)
+//   partial pooling  : lambda_g * ybar_g + (1-lambda_g) * mu
+//
+// with lambda_g = tau^2 / (tau^2 + sigma^2/n_g), the share of a group's
+// observed deviation that is REAL rather than sampling noise.
+//
+// Both variances are estimated from the same data (empirical Bayes). The
+// data here is synthetic and generated from a seeded LCG, so the true
+// theta_g are known exactly and every estimator is scored against them.
+// There is no Math.random anywhere in this file.
+// ======================================================================
+const ENGINE = (() => {
+
+  // ------------------------------------------------------ seeded noise
+  // A linear congruential generator. Deterministic, so every number on
+  // this page reproduces exactly from its seed, in any browser.
+  function lcg(seed) {
+    let s = (seed >>> 0) || 1;
+    return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return (s + 0.5) / 4294967296; };
+  }
+
+  // Box-Muller: two uniforms in, one standard normal out.
+  function gauss(rnd) {
+    const u = rnd(), v = rnd();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  // Wildly uneven group sizes - five shops with a single rating, one with
+  // 860. This spread is the entire reason partial pooling has anything to
+  // do: with equal sizes every lambda would be the same number.
+  const SIZES = [
+    1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4, 5, 6, 7, 8, 9, 11,
+    13, 16, 20, 25, 31, 39, 48, 60, 75, 94, 117, 146, 182, 227, 283, 353, 441, 551, 688, 860
+  ];
+
+  const MU = 50, TAU = 4, SIGMA = 12, SEED = 20260083;
+
+  // The true group means are drawn from their OWN stream, so changing a
+  // group's sample size cannot disturb them. That is what makes the sample
+  // size slider an honest experiment.
+  function trueMeans(G, mu, tau, seed) {
+    const r = lcg(seed), t = [];
+    for (let g = 0; g < G; g++) t.push(mu + tau * gauss(r));
+    return t;
+  }
+
+  function sample(theta, sizes, sigma, seed) {
+    const r = lcg(seed), d = [];
+    for (let g = 0; g < theta.length; g++) {
+      const a = [];
+      for (let i = 0; i < sizes[g]; i++) a.push(theta[g] + sigma * gauss(r));
+      d.push(a);
+    }
+    return d;
+  }
+
+  function world(opt) {
+    opt = opt || {};
+    const sizes = opt.sizes || SIZES;
+    const mu = opt.mu === undefined ? MU : opt.mu;
+    const tau = opt.tau === undefined ? TAU : opt.tau;
+    const sigma = opt.sigma === undefined ? SIGMA : opt.sigma;
+    const seed = opt.seed === undefined ? SEED : opt.seed;
+    const theta = trueMeans(sizes.length, mu, tau, seed);
+    return { theta, data: sample(theta, sizes, sigma, opt.dataSeed === undefined ? seed : opt.dataSeed),
+             sizes, mu, tau, sigma, seed };
+  }
+
+  // ----------------------------------------------------- group summary
+  // sigma^2 is pooled WITHIN groups on N - G degrees of freedom. A group
+  // of size 1 contributes 0 to the sum and 0 to the df, which is right: a
+  // single point tells you nothing about spread.
+  function stats(data) {
+    const G = data.length, n = [], ybar = [];
+    let ss = 0, df = 0, N = 0, tot = 0;
+    for (let g = 0; g < G; g++) {
+      const a = data[g];
+      if (!a.length) throw new Error("every group needs at least one observation");
+      let s = 0;
+      for (const v of a) { if (!Number.isFinite(v)) throw new Error("observations must be finite"); s += v; }
+      const m = s / a.length;
+      let q = 0;
+      for (const v of a) q += (v - m) * (v - m);
+      ss += q; df += a.length - 1; N += a.length; tot += s;
+      n.push(a.length); ybar.push(m);
+    }
+    if (df <= 0) throw new Error("at least one group must have 2 or more observations");
+    return { G, n, ybar, N, df, grand: tot / N, sigma2: ss / df };
+  }
+
+  // ------------------------------------------------ THE WHOLE METHOD
+  // lambda is a ratio of two variances: how much of what this group is
+  // telling you is signal (tau^2) against everything you heard
+  // (tau^2 + sigma^2/n). Bounded in [0,1] by construction - you cannot
+  // get a weight outside the interval out of a ratio of two
+  // non-negative numbers whose denominator contains the numerator.
+  function shrink(ybar, n, sigma2, tau2, mu) {
+    if (!(n > 0)) throw new Error("n must be positive");
+    if (sigma2 < 0 || tau2 < 0) throw new Error("variances must be non-negative");
+    const denom = tau2 + sigma2 / n;
+    const lambda = denom > 0 ? tau2 / denom : 1;   // no noise at all => trust the group
+    return { lambda, est: lambda * ybar + (1 - lambda) * mu };
+  }
+
+  // ------------------------------- the between-group variance, by moments
+  // Q is the scatter of the group means around the fixed-effect mean,
+  // weighted by each group's precision. If every group truly had the same
+  // mean, Q would be a chi-square with G-1 degrees of freedom, so E[Q] =
+  // G-1. Anything above that is real spread. The clamp at zero is load
+  // bearing: a sample can look TIGHTER than chance predicts, and the
+  // honest answer there is zero, which collapses to complete pooling.
+  function estimateTau2(n, ybar, sigma2) {
+    const G = n.length;
+    if (G < 2) throw new Error("need at least two groups");
+    const w = n.map((v) => v / sigma2);
+    let Sw = 0, Sw2 = 0, swy = 0;
+    for (let g = 0; g < G; g++) { Sw += w[g]; Sw2 += w[g] * w[g]; swy += w[g] * ybar[g]; }
+    const yFE = swy / Sw;
+    let Q = 0;
+    for (let g = 0; g < G; g++) Q += w[g] * (ybar[g] - yFE) * (ybar[g] - yFE);
+    const denom = Sw - Sw2 / Sw;
+    return { tau2: Math.max(0, (Q - (G - 1)) / denom), Q, yFE, expectedQ: G - 1 };
+  }
+
+  // ------------------------------------------------------- full fit
+  function fit(data) {
+    const st = stats(data);
+    const t = estimateTau2(st.n, st.ybar, st.sigma2);
+    const tau2 = t.tau2, s2 = st.sigma2;
+
+    // the population mean is itself precision weighted - a group with one
+    // rating should barely move it
+    const u = st.n.map((n) => 1 / (tau2 + s2 / n));
+    let Su = 0, suy = 0;
+    for (let g = 0; g < st.G; g++) { Su += u[g]; suy += u[g] * st.ybar[g]; }
+    const mu = suy / Su;
+
+    const lambda = [], partial = [];
+    for (let g = 0; g < st.G; g++) {
+      const r = shrink(st.ybar[g], st.n[g], s2, tau2, mu);
+      lambda.push(r.lambda); partial.push(r.est);
+    }
+    return { st, sigma2: s2, tau2, Q: t.Q, expectedQ: t.expectedQ, mu, lambda, partial,
+             noPool: st.ybar.slice(), complete: st.ybar.map(() => st.grand) };
+  }
+
+  // ------------------------------------------------------- scoring
+  function tse(est, theta) {
+    if (est.length !== theta.length) throw new Error("length mismatch");
+    let s = 0;
+    for (let g = 0; g < theta.length; g++) s += (est[g] - theta[g]) * (est[g] - theta[g]);
+    return s;
+  }
+
+  // The classical James-Stein estimator, equal group sizes. c is the
+  // shrink factor; the positive part is what makes it admissible-ish.
+  function jamesStein(ybar, varOfMean) {
+    const G = ybar.length;
+    if (G < 4) throw new Error("James-Stein needs 4 or more groups to beat the MLE");
+    let m = 0;
+    for (const y of ybar) m += y;
+    m /= G;
+    let ss = 0;
+    for (const y of ybar) ss += (y - m) * (y - m);
+    const c = ss > 0 ? Math.max(0, 1 - ((G - 3) * varOfMean) / ss) : 0;
+    return { c, mu: m, est: ybar.map((y) => m + c * (y - m)) };
+  }
+
+  // ------------------------------------------------- repeated worlds
+  // Memoised, because the self-check and three tables all want the same
+  // sweep and each one costs a few million seeded normals.
+  const _mc = {};
+  function sweep(S, opt) {
+    opt = opt || {};
+    const key = S + "|" + JSON.stringify(opt);
+    if (_mc[key]) return _mc[key];
+    const sizes = opt.sizes || SIZES;
+    const out = { S, complete: [], noPool: [], partial: [], tau2: [], sigma2: [],
+                  winN: 0, winC: 0, winBoth: 0 };
+    for (let s = 0; s < S; s++) {
+      const w = world({ sizes, mu: MU, tau: opt.tau === undefined ? TAU : opt.tau,
+                        sigma: SIGMA, seed: 11 + s * 7919, dataSeed: 991 + s * 104729 });
+      const f = fit(w.data);
+      const c = tse(f.complete, w.theta), n = tse(f.noPool, w.theta), p = tse(f.partial, w.theta);
+      out.complete.push(c); out.noPool.push(n); out.partial.push(p);
+      out.tau2.push(f.tau2); out.sigma2.push(f.sigma2);
+      if (p < n) out.winN++;
+      if (p < c) out.winC++;
+      if (p < n && p < c) out.winBoth++;
+    }
+    _mc[key] = out;
+    return out;
+  }
+
+  // Fix the true means ONCE and redraw only the observations. This is the
+  // only setup in which "bias" means anything - average over new true
+  // means as well and the shrinkage is unbiased by construction, which
+  // would hide the trade entirely.
+  const _bv = {};
+  function biasVariance(S) {
+    if (_bv[S]) return _bv[S];
+    const theta = trueMeans(SIZES.length, MU, TAU, SEED);
+    const keys = ["noPool", "partial", "complete"];
+    const err = {};
+    for (const k of keys) err[k] = SIZES.map(() => []);
+    for (let s = 0; s < S; s++) {
+      const f = fit(sample(theta, SIZES, SIGMA, 777 + s * 104729));
+      for (const k of keys) for (let g = 0; g < SIZES.length; g++) err[k][g].push(f[k][g] - theta[g]);
+    }
+    const summary = {};
+    for (const k of keys) {
+      summary[k] = err[k].map((e) => {
+        let m = 0;
+        for (const v of e) m += v;
+        m /= e.length;
+        let v2 = 0;
+        for (const v of e) v2 += (v - m) * (v - m);
+        v2 /= e.length;
+        return { bias: m, bias2: m * m, variance: v2, mse: m * m + v2 };
+      });
+    }
+    _bv[S] = { theta, summary, S };
+    return _bv[S];
+  }
+
+  const order = (a, desc) => a.map((v, i) => i).sort((x, y) => (desc ? a[y] - a[x] : a[x] - a[y]));
+  const mean = (a) => { let s = 0; for (const v of a) s += v; return s / a.length; };
+
+  return { lcg, gauss, SIZES, MU, TAU, SIGMA, SEED, trueMeans, sample, world, stats,
+           shrink, estimateTau2, fit, tse, jamesStein, sweep, biasVariance, order, mean };
+})();
+// ===== ENGINE:END =====
+</script>
+
+<script>
+function showTab(name) {
+  for (const t of ["look", "und", "build"]) document.getElementById(t).classList.toggle("hidden", t !== name);
+  document.getElementById("tabLook").classList.toggle("tab-active", name === "look");
+  document.getElementById("tabUnd").classList.toggle("tab-active", name === "und");
+  document.getElementById("tabBuild").classList.toggle("tab-active", name === "build");
+}
+const el = (id) => document.getElementById(id);
+function table(id, head, rows) {
+  el(id).innerHTML =
+    "<tr>" + head.map((h) => "<th>" + h + "</th>").join("") + "</tr>" +
+    rows.map((r) => "<tr" + (r.cls ? ' class="' + r.cls + '"' : "") + ">" +
+      r.cells.map((c, i) => "<td" + (i === 0 ? ' class="txt"' : "") + ">" + c + "</td>").join("") + "</tr>").join("");
+}
+function selfCheckPanel(fn) {
+  const out = []; let n = 0, bad = 0;
+  const t = (label, cond, detail = "") => {
+    n += 1; if (!cond) bad += 1;
+    out.push('<div><span class="' + (cond ? "ok" : "warn") + '">' + (cond ? "PASS" : "FAIL") +
+      '</span><span>' + label + '</span><span class="m">' + detail + "</span></div>");
+  };
+  fn(t);
+  el("selftest").innerHTML =
+    '<p class="note" style="margin:0 0 8px"><b class="' + (bad ? "warn" : "ok") + '">' +
+    (bad ? "FAILED" : "PASSED") + " &mdash; " + (n - bad) + " of " + n + " checks pass, " +
+    bad + " failing</b>.</p>" + out.join("");
+}
+
+// the headline world, used by most of the page
+const W = ENGINE.world();
+const F = ENGINE.fit(W.data);
+const TSE = {
+  complete: ENGINE.tse(F.complete, W.theta),
+  noPool: ENGINE.tse(F.noPool, W.theta),
+  partial: ENGINE.tse(F.partial, W.theta)
+};
+
+// ---------------------------------------------------------------- LOOK
+{
+  const best = Math.min(TSE.complete, TSE.noPool, TSE.partial);
+  table("tScoreTop", ["estimator", "what it does", "total squared error", "vs best"], [
+    { cls: TSE.complete === best ? "here" : "", cells: [
+      "complete pooling", "one global mean for all 40", TSE.complete.toFixed(2),
+      (TSE.complete / best).toFixed(2) + "x"] },
+    { cls: TSE.noPool === best ? "here" : "", cells: [
+      "no pooling", "each group's own mean", TSE.noPool.toFixed(2),
+      (TSE.noPool / best).toFixed(2) + "x"] },
+    { cls: TSE.partial === best ? "here" : "", cells: [
+      "partial pooling", "shrink each toward the mean", TSE.partial.toFixed(2),
+      (TSE.partial / best).toFixed(2) + "x"] }
+  ]);
+  el("scoreNote").innerHTML =
+    "Summed over all 40 groups against the known true scores. Partial pooling is <b>" +
+    (TSE.noPool / TSE.partial).toFixed(2) + "x</b> better than trusting every group and <b>" +
+    (TSE.complete / TSE.partial).toFixed(2) + "x</b> better than trusting none of them. " +
+    "It did not need to be told which groups were small.";
+
+  table("tFitted", ["quantity", "estimated", "true value", "error"], [
+    { cells: ["&sigma;&#770;&sup2; within-group noise", F.sigma2.toFixed(3),
+      (W.sigma * W.sigma).toFixed(3), ((F.sigma2 / (W.sigma * W.sigma) - 1) * 100).toFixed(1) + "%"] },
+    { cells: ["&tau;&#770;&sup2; between-group spread", F.tau2.toFixed(3),
+      (W.tau * W.tau).toFixed(3), ((F.tau2 / (W.tau * W.tau) - 1) * 100).toFixed(1) + "%"] },
+    { cells: ["&mu;&#770; population mean", F.mu.toFixed(3), W.mu.toFixed(3),
+      (F.mu - W.mu).toFixed(3)] },
+    { cells: ["Q weighted scatter", F.Q.toFixed(2), "E[Q] = " + F.expectedQ + " if identical",
+      "+" + (F.Q - F.expectedQ).toFixed(2)] },
+    { cells: ["observations N", F.st.N, "groups G = " + F.st.G, "df = " + F.st.df] }
+  ]);
+}
+
+// the slider demo
+{
+  const NS = [];
+  for (let i = 0; i <= 100; i++) NS.push(Math.max(1, Math.round(Math.pow(1000, i / 100))));
+  function renderDemo() {
+    const n0 = NS[+el("sN").value];
+    const tau = +el("sTau").value / 10;
+    el("nOut").value = n0;
+    el("tauOut").value = tau.toFixed(1);
+
+    const sizes = ENGINE.SIZES.slice();
+    sizes[0] = n0;
+    const w = ENGINE.world({ sizes, tau });
+    const f = ENGINE.fit(w.data);
+    const lam = f.lambda[0];
+
+    el("bigLam").innerHTML = lam.toFixed(4) +
+      ' <span style="font-size:13px;font-weight:700;color:#64748b">of its own data kept</span>';
+    el("barLam").style.width = (lam * 100).toFixed(2) + "%";
+    el("lamNote").innerHTML =
+      "&lambda; = &tau;&#770;&sup2; / (&tau;&#770;&sup2; + &sigma;&#770;&sup2;/n) = " +
+      f.tau2.toFixed(3) + " / (" + f.tau2.toFixed(3) + " + " + (f.sigma2 / n0).toFixed(3) + ") = " +
+      lam.toFixed(4) + ". The remaining <b>" + ((1 - lam) * 100).toFixed(1) +
+      "%</b> of the estimate comes from the other 39 shops.";
+
+    const rows = [
+      { cells: ["true score &theta;&#8320;", w.theta[0].toFixed(3), "&mdash;", "&mdash;"] },
+      { cells: ["no pooling &#375;&#8320;", f.noPool[0].toFixed(3),
+        Math.abs(f.noPool[0] - w.theta[0]).toFixed(3), ""] },
+      { cells: ["complete pooling", f.complete[0].toFixed(3),
+        Math.abs(f.complete[0] - w.theta[0]).toFixed(3), ""] },
+      { cells: ["partial pooling", f.partial[0].toFixed(3),
+        Math.abs(f.partial[0] - w.theta[0]).toFixed(3), ""] }
+    ];
+    const errs = [Math.abs(f.noPool[0] - w.theta[0]), Math.abs(f.complete[0] - w.theta[0]),
+                  Math.abs(f.partial[0] - w.theta[0])];
+    const bi = errs.indexOf(Math.min(...errs));
+    rows[bi + 1].cls = "here";
+    rows[bi + 1].cells[3] = '<span class="pill good">closest</span>';
+    table("tDemo", ["for shop #0", "value", "|error|", ""], rows);
+
+    const pulled = f.noPool[0] - f.partial[0];
+    el("demoNote").innerHTML =
+      "The raw average said <b>" + f.noPool[0].toFixed(2) + "</b>; the estimator moved it <b>" +
+      Math.abs(pulled).toFixed(2) + "</b> points " + (pulled > 0 ? "down" : "up") +
+      " toward &mu;&#770; = " + f.mu.toFixed(2) + ". One group's error is not the goal though " +
+      "&mdash; the table below is.";
+
+    const c = ENGINE.tse(f.complete, w.theta), np = ENGINE.tse(f.noPool, w.theta),
+          p = ENGINE.tse(f.partial, w.theta);
+    const b = Math.min(c, np, p);
+    table("tDemoAll", ["all 40 groups, this setting", "&sigma;&#770;&sup2;", "&tau;&#770;&sup2;",
+      "complete", "no pooling", "partial", "winner"], [
+      { cells: ["n&#8320; = " + n0 + ", &tau; = " + tau.toFixed(1), f.sigma2.toFixed(2),
+        f.tau2.toFixed(3), c.toFixed(2), np.toFixed(2), p.toFixed(2),
+        '<span class="pill ' + (p === b ? "good" : "bad") + '">' +
+        (p === b ? "partial" : np === b ? "no pooling" : "complete") + "</span>"] }
+    ]);
+  }
+  el("sN").addEventListener("input", renderDemo);
+  el("sTau").addEventListener("input", renderDemo);
+  renderDemo();
+}
+
+{
+  const idx = ENGINE.order(F.st.n, false);
+  const rows = idx.map((g) => ({
+    cls: F.st.n[g] <= 2 ? "here" : (F.lambda[g] > 0.9 ? "dim" : ""),
+    cells: ["shop #" + g, F.st.n[g], W.theta[g].toFixed(2), F.noPool[g].toFixed(2),
+      F.complete[g].toFixed(2), F.partial[g].toFixed(2), F.lambda[g].toFixed(4),
+      (F.noPool[g] - F.partial[g]).toFixed(2)]
+  }));
+  table("tGroups", ["group", "n", "TRUE score", "no pooling", "complete", "partial",
+    "&lambda;", "pulled by"], rows);
+  const small = idx.filter((g) => F.st.n[g] <= 2), big = idx.filter((g) => F.st.n[g] >= 200);
+  el("groupNote").innerHTML =
+    "Highlighted rows are the groups with 2 ratings or fewer: mean &lambda; <b>" +
+    ENGINE.mean(small.map((g) => F.lambda[g])).toFixed(4) + "</b>, so they keep under " +
+    (ENGINE.mean(small.map((g) => F.lambda[g])) * 100).toFixed(1) +
+    "% of their own number. The greyed rows have 200 ratings or more: mean &lambda; <b>" +
+    ENGINE.mean(big.map((g) => F.lambda[g])).toFixed(4) +
+    "</b> &mdash; the method barely touches them.";
+}
+
+// --------------------------------------------------------- UNDERSTAND
+{
+  const best = Math.min(TSE.complete, TSE.noPool, TSE.partial);
+  table("tExtremes", ["estimator", "bias", "variance", "total squared error", "vs partial pooling"], [
+    { cells: ["complete pooling", "large, systematic", "almost none", TSE.complete.toFixed(2),
+      (TSE.complete / TSE.partial).toFixed(2) + "x worse"] },
+    { cells: ["no pooling", "none", "huge on small groups", TSE.noPool.toFixed(2),
+      (TSE.noPool / TSE.partial).toFixed(2) + "x worse"] },
+    { cls: "here", cells: ["partial pooling", "deliberate, size-dependent", "controlled",
+      TSE.partial.toFixed(2), "&mdash;"] }
+  ]);
+  el("extremeNote").innerHTML =
+    "Seeded synthetic data, " + F.st.N + " observations across " + F.st.G +
+    " groups. The two extremes are not close: the better of them is still <b>" +
+    (Math.min(TSE.complete, TSE.noPool) / best).toFixed(2) + "x</b> the error of the middle option.";
+}
+
+{
+  const s2 = ENGINE.SIGMA * ENGINE.SIGMA;
+  const rows = [1, 2, 5, 10, 25, 100, 400, 860].map((n) => ({
+    cls: n === 1 ? "here" : "",
+    cells: ["n = " + n, (s2 / n).toFixed(3), Math.sqrt(s2 / n).toFixed(3),
+      (Math.sqrt(s2 / n) / ENGINE.TAU).toFixed(2) + "x",
+      (ENGINE.TAU * ENGINE.TAU / (ENGINE.TAU * ENGINE.TAU + s2 / n)).toFixed(4)]
+  }));
+  table("tVar", ["group size", "variance of its mean &sigma;&sup2;/n", "std dev",
+    "vs the TRUE spread &tau;", "&lambda; at the true &tau;"], rows);
+}
+
+{
+  const obs = (() => {
+    const m = ENGINE.mean(F.st.ybar);
+    let s = 0;
+    for (const y of F.st.ybar) s += (y - m) * (y - m);
+    return s / (F.st.G - 1);
+  })();
+  table("tPop", ["quantity", "value", "what it contains"], [
+    { cells: ["spread of the 40 OBSERVED group averages", obs.toFixed(3),
+      "real differences + sampling noise"] },
+    { cells: ["&tau;&#770;&sup2; recovered by the method", F.tau2.toFixed(3),
+      "real differences only"] },
+    { cls: "here", cells: ["&tau;&sup2; true", (W.tau * W.tau).toFixed(3),
+      "what the simulation actually used"] },
+    { cells: ["inflation if you skip the correction",
+      (obs / (W.tau * W.tau)).toFixed(2) + "x", "what naive between-variance would claim"] }
+  ]);
+  el("popNote").innerHTML =
+    "The naive spread of the group averages overstates the real between-group variance by <b>" +
+    (obs / (W.tau * W.tau)).toFixed(2) + "x</b> here, because the one-rating shops are " +
+    "scattered by &plusmn;12 points of pure noise. Using it directly would make &lambda; far " +
+    "too close to 1 and shrink almost nothing.";
+}
+
+{
+  const s2 = ENGINE.SIGMA * ENGINE.SIGMA;
+  const taus = [1, 2, 4, 8, 16];
+  const ns = [1, 3, 10, 30, 100, 860];
+  const rows = taus.map((tau) => ({
+    cls: tau === ENGINE.TAU ? "here" : "",
+    cells: ["&tau; = " + tau].concat(ns.map((n) => (tau * tau / (tau * tau + s2 / n)).toFixed(4)))
+  }));
+  table("tLam", ["population spread"].concat(ns.map((n) => "n = " + n)), rows);
+}
+
+{
+  const sw = ENGINE.sweep(300);
+  const rows = [
+    { cells: ["&sigma;&#770;&sup2; within-group noise", ENGINE.mean(sw.sigma2).toFixed(3),
+      (ENGINE.SIGMA * ENGINE.SIGMA).toFixed(3),
+      ((ENGINE.mean(sw.sigma2) / (ENGINE.SIGMA * ENGINE.SIGMA) - 1) * 100).toFixed(2) + "%"] },
+    { cells: ["&tau;&#770;&sup2; between-group spread", ENGINE.mean(sw.tau2).toFixed(3),
+      (ENGINE.TAU * ENGINE.TAU).toFixed(3),
+      ((ENGINE.mean(sw.tau2) / (ENGINE.TAU * ENGINE.TAU) - 1) * 100).toFixed(2) + "%"] },
+    { cells: ["&tau;&#770;&sup2; clamped to exactly 0",
+      sw.tau2.filter((v) => v === 0).length + " of " + sw.S, "never negative",
+      "min " + Math.min(...sw.tau2).toFixed(3)] }
+  ];
+  table("tEst", ["estimated from the data alone", "mean over " + sw.S + " seeded worlds",
+    "true value", "error"], rows);
+  el("estNote").innerHTML =
+    "Both estimates are close to the truth on average over " + sw.S + " worlds, and neither " +
+    "was ever shown it. &tau;&#770;&sup2; is the noisier of the two by a long way &mdash; it is " +
+    "estimated from " + F.st.G + " group averages, not from " + F.st.N + " observations, which " +
+    "is why hierarchical models get unstable when you have only a handful of groups.";
+}
+
+{
+  const sizes = ENGINE.SIZES.slice();
+  const rows = [];
+  for (const n0 of [1, 2, 4, 8, 16, 32, 64, 128, 512, 2000]) {
+    sizes[0] = n0;
+    const w = ENGINE.world({ sizes });
+    const f = ENGINE.fit(w.data);
+    rows.push({ cls: n0 === 1 ? "here" : "", cells: [
+      "n&#8320; = " + n0, f.lambda[0].toFixed(4), f.noPool[0].toFixed(2), f.partial[0].toFixed(2),
+      w.theta[0].toFixed(2), Math.abs(f.noPool[0] - f.partial[0]).toFixed(2),
+      Math.abs(f.partial[0] - w.theta[0]).toFixed(2)] });
+  }
+  table("tSweep", ["ratings for shop #0", "&lambda;", "raw average", "partial pooled",
+    "TRUE score", "pulled by", "|error| of partial"], rows);
+  el("sweepNote").innerHTML =
+    "The true score of shop #0 is <b>" + W.theta[0].toFixed(3) + "</b> and it is identical in " +
+    "every row &mdash; the true means are drawn from their own seeded stream, so changing the " +
+    "sample size cannot move them. Only the evidence changes, and &lambda; tracks it.";
+}
+
+{
+  const sw = ENGINE.sweep(300);
+  const rows = [
+    { cells: ["complete pooling", ENGINE.mean(sw.complete).toFixed(2),
+      Math.min(...sw.complete).toFixed(2), Math.max(...sw.complete).toFixed(2),
+      (ENGINE.mean(sw.complete) / ENGINE.mean(sw.partial)).toFixed(2) + "x"] },
+    { cells: ["no pooling", ENGINE.mean(sw.noPool).toFixed(2),
+      Math.min(...sw.noPool).toFixed(2), Math.max(...sw.noPool).toFixed(2),
+      (ENGINE.mean(sw.noPool) / ENGINE.mean(sw.partial)).toFixed(2) + "x"] },
+    { cls: "here", cells: ["partial pooling", ENGINE.mean(sw.partial).toFixed(2),
+      Math.min(...sw.partial).toFixed(2), Math.max(...sw.partial).toFixed(2), "&mdash;"] }
+  ];
+  table("tMC", ["estimator", "mean total squared error", "best world", "worst world",
+    "vs partial"], rows);
+  el("mcNote").innerHTML =
+    "Over " + sw.S + " independently seeded worlds. Partial pooling beats no pooling in <b>" +
+    sw.winN + " of " + sw.S + "</b>, beats complete pooling in <b>" + sw.winC + " of " + sw.S +
+    "</b>, and beats both at once in <b>" + sw.winBoth + " of " + sw.S + "</b>. Its worst world (" +
+    Math.max(...sw.partial).toFixed(1) + ") is still better than no pooling's <i>best</i> one (" +
+    Math.min(...sw.noPool).toFixed(1) + ").";
+}
+
+{
+  const rows = [];
+  let jsWins = 0, trials = 0, sumJ = 0, sumM = 0;
+  for (let s = 0; s < 60; s++) {
+    const sizes = new Array(30).fill(5);
+    const w = ENGINE.world({ sizes, seed: 31337 + s * 7919 });
+    const st = ENGINE.stats(w.data);
+    const js = ENGINE.jamesStein(st.ybar, st.sigma2 / 5);
+    const j = ENGINE.tse(js.est, w.theta), m = ENGINE.tse(st.ybar, w.theta);
+    trials++; sumJ += j; sumM += m;
+    if (j < m) jsWins++;
+    if (s < 6) rows.push({ cells: ["seed " + (31337 + s * 7919), js.c.toFixed(4),
+      m.toFixed(2), j.toFixed(2), (m / j).toFixed(2) + "x",
+      '<span class="pill ' + (j < m ? "good" : "bad") + '">' + (j < m ? "JS wins" : "MLE wins") +
+      "</span>"] });
+  }
+  rows.push({ cls: "here", cells: ["mean over " + trials + " worlds", "&mdash;",
+    (sumM / trials).toFixed(2), (sumJ / trials).toFixed(2),
+    (sumM / sumJ).toFixed(2) + "x", jsWins + " / " + trials] });
+  table("tJS", ["30 groups of 5", "shrink factor c", "TSE, each group's own mean",
+    "TSE, James-Stein", "ratio", "verdict"], rows);
+  el("jsNote").innerHTML =
+    "James-Stein wins <b>" + jsWins + " of " + trials + "</b> seeded worlds here. The theorem " +
+    "is about the expectation over repeated samples, not about any single world, so a loss " +
+    "would not contradict it &mdash; but the expected improvement is <b>" +
+    (sumM / sumJ).toFixed(2) + "x</b>, and the obvious estimator never gets that back.";
+}
+
+{
+  const bv = ENGINE.biasVariance(400);
+  const picks = [0, 9, 19, 29, 39];
+  const rows = [];
+  for (const g of picks) {
+    for (const k of ["noPool", "partial"]) {
+      const d = bv.summary[k][g];
+      rows.push({ cls: k === "partial" ? "here" : "", cells: [
+        (k === "noPool" ? "no pooling" : "partial") + ", shop #" + g,
+        ENGINE.SIZES[g], d.bias.toFixed(3), d.bias2.toFixed(3), d.variance.toFixed(3),
+        d.mse.toFixed(3)] });
+    }
+  }
+  table("tBias", ["estimator, group", "n", "bias", "bias&sup2;", "variance", "MSE"], rows);
+  const a = bv.summary.noPool[0], b = bv.summary.partial[0];
+  el("biasNote").innerHTML =
+    "Shop #0 has one rating and a true score of <b>" + bv.theta[0].toFixed(2) +
+    "</b> against a population mean of " + ENGINE.MU + ". No pooling: bias&sup2; <b>" +
+    a.bias2.toFixed(3) + "</b>, variance <b>" + a.variance.toFixed(2) + "</b>. Partial pooling: " +
+    "bias&sup2; <b>" + b.bias2.toFixed(2) + "</b> &mdash; a real, systematic, never-averaging-away " +
+    "pull toward the middle &mdash; and variance <b>" + b.variance.toFixed(3) + "</b>. Total error " +
+    "falls from " + a.mse.toFixed(2) + " to " + b.mse.toFixed(2) + ", a <b>" +
+    (a.mse / b.mse).toFixed(2) + "x</b> improvement bought entirely by accepting the bias. " +
+    "Averaged over " + bv.S + " redraws of the ratings with the true scores held fixed.";
+}
+
+{
+  const byRaw = ENGINE.order(F.noPool, true), byPar = ENGINE.order(F.partial, true),
+        byTru = ENGINE.order(W.theta, true);
+  const rows = [];
+  for (let i = 0; i < 5; i++) {
+    rows.push({ cls: F.st.n[byRaw[i]] <= 3 ? "here" : "", cells: [
+      "#" + (i + 1),
+      "shop " + byRaw[i] + " (n=" + F.st.n[byRaw[i]] + ")",
+      "shop " + byPar[i] + " (n=" + F.st.n[byPar[i]] + ")",
+      "shop " + byTru[i] + " (n=" + F.st.n[byTru[i]] + ")"] });
+  }
+  table("tPick", ["rank", "by raw average", "by partial pooling", "by the TRUE score"], rows);
+
+  // and the decision-level measurement, repeated
+  let rawQ = 0, parQ = 0, oracleQ = 0, rawHit = 0, parHit = 0, rawSmall = 0, parSmall = 0, S = 200;
+  for (let s = 0; s < S; s++) {
+    const w = ENGINE.world({ seed: 11 + s * 7919, dataSeed: 991 + s * 104729 });
+    const f = ENGINE.fit(w.data);
+    const r = ENGINE.order(f.noPool, true), p = ENGINE.order(f.partial, true),
+          tt = ENGINE.order(w.theta, true);
+    rawQ += w.theta[r[0]]; parQ += w.theta[p[0]]; oracleQ += w.theta[tt[0]];
+    if (r[0] === tt[0]) rawHit++;
+    if (p[0] === tt[0]) parHit++;
+    rawSmall += r.slice(0, 5).filter((g) => ENGINE.SIZES[g] <= 3).length;
+    parSmall += p.slice(0, 5).filter((g) => ENGINE.SIZES[g] <= 3).length;
+  }
+  el("pickNote").innerHTML =
+    "Repeated over " + S + " seeded worlds, picking the single top shop: the raw winner's " +
+    "<b>true</b> score averages <b>" + (rawQ / S).toFixed(2) + "</b>, the shrunken winner's <b>" +
+    (parQ / S).toFixed(2) + "</b>, against a best-possible <b>" + (oracleQ / S).toFixed(2) +
+    "</b>. The raw ranking names the genuinely best shop <b>" + rawHit + "/" + S +
+    "</b> times; the shrunken ranking <b>" + parHit + "/" + S + "</b>. And the raw top five " +
+    "contains on average <b>" + (rawSmall / S).toFixed(2) + "</b> shops with 3 ratings or " +
+    "fewer against the shrunken list's <b>" + (parSmall / S).toFixed(2) +
+    "</b> &mdash; out of 12 such shops in 40.";
+}
+
+{
+  const rows = [];
+  let lose = 0;
+  for (let g = 0; g < F.st.G; g++) {
+    const a = Math.abs(F.noPool[g] - W.theta[g]), b = Math.abs(F.partial[g] - W.theta[g]);
+    if (b > a) {
+      lose++;
+      if (rows.length < 6) rows.push({ cells: ["shop #" + g, F.st.n[g], F.lambda[g].toFixed(4),
+        W.theta[g].toFixed(2), a.toFixed(3), b.toFixed(3), "+" + (b - a).toFixed(3)] });
+    }
+  }
+  table("tLose", ["group", "n", "&lambda;", "TRUE score", "|error| no pooling",
+    "|error| partial", "cost"], rows);
+  el("loseNote").innerHTML =
+    "<b>" + lose + " of " + F.st.G + "</b> groups are estimated <i>worse</i> by partial pooling " +
+    "on this seed, and the total is still " + (TSE.noPool / TSE.partial).toFixed(2) +
+    "x better. That is the whole bargain in one line: the method optimises the sum, and " +
+    "individual groups pay for it. If your decision is about one named group rather than the " +
+    "portfolio, that is the number you have to argue with.";
+}
+
+// --------------------------------------------------------------- BUILD
+el("codeShrink").textContent = String(ENGINE.shrink);
+el("codeTau").textContent = String(ENGINE.estimateTau2);
+el("codeFit").textContent = [String(ENGINE.stats), "", String(ENGINE.fit)].join("\n");
+
+selfCheckPanel((t) => {
+  const s2 = 144, mu = 50;
+
+  // ---- the shrinkage weight itself
+  t("&lambda; stays inside [0, 1] across a 7 x 8 sweep of &tau;&sup2; and n", (() => {
+    for (const tau2 of [0, 0.01, 0.25, 1, 4, 16, 400]) {
+      for (const n of [1, 2, 3, 5, 10, 50, 500, 1e6]) {
+        const l = ENGINE.shrink(99, n, s2, tau2, mu).lambda;
+        if (!(l >= 0 && l <= 1) || !Number.isFinite(l)) return false;
+      }
+    }
+    return true;
+  })(), "56 combinations - it is a ratio whose denominator contains its numerator");
+
+  t("&lambda; is STRICTLY increasing in the group size", (() => {
+    let prev = -1;
+    for (const n of [1, 2, 3, 4, 8, 16, 64, 256, 1024]) {
+      const l = ENGINE.shrink(99, n, s2, 16, mu).lambda;
+      if (!(l > prev)) return false;
+      prev = l;
+    }
+    return true;
+  })(), "more data, more of the group's own number survives");
+
+  t("&lambda; is STRICTLY increasing in the between-group variance", (() => {
+    let prev = -1;
+    for (const tau2 of [0.01, 0.1, 1, 4, 16, 64, 256]) {
+      const l = ENGINE.shrink(99, 10, s2, tau2, mu).lambda;
+      if (!(l > prev)) return false;
+      prev = l;
+    }
+    return true;
+  })(), "if groups really do differ, their own data matters more");
+
+  t("a group of size 1 shrinks hardest of all 40", (() => {
+    const i = ENGINE.order(F.lambda, false)[0];
+    return F.st.n[i] === 1 && F.lambda[i] === Math.min.apply(null, F.lambda);
+  })(), "smallest &lambda; on the page belongs to a one-rating shop");
+
+  t("an effectively infinite group is not shrunk at all", (() => {
+    const l = ENGINE.shrink(99, 1e12, s2, 16, mu).lambda;
+    const e = ENGINE.shrink(99, 1e12, s2, 16, mu).est;
+    return l > 0.999999 && Math.abs(e - 99) < 1e-4;
+  })(), "n -> infinity sends &sigma;&sup2;/n -> 0 and &lambda; -> 1");
+
+  t("&tau;&sup2; = 0 gives EXACTLY the global mean, with no float slop", (() => {
+    const r = ENGINE.shrink(99, 7, s2, 0, mu);
+    return r.lambda === 0 && r.est === mu;
+  })(), "complete pooling is a corner of this method, not a rival to it");
+
+  t("&sigma;&sup2; = 0 gives EXACTLY the group's own mean", (() => {
+    const r = ENGINE.shrink(99, 7, 0, 16, mu);
+    return r.lambda === 1 && r.est === 99;
+  })(), "no measurement noise, nothing to shrink away");
+
+  t("the estimate always lies between the group mean and &mu;", (() => {
+    for (const tau2 of [0, 0.5, 4, 100]) {
+      for (const n of [1, 5, 100]) {
+        for (const y of [10, 50, 93.5, -20]) {
+          const e = ENGINE.shrink(y, n, s2, tau2, mu).est;
+          if (e < Math.min(y, mu) - 1e-12 || e > Math.max(y, mu) + 1e-12) return false;
+        }
+      }
+    }
+    return true;
+  })(), "shrinkage interpolates, it never extrapolates past either end");
+
+  t("shrinkage never moves an estimate AWAY from &mu;", (() => {
+    for (let g = 0; g < F.st.G; g++) {
+      if (Math.abs(F.partial[g] - F.mu) > Math.abs(F.noPool[g] - F.mu) + 1e-12) return false;
+    }
+    return true;
+  })(), "checked on all 40 groups of the seeded world");
+
+  t("&lambda; matches the Bayes posterior mean computed by numerical integration", (() => {
+    const ybar = 57.3, n = 3, tau2 = 16;
+    const closed = ENGINE.shrink(ybar, n, s2, tau2, mu).est;
+    let num = 0, den = 0;
+    const lo = mu - 40 * Math.sqrt(tau2), hi = mu + 40 * Math.sqrt(tau2), M = 60000;
+    const h = (hi - lo) / M;
+    for (let i = 0; i <= M; i++) {
+      const th = lo + i * h;
+      const p = Math.exp(-0.5 * (th - mu) * (th - mu) / tau2) *
+                Math.exp(-0.5 * (ybar - th) * (ybar - th) / (s2 / n));
+      const wq = (i === 0 || i === M) ? 0.5 : 1;
+      num += wq * th * p; den += wq * p;
+    }
+    return Math.abs(num / den - closed) < 1e-6;
+  })(), "a trapezoid rule over the posterior, not the formula being checked");
+
+  // ---- the estimated variances
+  t("&sigma;&#770;&sup2; is within 10% of the simulation's true &sigma;&sup2;",
+    Math.abs(F.sigma2 / (ENGINE.SIGMA * ENGINE.SIGMA) - 1) < 0.10,
+    F.sigma2.toFixed(3) + " vs " + (ENGINE.SIGMA * ENGINE.SIGMA));
+
+  t("&tau;&#770;&sup2; is within 50% of the simulation's true &tau;&sup2;",
+    Math.abs(F.tau2 / (ENGINE.TAU * ENGINE.TAU) - 1) < 0.50,
+    F.tau2.toFixed(3) + " vs " + (ENGINE.TAU * ENGINE.TAU) + " - estimated from 40 group means");
+
+  t("&tau;&#770;&sup2; is NEVER negative across 300 seeded worlds", (() => {
+    const sw = ENGINE.sweep(300);
+    return Math.min.apply(null, sw.tau2) >= 0;
+  })(), "the clamp at zero, which is what makes it a valid variance");
+
+  t("the degrees of freedom identity df = N - G holds",
+    F.st.df === F.st.N - F.st.G, "df " + F.st.df + " = " + F.st.N + " - " + F.st.G);
+
+  t("Q exceeds its null expectation G-1 when the groups really differ",
+    F.Q > F.expectedQ, "Q " + F.Q.toFixed(2) + " vs E[Q] " + F.expectedQ);
+
+  t("collapsing the true spread to zero collapses &tau;&#770;&sup2; with it", (() => {
+    const flat = ENGINE.fit(ENGINE.world({ tau: 0 }).data);
+    return flat.tau2 < F.tau2 * 0.1;
+  })(), "a world with identical shops is detected as one");
+
+  t("the grand mean equals the n-weighted mean of the group means", (() => {
+    let s = 0;
+    for (let g = 0; g < F.st.G; g++) s += F.st.n[g] * F.st.ybar[g];
+    return Math.abs(s / F.st.N - F.st.grand) < 1e-9;
+  })(), "an arithmetic identity, checked rather than assumed");
+
+  // ---- the error claims
+  t("partial pooling beats NO pooling on the seeded data",
+    TSE.partial < TSE.noPool,
+    TSE.partial.toFixed(2) + " vs " + TSE.noPool.toFixed(2) + " total squared error");
+
+  t("partial pooling beats COMPLETE pooling on the seeded data",
+    TSE.partial < TSE.complete,
+    TSE.partial.toFixed(2) + " vs " + TSE.complete.toFixed(2));
+
+  t("partial pooling beats both ON AVERAGE over 300 seeded worlds", (() => {
+    const sw = ENGINE.sweep(300);
+    return ENGINE.mean(sw.partial) < ENGINE.mean(sw.noPool) &&
+           ENGINE.mean(sw.partial) < ENGINE.mean(sw.complete);
+  })(), "the guarantee is about the expectation, so it is tested as one");
+
+  t("and it wins the great majority of individual worlds too", (() => {
+    const sw = ENGINE.sweep(300);
+    return sw.winBoth > sw.S * 0.9;
+  })(), "won both comparisons in over 90% of the 300");
+
+  t("HONEST CONTROL: some individual GROUPS are made worse", (() => {
+    let worse = 0;
+    for (let g = 0; g < F.st.G; g++) {
+      if (Math.abs(F.partial[g] - W.theta[g]) > Math.abs(F.noPool[g] - W.theta[g])) worse++;
+    }
+    return worse > 0 && worse < F.st.G / 2;
+  })(), "it optimises the sum - a page claiming every group improves would be wrong");
+
+  t("per-group &lambda; beats the best SINGLE global shrink factor", (() => {
+    let best = Infinity;
+    for (let i = 0; i <= 400; i++) {
+      const c = i / 400;
+      const e = ENGINE.tse(F.st.ybar.map((y) => F.mu + c * (y - F.mu)), W.theta);
+      if (e < best) best = e;
+    }
+    return TSE.partial < best;
+  })(), "and the single factor was allowed to cheat by tuning against the truth");
+
+  // ---- James-Stein
+  t("the James-Stein shrink factor is inside [0, 1]", (() => {
+    for (let s = 0; s < 40; s++) {
+      const sizes = new Array(30).fill(5);
+      const w = ENGINE.world({ sizes, seed: 31337 + s * 7919 });
+      const st = ENGINE.stats(w.data);
+      const c = ENGINE.jamesStein(st.ybar, st.sigma2 / 5).c;
+      if (!(c >= 0 && c <= 1)) return false;
+    }
+    return true;
+  })(), "the positive part is what keeps it there");
+
+  t("James-Stein beats each-group's-own-mean in EXPECTATION, and in 9 worlds out of 10", (() => {
+    let wins = 0, sj = 0, sm = 0;
+    for (let s = 0; s < 40; s++) {
+      const sizes = new Array(30).fill(5);
+      const w = ENGINE.world({ sizes, seed: 31337 + s * 7919 });
+      const st = ENGINE.stats(w.data);
+      const js = ENGINE.jamesStein(st.ybar, st.sigma2 / 5);
+      const j = ENGINE.tse(js.est, w.theta), m = ENGINE.tse(st.ybar, w.theta);
+      sj += j; sm += m;
+      if (j < m) wins++;
+    }
+    return sj < sm && wins >= 36;
+  })(), "inadmissibility is a statement about the expectation - individual worlds can and do go the other way");
+
+  t("James-Stein refuses to run on fewer than 4 groups", (() => {
+    try { ENGINE.jamesStein([1, 2, 3], 1); return false; } catch { return true; }
+  })(), "the theorem needs dimension 3 or more; below it there is no gain");
+
+  // ---- bias / variance
+  t("partial pooling has LARGER bias than no pooling on the small group", (() => {
+    const bv = ENGINE.biasVariance(400);
+    return Math.abs(bv.summary.partial[0].bias) > Math.abs(bv.summary.noPool[0].bias) * 5;
+  })(), "deliberate, systematic, and it does not average away");
+
+  t("...and far SMALLER total error on the same group", (() => {
+    const bv = ENGINE.biasVariance(400);
+    return bv.summary.partial[0].mse < bv.summary.noPool[0].mse * 0.5;
+  })(), "error moved from variance into bias, and the sum went down");
+
+  t("bias&sup2; + variance reconstructs MSE exactly", (() => {
+    const bv = ENGINE.biasVariance(400);
+    for (const k of ["noPool", "partial", "complete"]) {
+      for (const d of bv.summary[k]) {
+        if (Math.abs(d.bias2 + d.variance - d.mse) > 1e-9) return false;
+      }
+    }
+    return true;
+  })(), "120 decompositions, the identity holds to 1e-9");
+
+  t("the largest group is barely shrunk at all", (() => {
+    const g = ENGINE.order(F.st.n, true)[0];
+    return F.lambda[g] > 0.95 && Math.abs(F.partial[g] - F.noPool[g]) < 0.5;
+  })(), "n = 860, so almost nothing of its average is noise");
+
+  // ---- reproducibility
+  t("the world reproduces EXACTLY from its seed", (() => {
+    const a = ENGINE.world(), b = ENGINE.world();
+    for (let g = 0; g < a.theta.length; g++) {
+      if (a.theta[g] !== b.theta[g]) return false;
+      for (let i = 0; i < a.data[g].length; i++) if (a.data[g][i] !== b.data[g][i]) return false;
+    }
+    return true;
+  })(), "bit-identical true means and bit-identical observations");
+
+  t("the fit reproduces EXACTLY, estimate for estimate", (() => {
+    const a = ENGINE.fit(ENGINE.world().data), b = ENGINE.fit(ENGINE.world().data);
+    return a.tau2 === b.tau2 && a.sigma2 === b.sigma2 && a.mu === b.mu &&
+           a.partial.every((v, i) => v === b.partial[i]);
+  })(), "no Math.random, no Date, no iteration order dependence");
+
+  t("changing a group's SIZE leaves every true mean untouched", (() => {
+    const sizes = ENGINE.SIZES.slice();
+    sizes[0] = 913;
+    const a = ENGINE.world(), b = ENGINE.world({ sizes });
+    return a.theta.every((v, i) => v === b.theta[i]);
+  })(), "separate seeded streams - which is what makes the slider an experiment");
+
+  // ---- input validation
+  t("a group with no observations throws", (() => {
+    try { ENGINE.stats([[1, 2], []]); return false; } catch { return true; }
+  })());
+
+  t("data with no within-group df at all throws", (() => {
+    try { ENGINE.stats([[1], [2], [3]]); return false; } catch { return true; }
+  })(), "every group of size 1 means &sigma;&sup2; is not identified");
+
+  t("a NaN observation throws rather than poisoning the mean", (() => {
+    try { ENGINE.stats([[1, NaN], [3, 4]]); return false; } catch { return true; }
+  })());
+
+  t("a negative variance throws", (() => {
+    try { ENGINE.shrink(1, 1, -1, 1, 0); return false; } catch { return true; }
+  })());
+});
+</script>
+</body>
+</html>

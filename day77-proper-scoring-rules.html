@@ -1,0 +1,1945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero &middot; Day 77 &mdash; Which metric can an honest model win?</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :root {
+    --ink:#0f172a; --ink2:#334155; --dim:#64748b; --dim2:#94a3b8;
+    --line:#e2e8f0; --bg:#f1f5f9; --bg2:#f8fafc; --white:#fff;
+    --sky:#0369a1; --amber:#fffbeb; --amberL:#f59e0b; --amberT:#78350f;
+    --blue:#eff6ff; --violet:#f5f3ff; --rose:#fff1f2; --green:#f0fdf4;
+  }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    margin:0; background:var(--bg2); color:var(--ink); line-height:1.6;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  code { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.92em;
+         background:#e8eef6; padding:1px 4px; border-radius:4px; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; line-height:1.55;
+        font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  pre code { background:none; padding:0; color:inherit; }
+  h1,h2,h3 { line-height:1.25; margin:0; }
+  p { margin:0 0 .85em; }
+  header.top { background:var(--white); border-bottom:1px solid var(--line); }
+  .wrap { max-width:1150px; margin:0 auto; padding:16px; }
+  @media (min-width:768px) { .wrap { padding:24px; } }
+  .kicker { font-size:11px; font-weight:800; letter-spacing:.16em; color:var(--sky);
+            margin:0 0 8px; text-transform:uppercase; }
+  h1.lede { font-size:17px; font-weight:800; margin-bottom:14px; }
+  @media (min-width:768px) { h1.lede { font-size:19px; } }
+  h1.lede em { font-style:italic; }
+  #tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  #tabs button { font:inherit; font-size:13px; font-weight:700; cursor:pointer;
+                 border:0; padding:8px 18px; border-radius:9px; background:var(--bg); color:var(--ink); }
+  #tabs button.tab-active { background:#0f172a; color:#fff; }
+  .panel { display:block; }
+  .panel.hidden { display:none; }
+  .sheet { min-height:calc(100vh - 78px); padding:16px; background:var(--bg); }
+  @media (min-width:768px) { .sheet { padding:32px; } }
+  .sheet.plain { background:var(--white); }
+  .sheet.soft  { background:var(--bg2); }
+  .col { max-width:1150px; margin:0 auto; display:flex; flex-direction:column; gap:20px; }
+  .col.narrow { max-width:760px; gap:22px; }
+  .card { background:var(--white); border-radius:16px; padding:20px;
+          box-shadow:0 1px 3px rgba(15,23,42,.09), 0 1px 2px rgba(15,23,42,.05); }
+  .ctl { display:grid; gap:6px 24px; grid-template-columns:1fr; }
+  @media (min-width:700px)  { .ctl { grid-template-columns:1fr 1fr; } }
+  @media (min-width:1000px) { .ctl { grid-template-columns:1fr 1fr 1fr; } }
+  .ctl label { font-size:13px; display:block; }
+  .ctl input[type=range] { width:100%; margin:2px 0 0; }
+  .ctl .val { float:right; font-weight:700; font-variant-numeric:tabular-nums; }
+  .eyebrow { font-size:11px; font-weight:800; letter-spacing:.09em; color:var(--dim);
+             margin:0 0 4px; text-transform:uppercase; }
+  .say { font-size:13.5px; color:var(--ink2); margin:0 0 12px; }
+  .tiny { font-size:12px; color:var(--dim); }
+  .scroll { overflow-x:auto; }
+  table.num { width:100%; border-collapse:collapse; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:var(--dim); text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; white-space:normal; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  .ok   { color:#166534; font-weight:800; }
+  .bad  { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim  { color:var(--dim2); }
+  .same  { background:var(--blue); }
+  .same2 { background:var(--violet); }
+  .same3 { background:var(--green); }
+  .flag { font-size:13.5px; margin:12px 0 0; padding:12px; border-radius:9px;
+          background:var(--amber); border-left:4px solid var(--amberL); color:var(--amberT); }
+  .flag.blue { background:var(--blue); border-left-color:#3b82f6; color:#1e3a8a; }
+  .flag.rose { background:var(--rose); border-left-color:#f43f5e; color:#881337; }
+  ul.checks { list-style:none; margin:0; padding:0; font-size:13px; color:var(--ink2); }
+  ul.checks li { padding:1px 0; }
+  .foot { border-top:1px solid var(--line); background:var(--white); }
+  .foot .wrap { font-size:12.5px; color:var(--dim); }
+  .foot a { color:var(--sky); }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <p class="kicker">MachineLearningFromZero &middot; Day 77</p>
+    <h1 class="lede">
+      &#9878;&#65039; Which metric can an honest model win? &mdash; Day 73 asked what a clustering
+      score is a number <em>of</em>, Day 74 which fairness equalities can hold at once, Day 75 what
+      the guarantee printed in <em>front</em> of a training run is worth, Day 76 what the promise
+      attached to a data <em>release</em> is worth. All four were about a number somebody
+      <em>reports</em>. This one is about the number somebody <em>sorts on</em>: the leaderboard
+      column that picks which model ships. Nothing here is sampled either. A world is
+      <strong id="hlBins">9</strong> score bins with rational masses, put on one common denominator,
+      so every confusion matrix is a pair of BigInt sums and every comparison is a
+      cross-multiplication rather than a tolerance. Start with the rules. &ldquo;Brier is proper&rdquo;
+      is settled here by the <strong>sign of an exact rational derivative</strong>, not by a search;
+      absolute error is settled the same way and its optimum is a <em>corner</em>, never the truth;
+      and the two metrics everybody actually reports are not scoring rules at all, so the question has
+      to be replaced with: which reports does this number fail to tell apart? On a
+      <strong id="hlGridN">241</strong>-value grid that answer is exactly one point for Brier, exactly
+      <strong id="hlF1Set">5.29&times;10<sup>18</sup></strong> for F1 at a 0.5 cut, and exactly
+      <code>C(N+1, m)</code> = <strong id="hlAucSet">6.50&times;10<sup>15</sup></strong> for AUC.
+      &#128308; Then the fixed point. Search all <strong id="hlRules">512</strong> decision rules, not
+      the m+1 thresholds, and the F1-optimal rule is a threshold on &eta; whose cut is exactly
+      <em>half the F1 it achieves</em> &mdash; <strong id="hlHalf">0.2696</strong>, never 0.5. So the
+      model that tops an F1@0.5 leaderboard is the one that over-states every probability by exactly
+      <strong id="hlLie">0.4607</strong> = 1&minus;F1*, and both what that buys
+      (<strong id="hlGain">0.2253</strong> of F1) and what it costs
+      (<strong id="hlPrice">0.055005</strong> of Brier, and an ECE of
+      <strong id="hlLieEce">0.2283</strong>) are closed forms confirmed against the enumeration.
+      &#128308; And the leaderboard itself. The exactly-correct model is first on Brier, first on log
+      loss, first on AUC and first on accuracy, and <strong id="hlTruthRankF1">5th</strong> of
+      <strong id="hlModels">10</strong> on F1@0.5 &mdash; beaten by the lie, by
+      &ldquo;flag every row&rdquo; (<strong id="hlFlagAll">0.4327</strong>), and by a model that is
+      <em>exactly backwards</em>, AUC <strong id="hlInvAuc">0.2629</strong>, scoring
+      <strong id="hlInv">0.3688</strong> against the truth&rsquo;s
+      <strong id="hlHonest">0.3140</strong>. Over <strong id="hlSweep">246</strong> enumerated worlds
+      the truth is first on Brier <strong id="hlSweepBrier">246</strong> times and first on F1@0.5
+      <strong id="hlSweepTruthF1">1</strong> time; flagging everything beats it
+      <strong id="hlSweepFlag">193</strong> times and the backwards model beats it
+      <strong id="hlSweepInv">144</strong> times. &#128308; The repair works and takes something with
+      it: tune the cut and the lie is worth <em>exactly zero</em>, and
+      <strong id="hlTuneTie">5</strong> models that differ by <strong id="hlTuneEx">0.055</strong> in
+      Brier become bit-identical. &#128308; And the column I built to rank the metrics by how much
+      they can see ranks them <em>backwards</em>: AUC&rsquo;s indistinguishable set is
+      <strong id="hlRatio">814</strong>&times; <em>smaller</em> than F1@0.5&rsquo;s, and yet AUC ties
+      <strong id="hlAucTie">5</strong> of the models on the board where F1@0.5 ties
+      <strong id="hlF1Tie">1</strong> &mdash; in <strong id="hlBackwards">245</strong> of 246 worlds.
+      Pure vanilla JavaScript, one file, no build step.
+    </h1>
+    <div id="tabs">
+      <button data-tab="look" class="tab-active">&#9878;&#65039; MEASURE</button>
+      <button data-tab="understand">&#129504; UNDERSTAND</button>
+      <button data-tab="build">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================================================ MEASURE -->
+<section id="look" class="panel">
+  <div class="sheet">
+    <div class="col">
+
+      <div class="card">
+        <div class="ctl">
+          <label>score bins in the world <span class="val" id="vM">9</span>
+            <input id="sM" type="range" min="5" max="10" step="1" value="9"></label>
+          <label>lowest bin, in 120ths <span class="val" id="vLo">9</span>
+            <input id="sLo" type="range" min="3" max="30" step="1" value="9"></label>
+          <label>gap between bins, in 120ths <span class="val" id="vStep">10</span>
+            <input id="sStep" type="range" min="4" max="14" step="1" value="10"></label>
+          <label>mass tilt toward the low bins <span class="val" id="vTilt">5</span>
+            <input id="sTilt" type="range" min="0" max="6" step="1" value="5"></label>
+          <label>report grid, N = 120 &times; <span class="val" id="vGrid">2</span>
+            <input id="sGrid" type="range" min="1" max="5" step="1" value="2"></label>
+          <label>over-confidence, log-odds &times; <span class="val" id="vOdds">3</span>
+            <input id="sOdds" type="range" min="2" max="5" step="1" value="3"></label>
+          <label>under-confidence, % toward &pi; <span class="val" id="vShrink">50</span>
+            <input id="sShrink" type="range" min="10" max="90" step="10" value="50"></label>
+          <label>hardening, to 1/<span class="val" id="vHard">50</span>
+            <input id="sHard" type="range" min="10" max="200" step="10" value="50"></label>
+          <label>which adjacent pair gets swapped <span class="val" id="vSwap">4</span>
+            <input id="sSwap" type="range" min="0" max="8" step="1" value="4"></label>
+          <label>largest world in the 246-world sweep <span class="val" id="vSweep">9</span>
+            <input id="sSweep" type="range" min="6" max="10" step="1" value="9"></label>
+        </div>
+        <p class="tiny" style="margin-top:12px">
+          There is no dataset and no generator on this page. A world is a list of score bins; bin
+          <code>i</code> carries an integer mass and a rational conditional probability
+          <code>&eta;<sub>i</sub></code>, and both are folded into two integer vectors on one common
+          denominator, so a confusion matrix is a pair of BigInt subset sums and
+          &ldquo;model&nbsp;A beats model&nbsp;B&rdquo; is an integer cross-multiplication. Optima are
+          found by <strong>exhausting all 2<sup>m</sup> decision rules</strong>, never by scanning
+          thresholds, so &ldquo;the optimum is a threshold rule&rdquo; is a result. Where a closed
+          form exists the enumeration is run anyway and the two are required to be
+          <em>equal as integers</em>. The one number here that is not rational is log loss; its
+          <em>properness</em> still is, because the derivative of the expected loss is
+          <code>(r&minus;&eta;)/(r(1&minus;r))</code>.
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">0 &middot; the world</p>
+        <p class="say" id="sayWorld">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblWorld"></table></div>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">1 &middot; proper, improper, or not a scoring rule at all</p>
+        <p class="say">A scoring rule takes one outcome and one reported probability and returns a
+          number. It is <em>proper</em> when reporting the truth is optimal in expectation, and
+          <em>strictly</em> proper when nothing else is. For Brier and log loss the expected score has
+          a derivative that is a rational function of <code>r</code> with exactly one sign change, at
+          <code>&eta;</code> &mdash; so properness is decided, not searched. The grid search is run
+          anyway, over every bin, and must agree.</p>
+        <div class="scroll"><table class="num" id="tblProper"></table></div>
+        <p class="flag" id="flagProper">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">2 &middot; properness, rewritten as a price</p>
+        <p class="say">Forbidding a lie is less useful than pricing one. Expand the Brier score of any
+          report and the cross terms cancel against the truth&rsquo;s, leaving an identity that holds
+          for <em>every</em> report, honest or not:
+          <code>Brier(r) = Brier(&eta;) + &sum;<sub>i</sub> w<sub>i</sub>(r<sub>i</sub>&minus;&eta;<sub>i</sub>)&sup2;</code>.
+          Over rationals that is exact. In doubles it is not, and the residual is printed next to it.</p>
+        <div class="scroll"><table class="num" id="tblExcess"></table></div>
+        <p class="flag blue" id="flagExcess">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">3 &middot; what each metric cannot tell apart</p>
+        <p class="say">F1 and AUC are not scoring rules &mdash; they do not decompose over
+          observations at all, so &ldquo;is it proper&rdquo; is not a question they can be asked. The
+          question that survives is: given the best possible value of this metric, how many different
+          reports achieve it? Count them on the grid of all
+          <code>(N+1)<sup>m</sup></code> reports. Every count below has a closed form; every closed
+          form is checked against a brute-force enumeration of the whole cube at small m.</p>
+        <div class="scroll"><table class="num" id="tblIdent"></table></div>
+        <p class="say" style="margin:14px 0 8px">The same three counts, brute-forced over every point
+          of the cube:</p>
+        <div class="scroll"><table class="num" id="tblBrute"></table></div>
+        <p class="flag" id="flagIdent">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">4 &middot; the F1 fixed point, over every decision rule</p>
+        <p class="say" id="sayFix">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblFix"></table></div>
+        <p class="flag rose" id="flagFix">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">5 &middot; the lie that tops the leaderboard, in closed form</p>
+        <p class="say" id="sayLie">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblLie"></table></div>
+        <p class="flag rose" id="flagLie">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">6 &middot; the control &mdash; &ldquo;just tune the threshold&rdquo;</p>
+        <p class="say">This is what a practitioner does instead, and it works: the lie stops paying.
+          It works because thresholding a strictly increasing transform of <code>&eta;</code> reaches
+          exactly the same decision sets, so the tuned F1 cannot depend on calibration at all. That is
+          the same sentence read the other way.</p>
+        <div class="scroll"><table class="num" id="tblTune"></table></div>
+        <p class="flag blue" id="flagTune">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">7 &middot; the control &mdash; &ldquo;but we check calibration&rdquo;</p>
+        <p class="say" id="sayCalib">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblMurphy"></table></div>
+        <p class="flag" id="flagCalib">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">8 &middot; the whole leaderboard, every model against every metric</p>
+        <p class="say" id="sayBoard">&nbsp;</p>
+        <div class="scroll"><table class="num" id="tblBoard"></table></div>
+        <p class="flag rose" id="flagBoard">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">9 &middot; the same experiment over every world in a family</p>
+        <p class="say">One world is an anecdote. The whole grid of worlds is enumerated below &mdash;
+          bins, spacing, and mass tilt &mdash; and each headline is re-asked as a count.</p>
+        <div class="scroll"><table class="num" id="tblSweep"></table></div>
+        <p class="flag rose" id="flagSweep">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">10 &middot; every identity and bound, listed</p>
+        <div class="scroll"><table class="num" id="tblIdentity"></table></div>
+        <p class="flag" id="flagIdentity">&nbsp;</p>
+      </div>
+
+      <div class="card">
+        <p class="eyebrow">in-page checks</p>
+        <div id="selftest"></div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ UNDERSTAND -->
+<section id="understand" class="panel hidden">
+  <div class="sheet plain">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">The number you sort on is an objective</h2>
+
+      <p>A model outputs probabilities. A leaderboard outputs one number per model. Somewhere between
+      those two things a decision gets made about which model is better, and the usual assumption is
+      that the number is a <em>measurement</em> &mdash; that a better model scores higher and the
+      metric is a passive instrument. It is not. A metric is an objective function over reports, and
+      an objective function has an argmax, and there is no law saying that argmax is the truth.</p>
+
+      <p>This page builds worlds small enough to check that claim completely. A world is a handful of
+      score bins. Bin <code>i</code> holds a rational share of the data and a rational conditional
+      probability <code>&eta;<sub>i</sub> = P(y=1 | bin i)</code>. That is the entire specification:
+      no samples, no seeds, no noise. Every confusion matrix, every metric, and every optimum below is
+      a finite exact computation over that specification.</p>
+
+      <h3 style="font-size:19px; font-weight:800">1. Proper is a statement about a derivative</h3>
+      <p>Fix one bin with truth <code>&eta;</code> and report <code>r</code>. The expected Brier score
+      is <code>&eta;(1&minus;r)&sup2; + (1&minus;&eta;)r&sup2;</code>, whose derivative is
+      <code>2(r&minus;&eta;)</code>: negative below <code>&eta;</code>, positive above, zero once. The
+      expected log loss is <code>&minus;&eta;&thinsp;ln r &minus; (1&minus;&eta;)ln(1&minus;r)</code>,
+      whose derivative is <code>(r&minus;&eta;)/(r(1&minus;r))</code>: the denominator is positive on
+      the open interval, so the sign is the sign of <code>r&minus;&eta;</code>, and again there is one
+      zero. Both derivatives are <em>rational functions</em>, so the whole argument is an integer
+      comparison and the page runs it at every grid point of every bin. Strict properness is not
+      measured here; it is decided, and then the grid search is run anyway as a second route.</p>
+
+      <p>Absolute error is the instructive failure. Its expected value is
+      <code>&eta; + r(1&minus;2&eta;)</code>, which is <em>linear</em> in <code>r</code>. A linear
+      function on an interval is minimised at an endpoint, so the optimal report is 1 when
+      <code>&eta; &gt; &frac12;</code> and 0 when <code>&eta; &lt; &frac12;</code> &mdash; never the
+      truth, unless the truth already is 0 or 1. Mean absolute error on probabilities does not measure
+      how close your probabilities are; it asks you to round them.</p>
+
+      <p>Zero&ndash;one loss at a cut is the other failure, and a different one. Its expected value is
+      a step function of <code>r</code>, so its optimum is not a wrong point but an <em>interval</em>:
+      every report on the correct side of the cut ties. Accuracy cannot be wrong about the truth, and
+      it cannot recognise it either.</p>
+
+      <h3 style="font-size:19px; font-weight:800">2. F1 and AUC are not scoring rules</h3>
+      <p>Both of the metrics that dominate real leaderboards fall outside the frame entirely. A
+      scoring rule is a function of one outcome and one report, summed over the data. F1 is a ratio of
+      sums; you cannot write it as an average of per-row scores, and its value for one row is not even
+      defined. AUC is a function of pairs. Neither has an expected per-observation score, so neither
+      can be proper or improper &mdash; the vocabulary does not apply.</p>
+
+      <p>What does apply is the <em>identified set</em>: the set of reports that achieve the metric's
+      best attainable value on this world. For a strictly proper rule that set is a single point, and
+      the point is the truth. For everything else it has positive volume, and the page counts it
+      exactly. On a grid of <code>N+1</code> values per bin: Brier admits exactly one report; accuracy
+      and F1 at a fixed cut admit
+      <code>(N/2)<sup>|S|</sup>(N/2+1)<sup>m&minus;|S|</sup></code>, which is one part in
+      <code>2<sup>m</sup></code> of the cube in the limit, because only the side of the cut matters;
+      and AUC admits exactly <code>C(N+1, m)</code>, one part in <code>m!</code>, because only the
+      <em>order</em> matters and each choice of <code>m</code> distinct grid values can be arranged in
+      the winning order exactly one way. All three closed forms are checked against a brute-force
+      enumeration of the entire cube at small <code>m</code>, where the whole thing fits in memory.</p>
+
+      <h3 style="font-size:19px; font-weight:800">3. The F1 threshold is half the F1</h3>
+      <p>Write F1 in terms of a decision rule <code>d</code>:
+      <code>F1 = 2&thinsp;E[&eta;d] / (E[d] + &pi;)</code>. That is linear-fractional in
+      <code>d</code>, and a linear-fractional program has a clean optimum. If the best achievable
+      value is <code>F</code>, then <code>2E[&eta;d] = F(E[d]+&pi;)</code> at the optimum, so
+      maximising F1 is the same as maximising <code>E[(2&eta; &minus; F)d]</code>, which flags a bin
+      exactly when <code>&eta; &gt; F/2</code>.</p>
+
+      <p>Two things fall out. The optimal rule is a threshold on <code>&eta;</code> &mdash; not
+      assumed, derived, and here also confirmed by exhausting all <code>2<sup>m</sup></code> subsets,
+      so the page never has to take the threshold family on trust. And the threshold is
+      <code>F1*/2</code>, which is at most &frac12; and equals &frac12; only when the model is
+      perfect. <strong>The default cut of 0.5 is F1-optimal in exactly one case, and it is the case
+      where you did not need a threshold.</strong></p>
+
+      <p>Accuracy behaves differently, and the contrast is the whole point. Maximising
+      <code>E[&eta;d] + E[(1&minus;&eta;)(1&minus;d)]</code> flags a bin exactly when
+      <code>&eta; &gt; &frac12;</code>. Accuracy's optimal cut <em>is</em> 0.5. So a truthful model
+      thresholded at 0.5 is doing the accuracy-optimal thing, and something else entirely as far as F1
+      is concerned. That mismatch is not a subtlety at the margin: it is the entire effect on this
+      page.</p>
+
+      <h3 style="font-size:19px; font-weight:800">4. What the lie costs, and what it buys</h3>
+      <p>If the F1-optimal cut is <code>F1*/2</code> and the leaderboard insists on 0.5, then the way
+      to top the leaderboard is to move your reports until the two cuts coincide. Apply
+      <code>r = (&eta;+s)/(1+s)</code>, which is strictly increasing and therefore does not change the
+      model's ranking at all. It crosses 0.5 exactly where <code>&eta;</code> crosses
+      <code>(1&minus;s)/2</code>, so <code>s = 1 &minus; F1*</code> makes the 0.5 cut do precisely
+      what the F1-optimal rule does, and the model hits the ceiling.</p>
+
+      <p>Both sides of that trade are closed forms. Every report moves up by
+      <code>s(1&minus;&eta;)/(1+s)</code>, so the expected calibration error is exactly
+      <code>s(1&minus;&pi;)/(1+s)</code>, and by the excess identity the Brier cost is exactly
+      <code>s&sup2;/(1+s)&sup2; &middot; E[(1&minus;&eta;)&sup2;]</code>. The page derives both and
+      then confirms them against the enumeration as exact rationals.</p>
+
+      <p>It also prices the <em>cheapest</em> lie. You do not have to over-state everything; only the
+      bins sitting between <code>F1*/2</code> and 0.5 need to move, and only as far as 0.5. That
+      infimum is an order of magnitude smaller than the uniform over-statement &mdash; and it is an
+      infimum, not a minimum, because a report of exactly 0.5 falls back out of a strict decision
+      set.</p>
+
+      <h3 style="font-size:19px; font-weight:800">5. The controls</h3>
+      <p>Four things a practitioner would reach for instead, each measured on the same world.</p>
+      <p><strong>Tune the threshold.</strong> It works, completely: the lie's advantage drops to
+      exactly zero. It works because the tuned F1 depends only on the upper level sets the report can
+      reach, and a strictly increasing transform reaches the same ones. So after tuning, every
+      monotone model &mdash; the truth, the rank-only model that has thrown its probabilities away,
+      the over-confident model, the under-confident model and the liar &mdash; scores the same number
+      to the last bit, while their Brier scores still differ. The repair removes the artefact and the
+      signal together.</p>
+      <p><strong>Report the base rate.</strong> The constant forecaster <code>r = &pi;</code> is
+      perfectly calibrated: reliability exactly 0, ECE exactly 0. It is also perfectly useless:
+      resolution exactly 0, AUC exactly &frac12;. Its Brier is exactly
+      <code>&pi;(1&minus;&pi;)</code>, and it sits above the truth's by exactly
+      <code>Var(&eta;)</code>. Note what it does <em>not</em> do: it does not top the F1 board, it
+      scores exactly zero there, because a constant below 0.5 flags nothing at a 0.5 cut. The useless
+      model that does score well is the same model with the cut moved.</p>
+      <p><strong>Flag every row.</strong> That is the one. It reads nothing, learns nothing, and
+      scores <code>2&pi;/(1+&pi;)</code> exactly &mdash; and on most of the worlds in the sweep that
+      is a higher F1 than the exactly-correct model gets at the default cut.</p>
+      <p><strong>Check calibration.</strong> ECE cannot separate the truth from the base rate: both
+      are exactly zero. Worse, "perfectly calibrated" is not one model. Partition the bins any way you
+      like and report each group's own rate; every one of those reports has ECE exactly zero. The page
+      enumerates all of them &mdash; every set partition, Bell(m) of them &mdash; and reads off the
+      Brier they span. The interval runs from the truth's Brier to the base rate's, and its width is
+      exactly <code>Var(&eta;)</code>.</p>
+
+      <h3 style="font-size:19px; font-weight:800">6. The thing I got wrong</h3>
+      <p>The identified-set counts were meant to be the ranking column: the smaller a metric's
+      indistinguishable set, the more it can see. AUC's set is hundreds of times smaller than
+      F1@0.5's, so AUC should be the more discriminating metric. On the actual leaderboard the
+      opposite happens, in nearly every world in the sweep: AUC ties most of the roster at the top and
+      F1@0.5 ties almost none of it.</p>
+
+      <p>Both facts are correct and the inference between them was not. Volume measures how much of
+      the whole cube of conceivable reports a metric collapses. A roster of real models does not live
+      in that cube &mdash; it lives on the monotone family, models that agree about the ordering and
+      disagree about the numbers, which is exactly what recalibration, temperature scaling and a
+      different loss function produce. AUC's tiny set is aimed straight at that family, so it
+      swallows the whole roster. F1@0.5's enormous set is spread over reports nobody would ever
+      produce. A metric's blind spot is only a problem where your candidates are, and the volume of
+      the blind spot does not tell you that.</p>
+
+      <p>Two smaller corrections, both kept. The brute-force worlds originally placed
+      <code>&eta;</code> off the grid, so "the Brier optimum is exactly one point" was true while "and
+      that point is the truth" was not something the enumeration could check; the worlds are now built
+      on the grid and the identity of the point is verified. And accuracy at 0.5 does not misbehave at
+      all: it ranks the truth first in every world in the sweep. "Improper metrics mislead you" is too
+      broad. The damage is specific and it is arithmetic &mdash; it comes from evaluating at a cut
+      that is not the cut your metric wanted.</p>
+
+      <h3 style="font-size:19px; font-weight:800">7. What to take away</h3>
+      <p>Sorting by a strictly proper rule cannot be gamed by miscalibration, because the excess over
+      the truth is a squared distance and squared distances are non-negative. That is not a
+      preference; it is the identity in section 2. Sorting by F1 at a fixed cut can be gamed, exactly,
+      by an amount you can write down before you see the data. And sorting by anything that only reads
+      the ordering &mdash; AUC, or F1 after threshold tuning &mdash; is immune to the game and blind
+      to the thing the game was about.</p>
+
+      <p>None of which means F1 is a bad metric. It means F1 is a metric <em>about a decision rule</em>,
+      and reporting it against an untuned 0.5 cut compares your model to a decision nobody chose. If
+      the deployed cut is 0.5 because a product decision fixed it there, then F1@0.5 is the right
+      number and the lie is not a lie &mdash; it is the correct thing to do, and it should be done in
+      the threshold rather than in the probabilities.</p>
+
+      <p><strong>How this page is checked.</strong> The block between <code>ENGINE:BEGIN</code> and
+      <code>ENGINE:END</code> is DOM-free, clock-free and has no random source of any kind. A separate
+      verifier loads that block by text extraction and re-derives every number with different
+      algorithms: a second rational library with lazy reduction, F1 optima found by a forward scan
+      over sorted bins instead of a subset enumeration, AUC rebuilt as a rank sum, the identified-set
+      counts rebuilt by exhausting the cube, the Murphy decomposition rebuilt from a joint table, the
+      calibrated set rebuilt from Bell numbers computed by recurrence, and a mutation harness that
+      corrupts the engine one token at a time and requires every corruption to be caught.</p>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ BUILD -->
+<section id="build" class="panel hidden">
+  <div class="sheet soft">
+    <div class="col narrow">
+
+      <h2 style="font-size:24px; font-weight:900">Build it</h2>
+
+      <p>Everything on this page rests on one representation. Put the world on a common denominator
+      and the entire apparatus becomes integer arithmetic.</p>
+
+      <pre><code>// bin i: integer mass wI[i] out of W, truth eta_i = eN[i]/120
+//   a[i] = wI[i] * eN[i]           positive mass in bin i, over D = W*120
+//   b[i] = wI[i] * (120 - eN[i])   negative mass in bin i, over D
+// a decision set S is then just two BigInt sums:
+//   TP = A/D   FP = B/D   FN = (Ta-A)/D   TN = (Tb-B)/D
+//   F1  = 2A / (A + B + Ta)
+//   Acc = (A + Tb - B) / D
+// so "model X beats model Y" is  numX * denY > numY * denX,  in BigInt.</code></pre>
+
+      <p>Properness needs no search. Differentiate the expected score and look at the sign:</p>
+
+      <pre><code>// Brier:    d/dr [ eta(1-r)^2 + (1-eta)r^2 ]      = 2(r - eta)
+// log loss: d/dr [ -eta*ln r - (1-eta)ln(1-r) ]   = (r - eta) / (r(1-r))
+// both are rational in r, both change sign exactly once, both at eta.
+// absolute error: eta + r(1-2eta)  is LINEAR, so the optimum is a corner.
+// 0-1 loss at cut c: a step function, so the optimum is an interval.</code></pre>
+
+      <p>The optimal decision rule is found by exhausting the power set, so that the threshold family
+      is a conclusion rather than a premise. Subset sums are built incrementally in one pass:</p>
+
+      <pre><code>for (let s = 1; s &lt; (1 &lt;&lt; m); s++){
+  const low = s &amp; (-s), i = 31 - Math.clz32(low), rest = s ^ low;
+  A[s] = A[rest] + a[i];  B[s] = B[rest] + b[i];
+}
+// then argmax over all 2^m of  2A / (A + B + Ta)
+// and check:  optimal set === { i : eta_i &gt; F1*/2 }</code></pre>
+
+      <p>The identified sets are closed forms, each verified against a full enumeration of the cube at
+      small <code>m</code>:</p>
+
+      <pre><code>Brier          exactly 1 point                       (and it is eta itself)
+accuracy@0.5   (N/2)^|S| * (N/2+1)^(m-|S|)           -> 2^-m of the cube
+F1@0.5         (N/2)^|S| * (N/2+1)^(m-|S|)           -> 2^-m of the cube
+AUC            C(N+1, m)                             -> 1/m! of the cube</code></pre>
+
+      <p>The lie is constructive, not searched for:</p>
+
+      <pre><code>// (eta + s)/(1 + s) &gt; 1/2   &lt;=&gt;   eta &gt; (1 - s)/2
+// so s = 1 - F1*  puts the 0.5 cut exactly on the F1-optimal threshold.
+// price  = s^2/(1+s)^2 * E[(1-eta)^2]     (Brier, by the excess identity)
+// ECE    = s(1-pi)/(1+s)
+// gain   = F1* - F1(eta &gt; 1/2)
+// and at a TUNED cut the gain is exactly 0, because the map is monotone.</code></pre>
+
+      <p>The calibrated set is every set partition of the bins. Enumerating Bell(m) of them naively
+      and scoring each with rational Brier took four seconds at <code>m=9</code> and twenty-four at
+      <code>m=10</code>. Cancelling the algebra first turns it into small-integer work: the excess of
+      a partition report over the truth is the within-group variance of <code>&eta;</code>, and after
+      expansion the only partition-dependent term is <code>&sum;<sub>g</sub> S<sub>g</sub>&sup2;/W<sub>g</sub></code>.</p>
+
+      <pre><code>excess(partition) = ( T_tot - sum_g S_g^2 / W_g ) / (W * 120^2)
+  S_g = sum of wI*eN over the group,  W_g = sum of wI over the group
+// maximised by the singleton partition (excess 0 -> the truth)
+// minimised by the single group        (excess Var(eta) -> the base rate)</code></pre>
+
+      <p><strong>Reproduce it.</strong> Save this file and open it; there is no build step and no
+      network call. The verifier is a single Node script with no dependencies:</p>
+
+      <pre><code>node bot10-verify-day77-ml.mjs</code></pre>
+
+      <p>It extracts the engine block by text, re-implements every quantity a different way, and then
+      corrupts the engine one token at a time and fails if any corruption survives.</p>
+
+    </div>
+  </div>
+</section>
+
+<footer class="foot">
+  <div class="wrap">
+    MachineLearningFromZero &middot; Day 77 &mdash; which metric can an honest model win. Worlds are
+    exact rationals over BigInt, optima are found over all 2<sup>m</sup> decision rules, and the
+    identified set of every metric is counted and matched to a closed form. One file, vanilla
+    JavaScript, no build step and no libraries. Previous:
+    <a href="day76-differential-privacy.html">Day 76 &mdash; What &epsilon; actually buys</a>.
+  </div>
+</footer>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => x.classList.remove("tab-active"));
+  t.classList.add("tab-active");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Which metric can an honest model win?
+//
+// Day 73 asked what a clustering score is a number OF, Day 74 which fairness equalities can hold at
+// once, Day 75 what the guarantee printed in front of a training run is worth, Day 76 what the
+// promise attached to a data release is worth. Every one of those was about a number somebody
+// REPORTS. This page is about the number somebody SORTS ON: the leaderboard column that decides
+// which model ships.
+//
+// Nothing here is sampled. A world is a finite list of score bins with rational masses and rational
+// conditional probabilities, put on a common denominator so every confusion matrix is a pair of
+// BigInt sums. Then:
+//   - "this rule is proper" is settled by the SIGN OF AN EXACT RATIONAL DERIVATIVE, not by a search;
+//   - the optimal decision rule is found over ALL 2^m subsets, not over the m+1 thresholds, so
+//     "the optimum is a threshold rule" is a RESULT rather than an assumption;
+//   - the identified set of each metric is COUNTED on a grid and matched to a closed form;
+//   - and every excess is an exact rational, so "this model is worse" is an integer comparison.
+
+// ---------------------------------------------------------------- exact rationals over BigInt
+function gcdB(a, b){ if (a < 0n) a = -a; if (b < 0n) b = -b; while (b) { const t = a % b; a = b; b = t; } return a; }
+function R(n, d){
+  if (d === undefined) d = 1n;
+  if (typeof n === 'number') n = BigInt(n);
+  if (typeof d === 'number') d = BigInt(d);
+  if (d === 0n) return null;
+  if (d < 0n) { n = -n; d = -d; }
+  if (n === 0n) return { n: 0n, d: 1n };
+  const g = gcdB(n, d);
+  return { n: n / g, d: d / g };
+}
+function ri(k){ return R(BigInt(k), 1n); }
+const R0 = R(0n, 1n), R1 = R(1n, 1n), RH = R(1n, 2n);
+function radd(a, b){ return R(a.n * b.d + b.n * a.d, a.d * b.d); }
+function rsub(a, b){ return R(a.n * b.d - b.n * a.d, a.d * b.d); }
+function rmul(a, b){ return R(a.n * b.n, a.d * b.d); }
+function rdiv(a, b){ return b.n === 0n ? null : R(a.n * b.d, a.d * b.n); }
+function rcmp(a, b){ const l = a.n * b.d, r = b.n * a.d; return l < r ? -1 : (l > r ? 1 : 0); }
+function req(a, b){ return a !== null && b !== null && a !== undefined && b !== undefined && a.n * b.d === b.n * a.d; }
+function rneg(a){ return { n: -a.n, d: a.d }; }
+function rmin(a, b){ return rcmp(a, b) <= 0 ? a : b; }
+function rmax(a, b){ return rcmp(a, b) >= 0 ? a : b; }
+function rsq(a){ return rmul(a, a); }
+function rnum(a){
+  if (a === null || a === undefined) return null;
+  const s = a.n < 0n ? -1n : 1n;
+  return Number(s) * Number(((s < 0n ? -a.n : a.n) * 10n ** 21n) / a.d) / 1e21;
+}
+function rpow(a, k){ let r = R1, b = a, e = BigInt(k); while (e > 0n) { if (e & 1n) r = rmul(r, b); b = rmul(b, b); e >>= 1n; } return r; }
+function bpow(x, k){ let r = 1n, b = x, e = BigInt(k); while (e > 0n) { if (e & 1n) r = r * b; b = b * b; e >>= 1n; } return r; }
+function binomB(n, k){
+  if (k < 0 || k > n) return 0n;
+  let r = 1n; const K = BigInt(Math.min(k, n - k)), N = BigInt(n);
+  for (let i = 0n; i < K; i++) r = r * (N - i) / (i + 1n);
+  return r;
+}
+function popcount(x){ let c = 0; while (x) { x &= x - 1; c++; } return c; }
+
+// ---------------------------------------------------------------- a world
+// m score bins. Bin i holds mass wI[i] (integer, out of W) and its true conditional probability is
+// eN[i]/eD. Everything downstream is then two BigInt vectors on one common denominator:
+//   a[i] = wI[i]*eN[i]        proportional to  w_i * eta_i        (positive mass in bin i)
+//   b[i] = wI[i]*(eD - eN[i]) proportional to  w_i * (1 - eta_i)  (negative mass in bin i)
+// so every confusion matrix is a pair of integer subset sums over D = W*eD.
+const ED = 120n;
+function makeWorld(m, lo, step, tilt){
+  const eN = [], wI = [];
+  for (let i = 0; i < m; i++){
+    let v = lo + i * step;
+    if (v < 1) v = 1;
+    if (v > Number(ED) - 1) v = Number(ED) - 1;
+    eN.push(BigInt(v));
+    wI.push(BigInt(1 + (m - 1 - i) * tilt));
+  }
+  let W = 0n; for (const w of wI) W += w;
+  const a = [], b = [];
+  for (let i = 0; i < m; i++){ a.push(wI[i] * eN[i]); b.push(wI[i] * (ED - eN[i])); }
+  let Ta = 0n, Tb = 0n;
+  for (let i = 0; i < m; i++){ Ta += a[i]; Tb += b[i]; }
+  const D = W * ED;
+  const eta = eN.map(function(v){ return R(v, ED); });
+  const w = wI.map(function(v){ return R(v, W); });
+  let distinct = true;
+  for (let i = 1; i < m; i++) if (eN[i] <= eN[i - 1]) distinct = false;
+  return { m: m, eD: ED, eN: eN, wI: wI, W: W, a: a, b: b, D: D, Ta: Ta, Tb: Tb,
+           pi: R(Ta, D), eta: eta, w: w, distinct: distinct };
+}
+
+// ---------------------------------------------------------------- confusion matrices, exactly
+function maskSums(Wd, mask){
+  let A = 0n, B = 0n;
+  for (let i = 0; i < Wd.m; i++) if (mask & (1 << i)) { A += Wd.a[i]; B += Wd.b[i]; }
+  return { A: A, B: B };
+}
+function f1Mask(Wd, A, B){ const den = A + B + Wd.Ta; return den === 0n ? R0 : R(2n * A, den); }
+function accMask(Wd, A, B){ return R(A + Wd.Tb - B, Wd.D); }
+function precMask(Wd, A, B){ return (A + B) === 0n ? null : R(A, A + B); }
+function recMask(Wd, A){ return Wd.Ta === 0n ? null : R(A, Wd.Ta); }
+function maskOf(Wd, r, cut){
+  let m = 0;
+  for (let i = 0; i < Wd.m; i++) if (rcmp(r[i], cut) > 0) m |= (1 << i);
+  return m;
+}
+
+// ---------------------------------------------------------------- exhaustive optimisation
+function allSums(Wd){
+  const n = 1 << Wd.m, A = new Array(n), B = new Array(n);
+  A[0] = 0n; B[0] = 0n;
+  for (let s = 1; s < n; s++){
+    const low = s & (-s), i = 31 - Math.clz32(low), rest = s ^ low;
+    A[s] = A[rest] + Wd.a[i]; B[s] = B[rest] + Wd.b[i];
+  }
+  return { A: A, B: B };
+}
+function bestF1Subset(Wd, sums){
+  const S = sums || allSums(Wd), n = 1 << Wd.m;
+  let best = -1, bn = 0n, bd = 1n;
+  for (let s = 0; s < n; s++){
+    const num = 2n * S.A[s], den = S.A[s] + S.B[s] + Wd.Ta;
+    if (den === 0n) continue;
+    if (best < 0 || num * bd > bn * den) { best = s; bn = num; bd = den; }
+  }
+  return { mask: best, val: R(bn, bd), sums: S };
+}
+function bestAccSubset(Wd, sums){
+  const S = sums || allSums(Wd), n = 1 << Wd.m;
+  let best = -1, bv = null;
+  for (let s = 0; s < n; s++){
+    const v = S.A[s] + Wd.Tb - S.B[s];
+    if (best < 0 || v > bv) { best = s; bv = v; }
+  }
+  return { mask: best, val: R(bv, Wd.D), sums: S };
+}
+function levelSet(Wd, t, strict){
+  let m = 0;
+  for (let i = 0; i < Wd.m; i++){
+    const c = rcmp(Wd.eta[i], t);
+    if (strict ? c > 0 : c >= 0) m |= (1 << i);
+  }
+  return m;
+}
+function thresholdMasks(Wd, r){
+  const idx = [];
+  for (let i = 0; i < Wd.m; i++) idx.push(i);
+  idx.sort(function(x, y){ return -rcmp(r[x], r[y]); });
+  const out = [0];
+  let cur = 0, k = 0;
+  while (k < idx.length){
+    let j = k;
+    while (j < idx.length && rcmp(r[idx[j]], r[idx[k]]) === 0) { cur |= (1 << idx[j]); j++; }
+    out.push(cur); k = j;
+  }
+  return out;
+}
+function bestThreshF1(Wd, r){
+  const ms = thresholdMasks(Wd, r);
+  let best = null, bm = -1;
+  for (const s of ms){
+    const t = maskSums(Wd, s), v = f1Mask(Wd, t.A, t.B);
+    if (best === null || rcmp(v, best) > 0) { best = v; bm = s; }
+  }
+  return { val: best, mask: bm, nMasks: ms.length };
+}
+
+// ---------------------------------------------------------------- metrics
+function aucOf(Wd, r){
+  if (Wd.Ta === 0n || Wd.Tb === 0n) return null;
+  let n2 = 0n;
+  for (let i = 0; i < Wd.m; i++) for (let j = 0; j < Wd.m; j++){
+    const c = rcmp(r[i], r[j]);
+    if (c > 0) n2 += 2n * Wd.a[i] * Wd.b[j];
+    else if (c === 0) n2 += Wd.a[i] * Wd.b[j];
+  }
+  return R(n2, 2n * Wd.Ta * Wd.Tb);
+}
+function brierOf(Wd, r){
+  let s = R0;
+  for (let i = 0; i < Wd.m; i++){
+    const one = rsub(R1, r[i]);
+    s = radd(s, radd(rmul(R(Wd.a[i], 1n), rmul(one, one)), rmul(R(Wd.b[i], 1n), rmul(r[i], r[i]))));
+  }
+  return rdiv(s, R(Wd.D, 1n));
+}
+function excessOf(Wd, r){
+  let s = R0;
+  for (let i = 0; i < Wd.m; i++){
+    const d = rsub(r[i], Wd.eta[i]);
+    s = radd(s, rmul(Wd.w[i], rmul(d, d)));
+  }
+  return s;
+}
+function logLossOf(Wd, r){
+  let s = 0;
+  for (let i = 0; i < Wd.m; i++){
+    const p = rnum(r[i]), ai = Number(Wd.a[i]), bi = Number(Wd.b[i]);
+    if (p <= 0 && ai > 0) return Infinity;
+    if (p >= 1 && bi > 0) return Infinity;
+    if (ai > 0) s += ai * (-Math.log(p));
+    if (bi > 0) s += bi * (-Math.log(1 - p));
+  }
+  return s / Number(Wd.D);
+}
+function groupsOf(Wd, r){
+  const key = new Map();
+  for (let i = 0; i < Wd.m; i++){
+    const k = r[i].n + '/' + r[i].d;
+    let g = key.get(k);
+    if (!g) { g = { r: r[i], A: 0n, B: 0n }; key.set(k, g); }
+    g.A += Wd.a[i]; g.B += Wd.b[i];
+  }
+  return key;
+}
+function eceOf(Wd, r){
+  const key = groupsOf(Wd, r);
+  let s = R0;
+  for (const g of key.values()){
+    const mass = R(g.A + g.B, Wd.D), obs = R(g.A, g.A + g.B);
+    const gap = rsub(g.r, obs);
+    s = radd(s, rmul(mass, gap.n < 0n ? rneg(gap) : gap));
+  }
+  return { ece: s, groups: key.size };
+}
+function murphyOf(Wd, r){
+  const key = groupsOf(Wd, r);
+  let rel = R0, res = R0;
+  const pi = Wd.pi;
+  for (const g of key.values()){
+    const mass = R(g.A + g.B, Wd.D), obs = R(g.A, g.A + g.B);
+    rel = radd(rel, rmul(mass, rsq(rsub(g.r, obs))));
+    res = radd(res, rmul(mass, rsq(rsub(obs, pi))));
+  }
+  const unc = rmul(pi, rsub(R1, pi));
+  return { rel: rel, res: res, unc: unc, sum: radd(rsub(rel, res), unc), groups: key.size };
+}
+function varEta(Wd){
+  let e2 = R0;
+  for (let i = 0; i < Wd.m; i++) e2 = radd(e2, rmul(Wd.w[i], rsq(Wd.eta[i])));
+  return rsub(e2, rsq(Wd.pi));
+}
+
+// ---------------------------------------------------------------- reports (the models)
+function rpTruth(Wd){ return Wd.eta.slice(); }
+function rpBase(Wd){ const o = []; for (let i = 0; i < Wd.m; i++) o.push(Wd.pi); return o; }
+function rpRank(Wd){
+  const o = [];
+  for (let i = 0; i < Wd.m; i++) o.push(R(BigInt(i + 1), BigInt(Wd.m + 1)));
+  return o;
+}
+function rpOdds(Wd, k){
+  const o = [];
+  for (let i = 0; i < Wd.m; i++){
+    const p = bpow(Wd.eN[i], k), q = bpow(Wd.eD - Wd.eN[i], k);
+    o.push(R(p, p + q));
+  }
+  return o;
+}
+function rpShrink(Wd, lamN, lamD){
+  const lam = R(BigInt(lamN), BigInt(lamD)), one = rsub(R1, lam), o = [];
+  for (let i = 0; i < Wd.m; i++) o.push(radd(rmul(lam, Wd.eta[i]), rmul(one, Wd.pi)));
+  return o;
+}
+function rpBias(Wd, s){
+  const den = radd(R1, s), o = [];
+  for (let i = 0; i < Wd.m; i++) o.push(rdiv(radd(Wd.eta[i], s), den));
+  return o;
+}
+function rpHarden(Wd, dN, dD){
+  const d = R(BigInt(dN), BigInt(dD)), hi = rsub(R1, d), o = [];
+  for (let i = 0; i < Wd.m; i++) o.push(rcmp(Wd.eta[i], RH) > 0 ? hi : d);
+  return o;
+}
+function rpSwap(Wd, j){
+  const o = Wd.eta.slice();
+  const k = Math.max(0, Math.min(Wd.m - 2, j));
+  const t = o[k]; o[k] = o[k + 1]; o[k + 1] = t;
+  return o;
+}
+function rpAnti(Wd){ return Wd.eta.map(function(e){ return rsub(R1, e); }); }
+function rpConst(Wd, n, d){ const v = R(BigInt(n), BigInt(d)), o = []; for (let i = 0; i < Wd.m; i++) o.push(v); return o; }
+
+// ---------------------------------------------------------------- 1. proper, improper, or not a rule
+const RULES = [
+  { key: 'brier',  label: 'Brier (squared error)', proper: true,
+    dsign: function(eta, r){ return rcmp(r, eta); },
+    note: 'derivative 2(r&minus;&eta;) &mdash; one sign change, at &eta;' },
+  { key: 'log',    label: 'log loss', proper: true,
+    dsign: function(eta, r){ return rcmp(r, eta); },
+    note: 'derivative (r&minus;&eta;)/(r(1&minus;r)) &mdash; same sign change' },
+  { key: 'spher',  label: 'spherical score', proper: true, dsign: null,
+    note: 'proper; swept on the grid only' },
+  { key: 'abs',    label: 'absolute error |y&minus;r|', proper: false, dsign: null,
+    note: '&eta; + r(1&minus;2&eta;) is LINEAR in r &mdash; the optimum is a corner' },
+  { key: 'zeroone', label: '0&ndash;1 loss at a cut', proper: false, dsign: null,
+    note: 'a step function &mdash; the optimum is an interval' }
+];
+function ruleExp(key, eta, r, cut){
+  if (key === 'brier') return radd(rmul(eta, rsq(rsub(R1, r))), rmul(rsub(R1, eta), rsq(r)));
+  if (key === 'abs')   return radd(rmul(eta, rsub(R1, r)), rmul(rsub(R1, eta), r));
+  if (key === 'zeroone') return rcmp(r, cut) > 0 ? rsub(R1, eta) : eta;
+  return null;
+}
+function ruleExpNum(key, eta, r){
+  const p = rnum(r), e = rnum(eta);
+  if (key === 'log'){ if (p <= 0 || p >= 1) return Infinity; return -(e * Math.log(p) + (1 - e) * Math.log(1 - p)); }
+  const n = Math.sqrt(p * p + (1 - p) * (1 - p));
+  return n === 0 ? Infinity : -(e * p + (1 - e) * (1 - p)) / n;
+}
+function gridArgmin(N, evalR){
+  let best = null, set = [];
+  for (let k = 0; k <= N; k++){
+    const r = R(BigInt(k), BigInt(N)), v = evalR(r);
+    if (v === null) continue;
+    let c;
+    if (best === null) c = -1;
+    else if (typeof v === 'number') c = v < best - 1e-15 ? -1 : (v > best + 1e-15 ? 1 : 0);
+    else c = rcmp(v, best);
+    if (c < 0) { best = v; set = [r]; }
+    else if (c === 0) set.push(r);
+  }
+  return { best: best, set: set };
+}
+function properTable(cfg){
+  const Wd = cfg.world, N = cfg.gridN, rows = [];
+  for (const rule of RULES){
+    let unique = true, atTruth = true, worst = 0, corner = true, flatAtHalf = false;
+    for (let i = 0; i < Wd.m; i++){
+      const eta = Wd.eta[i];
+      const g = (rule.key === 'log' || rule.key === 'spher')
+        ? gridArgmin(N, function(r){ return ruleExpNum(rule.key, eta, r); })
+        : gridArgmin(N, function(r){ return ruleExp(rule.key, eta, r, RH); });
+      if (g.set.length !== 1) unique = false;
+      if (!(g.set.length === 1 && req(g.set[0], eta))) atTruth = false;
+      if (g.set.length > worst) worst = g.set.length;
+      if (rule.key === 'abs'){
+        // eta + r(1-2eta) has slope 1-2eta, so at eta = 1/2 the score does not depend on r AT ALL
+        // and every report ties. Everywhere else the optimum is the corner the slope points at.
+        if (req(eta, RH)){
+          flatAtHalf = true;
+          if (g.set.length !== N + 1) corner = false;
+        } else if (!(g.set.length === 1 && (req(g.set[0], R0) || req(g.set[0], R1)))) corner = false;
+      }
+    }
+    let signOk = null;
+    if (rule.dsign){
+      signOk = true;
+      for (let i = 0; i < Wd.m; i++){
+        const eta = Wd.eta[i];
+        for (let k = 1; k < N; k++){
+          const r = R(BigInt(k), BigInt(N));
+          if (rcmp(r, eta) !== rule.dsign(eta, r)) signOk = false;
+        }
+      }
+    }
+    rows.push({ key: rule.key, label: rule.label, claimed: rule.proper, unique: unique,
+                atTruth: atTruth, worst: worst, signOk: signOk, note: rule.note,
+                corner: rule.key === 'abs' ? corner : null,
+                flatAtHalf: rule.key === 'abs' ? flatAtHalf : null });
+  }
+  return { rows: rows, N: N,
+           allProperPass: rows.filter(function(r){ return r.claimed; }).every(function(r){ return r.unique && r.atTruth && r.signOk !== false; }),
+           allImproperFail: rows.filter(function(r){ return !r.claimed; }).every(function(r){ return !r.atTruth; }) };
+}
+
+// ---------------------------------------------------------------- 2. the excess identity
+function excessTable(cfg){
+  const Wd = cfg.world, rows = [], b0 = brierOf(Wd, Wd.eta);
+  let allExact = true, worstFloat = 0;
+  for (const mod of cfg.roster){
+    const br = brierOf(Wd, mod.r), ex = excessOf(Wd, mod.r);
+    const exact = req(rsub(br, b0), ex);
+    if (!exact) allExact = false;
+    const fl = Math.abs((rnum(br) - rnum(b0)) - rnum(ex));
+    if (fl > worstFloat) worstFloat = fl;
+    rows.push({ name: mod.name, brier: br, excess: ex, exact: exact, floatResid: fl,
+                ece: eceOf(Wd, mod.r).ece });
+  }
+  return { rows: rows, allExact: allExact, brierTruth: b0, worstFloat: worstFloat };
+}
+
+// ---------------------------------------------------------------- 3. the identified set
+function identTable(cfg){
+  const Wd = cfg.world, N = BigInt(cfg.gridN), m = Wd.m, total = bpow(N + 1n, m);
+  const above = N / 2n, below = N / 2n + 1n;
+  const f1 = bestF1Subset(Wd, cfg.sums), ac = bestAccSubset(Wd, cfg.sums);
+  const kF1 = popcount(f1.mask), kAc = popcount(ac.mask);
+  let fact = 1n; for (let i = 2n; i <= BigInt(m); i++) fact *= i;
+  const rows = [
+    { name: 'Brier', count: 1n, form: 'exactly one point', lim: '0', sees: 'every probability' },
+    { name: 'log loss', count: 1n, form: 'exactly one point', lim: '0', sees: 'every probability' },
+    { name: 'accuracy @ 0.5', count: bpow(above, kAc) * bpow(below, m - kAc),
+      form: '(N/2)<sup>|S|</sup>(N/2+1)<sup>m&minus;|S|</sup>', lim: '2<sup>&minus;m</sup>', sees: 'which side of 0.5' },
+    { name: 'F1 @ 0.5', count: bpow(above, kF1) * bpow(below, m - kF1),
+      form: '(N/2)<sup>|S|</sup>(N/2+1)<sup>m&minus;|S|</sup>', lim: '2<sup>&minus;m</sup>', sees: 'which side of 0.5' },
+    { name: 'AUC', count: binomB(cfg.gridN + 1, m), form: 'C(N+1, m)', lim: '1/m!', sees: 'the order only' }
+  ];
+  for (const r of rows) r.frac = R(r.count, total);
+  return { rows: rows, total: total, m: m, N: cfg.gridN, fact: fact, twoM: bpow(2n, m),
+           kF1: kF1, kAc: kAc, f1Mask: f1.mask, accMask: ac.mask,
+           aucBigger: binomB(cfg.gridN + 1, m) < bpow(above, kF1) * bpow(below, m - kF1) };
+}
+// which grid indices the brute-force world sits on: every eta_i is a grid value k/N, so the
+// single Brier optimum is reachable and the count of 1 can be shown to be the TRUTH itself
+function bruteKs(m, N){
+  const allowed = [];
+  for (let k = 1; k < N; k++) if (2 * k !== N) allowed.push(k);
+  const out = [];
+  for (let j = 0; j < m; j++) out.push(allowed[Math.round(j * (allowed.length - 1) / Math.max(1, m - 1))]);
+  return out;
+}
+function identBrute(m, N){
+  const ks = bruteKs(m, N), scale = Number(ED) / N;
+  const eN = ks.map(function(k){ return k * scale; });
+  const wI = [];
+  for (let i = 0; i < m; i++) wI.push(1 + (m - 1 - i));
+  const Wd = { m: m, eD: ED, eN: eN.map(BigInt), wI: wI.map(BigInt), W: 0n, a: [], b: [],
+               D: 0n, Ta: 0n, Tb: 0n, pi: null, eta: [], w: [], distinct: true };
+  for (const w of Wd.wI) Wd.W += w;
+  for (let i = 0; i < m; i++){
+    Wd.a.push(Wd.wI[i] * Wd.eN[i]); Wd.b.push(Wd.wI[i] * (ED - Wd.eN[i]));
+    Wd.eta.push(R(Wd.eN[i], ED)); Wd.w.push(R(Wd.wI[i], Wd.W));
+  }
+  for (let i = 0; i < m; i++){ Wd.Ta += Wd.a[i]; Wd.Tb += Wd.b[i]; }
+  Wd.D = Wd.W * ED; Wd.pi = R(Wd.Ta, Wd.D);
+  for (let i = 1; i < m; i++) if (Wd.eN[i] <= Wd.eN[i - 1]) Wd.distinct = false;
+  const total = Math.pow(N + 1, m);
+  const grid = [];
+  for (let k = 0; k <= N; k++) grid.push(R(BigInt(k), BigInt(N)));
+  let bestAuc = null, cAuc = 0, bestB = null, cB = 0, bestF1 = null, cF1 = 0, argB = null;
+  const r = new Array(m);
+  for (let t = 0; t < total; t++){
+    let x = t;
+    for (let i = 0; i < m; i++){ r[i] = grid[x % (N + 1)]; x = Math.floor(x / (N + 1)); }
+    const au = aucOf(Wd, r);
+    if (au !== null){
+      const c = bestAuc === null ? 1 : rcmp(au, bestAuc);
+      if (c > 0) { bestAuc = au; cAuc = 1; } else if (c === 0) cAuc++;
+    }
+    const br = brierOf(Wd, r);
+    const cb = bestB === null ? -1 : rcmp(br, bestB);
+    if (cb < 0) { bestB = br; cB = 1; argB = r.slice(); } else if (cb === 0) cB++;
+    const sm = maskSums(Wd, maskOf(Wd, r, RH));
+    const v = f1Mask(Wd, sm.A, sm.B);
+    const cf = bestF1 === null ? 1 : rcmp(v, bestF1);
+    if (cf > 0) { bestF1 = v; cF1 = 1; } else if (cf === 0) cF1++;
+  }
+  const kF1 = popcount(bestF1Subset(Wd, allSums(Wd)).mask);
+  const NB = BigInt(N);
+  return { m: m, N: N, total: total, world: Wd,
+           auc: BigInt(cAuc), aucForm: binomB(N + 1, m),
+           brier: BigInt(cB), brierForm: 1n,
+           brierAtTruth: argB !== null && argB.every(function(v, i){ return req(v, Wd.eta[i]); }),
+           f1: BigInt(cF1), f1Form: bpow(NB / 2n, kF1) * bpow(NB / 2n + 1n, m - kF1),
+           aucMaxIsTruthOrder: bestAuc !== null && req(bestAuc, aucOf(Wd, Wd.eta)),
+           allOk: false };
+}
+
+// ---------------------------------------------------------------- 4. the F1 fixed point
+function f1FixTable(cfg){
+  const Wd = cfg.world, sums = cfg.sums;
+  const best = bestF1Subset(Wd, sums);
+  const half = rdiv(best.val, ri(2));
+  const strict = levelSet(Wd, half, true), loose = levelSet(Wd, half, false);
+  const contained = ((strict & best.mask) === strict) && ((best.mask & loose) === best.mask);
+  const isThreshold = best.mask === strict || best.mask === loose;
+  const accBest = bestAccSubset(Wd, sums);
+  const accStrict = levelSet(Wd, RH, true), accLoose = levelSet(Wd, RH, false);
+  const accIsHalf = ((accStrict & accBest.mask) === accStrict) && ((accBest.mask & accLoose) === accBest.mask);
+  const truthMask = maskOf(Wd, Wd.eta, RH);
+  const ts = maskSums(Wd, truthMask);
+  return { best: best.val, half: half, mask: best.mask, strict: strict, loose: loose,
+           contained: contained, isThreshold: isThreshold,
+           halfBelowHalf: rcmp(half, RH) <= 0,
+           halfEqHalfIffPerfect: req(half, RH) === req(best.val, R1),
+           accBest: accBest.val, accMask: accBest.mask, accIsHalf: accIsHalf,
+           truthMask: truthMask, f1AtHalf: f1Mask(Wd, ts.A, ts.B),
+           costOfHalf: rsub(best.val, f1Mask(Wd, ts.A, ts.B)),
+           differs: truthMask !== best.mask, nRules: 1 << Wd.m,
+           kOpt: popcount(best.mask), kAcc: popcount(accBest.mask) };
+}
+
+// ---------------------------------------------------------------- 5. the lie that wins
+function lieTable(cfg){
+  const Wd = cfg.world, fx = cfg.f1fix;
+  const s = rsub(R1, fx.best);
+  const rBias = rpBias(Wd, s);
+  const mk = maskOf(Wd, rBias, RH);
+  const sm = maskSums(Wd, mk);
+  const gotF1 = f1Mask(Wd, sm.A, sm.B);
+  const one_s = radd(R1, s);
+  const eceClosed = rdiv(rmul(s, rsub(R1, Wd.pi)), one_s);
+  let e1m2 = R0;
+  for (let i = 0; i < Wd.m; i++) e1m2 = radd(e1m2, rmul(Wd.w[i], rsq(rsub(R1, Wd.eta[i]))));
+  const exClosed = rmul(rdiv(rsq(s), rsq(one_s)), e1m2);
+  const exMeasured = excessOf(Wd, rBias);
+  const eceMeasured = eceOf(Wd, rBias).ece;
+  let inf = R0, nMoved = 0;
+  for (let i = 0; i < Wd.m; i++){
+    const inOpt = (fx.mask & (1 << i)) !== 0, above = rcmp(Wd.eta[i], RH) > 0;
+    if (inOpt && !above){ inf = radd(inf, rmul(Wd.w[i], rsq(rsub(RH, Wd.eta[i])))); nMoved++; }
+    if (!inOpt && above){ inf = radd(inf, rmul(Wd.w[i], rsq(rsub(Wd.eta[i], RH)))); nMoved++; }
+  }
+  const tunedLie = bestThreshF1(Wd, rBias).val, tunedTruth = bestThreshF1(Wd, Wd.eta).val;
+  return { s: s, report: rBias, reaches: req(gotF1, fx.best), gotF1: gotF1,
+           gain: rsub(gotF1, fx.f1AtHalf),
+           gainTuned: rsub(tunedLie, tunedTruth), tunedLie: tunedLie, tunedTruth: tunedTruth,
+           flagAll: rdiv(rmul(ri(2), Wd.pi), radd(R1, Wd.pi)),
+           flagAllBeatsHonest: rcmp(rdiv(rmul(ri(2), Wd.pi), radd(R1, Wd.pi)), fx.f1AtHalf) > 0,
+           exClosed: exClosed, exMeasured: exMeasured, exAgree: req(exClosed, exMeasured),
+           eceClosed: eceClosed, eceMeasured: eceMeasured, eceAgree: req(eceClosed, eceMeasured),
+           inf: inf, nMoved: nMoved, cheaper: rcmp(inf, exMeasured) < 0,
+           mask: mk, sameAsOpt: mk === fx.mask, e1m2: e1m2 };
+}
+
+// ---------------------------------------------------------------- 6. the control: tune the cut
+function tuneTable(cfg){
+  const Wd = cfg.world, rows = [];
+  let ref = null, allSame = true;
+  for (const mod of cfg.roster){
+    const at = maskSums(Wd, maskOf(Wd, mod.r, RH));
+    const bt = bestThreshF1(Wd, mod.r);
+    rows.push({ name: mod.name, monotone: mod.monotone, half: f1Mask(Wd, at.A, at.B),
+                tuned: bt.val, masks: bt.nMasks, ex: excessOf(Wd, mod.r),
+                auc: aucOf(Wd, mod.r) });
+    if (mod.monotone){ if (ref === null) ref = bt.val; else if (!req(ref, bt.val)) allSame = false; }
+  }
+  const mono = rows.filter(function(r){ return r.monotone; });
+  let lo = null, hi = null, exLo = null, exHi = null;
+  for (const r of mono){
+    lo = lo === null ? r.half : rmin(lo, r.half); hi = hi === null ? r.half : rmax(hi, r.half);
+    exLo = exLo === null ? r.ex : rmin(exLo, r.ex); exHi = exHi === null ? r.ex : rmax(exHi, r.ex);
+  }
+  return { rows: rows, allSame: allSame, tuned: ref,
+           spreadAtHalf: lo === null ? R0 : rsub(hi, lo),
+           exSpread: exHi === null ? R0 : rsub(exHi, exLo), nMono: mono.length };
+}
+
+// ---------------------------------------------------------------- 7. the calibrated set
+// "perfectly calibrated" is not one model. Group the bins any way you like and report each group's
+// own rate: every one of those reports has ECE exactly 0. Every set partition of the m bins is
+// enumerated (restricted growth strings), and the Brier they span is read off in closed form.
+//
+// For a partition report the excess over the truth is the WITHIN-GROUP variance of eta, which after
+// cancellation is    ( T_tot - sum_g S_g^2 / W_g ) / (W * eD^2),
+// with S_g = sum wI*eN and W_g = sum wI over the group. Only sum_g S_g^2/W_g depends on the
+// partition, and its numerators are small, so the whole enumeration is integer work.
+function calibSetTable(cfg){
+  const Wd = cfg.world, m = Wd.m;
+  const enumerated = m <= 10;
+  let Ttot = 0n;
+  for (let i = 0; i < m; i++) Ttot += Wd.wI[i] * Wd.eN[i] * Wd.eN[i];
+  const scale = Wd.W * ED * ED;
+  const seen = new Set();
+  let parts = 0, lo = null, hi = null;
+  const asg = new Array(m).fill(0);
+  const Sg = new Array(m).fill(0n), Wg = new Array(m).fill(0n);
+  function rec(i, mx){
+    if (i === m){
+      parts++;
+      for (let g = 0; g < mx; g++){ Sg[g] = 0n; Wg[g] = 0n; }
+      for (let k = 0; k < m; k++){ Sg[asg[k]] += Wd.wI[k] * Wd.eN[k]; Wg[asg[k]] += Wd.wI[k]; }
+      // key the REPORT, not the partition: two partitions whose groups share a rate are one model
+      let key = '';
+      for (let k = 0; k < m; k++){
+        const g = asg[k], q = gcdB(Sg[g], Wg[g]);
+        key += (Sg[g] / q) + '/' + (Wg[g] / q) + ',';
+      }
+      if (!seen.has(key)){
+        seen.add(key);
+        let n = 0n, d = 1n;               // sum_g S_g^2 / W_g, as one exact fraction
+        for (let g = 0; g < mx; g++){ n = n * Wg[g] + Sg[g] * Sg[g] * d; d = d * Wg[g];
+                                       const q = gcdB(n < 0n ? -n : n, d) || 1n; n /= q; d /= q; }
+        const ex = R(Ttot * d - n, d * scale);
+        if (lo === null || rcmp(ex, lo) < 0) lo = ex;
+        if (hi === null || rcmp(ex, hi) > 0) hi = ex;
+      }
+      return;
+    }
+    for (let g = 0; g <= mx && g < m; g++){ asg[i] = g; rec(i + 1, Math.max(mx, g + 1)); }
+  }
+  if (enumerated) rec(0, 0);
+  const brTruth = brierOf(Wd, Wd.eta), brBase = brierOf(Wd, rpBase(Wd)), vr = varEta(Wd);
+  return { partitions: parts, distinct: seen.size, enumerated: enumerated,
+           lo: lo === null ? null : radd(brTruth, lo), hi: hi === null ? null : radd(brTruth, hi),
+           loIsZero: lo !== null && lo.n === 0n,
+           hiIsVar: hi !== null && req(hi, vr),
+           width: lo === null ? null : rsub(hi, lo),
+           widthIsVar: lo !== null && req(rsub(hi, lo), vr),
+           varEta: vr, brTruth: brTruth, brBase: brBase };
+}
+// the ECE-is-zero half, proved the slow honest way on a world small enough to do it exhaustively:
+// every one of Bell(m) partition reports is run through the real ECE implementation
+function calibEceProof(m){
+  const Wd = makeWorld(m, 11, 14, 2);
+  let parts = 0, bad = 0;
+  const asg = new Array(m).fill(0);
+  function rec(i, mx){
+    if (i === m){
+      parts++;
+      const gA = [], gB = [];
+      for (let g = 0; g < mx; g++){ gA.push(0n); gB.push(0n); }
+      for (let k = 0; k < m; k++){ gA[asg[k]] += Wd.a[k]; gB[asg[k]] += Wd.b[k]; }
+      const rep = new Array(m);
+      for (let k = 0; k < m; k++) rep[k] = R(gA[asg[k]], gA[asg[k]] + gB[asg[k]]);
+      if (eceOf(Wd, rep).ece.n !== 0n) bad++;
+      if (murphyOf(Wd, rep).rel.n !== 0n) bad++;
+      return;
+    }
+    for (let g = 0; g <= mx && g < m; g++){ asg[i] = g; rec(i + 1, Math.max(mx, g + 1)); }
+  }
+  rec(0, 0);
+  return { m: m, partitions: parts, bad: bad, ok: bad === 0 };
+}
+
+// ---------------------------------------------------------------- 8. the leaderboard
+function buildRoster(Wd, cfg){
+  const s = rsub(R1, cfg.f1star);
+  return [
+    { name: 'the truth &eta;', r: rpTruth(Wd), monotone: true, note: 'the exact conditional probability' },
+    { name: 'base rate (control)', r: rpBase(Wd), monotone: false, note: 'reports &pi; and nothing else' },
+    { name: 'flag everything (control)', r: rpConst(Wd, 9, 10), monotone: false, note: 'the same 0.9 for every row' },
+    { name: 'rank / (m+1)', r: rpRank(Wd), monotone: true, note: 'the order, numbers thrown away' },
+    { name: 'over-confident (odds<sup>' + cfg.oddsK + '</sup>)', r: rpOdds(Wd, cfg.oddsK), monotone: true, note: 'log-odds multiplied by ' + cfg.oddsK },
+    { name: 'under-confident (' + cfg.shrinkPct + '% toward &pi;)', r: rpShrink(Wd, 100 - cfg.shrinkPct, 100), monotone: true, note: 'shrunk toward the base rate' },
+    { name: 'over-stated by 1&minus;F1*', r: rpBias(Wd, s), monotone: true, note: 'the exact lie that tops F1@0.5' },
+    { name: 'hardened to {1/' + cfg.hardEps + ', 1&minus;1/' + cfg.hardEps + '}', r: rpHarden(Wd, 1, cfg.hardEps), monotone: false, note: 'same decisions at 0.5, no probabilities left' },
+    { name: 'two bins swapped', r: rpSwap(Wd, cfg.swapAt), monotone: false, note: 'a genuinely worse ordering' },
+    { name: 'inverted (1&minus;&eta;)', r: rpAnti(Wd), monotone: false, note: 'the anchor at the bottom' }
+  ];
+}
+const METRICS = [
+  { key: 'acc',   label: 'accuracy @ 0.5', hi: true },
+  { key: 'f1',    label: 'F1 @ 0.5',       hi: true },
+  { key: 'prec',  label: 'precision @ 0.5', hi: true },
+  { key: 'rec',   label: 'recall @ 0.5',   hi: true },
+  { key: 'f1t',   label: 'F1 @ tuned cut', hi: true },
+  { key: 'auc',   label: 'AUC',            hi: true },
+  { key: 'brier', label: 'Brier',          hi: false },
+  { key: 'log',   label: 'log loss',       hi: false },
+  { key: 'ece',   label: 'ECE',            hi: false }
+];
+function boardTable(cfg){
+  const Wd = cfg.world, rows = [];
+  for (const mod of cfg.roster){
+    const mk = maskOf(Wd, mod.r, RH), sm = maskSums(Wd, mk);
+    const bt = bestThreshF1(Wd, mod.r);
+    rows.push({ name: mod.name, note: mod.note, monotone: mod.monotone,
+                acc: accMask(Wd, sm.A, sm.B), f1: f1Mask(Wd, sm.A, sm.B),
+                prec: precMask(Wd, sm.A, sm.B), rec: recMask(Wd, sm.A),
+                f1t: bt.val, auc: aucOf(Wd, mod.r), brier: brierOf(Wd, mod.r),
+                log: logLossOf(Wd, mod.r), ece: eceOf(Wd, mod.r).ece,
+                ex: excessOf(Wd, mod.r) });
+  }
+  function val(row, key){ const v = row[key]; return typeof v === 'number' ? v : (v === null ? null : rnum(v)); }
+  function cmpKey(x, y, key){
+    const A = rows[x][key], B = rows[y][key];
+    if (A === null && B === null) return 0;
+    if (A === null) return 1;
+    if (B === null) return -1;
+    if (typeof A === 'number' || typeof B === 'number'){
+      const a = val(rows[x], key), b = val(rows[y], key);
+      return a < b - 1e-12 ? -1 : (a > b + 1e-12 ? 1 : 0);
+    }
+    return rcmp(A, B);
+  }
+  const ranks = {}, winners = {};
+  for (const met of METRICS){
+    const idx = rows.map(function(_, i){ return i; });
+    idx.sort(function(x, y){ const c = cmpKey(x, y, met.key); return met.hi ? -c : c; });
+    const rk = new Array(rows.length);
+    let place = 1;
+    for (let i = 0; i < idx.length; i++){
+      if (i > 0 && cmpKey(idx[i], idx[i - 1], met.key) !== 0) place = i + 1;
+      rk[idx[i]] = place;
+    }
+    ranks[met.key] = rk;
+    const ws = [];
+    for (let i = 0; i < rows.length; i++) if (rk[i] === 1) ws.push(i);
+    winners[met.key] = ws;
+  }
+  return { rows: rows, ranks: ranks, winners: winners, metrics: METRICS, truthAt: 0,
+           truthWinsBrier: ranks.brier[0] === 1 && winners.brier.length === 1,
+           truthWinsLog: ranks.log[0] === 1,
+           truthRankF1: ranks.f1[0], truthRankAcc: ranks.acc[0],
+           aucTie: winners.auc.length, f1tTie: winners.f1t.length, eceTie: winners.ece.length,
+           f1Tie: winners.f1.length, accTie: winners.acc.length, f1Winner: winners.f1[0] };
+}
+
+// ---------------------------------------------------------------- 9. many worlds
+function sweepTable(cfg){
+  const out = { worlds: 0, fixOk: 0, thresholdOk: 0, accCutHalf: 0, halfNeverAbove: 0,
+                lieReaches: 0, closedOk: 0, lieGains: 0, truthBrier1: 0, truthLog1: 0,
+                truthF1_1: 0, tunedTies: 0, aucTies: 0, baseBeatsAny: 0, baseBeats: 0,
+                cheaperInf: 0, maxGain: null, maxPrice: null, worstGainW: null,
+                gainTunedZero: 0, flagAllBeatsHonest: 0, invBeatsTruthF1: 0,
+                f1WinnerBrierRankSum: 0, f1WinnerBrierRankWorst: 0, truthTopAcc: 0,
+                aucTieSum: 0, f1TieSum: 0, aucTieWhenF1Not: 0 };
+  for (let m = 5; m <= cfg.sweepM; m++)
+    for (let lo = 4; lo <= 24; lo += 5)
+      for (let step = 6; step <= 20; step += 4)
+        for (let tilt = 0; tilt <= 4; tilt += 2){
+          if (lo + (m - 1) * step > 118) continue;
+          const Wd = makeWorld(m, lo, step, tilt);
+          if (!Wd.distinct) continue;
+          out.worlds++;
+          const sums = allSums(Wd);
+          const fx = f1FixTable({ world: Wd, sums: sums });
+          if (fx.contained) out.fixOk++;
+          if (fx.isThreshold) out.thresholdOk++;
+          if (fx.accIsHalf) out.accCutHalf++;
+          if (rcmp(fx.half, RH) <= 0) out.halfNeverAbove++;
+          const lie = lieTable({ world: Wd, f1fix: fx });
+          if (lie.reaches) out.lieReaches++;
+          if (lie.exAgree && lie.eceAgree) out.closedOk++;
+          if (rcmp(lie.gain, R0) > 0) out.lieGains++;
+          if (lie.gainTuned.n === 0n) out.gainTunedZero++;
+          if (lie.flagAllBeatsHonest) out.flagAllBeatsHonest++;
+          if (lie.nMoved > 0 && rcmp(lie.inf, lie.exMeasured) < 0) out.cheaperInf++;
+          if (out.maxGain === null || rcmp(lie.gain, out.maxGain) > 0){
+            out.maxGain = lie.gain; out.worstGainW = { m: m, lo: lo, step: step, tilt: tilt };
+          }
+          if (out.maxPrice === null || rcmp(lie.exMeasured, out.maxPrice) > 0) out.maxPrice = lie.exMeasured;
+          const roster = buildRoster(Wd, { f1star: fx.best, oddsK: cfg.oddsK,
+                                           shrinkPct: cfg.shrinkPct, hardEps: cfg.hardEps, swapAt: cfg.swapAt });
+          const bd = boardTable({ world: Wd, roster: roster });
+          if (bd.truthWinsBrier) out.truthBrier1++;
+          if (bd.truthWinsLog) out.truthLog1++;
+          if (bd.truthRankF1 === 1) out.truthF1_1++;
+          if (bd.f1tTie > 1) out.tunedTies++;
+          if (bd.aucTie > 1) out.aucTies++;
+          if (bd.truthRankAcc === 1) out.truthTopAcc++;
+          out.aucTieSum += bd.aucTie; out.f1TieSum += bd.f1Tie;
+          if (bd.aucTie > bd.f1Tie) out.aucTieWhenF1Not++;
+          const bwr = bd.ranks.brier[bd.f1Winner];
+          out.f1WinnerBrierRankSum += bwr;
+          if (bwr > out.f1WinnerBrierRankWorst) out.f1WinnerBrierRankWorst = bwr;
+          const inv = bd.rows[bd.rows.length - 1].f1, tru = bd.rows[0].f1;
+          if (rcmp(inv, tru) > 0) out.invBeatsTruthF1++;
+          const baseF1 = bd.rows[1].f1;
+          let beaten = 0;
+          for (let i = 0; i < bd.rows.length; i++){ if (i === 1) continue; if (rcmp(baseF1, bd.rows[i].f1) > 0) beaten++; }
+          out.baseBeats += beaten;
+          if (beaten > 0) out.baseBeatsAny++;
+        }
+  return out;
+}
+
+// ---------------------------------------------------------------- 10. every identity, listed
+function identityTable(cfg){
+  const Wd = cfg.world, rows = [];
+  function add(label, ok, detail){ rows.push({ label: label, ok: !!ok, detail: detail || '' }); }
+  const bt = brierOf(Wd, Wd.eta);
+  let exAll = true;
+  for (const mod of cfg.roster) if (!req(rsub(brierOf(Wd, mod.r), bt), excessOf(Wd, mod.r))) exAll = false;
+  add('Brier(r) = Brier(&eta;) + &sum;w<sub>i</sub>(r<sub>i</sub>&minus;&eta;<sub>i</sub>)&sup2;, exactly, for every model', exAll);
+  let muAll = true, muFloat = 0;
+  for (const mod of cfg.roster){
+    const mu = murphyOf(Wd, mod.r), br = brierOf(Wd, mod.r);
+    if (!req(mu.sum, br)) muAll = false;
+    muFloat = Math.max(muFloat, Math.abs((rnum(mu.rel) - rnum(mu.res) + rnum(mu.unc)) - rnum(br)));
+  }
+  add('Brier = reliability &minus; resolution + uncertainty, exactly, for every model', muAll,
+      'the same identity in doubles is off by up to ' + muFloat.toExponential(2));
+  const mub = murphyOf(Wd, rpBase(Wd));
+  add('the base rate has reliability exactly 0 and resolution exactly 0', mub.rel.n === 0n && mub.res.n === 0n);
+  add('the truth has reliability exactly 0 and ECE exactly 0',
+      murphyOf(Wd, Wd.eta).rel.n === 0n && eceOf(Wd, Wd.eta).ece.n === 0n);
+  add('Brier(base) &minus; Brier(&eta;) = Var(&eta;), exactly', req(rsub(brierOf(Wd, rpBase(Wd)), bt), varEta(Wd)));
+  add('the base rate has AUC exactly 1/2 &mdash; every pair is a tie', req(aucOf(Wd, rpBase(Wd)), RH));
+  const bs = maskSums(Wd, (1 << Wd.m) - 1);
+  add('flagging every row scores F1 = 2&pi;/(1+&pi;), exactly',
+      req(f1Mask(Wd, bs.A, bs.B), rdiv(rmul(ri(2), Wd.pi), radd(R1, Wd.pi))));
+  let tuneAll = true, aucAll = true;
+  const ref = bestThreshF1(Wd, Wd.eta).val, aref = aucOf(Wd, Wd.eta);
+  for (const mod of cfg.roster) if (mod.monotone){
+    if (!req(bestThreshF1(Wd, mod.r).val, ref)) tuneAll = false;
+    if (!req(aucOf(Wd, mod.r), aref)) aucAll = false;
+  }
+  add('the tuned F1 is identical across every strictly increasing model', tuneAll);
+  add('AUC is identical across every strictly increasing model', aucAll);
+  let aucMax = true;
+  for (const mod of cfg.roster) if (rcmp(aucOf(Wd, mod.r), aref) > 0) aucMax = false;
+  add('no model on the board out-ranks the truth on AUC', aucMax);
+  add('the F1-optimal rule over all 2<sup>m</sup> subsets is {&eta; &gt; F1*/2}', cfg.f1fix.contained);
+  add('the accuracy-optimal rule over all 2<sup>m</sup> subsets is {&eta; &gt; 1/2}', cfg.f1fix.accIsHalf);
+  add('F1*/2 &le; 1/2, with equality only if F1* = 1', cfg.f1fix.halfBelowHalf && cfg.f1fix.halfEqHalfIffPerfect);
+  add('the price of the lie equals s&sup2;/(1+s)&sup2;&middot;E[(1&minus;&eta;)&sup2;]', cfg.lie.exAgree);
+  add('the ECE of the lie equals s(1&minus;&pi;)/(1+s)', cfg.lie.eceAgree);
+  add('over-stating by exactly 1&minus;F1* reaches the F1 ceiling at a cut of 0.5', cfg.lie.reaches);
+  if (cfg.calib.enumerated){
+    add('every perfectly calibrated model has Brier in [Brier(&eta;), &pi;(1&minus;&pi;)]',
+        cfg.calib.loIsZero && cfg.calib.hiIsVar,
+        cfg.calib.distinct + ' distinct calibrated models over ' + cfg.calib.partitions + ' partitions');
+    add('that interval is exactly Var(&eta;) wide', cfg.calib.widthIsVar);
+    add('every one of Bell(7) = ' + cfg.eceProof.partitions + ' calibrated reports has ECE and reliability exactly 0', cfg.eceProof.ok);
+  }
+  return { rows: rows, allOk: rows.every(function(r){ return r.ok; }) };
+}
+
+// ---------------------------------------------------------------- configuration sweep
+function configSweep(){
+  let checked = 0, bad = 0;
+  for (let m = 5; m <= 9; m++)
+    for (let lo = 5; lo <= 20; lo += 5)
+      for (let step = 7; step <= 19; step += 6)
+        for (let tilt = 0; tilt <= 3; tilt += 3){
+          if (lo + (m - 1) * step > 118) continue;
+          const Wd = makeWorld(m, lo, step, tilt);
+          if (!Wd.distinct) continue;
+          checked++;
+          const sums = allSums(Wd);
+          const fx = f1FixTable({ world: Wd, sums: sums });
+          if (!fx.contained) bad++;
+          if (!fx.accIsHalf) bad++;
+          if (rcmp(fx.half, RH) > 0) bad++;
+          const lie = lieTable({ world: Wd, f1fix: fx });
+          if (!lie.reaches || !lie.exAgree || !lie.eceAgree) bad++;
+          const b0 = brierOf(Wd, Wd.eta);
+          for (const r of [rpBase(Wd), rpRank(Wd), rpOdds(Wd, 2), rpAnti(Wd)]){
+            if (!req(rsub(brierOf(Wd, r), b0), excessOf(Wd, r))) bad++;
+            if (!req(murphyOf(Wd, r).sum, brierOf(Wd, r))) bad++;
+          }
+          if (!req(bestThreshF1(Wd, rpRank(Wd)).val, bestThreshF1(Wd, Wd.eta).val)) bad++;
+          if (!req(aucOf(Wd, rpOdds(Wd, 3)), aucOf(Wd, Wd.eta))) bad++;
+          if (!req(rsub(brierOf(Wd, rpBase(Wd)), b0), varEta(Wd))) bad++;
+        }
+  return { checked: checked, bad: bad };
+}
+
+// ---------------------------------------------------------------- configuration
+const DEFAULTS = { m: 9, lo: 9, step: 10, tilt: 5, gridN: 240, oddsK: 3, shrinkPct: 50,
+                   hardEps: 50, swapAt: 4, sweepM: 9, bruteM: 3, bruteN: 6 };
+function cfgOf(o){
+  const c = {};
+  for (const k in DEFAULTS) c[k] = DEFAULTS[k];
+  if (o) for (const k in o) if (o[k] !== undefined && o[k] !== null) c[k] = o[k];
+  c.m = Math.max(4, Math.min(10, c.m));
+  if (c.lo + (c.m - 1) * c.step > 118) c.step = Math.max(1, Math.floor((118 - c.lo) / (c.m - 1)));
+  c.world = makeWorld(c.m, c.lo, c.step, c.tilt);
+  c.sums = allSums(c.world);
+  c.f1fix = f1FixTable({ world: c.world, sums: c.sums });
+  c.f1star = c.f1fix.best;
+  c.lie = lieTable({ world: c.world, f1fix: c.f1fix });
+  c.roster = buildRoster(c.world, c);
+  c.ident = identTable(c);
+  c.calib = calibSetTable(c);
+  c.eceProof = calibEceProof(7);
+  return c;
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- rendering (DOM lives here only)
+function $(id){ return document.getElementById(id); }
+function fx(x, k){ return (x === null || x === undefined || !isFinite(x)) ? "&ndash;" : x.toFixed(k === undefined ? 6 : k); }
+function fr(r, k){ return r === null || r === undefined ? "&ndash;" : fx(rnum(r), k); }
+function pc(x, k){ return x === null || x === undefined ? "&ndash;" : (100 * x).toFixed(k === undefined ? 2 : k) + "%"; }
+function pcr(r, k){ return r === null ? "&ndash;" : pc(rnum(r), k); }
+function grp(x){
+  if (x === null || x === undefined) return "&ndash;";
+  const s = (typeof x === "bigint" ? x.toString() : String(Math.round(Number(x))));
+  return s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+// a very large integer, shown as a mantissa and an exponent rather than 22 digits of noise.
+// The mantissa is ROUNDED, not truncated, and a carry that rolls it over bumps the exponent.
+function sci(x, k){
+  const s = x.toString();
+  const d = (k === undefined ? 2 : k);
+  if (s.length <= 7) return grp(x);
+  let ex = s.length - 1;
+  let head = BigInt(s.slice(0, d + 1));
+  if (Number(s[d + 1]) >= 5) head += 1n;
+  let hs = head.toString();
+  if (hs.length > d + 1) { hs = hs.slice(0, d + 1); ex += 1; }
+  return hs[0] + "." + hs.slice(1) + "&times;10<sup>" + ex + "</sup>";
+}
+function yn(b){ return b === null || b === undefined ? "<span class='dim'>&ndash;</span>"
+                : (b ? "<span class='ok'>yes</span>" : "<span class='bad'>no</span>"); }
+function okbad(b){ return b ? "<span class='ok'>holds</span>" : "<span class='bad'>FAILS</span>"; }
+function head(cells){ return "<tr>" + cells.map(function(c){ return "<th>" + c + "</th>"; }).join("") + "</tr>"; }
+function row(cells, cls){ return "<tr>" + cells.map(function(c, i){
+  return "<td" + (cls && cls[i] ? " class='" + cls[i] + "'" : "") + ">" + c + "</td>"; }).join("") + "</tr>"; }
+function maskStr(mask, m){
+  let s = "";
+  for (let i = m - 1; i >= 0; i--) s += (mask & (1 << i)) ? "1" : "0";
+  return "<code>" + s + "</code>";
+}
+
+function render(){
+  const cfg = cfgOf({
+    m: +$("sM").value, lo: +$("sLo").value, step: +$("sStep").value, tilt: +$("sTilt").value,
+    gridN: 120 * (+$("sGrid").value), oddsK: +$("sOdds").value, shrinkPct: +$("sShrink").value,
+    hardEps: +$("sHard").value, swapAt: +$("sSwap").value, sweepM: +$("sSweep").value
+  });
+  const W = cfg.world, fixT = cfg.f1fix, lie = cfg.lie;
+  $("vM").textContent = cfg.m;
+  $("vLo").textContent = cfg.lo;
+  $("vStep").textContent = cfg.step;
+  $("vTilt").textContent = cfg.tilt;
+  $("vGrid").textContent = $("sGrid").value;
+  $("vOdds").textContent = cfg.oddsK;
+  $("vShrink").textContent = cfg.shrinkPct;
+  $("vHard").textContent = cfg.hardEps;
+  $("vSwap").textContent = Math.min(cfg.swapAt, cfg.m - 2);
+  $("vSweep").textContent = cfg.sweepM;
+
+  // ---------------------------------------------------------------- 0 the world
+  $("sayWorld").innerHTML =
+    "Prevalence is <strong>" + fr(W.pi, 6) + "</strong>, the variance of the truth is <strong>" +
+    fr(varEta(W), 6) + "</strong>, and the truth&rsquo;s own AUC is <strong>" +
+    fr(aucOf(W, W.eta), 6) + "</strong> &mdash; a plausible model, not a perfect one. There is " +
+    "nothing else in the world: no rows, no features, no seed.";
+  let hw = head(["bin", "&eta;<sub>i</sub>", "mass w<sub>i</sub>", "positives a<sub>i</sub>",
+                 "negatives b<sub>i</sub>", "&eta; &gt; F1*/2", "&eta; &gt; 1/2"]);
+  for (let i = 0; i < W.m; i++)
+    hw += row([String(i), fr(W.eta[i], 6), fr(W.w[i], 6), grp(W.a[i]), grp(W.b[i]),
+               yn(rcmp(W.eta[i], fixT.half) > 0), yn(rcmp(W.eta[i], RH) > 0)],
+              [null, null, null, null, null,
+               (fixT.mask & (1 << i)) ? "same3" : null, (fixT.truthMask & (1 << i)) ? "same" : null]);
+  hw += row(["<strong>total</strong>", "&pi; = " + fr(W.pi, 6), "1", grp(W.Ta), grp(W.Tb),
+             "<strong>" + popcount(fixT.mask) + " bins</strong>",
+             "<strong>" + popcount(fixT.truthMask) + " bins</strong>"]);
+  $("tblWorld").innerHTML = hw;
+
+  // ---------------------------------------------------------------- 1 properness
+  const pt = properTable(cfg);
+  let hp = head(["rule", "why", "argmin unique", "argmin at &eta;", "largest argmin set",
+                 "derivative sign", "verdict"]);
+  for (const r of pt.rows)
+    hp += row([r.label, "<span class='tiny'>" + r.note + "</span>", yn(r.unique), yn(r.atTruth),
+               grp(r.worst) + " of " + (pt.N + 1),
+               r.signOk === null ? "<span class='dim'>&ndash;</span>" : yn(r.signOk),
+               r.claimed ? "<span class='ok'>strictly proper</span>"
+                         : "<span class='bad'>not proper</span>"],
+              [null, null, null, r.atTruth ? "same3" : "same2", null, null, null]);
+  $("tblProper").innerHTML = hp;
+  $("flagProper").innerHTML =
+    "The three proper rules put their unique optimum exactly on <code>&eta;</code> in every bin, and " +
+    "for Brier and log loss the sign of the exact rational derivative agrees at every one of the " +
+    grp((pt.N - 1) * W.m) + " interior grid points tested. Absolute error is strictly optimised too " +
+    "&mdash; at a corner, 0 or 1, never at the truth. 0&ndash;1 loss at a cut has an argmin set of " +
+    "<strong>" + grp(pt.rows[4].worst) + " of " + (pt.N + 1) + "</strong> reports, which is the " +
+    "whole point: it cannot be wrong about the truth and it cannot recognise it either. " +
+    (pt.rows[3].flatAtHalf
+      ? "This world holds a bin at &eta; exactly &frac12;, where absolute error has slope " +
+        "<code>1&minus;2&eta; = 0</code> and every one of the " + (pt.N + 1) + " reports ties &mdash; " +
+        "the knife edge the corner rule sits on. "
+      : "") +
+    "All proper rules pass: " + okbad(pt.allProperPass) + " &middot; all improper rules fail to " +
+    "sit at &eta;: " + okbad(pt.allImproperFail) + ".";
+
+  // ---------------------------------------------------------------- 2 the excess identity
+  const ex = excessTable(cfg);
+  let he = head(["model", "Brier", "&minus; Brier(&eta;)", "&sum;w(r&minus;&eta;)&sup2;", "ECE",
+                 "exact over BigInt", "residual in doubles"]);
+  for (const r of ex.rows)
+    he += row([r.name, fr(r.brier, 6), fr(rsub(r.brier, ex.brierTruth), 6), fr(r.excess, 6),
+               fr(r.ece, 6), yn(r.exact),
+               r.floatResid === 0 ? "0" : r.floatResid.toExponential(2)],
+              [null, null, null, "same", null, null, r.floatResid > 0 ? "same2" : null]);
+  $("tblExcess").innerHTML = he;
+  $("flagExcess").innerHTML =
+    "Two columns of the same table, computed by different routes, agree as <em>integers</em> for " +
+    "all " + ex.rows.length + " models. That identity is what properness actually is: the penalty " +
+    "for any report is the squared distance from the truth, so it is non-negative and zero only at " +
+    "&eta;. Note the last column. The same identity evaluated in doubles is off by up to <strong>" +
+    ex.worstFloat.toExponential(2) + "</strong> &mdash; small, real, and enough to make " +
+    "<code>a === b</code> the wrong test. Nothing on this page is compared with a tolerance.";
+
+  // ---------------------------------------------------------------- 3 the identified set
+  const it = cfg.ident;
+  let hi = head(["metric", "reports tied for best", "closed form", "share of the cube",
+                 "limit", "what it can see"]);
+  for (const r of it.rows)
+    hi += row([r.name, r.count === 1n ? "<strong>1</strong>" : sci(r.count),
+               "<span class='tiny'>" + r.form + "</span>",
+               r.frac.n === 0n ? "0" : rnum(r.frac).toExponential(3),
+               r.lim, "<span class='tiny'>" + r.sees + "</span>"],
+              [null, r.count === 1n ? "same3" : null, null, null, null, null]);
+  hi += row(["<strong>the cube</strong>", sci(it.total), "(N+1)<sup>m</sup>", "1", "&ndash;",
+             "<span class='tiny'>every report there is</span>"]);
+  $("tblIdent").innerHTML = hi;
+
+  const brutes = [[2, 6], [3, 6], [3, 8], [4, 6]].map(function(p){ return identBrute(p[0], p[1]); });
+  let hb = head(["m", "N", "cube", "Brier: counted", "closed", "the point is &eta;",
+                 "AUC: counted", "C(N+1,m)", "F1@0.5: counted", "closed", "AUC max = &eta;&rsquo;s order"]);
+  let bruteOk = true;
+  for (const b of brutes){
+    const ok = b.brier === b.brierForm && b.auc === b.aucForm && b.f1 === b.f1Form &&
+               b.brierAtTruth && b.aucMaxIsTruthOrder;
+    if (!ok) bruteOk = false;
+    hb += row([String(b.m), String(b.N), grp(b.total), grp(b.brier), grp(b.brierForm),
+               yn(b.brierAtTruth), grp(b.auc), grp(b.aucForm), grp(b.f1), grp(b.f1Form),
+               yn(b.aucMaxIsTruthOrder)],
+              [null, null, null, null, "same", null, null, "same", null, "same", null]);
+  }
+  $("tblBrute").innerHTML = hb;
+  const ratio = rnum(rdiv(R(it.rows[3].count, 1n), R(it.rows[4].count, 1n)));
+  $("flagIdent").innerHTML =
+    "Every closed form is confirmed by exhausting the whole cube at small m: " + okbad(bruteOk) +
+    ", over " + grp(brutes.reduce(function(s, b){ return s + b.total; }, 0)) + " enumerated reports. " +
+    "The Brier column is a single point <em>and</em> that point is verified to be &eta; itself " +
+    "&mdash; the first version of this table used worlds whose &eta; was not on the grid, so the " +
+    "count of 1 was right and the claim attached to it was not checkable; the worlds are built on " +
+    "the grid now. On the live world F1@0.5 leaves <strong>" + ratio.toFixed(0) + "&times;</strong> " +
+    "more reports indistinguishable than AUC does. Hold on to that number &mdash; section 8 uses it " +
+    "to say something I did not expect.";
+
+  // ---------------------------------------------------------------- 4 the F1 fixed point
+  $("sayFix").innerHTML =
+    "Every one of the <strong>" + grp(fixT.nRules) + "</strong> possible decision rules on " + W.m +
+    " bins is evaluated, so nothing here assumes the answer is a threshold. It comes back a " +
+    "threshold anyway, and the threshold is exactly half the F1 it achieves.";
+  let hf = head(["quantity", "value", "as a decision set", "bins flagged", "check"]);
+  hf += row(["best F1 over all " + grp(fixT.nRules) + " rules", "<strong>" + fr(fixT.best, 6) +
+             "</strong>", maskStr(fixT.mask, W.m), String(popcount(fixT.mask)),
+             "<span class='tiny'>exhaustive</span>"], [null, "same3", null, null, null]);
+  hf += row(["F1* / 2", "<strong>" + fr(fixT.half, 6) + "</strong>",
+             "{&eta; &gt; F1*/2} = " + maskStr(fixT.strict, W.m), String(popcount(fixT.strict)),
+             yn(fixT.contained)], [null, "same3", null, null, null]);
+  hf += row(["the optimum is a threshold rule on &eta;", yn(fixT.isThreshold), "&ndash;", "&ndash;",
+             yn(fixT.isThreshold)]);
+  hf += row(["F1*/2 &le; 1/2 always", yn(fixT.halfBelowHalf),
+             "equality only at F1* = 1", "&ndash;", yn(fixT.halfEqHalfIffPerfect)]);
+  hf += row(["best accuracy over all " + grp(fixT.nRules) + " rules", fr(fixT.accBest, 6),
+             maskStr(fixT.accMask, W.m), String(popcount(fixT.accMask)), yn(fixT.accIsHalf)],
+            [null, null, null, null, null]);
+  hf += row(["accuracy&rsquo;s optimal cut", "<strong>exactly 1/2</strong>",
+             "{&eta; &gt; 1/2} = " + maskStr(fixT.truthMask, W.m), String(popcount(fixT.truthMask)),
+             yn(fixT.accIsHalf)], [null, "same", null, null, null]);
+  hf += row(["F1 the honest model gets at a 0.5 cut", "<strong>" + fr(fixT.f1AtHalf, 6) + "</strong>",
+             maskStr(fixT.truthMask, W.m), String(popcount(fixT.truthMask)),
+             "<span class='tiny'>the default</span>"], [null, "same2", null, null, null]);
+  hf += row(["what the default cut costs", "<strong class='bad'>" + fr(fixT.costOfHalf, 6) +
+             "</strong>", "&ndash;", "&ndash;", "<span class='tiny'>F1* &minus; F1@0.5</span>"]);
+  $("tblFix").innerHTML = hf;
+  $("flagFix").innerHTML =
+    "Two metrics, one model, two different optimal decisions. Accuracy wants the cut at exactly " +
+    "<strong>0.5</strong>; F1 wants it at <strong>" + fr(fixT.half, 6) + "</strong>, which is half " +
+    "of the F1 it is about to score, and which is below 0.5 in every world where the model is not " +
+    "perfect. The honest model thresholded at 0.5 is doing the accuracy-optimal thing and giving up " +
+    "<strong>" + fr(fixT.costOfHalf, 6) + "</strong> of F1 for it. Nothing has gone wrong yet " +
+    "&mdash; but a leaderboard sorted on F1@0.5 is now sorted on how well each model&rsquo;s " +
+    "miscalibration happens to move its cut.";
+
+  // ---------------------------------------------------------------- 5 the lie
+  $("sayLie").innerHTML =
+    "<code>(&eta;+s)/(1+s)</code> is strictly increasing, so it does not change the model&rsquo;s " +
+    "ordering by one pair. It crosses 0.5 exactly where &eta; crosses <code>(1&minus;s)/2</code>. " +
+    "Set <strong>s = 1 &minus; F1* = " + fr(lie.s, 6) + "</strong> and the 0.5 cut lands precisely " +
+    "on the F1-optimal rule. Nothing is searched for below; every number is derived first and then " +
+    "confirmed against the enumeration.";
+  let hl = head(["quantity", "closed form", "value", "measured on the world", "equal as rationals"]);
+  hl += row(["the over-statement that pays", "1 &minus; F1*", "<strong>" + fr(lie.s, 6) + "</strong>",
+             "&ndash;", "<span class='tiny'>derived</span>"], [null, null, "same2", null, null]);
+  hl += row(["F1@0.5 it reaches", "F1*", "<strong>" + fr(lie.gotF1, 6) + "</strong>",
+             fr(fixT.best, 6), yn(lie.reaches)], [null, null, "same3", null, null]);
+  hl += row(["F1@0.5 the honest model gets", "&ndash;", fr(fixT.f1AtHalf, 6), "&ndash;",
+             "<span class='tiny'>&nbsp;</span>"]);
+  hl += row(["<strong>what the lie buys</strong>", "F1* &minus; F1(&eta;&gt;&frac12;)",
+             "<strong class='ok'>+" + fr(lie.gain, 6) + "</strong>", "&ndash;",
+             "<span class='tiny'>&nbsp;</span>"], [null, null, "same3", null, null]);
+  hl += row(["<strong>what the lie costs, in Brier</strong>",
+             "s&sup2;/(1+s)&sup2; &middot; E[(1&minus;&eta;)&sup2;]",
+             "<strong class='bad'>" + fr(lie.exClosed, 8) + "</strong>", fr(lie.exMeasured, 8),
+             yn(lie.exAgree)], [null, null, "same2", null, null]);
+  hl += row(["its expected calibration error", "s(1&minus;&pi;)/(1+s)", fr(lie.eceClosed, 6),
+             fr(lie.eceMeasured, 6), yn(lie.eceAgree)]);
+  hl += row(["the cheapest lie that still reaches F1*", "&sum; w(&frac12;&minus;&eta;)&sup2; over " +
+             lie.nMoved + " bins", fr(lie.inf, 8), "&ndash;",
+             "<span class='tiny'>an infimum, not a minimum</span>"], [null, null, "same", null, null]);
+  hl += row(["what the lie is worth at a <em>tuned</em> cut", "0",
+             "<strong>" + fr(lie.gainTuned, 8) + "</strong>", "&ndash;",
+             yn(lie.gainTuned.n === 0n)], [null, null, "same3", null, null]);
+  $("tblLie").innerHTML = hl;
+  const cheapRatio = rnum(lie.exMeasured) > 0 ? rnum(lie.inf) / rnum(lie.exMeasured) : 0;
+  $("flagLie").innerHTML =
+    "Over-state every probability by exactly <strong>" + fr(lie.s, 6) + "</strong> and F1@0.5 goes " +
+    "from " + fr(fixT.f1AtHalf, 6) + " to the ceiling, <strong>" + fr(lie.gotF1, 6) + "</strong>, " +
+    "for a Brier cost of <strong>" + fr(lie.exMeasured, 8) + "</strong> &mdash; both sides written " +
+    "down in advance and then confirmed as exact rationals. And you need not lie about everything: " +
+    "only <strong>" + lie.nMoved + "</strong> of the " + W.m + " bins have to move at all, and only " +
+    "as far as 0.5, which costs <strong>" + fr(lie.inf, 8) + "</strong> &mdash; " +
+    (100 * cheapRatio).toFixed(1) + "% of the uniform lie. It is an infimum rather than a minimum " +
+    "because a report sitting exactly on 0.5 falls back out of a strict decision set.";
+
+  // ---------------------------------------------------------------- 6 tune the cut
+  const tt = tuneTable(cfg);
+  let hu = head(["model", "strictly increasing in &eta;", "F1 @ 0.5", "F1 @ tuned cut",
+                 "AUC", "distance from the truth"]);
+  for (const r of tt.rows)
+    hu += row([r.name, yn(r.monotone), fr(r.half, 6), "<strong>" + fr(r.tuned, 6) + "</strong>",
+               fr(r.auc, 6), fr(r.ex, 8)],
+              [null, null, null, r.monotone ? "same3" : null, r.monotone ? "same" : null, null]);
+  $("tblTune").innerHTML = hu;
+  $("flagTune").innerHTML =
+    "The control works and then keeps going. All <strong>" + tt.nMono + "</strong> strictly " +
+    "increasing models land on <strong>" + fr(tt.tuned, 6) + "</strong> at their tuned cut, " +
+    "identical as rationals &mdash; " + okbad(tt.allSame) + " &mdash; and identical on AUC too. At " +
+    "the fixed 0.5 cut those same five models spread over <strong>" + fr(tt.spreadAtHalf, 6) +
+    "</strong> of F1, which was never about the models: it was about where each one&rsquo;s " +
+    "miscalibration happened to put the cut. Tuning deletes that artefact, and with it the last " +
+    "<strong>" + fr(tt.exSpread, 8) + "</strong> of Brier spread that F1 could still feel. After " +
+    "tuning, F1 is a function of the ROC curve and nothing else &mdash; a model that has thrown its " +
+    "probabilities away entirely and kept only the ranks scores the same number as the truth.";
+
+  // ---------------------------------------------------------------- 7 calibration
+  const cal = cfg.calib, mb = murphyOf(W, rpBase(W)), mt = murphyOf(W, W.eta);
+  $("sayCalib").innerHTML =
+    "The Brier score splits exactly into three pieces &mdash; reliability, resolution, uncertainty " +
+    "&mdash; and the split says what &ldquo;calibrated&rdquo; buys and what it does not. Over " +
+    "rationals the identity is exact; the same sum in doubles is not, which is why it is asserted " +
+    "with a cross-multiplication.";
+  let hm = head(["model", "reliability", "resolution", "uncertainty", "= Brier", "exact", "ECE", "AUC"]);
+  for (const mod of cfg.roster){
+    const mu = murphyOf(W, mod.r), br = brierOf(W, mod.r);
+    hm += row([mod.name, fr(mu.rel, 6), fr(mu.res, 6), fr(mu.unc, 6), fr(br, 6), yn(req(mu.sum, br)),
+               fr(eceOf(W, mod.r).ece, 6), fr(aucOf(W, mod.r), 6)],
+              [null, mu.rel.n === 0n ? "same3" : null, mu.res.n === 0n ? "same2" : null,
+               null, null, null, eceOf(W, mod.r).ece.n === 0n ? "same3" : null, null]);
+  }
+  $("tblMurphy").innerHTML = hm;
+  $("flagCalib").innerHTML =
+    "ECE cannot separate the exactly-correct model from one that never reads its input: both are " +
+    "<strong>exactly 0</strong>, and so is the reliability term. The difference between them is " +
+    "entirely in <em>resolution</em>, " + fr(mt.res, 6) + " against " + fr(mb.res, 6) +
+    ", which no calibration check reports. And &ldquo;perfectly calibrated&rdquo; is not one model: " +
+    "grouping the " + W.m + " bins any way you like and reporting each group&rsquo;s own rate gives " +
+    "<strong>" + grp(cal.distinct) + "</strong> distinct reports with ECE exactly zero, out of " +
+    grp(cal.partitions) + " set partitions. Their Brier scores span <strong>[" + fr(cal.lo, 6) +
+    ", " + fr(cal.hi, 6) + "]</strong> &mdash; from the truth to the base rate &mdash; and that " +
+    "interval is exactly <code>Var(&eta;)</code> = " + fr(cal.varEta, 6) + " wide: " +
+    okbad(cal.widthIsVar) + ". Passing a calibration check narrows you to a set that is " +
+    grp(cal.distinct) + " models across.";
+
+  // ---------------------------------------------------------------- 8 the leaderboard
+  const bd = boardTable(cfg);
+  let hbd = head(["model", "what it is"].concat(METRICS.map(function(m){ return m.label; })));
+  bd.rows.forEach(function(r, i){
+    const cells = [r.name, "<span class='tiny'>" + r.note + "</span>"];
+    const cls = [null, null];
+    for (const met of METRICS){
+      const v = r[met.key];
+      const rk = bd.ranks[met.key][i];
+      cells.push((typeof v === "number" ? fx(v, 4) : fr(v, 4)) +
+                 " <span class='" + (rk === 1 ? "ok" : "dim") + "'>#" + rk + "</span>");
+      cls.push(rk === 1 ? (i === 0 ? "same3" : "same2") : null);
+    }
+    hbd += row(cells, cls);
+  });
+  $("tblBoard").innerHTML = hbd;
+  const f1w = bd.rows[bd.f1Winner], invRow = bd.rows[bd.rows.length - 1];
+  $("sayBoard").innerHTML =
+    bd.rows.length + " models, " + METRICS.length + " metrics, one world. Rank 1 is marked on every " +
+    "column. The truth is the first row.";
+  // which models actually out-score the truth on F1@0.5 in THIS world — read off, never assumed
+  const over = [];
+  for (let i = 1; i < bd.rows.length; i++)
+    if (rcmp(bd.rows[i].f1, bd.rows[0].f1) > 0)
+      over.push(bd.rows[i].name + " at " + fr(bd.rows[i].f1, 4) +
+                (rcmp(bd.rows[i].auc, RH) < 0 ? " <em>on an AUC of " + fr(bd.rows[i].auc, 4) +
+                 ", below a coin flip</em>" : ""));
+  $("flagBoard").innerHTML =
+    "The exactly-correct model is <strong>#1 on Brier</strong> (uniquely &mdash; " +
+    okbad(bd.truthWinsBrier) + "), #1 on log loss, #1 on AUC and #1 on accuracy. It is <strong>#" +
+    bd.truthRankF1 + " of " + bd.rows.length + " on F1@0.5</strong>" +
+    (over.length === 0
+      ? ", which here is joint first: at this setting the F1-optimal cut and 0.5 agree, so nothing " +
+        "out-scores it. Move a slider and that stops being true."
+      : ". Above it sit " + over.length + " of the " + (bd.rows.length - 1) + " others: " +
+        over.join("; ") + ".") +
+    " Below-chance models scoring well is not a paradox: F1 has no true-negative term, so flagging " +
+    "almost everything is cheap, and reversing a model is one way to flag almost everything. Note " +
+    "also what does <em>not</em> happen: the base-rate control scores " + fr(bd.rows[1].f1, 4) +
+    " on F1@0.5, because a constant below 0.5 flags nothing. &ldquo;The base rate beats your " +
+    "model&rdquo; is false as usually said; what beats your model is the same constant with the cut " +
+    "moved &mdash; the row above it, which scores " + fr(bd.rows[2].f1, 4) + ".";
+
+  // ---------------------------------------------------------------- 9 the sweep
+  const sw = sweepTable(cfg);
+  const N = sw.worlds;
+  function swRow(label, n, note){
+    return row([label, grp(n) + " / " + grp(N), pc(n / N, 1),
+                "<span class='tiny'>" + (note || "") + "</span>"],
+               [null, null, n === N ? "same3" : (n === 0 ? "same2" : null), null]);
+  }
+  let hs = head(["over every world in the family", "count", "share", "note"]);
+  hs += swRow("the F1-optimal rule is {&eta; &gt; F1*/2}", sw.fixOk, "exhaustive over 2<sup>m</sup> rules each");
+  hs += swRow("that optimum is a threshold rule at all", sw.thresholdOk, "not assumed anywhere");
+  hs += swRow("the accuracy-optimal rule is {&eta; &gt; 1/2}", sw.accCutHalf, "the contrast");
+  hs += swRow("F1*/2 &le; 1/2", sw.halfNeverAbove, "so 0.5 is never the F1 cut unless F1* = 1");
+  hs += swRow("over-stating by 1&minus;F1* reaches the ceiling", sw.lieReaches, "constructive, not searched");
+  hs += swRow("both closed forms for the lie agree exactly", sw.closedOk, "price and ECE");
+  hs += swRow("the lie is worth exactly 0 at a tuned cut", sw.gainTunedZero, "the control works");
+  hs += swRow("<strong>the truth is #1 on Brier</strong>", sw.truthBrier1, "properness, as a theorem");
+  hs += swRow("<strong>the truth is #1 on log loss</strong>", sw.truthLog1, "same");
+  hs += swRow("the truth is #1 on accuracy @ 0.5", sw.truthTopAcc, "accuracy&rsquo;s optimal cut IS 0.5");
+  hs += swRow("<strong>the truth is #1 on F1 @ 0.5</strong>", sw.truthF1_1, "the same model, the same world");
+  hs += swRow("<strong>&ldquo;flag every row&rdquo; beats the honest 0.5 cut</strong>",
+              sw.flagAllBeatsHonest, "2&pi;/(1+&pi;) against a real model");
+  hs += swRow("<strong>the exactly backwards model beats the truth on F1@0.5</strong>",
+              sw.invBeatsTruthF1, "AUC below a coin flip");
+  hs += swRow("the constant-&pi; control beats any real model on F1@0.5", sw.baseBeatsAny,
+              "it mostly scores 0 &mdash; see section 8");
+  hs += swRow("AUC ties more of the roster than F1@0.5 does", sw.aucTieWhenF1Not,
+              "average " + (sw.aucTieSum / N).toFixed(2) + " against " + (sw.f1TieSum / N).toFixed(2));
+  hs += row(["the F1@0.5 winner&rsquo;s average rank on Brier",
+             (sw.f1WinnerBrierRankSum / N).toFixed(2) + " of " + bd.rows.length,
+             "worst " + sw.f1WinnerBrierRankWorst,
+             "<span class='tiny'>the model the leaderboard picks</span>"], [null, "same2", null, null]);
+  hs += row(["the largest F1 the lie ever buys", fr(sw.maxGain, 6),
+             "at the largest price " + fr(sw.maxPrice, 6),
+             "<span class='tiny'>over the whole family</span>"]);
+  $("tblSweep").innerHTML = hs;
+  $("flagSweep").innerHTML =
+    "Across <strong>" + grp(N) + "</strong> exactly enumerated worlds the theorem holds every time " +
+    "&mdash; the truth is first on Brier and on log loss in all " + grp(sw.truthBrier1) + " &mdash; " +
+    "and the leaderboard almost never agrees: the truth tops F1@0.5 in <strong>" +
+    grp(sw.truthF1_1) + "</strong> of them. Flagging every row, which reads nothing, beats the " +
+    "honest model&rsquo;s default cut in <strong>" + grp(sw.flagAllBeatsHonest) + "</strong> worlds " +
+    "and reversing the model beats it in <strong>" + grp(sw.invBeatsTruthF1) + "</strong>. " +
+    "&#128308; But accuracy at 0.5 never misbehaves &mdash; the truth is first in all " +
+    grp(sw.truthTopAcc) + " &mdash; so &ldquo;improper metrics mislead you&rdquo; is the wrong " +
+    "lesson. Accuracy&rsquo;s optimal cut is 0.5 and F1&rsquo;s is not; the damage is exactly the " +
+    "mismatch, and it is arithmetic.";
+
+  // ---------------------------------------------------------------- 10 identities
+  const idt = identityTable(cfg);
+  let hid = head(["identity or bound", "verdict", "detail"]);
+  for (const r of idt.rows)
+    hid += row([r.label, okbad(r.ok), "<span class='tiny'>" + r.detail + "</span>"],
+               [null, r.ok ? null : "same2", null]);
+  $("tblIdentity").innerHTML = hid;
+  const cs = configSweep();
+  $("flagIdentity").innerHTML =
+    "Every row is an exact statement checked as an integer comparison, not a rounded agreement: " +
+    okbad(idt.allOk) + ". The same battery is re-run over <strong>" + cs.checked + "</strong> other " +
+    "configurations of the world with <strong>" + cs.bad + "</strong> failures.";
+
+  // ---------------------------------------------------------------- in-page checks
+  const checks = [];
+  function T(label, fn){
+    let ok = false;
+    try { ok = !!fn(); } catch (e) { ok = false; }
+    checks.push({ label: label, ok: ok });
+  }
+  T("Brier, log loss and the spherical score put their unique optimum exactly on eta, in every bin",
+    function(){ return pt.allProperPass; });
+  T("for Brier and log loss that is the sign of an exact rational derivative, not a search",
+    function(){ return pt.rows[0].signOk === true && pt.rows[1].signOk === true; });
+  T("absolute error is optimised at a corner — or tied everywhere, where eta is exactly 1/2 — but never uniquely at eta",
+    function(){ return !pt.rows[3].atTruth && pt.rows[3].corner; });
+  T("0-1 loss at a cut has an argmin set of many reports, so it cannot identify eta",
+    function(){ return pt.rows[4].worst > 1 && !pt.rows[4].atTruth; });
+  T("Brier(r) = Brier(eta) + sum w (r-eta)^2, exactly over BigInt, for every model",
+    function(){ return ex.allExact; });
+  T("the same identity in doubles is NOT exact, which is why nothing here uses a tolerance",
+    function(){ return ex.worstFloat > 0; });
+  T("the Brier-optimal report on the grid is exactly one point",
+    function(){ return it.rows[0].count === 1n; });
+  T("the AUC-optimal set on the grid is exactly C(N+1, m)",
+    function(){ return it.rows[4].count === binomB(it.N + 1, it.m); });
+  T("brute force over the entire cube confirms all three counts at four small worlds",
+    function(){ return bruteOk; });
+  T("and confirms that the single Brier optimum is eta itself",
+    function(){ return brutes.every(function(b){ return b.brierAtTruth; }); });
+  T("no report anywhere in the cube out-ranks the truth's own ordering on AUC",
+    function(){ return brutes.every(function(b){ return b.aucMaxIsTruthOrder; }); });
+  T("the F1 optimum over all 2^m decision rules is a threshold rule on eta",
+    function(){ return fixT.isThreshold; });
+  T("and its threshold is exactly F1*/2",
+    function(){ return fixT.contained; });
+  T("F1*/2 <= 1/2, with equality only when F1* = 1",
+    function(){ return fixT.halfBelowHalf && fixT.halfEqHalfIffPerfect; });
+  T("the accuracy optimum over all 2^m rules is {eta > 1/2}",
+    function(){ return fixT.accIsHalf; });
+  T("over-stating every report by exactly 1-F1* reaches the F1 ceiling at a 0.5 cut",
+    function(){ return lie.reaches; });
+  T("the Brier price of that lie matches its closed form exactly",
+    function(){ return lie.exAgree; });
+  T("its ECE matches s(1-pi)/(1+s) exactly",
+    function(){ return lie.eceAgree; });
+  T("the cheapest lie that still reaches the ceiling is strictly smaller",
+    function(){ return lie.nMoved === 0 || rcmp(lie.inf, lie.exMeasured) < 0; });
+  T("the lie is worth exactly zero once the cut is tuned",
+    function(){ return lie.gainTuned.n === 0n; });
+  T("every strictly increasing model reaches the same tuned F1, as rationals",
+    function(){ return tt.allSame; });
+  T("and the same AUC",
+    function(){ const a = aucOf(W, W.eta);
+      return cfg.roster.every(function(m){ return !m.monotone || req(aucOf(W, m.r), a); }); });
+  T("while their Brier scores still differ, which the tuned metric can no longer see",
+    function(){ return rcmp(tt.exSpread, R0) > 0; });
+  T("Brier = reliability - resolution + uncertainty, exactly, for every model",
+    function(){ return cfg.roster.every(function(m){
+      return req(murphyOf(W, m.r).sum, brierOf(W, m.r)); }); });
+  T("the base rate has reliability, resolution and ECE all exactly zero",
+    function(){ const mu = murphyOf(W, rpBase(W));
+      return mu.rel.n === 0n && mu.res.n === 0n && eceOf(W, rpBase(W)).ece.n === 0n; });
+  T("its Brier is exactly pi(1-pi), and exactly Var(eta) above the truth's",
+    function(){ return req(brierOf(W, rpBase(W)), rmul(W.pi, rsub(R1, W.pi))) &&
+      req(rsub(brierOf(W, rpBase(W)), brierOf(W, W.eta)), varEta(W)); });
+  T("flagging every row scores F1 = 2pi/(1+pi), exactly",
+    function(){ const s = maskSums(W, (1 << W.m) - 1);
+      return req(f1Mask(W, s.A, s.B), rdiv(rmul(ri(2), W.pi), radd(R1, W.pi))); });
+  T("every set partition of the bins gives a report with ECE exactly zero",
+    function(){ return cfg.eceProof.ok && cfg.eceProof.partitions > 0; });
+  T("the calibrated set's Brier spans exactly Var(eta), from the truth to the base rate",
+    function(){ return cal.widthIsVar && cal.loIsZero && cal.hiIsVar; });
+  T("the truth is the unique winner on Brier and a winner on log loss, AUC and accuracy",
+    function(){ return bd.truthWinsBrier && bd.truthWinsLog && bd.ranks.auc[0] === 1 &&
+      bd.ranks.acc[0] === 1; });
+  T("and it is not the winner on F1 @ 0.5 whenever the F1-optimal cut differs from 0.5",
+    function(){ return !fixT.differs || bd.truthRankF1 > 1; });
+  T("a below-chance model out-scores the truth on F1@0.5 somewhere in the family",
+    function(){ return sw.invBeatsTruthF1 > 0; });
+  T("AUC ties more of the roster than F1@0.5 does, despite the far smaller identified set",
+    function(){ return bd.aucTie > bd.f1Tie && it.rows[4].count < it.rows[3].count; });
+  T("across every world in the sweep the truth is #1 on Brier and on log loss",
+    function(){ return sw.truthBrier1 === sw.worlds && sw.truthLog1 === sw.worlds; });
+  T("across every world in the sweep the F1 fixed point and both closed forms hold",
+    function(){ return sw.fixOk === sw.worlds && sw.thresholdOk === sw.worlds &&
+      sw.closedOk === sw.worlds && sw.accCutHalf === sw.worlds; });
+  T("the truth tops F1@0.5 in almost none of them, and accuracy@0.5 in all of them",
+    function(){ return sw.truthF1_1 < sw.worlds && sw.truthTopAcc === sw.worlds; });
+  T("every identity and bound in the table above holds", function(){ return idt.allOk; });
+  T("the configuration sweep finds no failure anywhere",
+    function(){ return cs.checked > 0 && cs.bad === 0; });
+
+  const passed = checks.filter(function(k){ return k.ok; }).length;
+  $("selftest").innerHTML =
+    "<p style='margin:0 0 8px; font-weight:800' class='" + (passed === checks.length ? "ok" : "bad") +
+    "'>" + passed + " / " + checks.length + " checks passed</p><ul class='checks'>" +
+    checks.map(function(k){
+      return "<li>" + (k.ok ? "<span class='ok'>PASS</span>" : "<span class='bad'>FAIL</span>") +
+        " &nbsp;" + k.label + "</li>"; }).join("") + "</ul>";
+
+  // ---------------------------------------------------------------- the lede, filled from the run
+  $("hlBins").textContent = W.m;
+  $("hlGridN").textContent = cfg.gridN + 1;
+  $("hlF1Set").innerHTML = sci(it.rows[3].count);
+  $("hlAucSet").innerHTML = sci(it.rows[4].count);
+  $("hlRules").innerHTML = grp(fixT.nRules);
+  $("hlHalf").innerHTML = fr(fixT.half, 4);
+  $("hlLie").innerHTML = fr(lie.s, 4);
+  $("hlGain").innerHTML = fr(lie.gain, 4);
+  $("hlPrice").innerHTML = fr(lie.exMeasured, 6);
+  $("hlLieEce").innerHTML = fr(lie.eceMeasured, 4);
+  $("hlTruthRankF1").innerHTML = bd.truthRankF1 + (bd.truthRankF1 === 1 ? "st" :
+    bd.truthRankF1 === 2 ? "nd" : bd.truthRankF1 === 3 ? "rd" : "th");
+  $("hlModels").textContent = bd.rows.length;
+  $("hlFlagAll").innerHTML = fr(bd.rows[2].f1, 4);
+  $("hlInv").innerHTML = fr(invRow.f1, 4);
+  $("hlInvAuc").innerHTML = fr(invRow.auc, 4);
+  $("hlHonest").innerHTML = fr(bd.rows[0].f1, 4);
+  $("hlSweep").innerHTML = grp(sw.worlds);
+  $("hlSweepBrier").innerHTML = grp(sw.truthBrier1);
+  $("hlSweepTruthF1").innerHTML = grp(sw.truthF1_1);
+  $("hlSweepFlag").innerHTML = grp(sw.flagAllBeatsHonest);
+  $("hlSweepInv").innerHTML = grp(sw.invBeatsTruthF1);
+  $("hlTuneTie").textContent = tt.nMono;
+  $("hlTuneEx").innerHTML = fr(tt.exSpread, 3);
+  $("hlRatio").innerHTML = ratio.toFixed(0);
+  $("hlAucTie").textContent = bd.aucTie;
+  $("hlF1Tie").textContent = bd.f1Tie;
+  $("hlBackwards").innerHTML = grp(sw.aucTieWhenF1Not);
+}
+
+// A full render exhausts every decision rule on the world, enumerates every set partition of its
+// bins, brute-forces four whole report cubes and re-runs the entire battery over a few hundred more
+// worlds, so slider drags are debounced rather than raced.
+let pending = null;
+function scheduleRender(){
+  if (pending) clearTimeout(pending);
+  pending = setTimeout(function(){ pending = null; render(); }, 260);
+}
+["sM", "sLo", "sStep", "sTilt", "sGrid", "sOdds", "sShrink", "sHard", "sSwap", "sSweep"]
+  .forEach(function(id){ $(id).addEventListener("input", scheduleRender); });
+render();
+</script>
+</body>
+</html>

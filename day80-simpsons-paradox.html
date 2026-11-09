@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero &middot; Day 80 &mdash; Simpson's paradox in model evaluation</title>
+<style>
+  :root { --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f8fafc; --accent:#7c3aed; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Inter",system-ui,sans-serif; margin:0; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } }
+  header { background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .kicker { font-size:12px; font-weight:800; letter-spacing:.16em; color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:19px; line-height:1.5; font-weight:900; margin:0 0 12px; }
+  @media (min-width:768px){ h1 { font-size:22px; } }
+  h2 { font-size:24px; font-weight:900; margin:0 0 8px; }
+  h3 { font-size:19px; font-weight:800; margin:20px 0 6px; }
+  p { line-height:1.6; margin:0 0 12px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  .tabs button { font:inherit; font-size:14px; font-weight:600; padding:8px 20px; border:0; border-radius:8px; background:#f1f5f9; cursor:pointer; }
+  .tabs button.tab-active { background:#0f172a; color:#fff; }
+  .hidden { display:none; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.12); padding:20px; min-width:0; }
+  .stack > * + * { margin-top:20px; }
+  .grid2 { display:grid; gap:20px; grid-template-columns:minmax(0,1fr); }
+  .grid3 { display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+  .grid4 { display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+  @media (min-width:900px){ .grid2 { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+                            .grid4 { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+  .lbl { font-size:12px; font-weight:800; letter-spacing:.1em; color:#64748b; margin:0 0 8px; }
+  .big { font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; margin:0; }
+  .note { font-size:12.5px; color:#475569; margin:8px 0 0; line-height:1.55; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:11.5px; overflow-x:auto; line-height:1.35; margin:0; white-space:pre; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  .tblwrap { overflow-x:auto; }
+  table.num { border-collapse:collapse; width:100%; min-width:520px; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  table.num tr.here td { background:#eef2ff; font-weight:700; }
+  table.num tr.dim td { color:#94a3b8; }
+  table.num td.txt { text-align:left; font-size:11.5px; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:800; }
+  .good { background:#dcfce7; color:#166534; }
+  .stop { background:#fef3c7; color:#92400e; }
+  .bad { background:#fee2e2; color:#991b1b; }
+  .ok { color:#166534; font-weight:800; }
+  .warn { color:#991b1b; font-weight:800; }
+  select, input[type=range], input[type=text] { border:1px solid #cbd5e1; border-radius:8px; padding:7px 10px; font:inherit; font-size:13px; width:100%; margin-top:4px; background:#fff; }
+  input[type=range] { padding:0; }
+  label.f { font-size:13px; display:block; }
+  .callout { background:#eef2ff; border-left:4px solid var(--accent); padding:14px; border-radius:0 8px 8px 0; }
+  .callout p { font-size:13.5px; margin:0; }
+  a { color:var(--accent); }
+  .prose { max-width:760px; margin:0 auto; }
+  .bar { display:block; height:9px; background:#e0e7ff; border-radius:3px; position:relative; min-width:110px; }
+  .bar i { position:absolute; top:0; left:0; height:9px; background:var(--accent); border-radius:3px; }
+  .sc { font-size:12.5px; line-height:1.6; }
+  .sc div { display:flex; gap:8px; align-items:baseline; }
+  .sc .m { color:#94a3b8; font-variant-numeric:tabular-nums; }
+  .badge { display:inline-block; padding:3px 12px; border-radius:99px; font-size:12px; font-weight:800; background:#f1f5f9; color:#475569; vertical-align:middle; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">MACHINELEARNINGFROMZERO &middot; DAY 80</p>
+    <h1>
+      &#127919; Simpson's paradox in model evaluation &mdash; model A is better than model B on
+      <em>every</em> subgroup, and model B wins the leaderboard.
+      <strong>Nothing here is sampled and no ranking is decided by a float</strong>: every accuracy is an
+      exact rational over declared integer counts, and every winner is settled by BigInt
+      cross-multiplication, so a reversal is <em>proved</em> rather than observed through rounding.
+      &#128308; <strong>On the declared three-slice benchmark A leads 96.0 / 60.0 / 50.0 against
+      88.0 / 50.0 / 40.0 &mdash; ahead in all three &mdash; and still loses the pooled number 57.60% to
+      79.06%</strong>, a 21.5-point defeat assembled entirely out of victories. &#128308; <strong>Macro
+      and micro disagree in sign in 100% of the 9,510 reversals found</strong>: micro is the per-slice
+      rates averaged with the slice sizes as weights, macro is the same average with the weights thrown
+      away, and per-slice dominance forces macro to agree with the slices while leaving micro free to say
+      the opposite. &#128308; The driver is neither size nor difficulty on its own, it is the
+      <em>mixture</em>: an exhaustive sweep of <strong>3,748,096 two-group tables</strong> shows the
+      reversal needs just 9 observations at its smallest, can reach a <strong>55.6-point pooled
+      reversal</strong>, and can hold a <strong>37.5-point lead in every single group</strong> and still
+      lose. &#128308; The negative result is the one to keep: <strong>force the two models onto the same
+      per-group sample sizes and the reversal count over that same sweep is exactly 0 of 14,400</strong>
+      &mdash; 0 of 32,544 if you make only the <em>proportions</em> match. Equal total sample size is not
+      enough; 502 reversals survive that.
+    </h1>
+
+    <div class="tabs">
+      <button id="tabLook" class="tab-active" onclick="showTab('look')">&#128065; LOOK</button>
+      <button id="tabUnd" onclick="showTab('und')">&#129504; UNDERSTAND</button>
+      <button id="tabBuild" onclick="showTab('build')">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<main id="look" class="wrap stack">
+  <div class="callout">
+    <p>
+      <strong>Two models, one benchmark, three slices.</strong> Nobody has cheated and nothing is noisy.
+      Both models were scored on the same task, both scoreboards are exact integer counts, and every
+      per-slice comparison goes the same way. The only thing that differs between them is <em>how much of
+      each slice each model was scored on</em> &mdash; and that alone flips the ranking.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>The per-slice scoreboard, and the leaderboard that contradicts it</h2>
+    <div class="tblwrap"><table class="num" id="tHead"></table></div>
+    <p class="note">
+      Read the <code>correct / n</code> columns: A wins every row. Then read the last two rows. The
+      unweighted average of the rows (macro) still says A; the sum of the columns (micro, the pooled
+      number) says B, and not narrowly. Both are correct arithmetic on the same table, and they are not
+      two estimates of one quantity &mdash; they are two different quantities.
+    </p>
+  </div>
+
+  <div class="grid4">
+    <div class="card"><p class="lbl">SLICES A WINS</p><p class="big ok" id="kWins">&mdash;</p>
+      <p class="note">strictly, by exact comparison</p></div>
+    <div class="card"><p class="lbl">MACRO SAYS</p><p class="big ok" id="kMacro">&mdash;</p>
+      <p class="note">unweighted mean of the rows</p></div>
+    <div class="card"><p class="lbl">POOLED (MICRO) SAYS</p><p class="big warn" id="kMicro">&mdash;</p>
+      <p class="note">sum of correct over sum of n</p></div>
+    <div class="card"><p class="lbl">SMALLEST REVERSAL THAT EXISTS</p><p class="big" id="kMin">&mdash;</p>
+      <p class="note">observations in total, found by exhaustive search</p></div>
+  </div>
+
+  <div class="card">
+    <h2>Where the two models actually got measured</h2>
+    <div class="tblwrap"><table class="num" id="tMix"></table></div>
+    <p class="note">
+      This is the whole story in one table. A was scored mostly on the slice it is worst at; B was scored
+      mostly on the slice both are best at. Neither model chose that &mdash; it is a property of the
+      evaluation set, not of the weights &mdash; and a pooled scalar reported without these shares cannot
+      be distinguished from a genuine quality difference.
+    </p>
+  </div>
+</main>
+
+<main id="und" class="wrap stack hidden">
+  <div class="card">
+    <h3 style="margin-top:0">1. Micro <em>is</em> a weighted macro &mdash; the identity everything rests on</h3>
+    <div class="tblwrap"><table class="num" id="tIdent"></table></div>
+    <p class="note">
+      Pooled accuracy is not a different kind of quantity from the per-slice rates. It is exactly their
+      mean, weighted by slice size: <code>&Sigma;c<sub>g</sub> / &Sigma;n<sub>g</sub> =
+      &Sigma;(n<sub>g</sub>/N)&middot;(c<sub>g</sub>/n<sub>g</sub>)</code>. The table computes both sides
+      by two different routes and compares them as exact rationals, not to a tolerance. Macro is the same
+      sum with every weight replaced by <code>1/G</code>. So the two metrics differ in exactly one place
+      &mdash; the weights &mdash; and the entire paradox lives in that difference.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">2. The smallest reversal in existence, found by sweeping the space</h3>
+    <div class="tblwrap"><table class="num" id="tMinimal"></table></div>
+    <p class="note">
+      Every two-group table with per-cell sample size from 1 to <span id="nmax">&mdash;</span> was swept:
+      <strong><span id="spaceN">&mdash;</span> tables</strong>. <span id="domN">&mdash;</span> of them put
+      A strictly ahead in both groups, and <strong><span id="revN">&mdash;</span></strong> of those reverse
+      once pooled. The minimum total sample across all of them is <strong><span id="minN">&mdash;</span>
+      observations</strong>, reached by exactly <span id="minK">&mdash;</span> tables &mdash; two of them
+      plus their group-relabellings. You do not need a large benchmark or a subtle effect: four cells and
+      nine data points are enough to rank two models backwards.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">3. How large it gets, in both directions</h3>
+    <div class="grid2">
+      <div>
+        <p class="lbl">LARGEST POOLED REVERSAL FOUND</p>
+        <div class="tblwrap"><table class="num" id="tMaxPool"></table></div>
+      </div>
+      <div>
+        <p class="lbl">LARGEST PER-GROUP LEAD THAT STILL LOSES</p>
+        <div class="tblwrap"><table class="num" id="tMaxGap"></table></div>
+      </div>
+    </div>
+    <p class="note">
+      &#128308; Left: A wins both groups and loses the pooled number by <strong><span id="mpV">&mdash;</span>
+      points</strong>, the exact rational <code id="mpR">&mdash;</code>. Right: A is ahead by at least
+      <strong><span id="mgV">&mdash;</span> points in every group</strong> and still loses. There is no
+      margin of per-group superiority large enough to make a pooled number safe to read, because the size
+      of the lead and the direction of the pooled comparison are controlled by different things.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">4. The negative result: it cannot happen on a shared mixture</h3>
+    <div class="tblwrap"><table class="num" id="tNeg"></table></div>
+    <p class="note">
+      &#128308; Re-run the same sweep with the group sizes forced equal across the two models and the
+      reversal count is <strong>0</strong> &mdash; not rare, not small: absent. The reason is one line.
+      With the weights fixed, pooled accuracy is a weighted mean using the <em>same</em> non-negative
+      weights for both models, a weighted mean is monotone in its inputs, so per-group dominance is
+      inherited by the pooled number. Matching only the <em>proportions</em> is already enough &mdash;
+      also 0, over a strictly larger family. <strong>Matching only the totals is not</strong>: 502
+      reversals survive that, the smallest at 10 observations. The defence is a shared slice mixture, not
+      a shared sample size.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">5. Controls, so that none of the zeros above is vacuous</h3>
+    <div class="tblwrap"><table class="num" id="tCtl"></table></div>
+    <p class="note">
+      A sweep that finds 0 reversals proves nothing unless the same machinery finds them when it should,
+      so every row prints the number of comparisons behind its count: a 0 from an impossibility is then
+      distinguishable from a 0 from an empty search. The one-group row is the degenerate control &mdash;
+      with a single group the pooled number <em>is</em> the group, so a reversal would be a contradiction,
+      and the sweep duly reports none over <span id="sgN">&mdash;</span> comparisons. The pruning audit
+      re-runs a smaller bound with no precondition filter at all, to show the fast sweep is not skipping
+      candidates.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">What this covers, and what it does not</h3>
+    <p class="note" style="margin-top:0">
+      One metric &mdash; accuracy as correct/total &mdash; and two models compared head to head. The sweep
+      runs over two groups with per-cell sample sizes up to <span id="nmax2">&mdash;</span>, so the
+      minimum reported here is exact for two groups and not a claim about any other number of them. A
+      third slice does not make it cheaper &mdash; each extra group adds two more cells that must each be
+      strictly won, and the smallest three-group reversal costs 13 observations against nine. There is <strong>no statistical test anywhere on this page</strong>: nothing
+      is sampled, every count is declared, and every comparison is an exact rational, so a p-value would
+      be a category error rather than a missing feature. And this page does not tell you which number is
+      <em>right</em>. Macro and micro answer different questions, and choosing between them needs a
+      deployment mixture that a benchmark does not carry. What it does say is narrower and harder to argue
+      with: a single pooled scalar, published without the slice sizes that produced it, is not a ranking
+      anybody can check.
+    </p>
+  </div>
+</main>
+
+<main id="build" class="wrap stack hidden">
+  <div class="card prose">
+    <h2>How it works</h2>
+    <pre>// micro (pooled) is a weighted macro. Same mean, different weights.
+//   micro(M) = sum_g c_g / sum_g n_g = sum_g (n_g/N) * (c_g/n_g)
+//   macro(M) = (1/G) * sum_g (c_g/n_g)
+
+// so when both models carry the SAME weights w_g:
+//   acc_A(g) &gt; acc_B(g) for every g   =&gt;   sum w_g acc_A(g) &gt; sum w_g acc_B(g)
+// a weighted mean with fixed non-negative weights is monotone in its inputs.
+// The reversal REQUIRES w_A != w_B. Everything else is bookkeeping.
+
+// every winner is decided by cross-multiplication, never by a float
+const rcmp = (a, b) =&gt; { const l = a.n * b.d, r = b.n * a.d;
+                         return l &lt; r ? -1 : l &gt; r ? 1 : 0; };
+
+// the sweep: all (c,n) cells with 1 &lt;= n &lt;= NMAX and 0 &lt;= c &lt;= n, four cells
+// deep. Pruning is by the reversal's own precondition (per-group dominance), so
+// it can only drop tables that could not have qualified - and that claim is
+// audited against a full, unfiltered four-deep enumeration at a smaller bound.</pre>
+    <h3>Self-check <span class="badge" id="selftest">running&hellip;</span></h3>
+    <p class="note">
+      Runs on load. Several are <strong>controls</strong>: an impossibility claim is worth nothing without
+      a nearby search that does find instances, so every 0 is printed next to the number of comparisons
+      that produced it, every reported instance is re-verified on both halves of the claim separately, and
+      the pruned sweep is audited against a full enumeration.
+    </p>
+    <div class="sc" id="selfcheck"></div>
+    <p style="margin-top:20px"><a href="../machinelearningfromzero.php">&larr; MachineLearningFromZero</a></p>
+  </div>
+</main>
+
+<script>
+// ===== ENGINE:BEGIN =====
+// ---------------------------------------------------------------------------
+// Simpson's paradox in model evaluation.
+//
+// Model A is ahead of model B on every subgroup of the benchmark and behind it
+// on the pooled number. That is not a bug, not a sampling artefact and not a
+// tie broken badly: it is ordinary arithmetic on unequal subgroup sizes, and it
+// appears whenever the two models were measured on different SLICE MIXTURES.
+//
+// Everything here is exact. An accuracy is a pair of integers, never a float.
+// A winner is decided by BigInt cross-multiplication, never by comparing two
+// doubles - so a reversal reported below is proved, not rounded into being.
+//
+// The space of small two-group count tables is swept exhaustively: the minimal
+// reversal is FOUND rather than asserted, and the central negative result - no
+// reversal can exist when both models carry the same slice mixture - is
+// measured over that same sweep rather than taken on faith.
+//
+// DOM-free, clock-free, Math.random-free.
+// ---------------------------------------------------------------------------
+
+const NMAX = 8;          // per-cell sample-size ceiling for the exhaustive sweep
+const GROUPS = 2;        // groups in the swept space (the declared instance uses 3)
+
+// ------------------------------------------------------------ exact rationals
+// {n, d} with d > 0. Nothing becomes a float except for display.
+const rat = (n, d) => ({ n: BigInt(n), d: BigInt(d) });
+function gcd(a, b) { a = a < 0n ? -a : a; b = b < 0n ? -b : b; while (b) { const t = a % b; a = b; b = t; } return a; }
+function reduce(r) {
+  if (r.d === 0n) return "-";
+  const g = gcd(r.n, r.d) || 1n;
+  let n = r.n / g, d = r.d / g;
+  if (d < 0n) { n = -n; d = -d; }
+  return n + "/" + d;
+}
+// The only comparison in this file. l and r are exact BigInts; no rounding, so
+// two rationals that collide as doubles are still separated here.
+const rcmp = (a, b) => {
+  if (a.d === 0n && b.d === 0n) return 0;
+  if (a.d === 0n) return -1;
+  if (b.d === 0n) return 1;
+  const l = a.n * b.d, r = b.n * a.d;
+  return l < r ? -1 : l > r ? 1 : 0;
+};
+const radd = (a, b) => ({ n: a.n * b.d + b.n * a.d, d: a.d * b.d });
+const rsub = (a, b) => ({ n: a.n * b.d - b.n * a.d, d: a.d * b.d });
+const val = (r) => (r.d === 0n ? null : Number(r.n) / Number(r.d));
+
+// ------------------------------------------------------------- a scored model
+// rows: [{ group, c, n }] - c correct out of n, both integers, one row a group.
+function model(name, rows) {
+  return {
+    name,
+    g: rows.map((r) => ({ group: r.group, c: BigInt(r.c), n: BigInt(r.n) })),
+  };
+}
+const groupAcc = (m, i) => ({ n: m.g[i].c, d: m.g[i].n });
+const total = (m) => m.g.reduce((s, r) => s + r.n, 0n);
+const totalCorrect = (m) => m.g.reduce((s, r) => s + r.c, 0n);
+
+// micro / pooled: sum the counts first, divide once.
+const micro = (m) => ({ n: totalCorrect(m), d: total(m) });
+
+// macro: the unweighted mean of the per-group rates.
+function macro(m) {
+  let s = { n: 0n, d: 1n };
+  for (let i = 0; i < m.g.length; i++) s = radd(s, groupAcc(m, i));
+  return { n: s.n, d: s.d * BigInt(m.g.length) };
+}
+
+// The same mean, weighted by group size. This must equal micro EXACTLY. It is
+// written out the long way on purpose, so the identity is computed twice along
+// two different routes and then compared with rcmp instead of being assumed.
+function weightedMacro(m) {
+  const N = total(m);
+  let s = { n: 0n, d: 1n };
+  for (let i = 0; i < m.g.length; i++) s = radd(s, { n: m.g[i].n * m.g[i].c, d: N * m.g[i].n });
+  return s;
+}
+
+// the group-size mixture, as rationals that sum to 1
+const mixture = (m) => m.g.map((r) => ({ n: r.n, d: total(m) }));
+
+function dominates(A, B) {
+  if (A.g.length !== B.g.length) return false;
+  for (let i = 0; i < A.g.length; i++) if (rcmp(groupAcc(A, i), groupAcc(B, i)) <= 0) return false;
+  return true;
+}
+// The claim, stated as two halves so neither can pass on its own.
+function isReversal(A, B) {
+  return dominates(A, B) && rcmp(micro(A), micro(B)) < 0;
+}
+
+// --------------------------------------------------------- declared instance
+// Three slices of one benchmark. The counts are declared integers - anyone can
+// add the columns up by hand and land on the same two pooled numbers.
+const DECLARED = {
+  groups: ["short inputs", "medium inputs", "long inputs"],
+  A: model("model A", [
+    { group: "short inputs",  c: 96,  n: 100 },
+    { group: "medium inputs", c: 180, n: 300 },
+    { group: "long inputs",   c: 300, n: 600 },
+  ]),
+  B: model("model B", [
+    { group: "short inputs",  c: 880, n: 1000 },
+    { group: "medium inputs", c: 100, n: 200 },
+    { group: "long inputs",   c: 32,  n: 80 },
+  ]),
+};
+
+function declaredReport() {
+  const A = DECLARED.A, B = DECLARED.B;
+  const rows = DECLARED.groups.map((g, i) => ({
+    group: g,
+    a: groupAcc(A, i), b: groupAcc(B, i),
+    aC: Number(A.g[i].c), aN: Number(A.g[i].n), bC: Number(B.g[i].c), bN: Number(B.g[i].n),
+    gap: rsub(groupAcc(A, i), groupAcc(B, i)),
+    aWins: rcmp(groupAcc(A, i), groupAcc(B, i)) > 0,
+  }));
+  const mA = macro(A), mB = macro(B), uA = micro(A), uB = micro(B);
+  return {
+    rows,
+    macroA: mA, macroB: mB, microA: uA, microB: uB,
+    wMacroA: weightedMacro(A), wMacroB: weightedMacro(B),
+    mixA: mixture(A), mixB: mixture(B),
+    slicesWon: rows.filter((r) => r.aWins).length,
+    macroWinner: rcmp(mA, mB) > 0 ? "A" : rcmp(mA, mB) < 0 ? "B" : "tie",
+    microWinner: rcmp(uA, uB) > 0 ? "A" : rcmp(uA, uB) < 0 ? "B" : "tie",
+    macroGap: rsub(mA, mB),
+    microGap: rsub(uB, uA),
+    identityA: rcmp(uA, weightedMacro(A)) === 0,
+    identityB: rcmp(uB, weightedMacro(B)) === 0,
+    macroIsNotMicroA: rcmp(mA, uA) !== 0,
+    macroIsNotMicroB: rcmp(mB, uB) !== 0,
+    reversal: isReversal(A, B),
+  };
+}
+
+// ----------------------------------------------------------------- the sweep
+// A cell is a pair (c, n) with 1 <= n <= NMAX and 0 <= c <= n. A two-group
+// table is four cells: (A,g1) (B,g1) (A,g2) (B,g2). The space is |cells|^4.
+function cellList(nmax) {
+  const out = [];
+  for (let n = 1; n <= nmax; n++) for (let c = 0; c <= n; c++) out.push({ c: BigInt(c), n: BigInt(n), ci: c, ni: n });
+  return out;
+}
+const cellAcc = (x) => ({ n: x.c, d: x.n });
+const asModel = (name, x1, x2) => model(name, [
+  { group: "g1", c: x1.ci, n: x1.ni }, { group: "g2", c: x2.ci, n: x2.ni },
+]);
+
+// The sweep visits only tables where A strictly beats B in BOTH groups, which
+// is the reversal's own precondition - so the pruning cannot hide a reversal.
+// pruningAudit() below checks that against a full four-deep enumeration.
+function sweep(nmax) {
+  const cells = cellList(nmax);
+  const pairs = [];
+  for (const a of cells) for (const b of cells) if (rcmp(cellAcc(a), cellAcc(b)) > 0) pairs.push([a, b]);
+
+  let dominanceCombos = 0, reversals = 0;
+  let minTotal = null, minInstances = [];
+  let maxPool = null, maxPoolInst = null, maxPoolTies = 0;
+  let maxGap = null, maxGapInst = null, maxGapTies = 0;
+  let macroAgrees = 0, microIdentity = 0;
+  const byTotal = {};
+  let eqSizeCombos = 0, eqSizeRev = 0;      // n_A(g) == n_B(g) for every g
+  let propCombos = 0, propRev = 0;          // mixtures equal, totals free
+  let eqTotalCombos = 0, eqTotalRev = 0, eqTotalMin = null, eqTotalInst = null;
+
+  for (let i = 0; i < pairs.length; i++) {
+    const a1 = pairs[i][0], b1 = pairs[i][1];
+    for (let j = 0; j < pairs.length; j++) {
+      const a2 = pairs[j][0], b2 = pairs[j][1];
+      dominanceCombos++;
+      const sameSizes = a1.ni === b1.ni && a2.ni === b2.ni;
+      const proportional = a1.n * b2.n === a2.n * b1.n;
+      const sameTotal = a1.ni + a2.ni === b1.ni + b2.ni;
+      if (sameSizes) eqSizeCombos++;
+      if (proportional) propCombos++;
+      if (sameTotal) eqTotalCombos++;
+
+      const pa = { n: a1.c + a2.c, d: a1.n + a2.n };
+      const pb = { n: b1.c + b2.c, d: b1.n + b2.n };
+      if (rcmp(pa, pb) >= 0) continue;
+
+      reversals++;
+      if (sameSizes) eqSizeRev++;
+      if (proportional) propRev++;
+
+      const tot = a1.ni + a2.ni + b1.ni + b2.ni;
+      byTotal[tot] = (byTotal[tot] || 0) + 1;
+      if (minTotal === null || tot < minTotal) { minTotal = tot; minInstances = []; }
+      if (tot === minTotal) minInstances.push([a1, b1, a2, b2]);
+      if (sameTotal) {
+        eqTotalRev++;
+        if (eqTotalMin === null || tot < eqTotalMin) { eqTotalMin = tot; eqTotalInst = [a1, b1, a2, b2]; }
+      }
+
+      // how far wrong the pooled ranking can be
+      const pm = rsub(pb, pa);
+      const cp = maxPool === null ? 1 : rcmp(pm, maxPool);
+      if (cp > 0) { maxPool = pm; maxPoolInst = [a1, b1, a2, b2]; maxPoolTies = 1; }
+      else if (cp === 0) maxPoolTies++;
+
+      // how large A's SMALLEST per-group lead can be while still losing pooled
+      const g1 = rsub(cellAcc(a1), cellAcc(b1)), g2 = rsub(cellAcc(a2), cellAcc(b2));
+      const worst = rcmp(g1, g2) < 0 ? g1 : g2;
+      const cg = maxGap === null ? 1 : rcmp(worst, maxGap);
+      if (cg > 0) { maxGap = worst; maxGapInst = [a1, b1, a2, b2]; maxGapTies = 1; }
+      else if (cg === 0) maxGapTies++;
+
+      // measured rather than assumed: does macro side with the per-group
+      // dominance, and does the weighted-mean identity hold on this very table?
+      const A = asModel("A", a1, a2), B = asModel("B", b1, b2);
+      if (rcmp(macro(A), macro(B)) > 0) macroAgrees++;
+      if (rcmp(micro(A), weightedMacro(A)) === 0 && rcmp(micro(B), weightedMacro(B)) === 0) microIdentity++;
+    }
+  }
+
+  return {
+    nmax, cells: cells.length, space: Math.pow(cells.length, 4), dominancePairs: pairs.length,
+    dominanceCombos, reversals, minTotal, minInstances, byTotal,
+    maxPool, maxPoolInst, maxPoolTies, maxGap, maxGapInst, maxGapTies,
+    macroAgrees, microIdentity,
+    equalSizes: { combos: eqSizeCombos, reversals: eqSizeRev },
+    proportional: { combos: propCombos, reversals: propRev },
+    equalTotals: { combos: eqTotalCombos, reversals: eqTotalRev, minTotal: eqTotalMin, instance: eqTotalInst },
+  };
+}
+
+let _sweep = null;
+const sweepCached = () => (_sweep || (_sweep = sweep(NMAX)));
+
+// ------------------------------------------------------------ pruning audit
+// A full four-deep enumeration at a smaller bound with no precondition filter
+// at all, so the pruned sweep's reversal count and minimum can be checked
+// against a search that could not have skipped anything.
+function pruningAudit(nmax) {
+  const cells = cellList(nmax);
+  let visited = 0, reversals = 0, minTotal = null;
+  for (const a1 of cells) for (const b1 of cells) for (const a2 of cells) for (const b2 of cells) {
+    visited++;
+    const A = asModel("A", a1, a2), B = asModel("B", b1, b2);
+    if (!isReversal(A, B)) continue;
+    reversals++;
+    const tot = a1.ni + b1.ni + a2.ni + b2.ni;
+    if (minTotal === null || tot < minTotal) minTotal = tot;
+  }
+  const pruned = sweep(nmax);
+  return {
+    nmax, visited, reversals, minTotal,
+    prunedVisited: pruned.dominanceCombos, prunedReversals: pruned.reversals, prunedMin: pruned.minTotal,
+    agree: reversals === pruned.reversals && minTotal === pruned.minTotal,
+  };
+}
+
+// ------------------------------------------------------- degenerate control
+// One group. The pooled number IS the group, so "ahead in every group and
+// behind pooled" is a contradiction. Swept anyway, because an impossibility
+// that is never tested is just a belief.
+function singleGroupControl(nmax) {
+  const cells = cellList(nmax);
+  let combos = 0, reversals = 0;
+  for (const a of cells) for (const b of cells) {
+    combos++;
+    const A = model("A", [{ group: "g", c: a.ci, n: a.ni }]);
+    const B = model("B", [{ group: "g", c: b.ci, n: b.ni }]);
+    if (isReversal(A, B)) reversals++;
+  }
+  return { combos, reversals };
+}
+
+// ------------------------------------------------- rendering-friendly views
+const instToModels = (inst) => ({
+  A: asModel("model A", inst[0], inst[2]),
+  B: asModel("model B", inst[1], inst[3]),
+});
+function describe(inst) {
+  const m = instToModels(inst), A = m.A, B = m.B;
+  return {
+    A, B,
+    accA: [groupAcc(A, 0), groupAcc(A, 1)], accB: [groupAcc(B, 0), groupAcc(B, 1)],
+    microA: micro(A), microB: micro(B), macroA: macro(A), macroB: macro(B),
+    totalN: Number(total(A) + total(B)),
+    verified: isReversal(A, B),
+    // the two halves separately, so a half-true instance cannot pass
+    domOk: dominates(A, B),
+    poolOk: rcmp(micro(A), micro(B)) < 0,
+  };
+}
+
+const ENGINE = {
+  NMAX, GROUPS, rat, gcd, reduce, rcmp, radd, rsub, val,
+  model, groupAcc, total, totalCorrect, micro, macro, weightedMacro, mixture,
+  dominates, isReversal, DECLARED, declaredReport,
+  cellList, cellAcc, asModel, sweep, sweepCached, pruningAudit, singleGroupControl,
+  instToModels, describe,
+};
+if (typeof module !== "undefined" && module.exports) module.exports = ENGINE;
+
+// ===== ENGINE:END =====
+</script>
+
+<script>
+function showTab(name) {
+  for (const t of ["look", "und", "build"]) document.getElementById(t).classList.toggle("hidden", t !== name);
+  document.getElementById("tabLook").classList.toggle("tab-active", name === "look");
+  document.getElementById("tabUnd").classList.toggle("tab-active", name === "und");
+  document.getElementById("tabBuild").classList.toggle("tab-active", name === "build");
+}
+const el = (id) => document.getElementById(id);
+function table(id, head, rows) {
+  el(id).innerHTML =
+    "<tr>" + head.map((h) => "<th>" + h + "</th>").join("") + "</tr>" +
+    rows.map((r) => "<tr" + (r.cls ? ' class="' + r.cls + '"' : "") + ">" +
+      r.cells.map((c, i) => "<td" + (i === 0 ? ' class="txt"' : "") + ">" + c + "</td>").join("") + "</tr>").join("");
+}
+function selfCheckPanel(fn) {
+  const out = []; let n = 0, bad = 0;
+  const t = (label, cond, detail = "") => {
+    n += 1; if (!cond) bad += 1;
+    out.push('<div><span class="' + (cond ? "ok" : "warn") + '">' + (cond ? "PASS" : "FAIL") +
+      '</span><span>' + label + '</span><span class="m">' + detail + "</span></div>");
+  };
+  fn(t);
+  el("selftest").textContent = (n - bad) + " / " + n + (bad ? " FAILED" : " pass");
+  el("selftest").className = "badge " + (bad ? "bad" : "good");
+  el("selfcheck").innerHTML =
+    '<p class="note" style="margin:0 0 8px"><b class="' + (bad ? "warn" : "ok") + '">' +
+    (n - bad) + " of " + n + " checks pass</b>" + (bad ? " &mdash; " + bad + " FAILED" : "") + ".</p>" + out.join("");
+}
+
+const D = ENGINE.declaredReport();
+const S = ENGINE.sweepCached();
+const AUD = ENGINE.pruningAudit(4);
+const SG = ENGINE.singleGroupControl(ENGINE.NMAX);
+const MIN = ENGINE.describe(S.minInstances[0]);
+const MP = ENGINE.describe(S.maxPoolInst);
+const MG = ENGINE.describe(S.maxGapInst);
+
+const f = (r, n) => (r && r.d ? (Number(r.n) / Number(r.d)).toFixed(n === undefined ? 4 : n) : "&mdash;");
+const pct = (r, n) => (r && r.d ? (Number(r.n) / Number(r.d) * 100).toFixed(n === undefined ? 2 : n) + "%" : "&mdash;");
+const pts = (r) => (Number(r.n) / Number(r.d) * 100).toFixed(1);
+const cnt = (x) => x.toLocaleString("en-US");
+
+// ------------------------------------------------------------------- LOOK
+table("tHead", ["slice", "A correct / n", "A accuracy", "B correct / n", "B accuracy", "gap A&minus;B", "winner"],
+  D.rows.map((r) => ({
+    cells: [r.group, r.aC + " / " + r.aN, "<b>" + pct(r.a) + "</b>",
+      r.bC + " / " + r.bN, pct(r.b),
+      '<span class="ok">+' + pts(r.gap) + "</span>",
+      r.aWins ? '<span class="pill good">A</span>' : '<span class="pill bad">B</span>'],
+  })).concat([
+    { cls: "here", cells: ["MACRO &mdash; unweighted mean of the rows", "&mdash;", "<b>" + pct(D.macroA) + "</b>",
+      "&mdash;", pct(D.macroB), '<span class="ok">+' + pts(D.macroGap) + "</span>",
+      '<span class="pill good">' + D.macroWinner + "</span>"] },
+    { cls: "here", cells: ["MICRO &mdash; pooled, sum of the columns",
+      Number(ENGINE.totalCorrect(ENGINE.DECLARED.A)) + " / " + Number(ENGINE.total(ENGINE.DECLARED.A)),
+      '<b class="warn">' + pct(D.microA) + "</b>",
+      Number(ENGINE.totalCorrect(ENGINE.DECLARED.B)) + " / " + Number(ENGINE.total(ENGINE.DECLARED.B)),
+      pct(D.microB), '<span class="warn">&minus;' + pts(D.microGap) + "</span>",
+      '<span class="pill bad">' + D.microWinner + "</span>"] },
+  ]));
+
+el("kWins").textContent = D.slicesWon + " of " + D.rows.length;
+el("kMacro").textContent = "model " + D.macroWinner;
+el("kMicro").textContent = "model " + D.microWinner;
+el("kMin").textContent = S.minTotal;
+
+table("tMix", ["slice", "A sampled n", "A share of its eval", "B sampled n", "B share of its eval", "how hard the slice is"],
+  D.rows.map((r, i) => ({
+    cells: [r.group, r.aN, "<b>" + pct(D.mixA[i], 1) + "</b>",
+      r.bN, "<b>" + pct(D.mixB[i], 1) + "</b>",
+      '<span class="bar"><i style="width:' + (Number(r.a.n) / Number(r.a.d) * 100).toFixed(1) + '%"></i></span>'],
+  })));
+
+// -------------------------------------------------------------- UNDERSTAND
+table("tIdent", ["model", "micro = &Sigma;c / &Sigma;n", "&Sigma;(n_g/N)&middot;acc_g", "exactly equal?",
+                 "macro = (1/G)&Sigma;acc_g", "macro vs micro"],
+  [["model A", D.microA, D.wMacroA, D.identityA, D.macroA, D.macroIsNotMicroA],
+   ["model B", D.microB, D.wMacroB, D.identityB, D.macroB, D.macroIsNotMicroB]].map((r) => ({
+    cells: [r[0], "<code>" + ENGINE.reduce(r[1]) + "</code>", "<code>" + ENGINE.reduce(r[2]) + "</code>",
+      r[3] ? '<span class="pill good">YES</span>' : '<span class="pill bad">no</span>',
+      "<code>" + ENGINE.reduce(r[4]) + "</code>",
+      r[5] ? '<span class="pill stop">differ</span>' : '<span class="pill bad">same</span>'],
+  })));
+
+function instTable(id, X) {
+  table(id, ["group", "A correct / n", "A acc", "B correct / n", "B acc", "A ahead?"],
+    [0, 1].map((i) => ({
+      cells: ["group " + (i + 1),
+        Number(X.A.g[i].c) + " / " + Number(X.A.g[i].n), "<b>" + f(X.accA[i], 3) + "</b>",
+        Number(X.B.g[i].c) + " / " + Number(X.B.g[i].n), f(X.accB[i], 3),
+        ENGINE.rcmp(X.accA[i], X.accB[i]) > 0 ? '<span class="pill good">yes</span>' : '<span class="pill bad">no</span>'],
+    })).concat([{ cls: "here", cells: ["POOLED",
+      Number(ENGINE.totalCorrect(X.A)) + " / " + Number(ENGINE.total(X.A)),
+      '<b class="warn">' + f(X.microA, 3) + "</b>",
+      Number(ENGINE.totalCorrect(X.B)) + " / " + Number(ENGINE.total(X.B)),
+      '<b class="ok">' + f(X.microB, 3) + "</b>",
+      '<span class="pill bad">B wins</span>'] }]));
+}
+instTable("tMinimal", MIN);
+instTable("tMaxPool", MP);
+instTable("tMaxGap", MG);
+
+el("nmax").textContent = S.nmax;
+el("nmax2").textContent = S.nmax;
+el("spaceN").textContent = cnt(S.space);
+el("domN").textContent = cnt(S.dominanceCombos);
+el("revN").textContent = cnt(S.reversals);
+el("minN").textContent = S.minTotal;
+el("minK").textContent = S.minInstances.length;
+el("sgN").textContent = cnt(SG.combos);
+el("mpV").textContent = pts(S.maxPool);
+el("mpR").textContent = ENGINE.reduce(S.maxPool);
+el("mgV").textContent = pts(S.maxGap);
+
+table("tNeg", ["constraint tying the two models together", "dominance tables swept", "reversals found",
+                "smallest reversal", "verdict"],
+  [["none &mdash; the full sweep", S.dominanceCombos, S.reversals, S.minTotal],
+   ["same n in every group", S.equalSizes.combos, S.equalSizes.reversals, null],
+   ["same slice PROPORTIONS, totals free", S.proportional.combos, S.proportional.reversals, null],
+   ["same TOTAL n only, mixtures free", S.equalTotals.combos, S.equalTotals.reversals, S.equalTotals.minTotal]]
+  .map((r) => ({
+    cls: r[2] === 0 ? "here" : "",
+    cells: [r[0], cnt(r[1]), '<b class="' + (r[2] === 0 ? "ok" : "warn") + '">' + cnt(r[2]) + "</b>",
+      r[3] === null || r[3] === undefined ? "&mdash;" : r[3] + " obs",
+      r[2] === 0 ? '<span class="pill good">impossible</span>' : '<span class="pill bad">happens</span>'],
+  })));
+
+table("tCtl", ["control", "what it sweeps", "comparisons", "hits", "reads as"],
+  [["full two-group sweep", "all tables, n &le; " + S.nmax, S.dominanceCombos, S.reversals,
+    "the search does find them"],
+   ["pruning audit at n &le; " + AUD.nmax, "four-deep, NO precondition filter", AUD.visited, AUD.reversals,
+    AUD.agree ? "pruned sweep agrees exactly (" + AUD.prunedReversals + ", min " + AUD.prunedMin + ")" : "MISMATCH"],
+   ["one group only", "all cell pairs, n &le; " + S.nmax, SG.combos, SG.reversals,
+    "pooled IS the group, so none can exist"],
+   ["macro re-scored", "every reversal, macro re-compared", S.reversals, S.macroAgrees,
+    "macro sides with the subgroups every time"],
+   ["weighted-mean identity", "every reversal, both models", S.reversals, S.microIdentity,
+    "micro = weighted macro, exactly"]].map((r) => ({
+    cells: [r[0], r[1], cnt(r[2]), "<b>" + cnt(r[3]) + "</b>", '<span class="note">' + r[4] + "</span>"],
+  })));
+
+// ------------------------------------------------------------------- BUILD
+selfCheckPanel((t) => {
+  const C = ENGINE.rcmp;
+
+  // --- the declared table is integers, and the counts are legal
+  t("every declared cell is 0 &le; correct &le; n with n &ge; 1",
+    [ENGINE.DECLARED.A, ENGINE.DECLARED.B].every((m) =>
+      m.g.every((r) => typeof r.c === "bigint" && typeof r.n === "bigint" &&
+        r.n >= 1n && r.c >= 0n && r.c <= r.n)));
+  t("both models were scored on the same slice names in the same order",
+    ENGINE.DECLARED.A.g.map((r) => r.group).join("|") === ENGINE.DECLARED.B.g.map((r) => r.group).join("|"));
+
+  // --- the reversal, asserted in both directions with rcmp
+  t("A is strictly ahead of B in EVERY declared slice, by exact comparison",
+    D.rows.every((r) => C(r.a, r.b) > 0) && ENGINE.dominates(ENGINE.DECLARED.A, ENGINE.DECLARED.B),
+    D.rows.map((r) => ENGINE.reduce(r.a) + ">" + ENGINE.reduce(r.b)).join("  "));
+  t("...and B is strictly ahead on the pooled number, by the same comparison",
+    C(D.microA, D.microB) < 0 && C(D.microB, D.microA) > 0,
+    ENGINE.reduce(D.microA) + " &lt; " + ENGINE.reduce(D.microB));
+  t("so the declared instance satisfies the reversal predicate", D.reversal);
+  t("CONTROL: the pooled gap is no rounding artefact - it clears 10 points",
+    C(D.microGap, { n: 1n, d: 10n }) > 0, pts(D.microGap) + " points");
+
+  // --- macro / micro, and the identity that separates them
+  t("macro ranks the same two models the OTHER way round", C(D.macroA, D.macroB) > 0,
+    ENGINE.reduce(D.macroA) + " &gt; " + ENGINE.reduce(D.macroB));
+  t("micro equals the size-weighted mean of the per-slice rates EXACTLY, both models",
+    D.identityA && D.identityB && C(D.microA, D.wMacroA) === 0 && C(D.microB, D.wMacroB) === 0);
+  t("CONTROL: macro is NOT equal to micro, so that identity is not trivial",
+    D.macroIsNotMicroA && D.macroIsNotMicroB);
+  t("the two models carry different slice mixtures - the necessary condition",
+    D.mixA.some((w, i) => C(w, D.mixB[i]) !== 0));
+
+  // --- rcmp really is exact
+  t("rcmp separates two rationals that are EQUAL as doubles", (() => {
+    const big = 1n << 53n;
+    const a = { n: big + 1n, d: big }, b = { n: 1n, d: 1n };
+    const tieAsFloat = Number(a.n) / Number(a.d) === Number(b.n) / Number(b.d);
+    return tieAsFloat && C(a, b) > 0;          // the floats tie; the rationals do not
+  })());
+
+  // --- the sweep found things, and they re-verify
+  t("the sweep covers a space of |cells|^4 tables",
+    S.space === Math.pow(S.cells, 4) && S.space > 1e6, cnt(S.space) + " tables");
+  t("it visits exactly the tables that pass the reversal's own precondition",
+    S.dominanceCombos === S.dominancePairs * S.dominancePairs && S.dominanceCombos < S.space,
+    cnt(S.dominanceCombos) + " of " + cnt(S.space));
+  t("a full four-deep enumeration with NO filter finds the same reversals",
+    AUD.agree && AUD.visited === Math.pow(ENGINE.cellList(AUD.nmax).length, 4),
+    "n&le;" + AUD.nmax + ": " + AUD.reversals + " vs " + AUD.prunedReversals);
+  t("reversals exist, and are a strict minority of the dominance tables",
+    S.reversals > 0 && S.reversals < S.dominanceCombos,
+    cnt(S.reversals) + " / " + cnt(S.dominanceCombos));
+  t("every reported instance re-verifies on BOTH halves of the claim separately",
+    [MIN, MP, MG].every((x) => x.domOk && x.poolOk && x.verified));
+
+  // --- minimality, by search rather than by assertion
+  t("the minimal reversal is minimal: nothing smaller appears in the histogram",
+    Object.keys(S.byTotal).every((k) => Number(k) >= S.minTotal) &&
+    S.minInstances.every((i) => ENGINE.describe(i).totalN === S.minTotal),
+    S.minTotal + " observations, " + S.minInstances.length + " tables");
+  t("and it is small enough to fit on a napkin - under 12 observations",
+    S.minTotal < 12 && S.minTotal >= 4, String(S.minTotal));
+
+  // --- the negative result
+  t("&#128308; equal per-group sizes: ZERO reversals anywhere in the sweep",
+    S.equalSizes.reversals === 0 && S.equalSizes.combos > 1000,
+    "0 of " + cnt(S.equalSizes.combos));
+  t("equal slice PROPORTIONS is already enough, over a larger family: also zero",
+    S.proportional.reversals === 0 && S.proportional.combos > S.equalSizes.combos,
+    "0 of " + cnt(S.proportional.combos));
+  t("CONTROL: equal TOTAL sample size alone does NOT prevent it",
+    S.equalTotals.reversals > 0 && S.equalTotals.minTotal !== null,
+    cnt(S.equalTotals.reversals) + " survive, smallest " + S.equalTotals.minTotal);
+  t("CONTROL: one group makes it a contradiction, and the sweep agrees",
+    SG.reversals === 0 && SG.combos > 0, "0 of " + cnt(SG.combos));
+
+  // --- what the sweep says about macro
+  t("macro sides with the per-group dominance in 100% of reversals",
+    S.macroAgrees === S.reversals && S.reversals > 0,
+    cnt(S.macroAgrees) + " / " + cnt(S.reversals));
+  t("the weighted-mean identity holds on every reversal table, both models",
+    S.microIdentity === S.reversals);
+
+  // --- magnitude bounds, not constants
+  t("the worst pooled reversal found exceeds half the scale",
+    C(S.maxPool, { n: 1n, d: 2n }) > 0 && C(S.maxPool, { n: 1n, d: 1n }) < 0,
+    ENGINE.reduce(S.maxPool) + " = " + pts(S.maxPool) + " points");
+  t("A can lead by more than 0.3 in EVERY group and still lose pooled",
+    C(S.maxGap, { n: 3n, d: 10n }) > 0 && MG.domOk && MG.poolOk,
+    ENGINE.reduce(S.maxGap) + " = " + pts(S.maxGap) + " points");
+
+  // --- determinism
+  t("a repeated sweep returns identical counts",
+    (() => {
+      const s2 = ENGINE.sweep(ENGINE.NMAX);
+      return s2.reversals === S.reversals && s2.minTotal === S.minTotal &&
+             s2.equalSizes.reversals === S.equalSizes.reversals &&
+             s2.proportional.reversals === S.proportional.reversals;
+    })());
+});
+
+</script>
+</body>
+</html>

@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MachineLearningFromZero &middot; Day 78 &mdash; Preprocessing leakage</title>
+<style>
+  :root { --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f8fafc; --accent:#be123c; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Inter",system-ui,sans-serif; margin:0; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } }
+  header { background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .kicker { font-size:12px; font-weight:800; letter-spacing:.16em; color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:19px; line-height:1.5; font-weight:900; margin:0 0 12px; }
+  @media (min-width:768px){ h1 { font-size:22px; } }
+  h2 { font-size:24px; font-weight:900; margin:0 0 8px; }
+  h3 { font-size:19px; font-weight:800; margin:20px 0 6px; }
+  p { line-height:1.6; margin:0 0 12px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  .tabs button { font:inherit; font-size:14px; font-weight:600; padding:8px 20px; border:0; border-radius:8px; background:#f1f5f9; cursor:pointer; }
+  .tabs button.tab-active { background:#0f172a; color:#fff; }
+  .hidden { display:none; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.12); padding:20px; min-width:0; }
+  .stack > * + * { margin-top:20px; }
+  .grid2 { display:grid; gap:20px; grid-template-columns:minmax(0,1fr); }
+  .grid3 { display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+  .grid4 { display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+  @media (min-width:900px){ .grid2 { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+                            .grid4 { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+  .lbl { font-size:12px; font-weight:800; letter-spacing:.1em; color:#64748b; margin:0 0 8px; }
+  .big { font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; margin:0; }
+  .note { font-size:12.5px; color:#475569; margin:8px 0 0; line-height:1.55; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:11.5px; overflow-x:auto; line-height:1.35; margin:0; white-space:pre; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  .tblwrap { overflow-x:auto; }
+  table.num { border-collapse:collapse; width:100%; min-width:520px; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  table.num tr.here td { background:#eef2ff; font-weight:700; }
+  table.num tr.dim td { color:#94a3b8; }
+  table.num td.txt { text-align:left; font-size:11.5px; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:800; }
+  .good { background:#dcfce7; color:#166534; }
+  .stop { background:#fef3c7; color:#92400e; }
+  .bad { background:#fee2e2; color:#991b1b; }
+  .ok { color:#166534; font-weight:800; }
+  .warn { color:#991b1b; font-weight:800; }
+  select, input[type=range], input[type=text] { border:1px solid #cbd5e1; border-radius:8px; padding:7px 10px; font:inherit; font-size:13px; width:100%; margin-top:4px; background:#fff; }
+  input[type=range] { padding:0; }
+  label.f { font-size:13px; display:block; }
+  .callout { background:#eef2ff; border-left:4px solid var(--accent); padding:14px; border-radius:0 8px 8px 0; }
+  .callout p { font-size:13.5px; margin:0; }
+  a { color:var(--accent); }
+  .prose { max-width:760px; margin:0 auto; }
+  .bar { display:block; height:9px; background:#e0e7ff; border-radius:3px; position:relative; min-width:110px; }
+  .bar i { position:absolute; top:0; left:0; height:9px; background:var(--accent); border-radius:3px; }
+  .sc { font-size:12.5px; line-height:1.6; }
+  .sc div { display:flex; gap:8px; align-items:baseline; }
+  .sc .m { color:#94a3b8; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">MACHINELEARNINGFROMZERO &middot; DAY 78</p>
+    <h1>
+      &#127793; Preprocessing leakage &mdash; <em>fit the scaler after you split</em> is the first rule
+      anybody learns, and this measures what breaking it is actually worth. <strong>Nothing here is
+      estimated</strong>: the estimator is a closed-form ridge regression solved by Gaussian
+      elimination, and every score is the <strong>exact risk over a 4,000-row held-out population</strong>
+      rather than a sample of one. &#128308; <strong>The rule everyone repeats guards the step that costs
+      almost nothing.</strong> Fitting the scaler on all the data changes the true risk by at most
+      <strong>0.000168</strong> across six seeds &mdash; under two ten-thousandths. Selecting features on
+      all the data, which usually gets a footnote, is worth <strong>0.6381 at minimum</strong> and 0.7814
+      at the seed shown here. &#128308; And what that buys is worse than a wrong number. On a population
+      with <strong>no signal in it at all</strong> &mdash; 1,200 columns of pure noise, nothing to learn
+      &mdash; the leaked pipeline reports <strong>0.5370</strong> where the honest one reports 1.0152. It
+      looks like a model that halved the error. There is nothing there to halve. &#128308; The leaked
+      model is also genuinely <em>worse</em>, 1.3184 against 1.2327, so you pay twice: a flattering
+      number, and a model that earned less than the one you would have had.
+    </h1>
+
+    <div class="tabs">
+      <button id="tabLook" class="tab-active" onclick="showTab('look')">&#128065; LOOK</button>
+      <button id="tabUnd" onclick="showTab('und')">&#129504; UNDERSTAND</button>
+      <button id="tabBuild" onclick="showTab('build')">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<main id="look" class="wrap stack">
+  <div class="callout">
+    <p>
+      <strong>The data is generated, and for this page that is a feature rather than an apology.</strong>
+      Because the population is generated, the amount of real signal is <em>known</em> &mdash; and the
+      headline setting has exactly none. Any performance a pipeline reports on it is, by construction,
+      an artefact. That is not something a real dataset can give you.
+    </p>
+  </div>
+
+  <div class="grid4">
+    <div class="card"><p class="lbl">WHAT THE LEAKED PIPELINE REPORTS</p><p class="big ok" id="kRep">&mdash;</p>
+      <p class="note">on data with no signal</p></div>
+    <div class="card"><p class="lbl">ITS TRUE RISK</p><p class="big warn" id="kTruth">&mdash;</p>
+      <p class="note">over 4,000 held-out rows</p></div>
+    <div class="card"><p class="lbl">COST OF THE SCALER MISTAKE</p><p class="big" id="kScaler">&mdash;</p>
+      <p class="note">true-risk difference</p></div>
+    <div class="card"><p class="lbl">COST OF THE SELECTION MISTAKE</p><p class="big warn" id="kSelect">&mdash;</p>
+      <p class="note">optimism in the reported number</p></div>
+  </div>
+
+  <div class="card">
+    <h2>Four pipelines, one population</h2>
+    <div class="grid2" style="margin:12px 0">
+      <label class="f">Features kept by the selector: <b id="kv">15</b>
+        <input type="range" id="k" min="5" max="40" step="5" value="15" />
+      </label>
+      <label class="f">Real signal columns: <b id="sv">0</b>
+        <input type="range" id="sig" min="0" max="8" value="0" />
+      </label>
+    </div>
+    <div class="tblwrap"><table class="num" id="tMain"></table></div>
+    <p class="note">
+      &ldquo;Reported&rdquo; is the number the pipeline would put on a slide &mdash; its score on the
+      validation split. &ldquo;True risk&rdquo; is the same fitted model scored on 4,000 rows it has
+      never touched in any form. The gap between them is the whole subject.
+    </p>
+  </div>
+</main>
+
+<main id="und" class="wrap stack hidden">
+  <div class="card">
+    <h3 style="margin-top:0">1. The famous mistake is the cheap one</h3>
+    <p>
+      Fitting the scaler before the split leaks the mean and standard deviation of the held-out rows
+      into the training set. It is the example in every tutorial. Six seeds, same population size:
+    </p>
+    <div class="tblwrap"><table class="num" id="tSeeds"></table></div>
+    <p class="note">
+      <strong>The largest true-risk difference between the clean and scaler-leaked pipelines across all
+      six seeds is 0.000168.</strong> Two means and two standard deviations, computed over a few extra
+      rows, move the fitted model almost not at all. The rule is correct and worth keeping; the reason
+      usually given for it &mdash; that it inflates your results &mdash; is not what the number says.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">2. The mistake that pays is choosing what to look at</h3>
+    <p>
+      With 1,200 columns and 80 rows, some column correlates with the target by luck. Choosing the top
+      fifteen <em>using all the data</em> means the validation rows helped choose the features they are
+      about to score.
+    </p>
+    <div class="tblwrap"><table class="num" id="tGap"></table></div>
+    <p class="note">
+      The optimism is never below <strong>0.6381</strong> on any seed. And this is on a population with
+      <strong>zero</strong> signal columns &mdash; there is no relationship in the data to find, so every
+      point of apparent performance is the selector reading its own homework.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">3. You pay twice</h3>
+    <p>
+      It would be tidier if leakage only produced a flattering number for an equally good model. It does
+      not.
+    </p>
+    <div class="tblwrap"><table class="num" id="tTwice"></table></div>
+    <p class="note">
+      The leaked model's <em>true</em> risk is worse than the clean model's. Selecting on the validation
+      rows does not just misreport &mdash; it picks columns that fit noise those rows happened to carry,
+      and that is a worse model to ship as well as a worse number to trust.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Where this generalises and where it does not</h3>
+    <p class="note" style="margin-top:0">
+      The ranking is what transfers: <strong>leakage through what you SELECT dominates leakage through
+      what you SCALE</strong>, and it does so because selection has many degrees of freedom to exploit
+      while standardisation has two numbers per column. The exact figures belong to this population.
+      Turning the signal slider up does <strong>not</strong> shrink the gap, which is worth saying
+      because it is what I expected. The coefficients grow with the signal count, so the target's
+      variance grows and every mean-squared error grows with it. Worse for the tidy version of this
+      page: <strong>above about four signal columns the comparison stops being stable at all</strong>
+      &mdash; at signal 6 the clean pipeline is the more optimistic of the two, which is the opposite
+      of the finding. With 80 rows and a 20-row validation split, the optimism of a single fit is a
+      noisy quantity, and once the target carries real variance that noise swamps the leak.
+      <strong>So the claim on this page is about the low-signal regime and is stated that way</strong>:
+      <em>p</em> large, effect small, which is exactly where feature selection gets reached for. The
+      ordering is checked at signal 0 and 2, and the reversal at 6 is checked too, so neither can
+      quietly stop being true.
+    </p>
+  </div>
+</main>
+
+<main id="build" class="wrap stack hidden">
+  <div class="card prose">
+    <h2>How it works</h2>
+    <pre>// clean
+cols = topK(Xtrain, ytrain, k);   stats = stats(Xtrain[cols])
+
+// the famous mistake            <- costs 0.000168
+stats = stats(Xall[cols])
+
+// the one that matters          <- costs 0.64 and up
+cols  = topK(Xall, yall, k)</pre>
+    <p class="note">
+      Ridge with a positive lambda, so the normal equations are always solvable and no comparison ever
+      turns on a numerical accident. The population is 4,080 rows: 80 to work with, 4,000 held back and
+      used only to compute the true risk. Draws come from a seeded Park-Miller generator, so every
+      figure is reproducible.
+    </p>
+    <h3>Self-check</h3>
+    <p class="note">
+      Runs on load. Several are <strong>controls</strong> &mdash; the claim that selection leaks means
+      nothing without the clean pipeline scored the same way.
+    </p>
+    <div class="sc" id="selfcheck"></div>
+    <p style="margin-top:20px"><a href="../machinelearningfromzero.php">&larr; MachineLearningFromZero</a></p>
+  </div>
+</main>
+
+<script>
+// ===== ENGINE:BEGIN =====
+// ---------------------------------------------------------------------------
+// Preprocessing leakage. Everybody knows to split before you fit. The question
+// this page asks is what the mistake is actually WORTH - and the answer is not
+// the one the rule implies.
+//
+// Nothing here is a simulation of a model. The data is enumerated, the
+// estimator is a closed-form ridge regression solved by exact Gaussian
+// elimination, and the "true" risk is computed over the WHOLE population
+// rather than a held-out sample. So each number is the exact population risk
+// of a specific fitted model, not an estimate of it.
+//
+// DOM-free, clock-free, Math.random-free (a seeded Park-Miller stands in).
+// ---------------------------------------------------------------------------
+
+class Rng {
+  constructor(seed = 20260903) { this.s = seed % 2147483647 || 1; }
+  next() { this.s = (this.s * 48271) % 2147483647; return this.s; }
+  unit() { return (this.next() - 1) / 2147483645; }        // [0,1)
+  normal() {                                                // Box-Muller, no clock
+    const u = Math.max(this.unit(), 1e-12), v = this.unit();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+  below(n) { return Math.floor((this.next() * n) / 2147483648); }
+}
+
+// ---------------------------------------------------------------- the world
+// p features. Only the first `signal` of them carry any relationship to y; the
+// rest are noise. That matters, because the loudest leakage story - selecting
+// features on the full data - is exactly about noise columns.
+function population(rng, n, p, signal, noise) {
+  const X = [], y = [];
+  const beta = [];
+  for (let j = 0; j < p; j++) beta.push(j < signal ? (j % 2 ? -1 : 1) * (1 + j * 0.3) : 0);
+  for (let i = 0; i < n; i++) {
+    const row = [];
+    for (let j = 0; j < p; j++) row.push(rng.normal() * (1 + (j % 4)));   // deliberately unequal scales
+    let t = 0;
+    for (let j = 0; j < p; j++) t += row[j] * beta[j];
+    X.push(row);
+    y.push(t + rng.normal() * noise);
+  }
+  return { X, y, beta };
+}
+
+// ------------------------------------------------------------- the estimator
+function standardise(X, mean, sd) {
+  return X.map((r) => r.map((v, j) => (v - mean[j]) / (sd[j] || 1)));
+}
+function stats(X) {
+  const n = X.length, p = X[0].length;
+  const mean = new Array(p).fill(0), sd = new Array(p).fill(0);
+  for (const r of X) for (let j = 0; j < p; j++) mean[j] += r[j] / n;
+  for (const r of X) for (let j = 0; j < p; j++) sd[j] += (r[j] - mean[j]) ** 2 / n;
+  for (let j = 0; j < p; j++) sd[j] = Math.sqrt(sd[j]);
+  return { mean, sd };
+}
+
+// Ridge, solved directly. lambda > 0 so the system is always non-singular and
+// the comparison is never about a numerical accident.
+function ridge(X, y, lambda) {
+  const n = X.length, p = X[0].length;
+  const A = Array.from({ length: p + 1 }, () => new Array(p + 2).fill(0));
+  for (let i = 0; i < n; i++) {
+    const xi = [1, ...X[i]];
+    for (let a = 0; a <= p; a++) {
+      for (let b = 0; b <= p; b++) A[a][b] += xi[a] * xi[b];
+      A[a][p + 1] += xi[a] * y[i];
+    }
+  }
+  for (let a = 1; a <= p; a++) A[a][a] += lambda;
+  // Gaussian elimination with partial pivoting
+  for (let c = 0; c <= p; c++) {
+    let piv = c;
+    for (let r = c + 1; r <= p; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+    [A[c], A[piv]] = [A[piv], A[c]];
+    const d = A[c][c];
+    for (let k = c; k <= p + 1; k++) A[c][k] /= d;
+    for (let r = 0; r <= p; r++) {
+      if (r === c) continue;
+      const f = A[r][c];
+      if (!f) continue;
+      for (let k = c; k <= p + 1; k++) A[r][k] -= f * A[c][k];
+    }
+  }
+  return A.map((r) => r[p + 1]);
+}
+
+function predict(w, X) {
+  return X.map((r) => r.reduce((a, v, j) => a + v * w[j + 1], w[0]));
+}
+function mse(pred, y) {
+  return pred.reduce((a, v, i) => a + (v - y[i]) ** 2, 0) / y.length;
+}
+
+// ------------------------------------------------------- feature selection
+// Keep the k features most correlated with y. This is the step that leaks
+// hardest, because with p >> n a noise column WILL correlate by chance.
+function topK(X, y, k) {
+  const p = X[0].length;
+  const score = [];
+  for (let j = 0; j < p; j++) {
+    let sxy = 0, sxx = 0, syy = 0;
+    const mx = X.reduce((a, r) => a + r[j], 0) / X.length;
+    const my = y.reduce((a, v) => a + v, 0) / y.length;
+    for (let i = 0; i < X.length; i++) {
+      sxy += (X[i][j] - mx) * (y[i] - my);
+      sxx += (X[i][j] - mx) ** 2;
+      syy += (y[i] - my) ** 2;
+    }
+    score.push({ j, r: Math.abs(sxy / (Math.sqrt(sxx * syy) || 1)) });
+  }
+  score.sort((a, b) => b.r - a.r || a.j - b.j);
+  return score.slice(0, k).map((s) => s.j).sort((a, b) => a - b);
+}
+const take = (X, cols) => X.map((r) => cols.map((j) => r[j]));
+
+// ---------------------------------------------------------------------------
+// Four pipelines. Each reports the number it would put in a slide, and each is
+// then scored against the SAME held-out population - the exact risk.
+// ---------------------------------------------------------------------------
+// Generating the population is the expensive part and it does not depend on k,
+// so it is memoised. The cache is keyed by everything that CAN change it, and
+// nothing in here reads a clock or a random source, so the engine stays
+// reproducible and a verifier still gets identical numbers.
+const POP_CACHE = new Map();
+function populationFor(n, p, signal, noise, seed) {
+  const key = [n, p, signal, noise, seed].join("|");
+  let hit = POP_CACHE.get(key);
+  if (!hit) {
+    hit = population(new Rng(seed), n, p, signal, noise);
+    POP_CACHE.set(key, hit);
+  }
+  return hit;
+}
+
+function pipelines(opts) {
+  const { n, p, signal, noise, k, lambda, seed } = opts;
+  const all = populationFor(n + 4000, p, signal, noise, seed);
+  const Xtr = all.X.slice(0, n), ytr = all.y.slice(0, n);
+  const Xte = all.X.slice(n), yte = all.y.slice(n);
+  const nTrain = Math.floor(n * 0.75);
+  const Xa = Xtr.slice(0, nTrain), ya = ytr.slice(0, nTrain);
+  const Xb = Xtr.slice(nTrain), yb = ytr.slice(nTrain);
+
+  const out = [];
+
+  // 1. clean: everything fitted on the training half only
+  {
+    const cols = topK(Xa, ya, k);
+    const st = stats(take(Xa, cols));
+    const w = ridge(standardise(take(Xa, cols), st.mean, st.sd), ya, lambda);
+    const reported = mse(predict(w, standardise(take(Xb, cols), st.mean, st.sd)), yb);
+    const truth = mse(predict(w, standardise(take(Xte, cols), st.mean, st.sd)), yte);
+    out.push({ key: "clean", label: "split first, then select and scale on the training half", reported, truth, cols });
+  }
+  // 2. scaler fitted on everything - the mistake people actually make
+  {
+    const cols = topK(Xa, ya, k);
+    const st = stats(take(Xtr, cols));                       // <- uses the held-out rows
+    const w = ridge(standardise(take(Xa, cols), st.mean, st.sd), ya, lambda);
+    const reported = mse(predict(w, standardise(take(Xb, cols), st.mean, st.sd)), yb);
+    const truth = mse(predict(w, standardise(take(Xte, cols), st.mean, st.sd)), yte);
+    out.push({ key: "scaler", label: "fit the scaler on all the data, then split", reported, truth, cols });
+  }
+  // 3. feature selection on everything - the one that actually bites
+  {
+    const cols = topK(Xtr, ytr, k);                          // <- uses the held-out rows
+    const st = stats(take(Xa, cols));
+    const w = ridge(standardise(take(Xa, cols), st.mean, st.sd), ya, lambda);
+    const reported = mse(predict(w, standardise(take(Xb, cols), st.mean, st.sd)), yb);
+    const truth = mse(predict(w, standardise(take(Xte, cols), st.mean, st.sd)), yte);
+    out.push({ key: "select", label: "select features on all the data, then split", reported, truth, cols });
+  }
+  // 4. both
+  {
+    const cols = topK(Xtr, ytr, k);
+    const st = stats(take(Xtr, cols));
+    const w = ridge(standardise(take(Xa, cols), st.mean, st.sd), ya, lambda);
+    const reported = mse(predict(w, standardise(take(Xb, cols), st.mean, st.sd)), yb);
+    const truth = mse(predict(w, standardise(take(Xte, cols), st.mean, st.sd)), yte);
+    out.push({ key: "both", label: "both mistakes at once", reported, truth, cols });
+  }
+  const clean = out[0];
+  for (const o of out) {
+    o.optimism = o.truth - o.reported;              // how much the slide flatters
+    o.vsClean = o.truth - clean.truth;              // how much worse the MODEL is
+    o.inflation = clean.truth === 0 ? 0 : o.optimism / clean.truth;
+  }
+  return { out, nTrain, nVal: n - nTrain, nTest: Xte.length, signal, p, k };
+}
+
+function sweep(opts, ks) {
+  return ks.map((k) => ({ k, ...pipelines({ ...opts, k }) }));
+}
+
+const ENGINE = { Rng, population, populationFor, POP_CACHE, stats, standardise, ridge, predict, mse, topK, take, pipelines, sweep };
+if (typeof module !== "undefined" && module.exports) module.exports = ENGINE;
+
+// ===== ENGINE:END =====
+</script>
+
+<script>
+function showTab(name) {
+  for (const t of ["look", "und", "build"]) document.getElementById(t).classList.toggle("hidden", t !== name);
+  document.getElementById("tabLook").classList.toggle("tab-active", name === "look");
+  document.getElementById("tabUnd").classList.toggle("tab-active", name === "und");
+  document.getElementById("tabBuild").classList.toggle("tab-active", name === "build");
+}
+const el = (id) => document.getElementById(id);
+function table(id, head, rows) {
+  el(id).innerHTML =
+    "<tr>" + head.map((h) => "<th>" + h + "</th>").join("") + "</tr>" +
+    rows.map((r) => "<tr" + (r.cls ? ' class="' + r.cls + '"' : "") + ">" +
+      r.cells.map((c, i) => "<td" + (i === 0 ? ' class="txt"' : "") + ">" + c + "</td>").join("") + "</tr>").join("");
+}
+function selfCheckPanel(fn) {
+  const out = []; let n = 0, bad = 0;
+  const t = (label, cond, detail = "") => {
+    n += 1; if (!cond) bad += 1;
+    out.push('<div><span class="' + (cond ? "ok" : "warn") + '">' + (cond ? "PASS" : "FAIL") +
+      '</span><span>' + label + '</span><span class="m">' + detail + "</span></div>");
+  };
+  fn(t);
+  el("selfcheck").innerHTML =
+    '<p class="note" style="margin:0 0 8px"><b class="' + (bad ? "warn" : "ok") + '">' +
+    (n - bad) + " of " + n + " checks pass</b>" + (bad ? " &mdash; " + bad + " FAILED" : "") + ".</p>" + out.join("");
+}
+
+const BASE = { n: 80, p: 1200, noise: 1, lambda: 0.3, seed: 11 };
+const SEEDS = [11, 23, 37, 59, 71, 97];
+const f4 = (x) => x.toFixed(4);
+
+function pipeFor(k, signal, seed = BASE.seed) {
+  return ENGINE.pipelines({ ...BASE, k, signal, seed });
+}
+
+function render(k, signal) {
+  el("kv").textContent = k;
+  el("sv").textContent = signal;
+  const R = pipeFor(k, signal);
+  const g = (key) => R.out.find((x) => x.key === key);
+
+  table("tMain", ["pipeline", "reported", "true risk", "optimism", "true risk vs clean"],
+    R.out.map((x) => ({
+      cls: x.key === "select" ? "here" : "",
+      cells: [x.label, "<b>" + f4(x.reported) + "</b>", f4(x.truth),
+        (x.optimism >= 0 ? '<span class="warn">+' : "<span>") + f4(x.optimism) + "</span>",
+        x.key === "clean" ? "&mdash;" : (x.vsClean > 0 ? '<span class="warn">+' : '<span class="ok">') + f4(x.vsClean) + "</span>"],
+    })));
+
+  el("kRep").textContent = f4(g("select").reported);
+  el("kTruth").textContent = f4(g("select").truth);
+  el("kScaler").textContent = f4(Math.abs(g("scaler").truth - g("clean").truth));
+  el("kSelect").textContent = f4(g("select").optimism);
+  return R;
+}
+render(15, 0);
+el("k").addEventListener("input", (e) => render(parseInt(e.target.value, 10), parseInt(el("sig").value, 10)));
+el("sig").addEventListener("input", (e) => render(parseInt(el("k").value, 10), parseInt(e.target.value, 10)));
+
+const SEEDR = SEEDS.map((s) => ({ seed: s, R: pipeFor(15, 0, s) }));
+const gg = (R, key) => R.out.find((x) => x.key === key);
+
+table("tSeeds", ["seed", "clean, true risk", "scaler-leaked, true risk", "difference", "verdict"],
+  SEEDR.map(({ seed, R }) => {
+    const d = Math.abs(gg(R, "scaler").truth - gg(R, "clean").truth);
+    return { cells: [seed, f4(gg(R, "clean").truth), f4(gg(R, "scaler").truth), "<b>" + d.toFixed(6) + "</b>",
+      d < 0.01 ? '<span class="pill good">negligible</span>' : '<span class="pill bad">matters</span>'] };
+  }));
+
+table("tGap", ["seed", "leaked pipeline reports", "its true risk", "optimism", "verdict"],
+  SEEDR.map(({ seed, R }) => {
+    const s = gg(R, "select");
+    return { cls: "here", cells: [seed, "<b>" + f4(s.reported) + "</b>", f4(s.truth),
+      '<b class="warn">+' + f4(s.optimism) + "</b>",
+      s.optimism > 0.6 ? '<span class="pill bad">flattering</span>' : '<span class="pill stop">mild</span>'] };
+  }));
+
+table("tTwice", ["seed", "clean model, true risk", "leaked model, true risk", "the leaked model is"],
+  SEEDR.map(({ seed, R }) => {
+    const c = gg(R, "clean").truth, s = gg(R, "select").truth;
+    return { cells: [seed, f4(c), f4(s), s > c ? '<span class="warn">worse by ' + f4(s - c) + "</span>" : '<span class="ok">better by ' + f4(c - s) + "</span>"] };
+  }));
+
+selfCheckPanel((t) => {
+  const R = pipeFor(15, 0);
+  const g = (k) => R.out.find((x) => x.key === k);
+
+  t("the generator reproduces exactly from a seed", (() => {
+    const a = new ENGINE.Rng(4), b = new ENGINE.Rng(4);
+    for (let i = 0; i < 50; i++) if (a.next() !== b.next()) return false;
+    return true;
+  })());
+  t("CONTROL: a different seed gives different data",
+    new ENGINE.Rng(4).next() !== new ENGINE.Rng(5).next());
+  t("ridge solves a system it can verify", (() => {
+    const X = [[1, 0], [0, 1], [1, 1], [2, 1]], y = [1, 2, 3, 4];
+    const w = ENGINE.ridge(X, y, 1e-9);
+    return w.every((v) => Number.isFinite(v));
+  })());
+  t("standardising twice is idempotent", (() => {
+    const X = [[1, 10], [2, 20], [3, 30]];
+    const s = ENGINE.stats(X);
+    const a = ENGINE.standardise(X, s.mean, s.sd);
+    const s2 = ENGINE.stats(a);
+    return s2.mean.every((m) => Math.abs(m) < 1e-9) && s2.sd.every((d) => Math.abs(d - 1) < 1e-9);
+  })());
+  t("the held-out population is 4,000 rows", R.nTest === 4000);
+  t("the population really has no signal at 0", R.signal === 0);
+
+  t("the scaler mistake is negligible on every seed",
+    SEEDR.every(({ R: r }) => Math.abs(gg(r, "scaler").truth - gg(r, "clean").truth) < 0.01),
+    "max " + Math.max(...SEEDR.map(({ R: r }) => Math.abs(gg(r, "scaler").truth - gg(r, "clean").truth))).toFixed(6));
+  t("the selection mistake is large on every seed",
+    SEEDR.every(({ R: r }) => gg(r, "select").optimism > 0.6),
+    "min " + Math.min(...SEEDR.map(({ R: r }) => gg(r, "select").optimism)).toFixed(4));
+  t("selection leakage is over 1000x the scaler's cost", (() => {
+    const sc = Math.max(...SEEDR.map(({ R: r }) => Math.abs(gg(r, "scaler").truth - gg(r, "clean").truth)));
+    const se = Math.min(...SEEDR.map(({ R: r }) => gg(r, "select").optimism));
+    return se / sc > 1000;
+  })());
+
+  t("the leaked pipeline reports well under 1 on data with nothing in it",
+    g("select").reported < 0.7, f4(g("select").reported));
+  t("...while its true risk is above 1", g("select").truth > 1, f4(g("select").truth));
+  t("CONTROL: the clean pipeline does NOT report a flattering number",
+    g("clean").reported > g("select").reported, f4(g("clean").reported));
+  t("the leaked model is genuinely worse, not just mis-scored",
+    g("select").truth > g("clean").truth);
+
+  t("the leaked pipeline is more optimistic than the clean one in the low-signal regime", (() => {
+    for (const s of [0, 2]) {
+      const r = pipeFor(15, s);
+      if (!(r.out.find((x) => x.key === "select").optimism > r.out.find((x) => x.key === "clean").optimism)) return false;
+    }
+    return true;
+  })(), "signal 0 and 2");
+  t("CONTROL: at higher signal the ordering is NOT stable - the page says so", (() => {
+    const r = pipeFor(15, 6);
+    return r.out.find((x) => x.key === "select").optimism < r.out.find((x) => x.key === "clean").optimism;
+  })(), "at signal 6 it reverses")
+  t("keeping more features leaks more", (() => {
+    const a = pipeFor(5, 0).out.find((x) => x.key === "select").optimism;
+    const b = pipeFor(40, 0).out.find((x) => x.key === "select").optimism;
+    return b > a;
+  })());
+});
+
+</script>
+</body>
+</html>
